@@ -948,6 +948,27 @@ guard, since that panic unwound past the step that takes the editor from the
 view, so a second panic, in its drop, aborted the host; the release now
 catches the first on its own and drops the editor inside the guard.
 
+### D102. A page's files and a build without them
+
+[The decision](decisions.md#d102-a-pages-files-and-a-build-without-them)
+
+Built on 2026-11-13 with the first page in a plugin window, the example
+gain's. To confirm.
+
+### D103. The WebView's data folder
+
+[The decision](decisions.md#d103-the-webviews-data-folder)
+
+Built on 2026-11-13. Sixteen editors of one plugin were opened in one process
+that day, in windows never shown. To confirm.
+
+### D104. The WebView's messages and what it takes
+
+[The decision](decisions.md#d104-the-webviews-messages-and-what-it-takes)
+
+Built on 2026-11-13. Whether the host keeps its shortcuts while the page has
+the keyboard waits for a run in a host. To confirm.
+
 ### D105. The module stays loaded once an editor has opened
 
 [The decision](decisions.md#d105-the-module-stays-loaded-once-an-editor-has-opened)

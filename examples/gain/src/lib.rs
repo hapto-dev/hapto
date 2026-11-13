@@ -12,7 +12,13 @@
 #[cfg(feature = "vst3")]
 seam_host::export_vst3!(Gain);
 
-use seam_host::{Block, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status};
+mod page;
+
+pub use page::PAGE;
+
+use seam_host::{
+    Block, Editor, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
+};
 use seam_learn::{Config, LearnError, Takes};
 use seam_params::{Bool, Changes, Choice, Choices, Float, Params, UiParams, Value};
 use seam_undo::{Bound, History};
@@ -124,6 +130,10 @@ impl Plugin for Gain {
 
     fn activate(&mut self, _setup: &ProcessSetup) -> GainProcessor {
         GainProcessor::new(self.params.clone())
+    }
+
+    fn editor(&mut self) -> Option<Box<dyn Editor>> {
+        page::editor(self)
     }
 }
 
