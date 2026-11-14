@@ -20,10 +20,7 @@ seam_host::export_vst3!(ExampleEq);
 #[cfg(feature = "cabi")]
 seam_host::export_cabi!(ExampleEq);
 
-use seam_host::{
-    AuCodes, Block, Category, Feature, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor,
-    Status,
-};
+use seam_host::{Block, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status};
 use seam_params::{Bool, Changes, Float};
 
 use crate::dsp::{Biquad, coefficients, decibels_to_gain};
@@ -45,21 +42,7 @@ const _: () = {
 };
 
 impl Plugin for ExampleEq {
-    const INFO: PluginInfo = PluginInfo {
-        name: "Seam Example EQ",
-        vendor: "Seam",
-        url: "",
-        email: "",
-        description: "Six biquad bands and an output gain",
-        version: "0.1.0",
-        id: "dev.seam.example-eq",
-        vst3_class_id: 0x44f0_fc1b_fd79_434d_a987_84b8_01dc_348b_u128.to_be_bytes(),
-        au_codes: AuCodes {
-            subtype: *b"SmEq",
-            manufacturer: *b"Seam",
-        },
-        category: Category::Effect,
-        features: &[Feature::Equalizer],
+    const INFO: PluginInfo = seam_host::manifest_info! {
         layouts: &[Layout::STEREO, Layout::MONO],
         midi_input: false,
         midi_output: false,

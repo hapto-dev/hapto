@@ -160,4 +160,57 @@ pub use faults::boundary_faults;
 pub use info::{AuCodes, Category, Feature, Layout, PluginInfo};
 pub use parts::{Driver, Maker, Parts};
 pub use plugin::{Plugin, Processor, Tail};
+/// Writes a plugin's [`PluginInfo`]: who the plugin is from its manifest, and
+/// what its code relies on from the fields the macro is given.
+///
+/// It reads the manifest of the crate it is used in. Its
+/// `[package.metadata.seam]` table gives the `name`, the `vendor`, the
+/// vendor's `url` and `email`, the `id`, the `vst3-class-id` written as a
+/// UUID, the `au-codes`, the `category` and the `features`: each of the last
+/// two is a [`Category`] or [`Feature`] variant in kebab case, `effect` or
+/// `pitch-shift`. The `url`, the `email` and the `features` may be left out,
+/// for none. The package's own `version` and `description` are the plugin's.
+/// The fields written in Rust are the rest of `PluginInfo`'s, the
+/// [`layouts`](PluginInfo::layouts) and the MIDI flags, beside the code that
+/// relies on them.
+///
+/// Cargo reads no `[package.metadata]` table, so the macro checks this one
+/// while compiling. It refuses a key the table does not take, a value of the
+/// wrong type or form, a version that is not `major.minor.patch`, and a field
+/// written in Rust that the manifest gives, each mistake with its line in the
+/// manifest. A field written in neither place is the compiler's error, as in
+/// any struct literal. A change to the manifest builds the crate again.
+///
+/// # Examples
+///
+/// This crate's own manifest holds the table the example reads:
+///
+/// ```toml
+/// [package.metadata.seam]
+/// name = "Tone"
+/// vendor = "Example"
+/// url = "https://example.com"
+/// id = "com.example.tone"
+/// vst3-class-id = "8f3c2a71-5d0e-4b96-a1c4-7e25d9b03f68"
+/// au-codes = { subtype = "tone", manufacturer = "Exmp" }
+/// category = "effect"
+/// features = ["equalizer"]
+/// ```
+///
+/// ```
+/// use seam_host::{Category, Feature, Layout, PluginInfo};
+///
+/// const INFO: PluginInfo = seam_host::manifest_info! {
+///     layouts: &[Layout::STEREO, Layout::MONO],
+///     midi_input: false,
+///     midi_output: false,
+/// };
+/// assert_eq!((INFO.name, INFO.email), ("Tone", ""));
+/// assert_eq!(INFO.au_codes.subtype, *b"tone");
+/// assert_eq!((INFO.category, INFO.features), (Category::Effect, &[Feature::Equalizer][..]));
+/// assert_eq!(INFO.version, env!("CARGO_PKG_VERSION"));
+/// ```
+#[cfg(feature = "manifest")]
+#[cfg_attr(docsrs, doc(cfg(feature = "manifest")))]
+pub use seam_macros::manifest_info;
 pub use state::{LoadError, MAX_STATE_BYTES, STATE_VERSION, SavedState};

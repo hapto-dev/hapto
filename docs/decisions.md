@@ -133,6 +133,7 @@ comments never cite an id: they state the reason in words, and
 | D94 | [How does a plugin name a choice's values without writing `Choices`? (D89, D93)](#d94-a-derive-that-writes-choices) | `#[derive(Choices)]`, under the same `derive` feature: the labels and both mappings in the order of the variants, a label being the variant's name unless a `#[choice("...")]` mark gives one. A written discriminant must be the variant's position, and a bad label is refused on itself: `cargo check` evaluates both checks. | decided |
 | D95 | [When does a call at the plugin boundary panic, and when does it return a `Result`? (D90, D91)](#d95-mistakes-panic-failures-return-a-result) | A mistake fixed in the plugin's source, such as a call made twice or a switch turned on without what it needs, panics with what to change; a failure that can depend on data at run time returns a `Result`. So `Parts::undo` and `Parts::midi_learn` return no `Result`, and `Parts::saved_value` keeps one. | decided |
 | D96 | [How does a plugin make parameters while it runs, and how are they saved, undone and learned? (D89, D90, D91)](#d96-parameters-made-at-run-time) | `Parts::declare` and `Parts::add` make the same typed parameters from the same declarations, in no set and listed to no host. Writes, undo and learn reach them as they reach listed ones. A save writes each under its path with its learned mapping; a load writes none on the host's thread, and holds its entries for the declares its pass makes. | to confirm |
+| D97 | [Where does a plugin write who it is? (D58, D86)](#d97-a-plugins-identity-in-its-manifest) | In its manifest: `manifest_info!`, under `seam-host`'s `manifest` feature, writes `PluginInfo` from `[package.metadata.seam]` and the package's own version and description, checked while compiling. The layouts and MIDI flags stay in Rust, as the macro's fields. A `PluginInfo` written by hand still works. | to confirm |
 
 **Open.** D25 is held until `seam-ci` needs it. It keeps its recommendation
 until decided, and no rule depends on it.
@@ -2532,6 +2533,47 @@ the tick's own assignments move, so a declare a load landed inside counted as
 declared after it.
 
 [History](decision-history.md#d96-parameters-made-at-run-time)
+
+### D97. A plugin's identity in its manifest
+
+**Question and C++ Seam.** Where does a plugin write who it is? (D58, D86)
+Not applicable: a JUCE plugin gives these facts to JUCE's build, as
+`juce_add_plugin`'s arguments.
+
+**Rust.** In the plugin crate's manifest. `seam_host::manifest_info!`, under
+the `manifest` feature, writes `PluginInfo` from the manifest of the crate it
+is used in. `[package.metadata.seam]` gives the facts a host's list, browser
+and saved sessions know the plugin by: the `name`, the `vendor`, the vendor's
+`url` and `email`, the `id`, the `vst3-class-id` written as a UUID, the
+`au-codes` as a table of `subtype` and `manufacturer`, the `category` and the
+`features`, the last two in kebab case. The package's own `version` and
+`description` are the plugin's, so neither is written twice. The version must
+be `major.minor.patch`, so one with a pre-release part is refused. What the
+code relies on stays in Rust, beside it: the layouts and the MIDI flags are
+the macro's fields, written as a struct literal's, so a field written in
+neither place is the compiler's error, and one written in both is refused.
+
+Cargo reads no `[package.metadata]` table, so the macro checks it while
+compiling. It refuses a key the table does not take, a value of the wrong type
+or form (a UUID, four printable ASCII characters, a known category or
+feature) and a feature listed twice, every mistake at once and each with its
+line in the manifest. The macro includes the manifest's text, so a change to
+it builds the crate again. A `PluginInfo` written by hand still works, as the
+rest of `seam-host`'s doc examples write theirs.
+
+Open: `cargo xtask gen` still compiles the plugin to write the JUCE adapter's
+settings. With the identity in the manifest, a tool can read most of them
+through `cargo metadata`, though not the MIDI flags or the parameter keys the
+settings are checked against.
+
+**Alternatives.** The alternatives were `PluginInfo` written in Rust alone,
+where the version and description repeat the manifest's and drift from it,
+and only a compiled plugin can say who it is; the whole of `PluginInfo` in the
+manifest, which takes the layouts and the MIDI flags away from the code that
+relies on them; and a build script in each plugin, which every plugin would
+have to carry.
+
+[History](decision-history.md#d97-a-plugins-identity-in-its-manifest)
 
 ## How to read this
 

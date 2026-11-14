@@ -125,6 +125,14 @@ delivered to a plugin through an exporter.
   load's pass has finished, each one still held takes the load's mapping for
   its path, and one made before the load its value too. Two under one path,
   and a save with no room for them, are faults.
+- `seam-host`: `manifest_info!`, under the `manifest` feature, writes a
+  plugin's `PluginInfo` from its manifest. `[package.metadata.seam]` gives who
+  the plugin is: its name, vendor, addresses, id, VST3 class id as a UUID, AU
+  codes, category and features. The package's version and description are the
+  plugin's, and the layouts and MIDI flags are written in Rust, as the macro's
+  fields. It checks the table while compiling, each mistake reported on its
+  line in the manifest, and refuses a field written in both places. Both
+  examples declare theirs this way.
 - The VST3 exporter (`export_vst3!`), for Windows and macOS, with its own
   main-thread timer.
 - The C interface (`export_cabi!`) and its generated header, `include/seam.h`,

@@ -12,9 +12,7 @@
 #[cfg(feature = "vst3")]
 seam_host::export_vst3!(Gain);
 
-use seam_host::{
-    AuCodes, Block, Category, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
-};
+use seam_host::{Block, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status};
 use seam_learn::{Config, LearnError, Takes};
 use seam_params::{Bool, Changes, Choice, Choices, Float, Params, UiParams, Value};
 use seam_undo::{Bound, History};
@@ -97,21 +95,7 @@ impl Gain {
 }
 
 impl Plugin for Gain {
-    const INFO: PluginInfo = PluginInfo {
-        name: "Seam Example Gain",
-        vendor: "Seam",
-        url: "",
-        email: "",
-        description: "A gain with three modes, a label and MIDI learn",
-        version: "0.1.0",
-        id: "dev.seam.example-gain",
-        vst3_class_id: 0x5b0a_d271_3e96_4c18_a37f_e024_8db5_6a19_u128.to_be_bytes(),
-        au_codes: AuCodes {
-            subtype: *b"SmGn",
-            manufacturer: *b"Seam",
-        },
-        category: Category::Effect,
-        features: &[],
+    const INFO: PluginInfo = seam_host::manifest_info! {
         layouts: &[Layout::STEREO],
         midi_input: true,
         midi_output: false,

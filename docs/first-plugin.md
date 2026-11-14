@@ -37,7 +37,7 @@ default = ["vst3"]
 vst3 = ["seam-host/vst3"]
 
 [dependencies]
-seam-host.workspace = true
+seam-host = { workspace = true, features = ["manifest"] }
 seam-learn.workspace = true
 seam-params = { workspace = true, features = ["derive"] }
 seam-undo.workspace = true
@@ -48,11 +48,12 @@ seam-ump.workspace = true
 ```
 
 `seam-host` builds no exporter by default, so the crate's own `vst3` feature
-turns the VST3 one on, and the tests add the test host. `seam-params`'s
-`derive` feature gives `#[derive(Params)]` and `#[derive(Choices)]`. Each
-`workspace = true` takes its value from the repository's root manifest;
-[your own crate](#your-own-crate) says what replaces it outside this
-repository.
+turns the VST3 one on, and the tests add the test host. Its `manifest` feature
+gives `manifest_info!`, which [section 3](#3-the-plugin-and-its-parts) uses.
+`seam-params`'s `derive` feature gives `#[derive(Params)]` and
+`#[derive(Choices)]`. Each `workspace = true` takes its value from the
+repository's root manifest; [your own crate](#your-own-crate) says what
+replaces it outside this repository.
 
 ## 1. Declare the parameters
 
@@ -202,6 +203,38 @@ parameter raises its `SCHEMA_VERSION` and upgrades an older block in its
 The parts hold the main thread's handles, so a plugin that keeps them is not
 `Send`, and runs on the thread that created it. The example EQ keeps only its
 parameters and drops its parts, so it stays `Send`.
+
+`INFO` is what a host reads before it creates an instance: the name it lists,
+the ids it knows the plugin by, the category its browser files it under. Who
+the plugin is sits in the manifest, with the package's version and
+description, which are the plugin's:
+
+```toml
+[package.metadata.seam]
+name = "Seam Example Gain"
+vendor = "Seam"
+id = "dev.seam.example-gain"
+vst3-class-id = "5b0ad271-3e96-4c18-a37f-e0248db56a19"
+au-codes = { subtype = "SmGn", manufacturer = "Seam" }
+category = "effect"
+```
+
+[`manifest_info!`](../crates/host/src/lib.rs) reads it into `INFO` and checks
+it while compiling, since Cargo reads no `[package.metadata]` table itself.
+What the code relies on, the bus layouts it processes and the MIDI it takes,
+is written beside the code:
+
+```rust
+const INFO: PluginInfo = seam_host::manifest_info! {
+    layouts: &[Layout::STEREO],
+    midi_input: true,
+    midi_output: false,
+};
+```
+
+A host knows the plugin by its ids for good:
+[`vst3_class_id`](../crates/host/src/info.rs) says how to make one, and why it
+never changes.
 
 ## 4. Undo
 
@@ -393,8 +426,12 @@ change the manifest:
   `seam-host = { git = "https://github.com/nicvlav/seam", rev = "..." }`,
   or `seam-host = { path = "../seam/crates/host" }` for a checkout. Pin one
   `rev` for every Seam crate, since before 1.0 a minor version may break the
-  API. A dependency with `features`, `seam-params` and the dev-dependency on
-  `seam-host`, keeps them beside its source.
+  API. A dependency with `features`, `seam-host`, `seam-params` and the
+  dev-dependency on `seam-host`, keeps them beside its source.
+- Give `[package.metadata.seam]` a name, a vendor and ids of your own: a new
+  UUID for `vst3-class-id`, which `uuidgen` prints, and AU codes no other
+  plugin of yours has. With the example's ids, every host takes it for the
+  example.
 - Copy the root manifest's `[workspace.lints.rust]` and
   `[workspace.lints.clippy]` tables in as `[lints.rust]` and `[lints.clippy]`,
   or drop the `[lints]` table, and copy its `[profile.release]` for the same

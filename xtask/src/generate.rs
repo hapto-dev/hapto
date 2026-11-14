@@ -35,7 +35,7 @@ pub fn generated() -> Vec<Generated> {
         Generated {
             path: "examples/eq/seam-juce.cmake",
             contents: seam_host::cabi::juce_settings::<seam_example_eq::ExampleEq>(
-                "examples/eq/src/lib.rs (ExampleEq::INFO)",
+                "examples/eq/Cargo.toml and src/lib.rs (ExampleEq::INFO)",
             ),
         },
     ]
