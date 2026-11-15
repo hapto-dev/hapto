@@ -462,7 +462,14 @@ fn an_editor_that_fails_to_open_is_a_fault_with_its_reason() {
     let lines = written();
     assert_eq!(lines.len(), 1, "{lines:?}");
     assert!(lines[0].contains("editor failed to open"), "{}", lines[0]);
-    assert!(lines[0].contains("no WebView runtime"), "{}", lines[0]);
+    assert!(
+        lines[0].ends_with(
+            ": no WebView runtime. Later faults of this kind in this instance are counted, \
+             not reported."
+        ),
+        "{}",
+        lines[0]
+    );
     // Not open, so no tick and no close; a second failure writes no line.
     host.tick();
     view.remove().expect("removed");

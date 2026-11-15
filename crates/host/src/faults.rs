@@ -269,7 +269,8 @@ impl Faults {
         self.count.fetch_add(1, Ordering::Relaxed);
         if self.reported.fetch_or(fault.bit(), Ordering::Relaxed) & fault.bit() == 0 {
             write_line(&format!(
-                "seam: {}: {}: {reason}. Later faults of this kind in this instance are                  counted, not reported.",
+                "seam: {}: {}: {reason}. Later faults of this kind in this instance are \
+                 counted, not reported.",
                 who(),
                 fault.what()
             ));
