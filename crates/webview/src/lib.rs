@@ -103,6 +103,10 @@
 //! # Ok::<(), seam_params::DeclError>(())
 //! ```
 
+#[cfg_attr(
+    not(windows),
+    expect(dead_code, reason = "only the Windows editor serves the page")
+)]
 mod assets;
 #[cfg(windows)]
 mod windows;
