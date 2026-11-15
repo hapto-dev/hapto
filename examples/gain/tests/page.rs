@@ -87,7 +87,7 @@ fn the_built_page_renders_and_calls_the_plugin_once_answered() {
     let window = HiddenWindow::new().expect("a window");
     let view = host.view().expect("an editor");
     let started = Instant::now();
-    assert_eq!(view.attach(window.handle()), Ok(()));
+    assert_eq!(view.attach(&window), Ok(()));
     let end = started + Duration::from_secs(30);
     while ASKED.with(Cell::get) == 0 && Instant::now() < end {
         host.tick();

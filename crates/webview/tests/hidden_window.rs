@@ -162,7 +162,7 @@ fn a_page_in_a_hidden_window_is_answered_and_its_set_reaches_the_parameter() {
     let window = HiddenWindow::new().expect("a window");
     let view = host.view().expect("an editor");
     let started = Instant::now();
-    assert_eq!(view.attach(window.handle()), Ok(()));
+    assert_eq!(view.attach(&window), Ok(()));
     let opened = started.elapsed();
     let hosts = [host];
     let answered = until(&hosts, Duration::from_secs(30), || {
@@ -178,7 +178,7 @@ fn a_page_in_a_hidden_window_is_answered_and_its_set_reaches_the_parameter() {
     assert_eq!(SEEN.with(|seen| seen.borrow().clone()), ["50.00 %"]);
     assert_eq!(view.remove(), Ok(()));
     // Closed: a tick reaches no page, and the view opens again.
-    let reopened = view.attach(window.handle());
+    let reopened = view.attach(&window);
     assert_eq!(reopened, Ok(()));
     assert_eq!(view.remove(), Ok(()));
     drop(view);
@@ -197,7 +197,7 @@ fn sixteen_editors_open_in_one_process() {
         .collect();
     let started = Instant::now();
     for (view, window) in views.iter().zip(&windows) {
-        assert_eq!(view.attach(window.handle()), Ok(()));
+        assert_eq!(view.attach(window), Ok(()));
     }
     let opened = started.elapsed();
     let answered = until(&hosts, Duration::from_secs(60), || {
