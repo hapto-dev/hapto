@@ -2636,8 +2636,10 @@ before each `open`, and after while it is open.
 No editor runs a timer of its own (D53): the instance's one main-thread tick
 runs the parts, then `Plugin::idle`, then tells the host of the edits, then
 ticks each open editor, so the editor shows what that tick changed. A tick
-that finds the plugin busy runs none of them. The C interface shows no
-editor.
+that finds the plugin busy runs none of them. A panic in an editor's tick is
+a fault: that editor is closed, as a removal closes it, until the host
+attaches its view again, and the editors after it still tick. The C
+interface shows no editor.
 
 **Alternatives.** The alternatives were an editor ticked by its own timer,
 which D53 refused; a hook that names a toolkit, which would make a WebView

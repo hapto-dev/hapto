@@ -50,6 +50,10 @@ pub(crate) enum Opened {
     Panicked,
 }
 
+/// A panic inside one of the editor's calls, caught there.
+#[derive(Debug)]
+pub(crate) struct Panicked;
+
 /// One view's editor and what the host last gave it.
 pub(crate) struct EditorSlot {
     editor: RefCell<Box<dyn Editor>>,
@@ -170,14 +174,33 @@ impl EditorSlot {
     }
 
     /// Ticks the editor if it is open and in no call.
-    pub(crate) fn tick(&self) {
+    ///
+    /// # Errors
+    ///
+    /// [`Panicked`] when the editor panicked in its tick, or in what the host
+    /// asked for meanwhile. The editor is closed then, as a removal closes
+    /// it, so it is not ticked again until the host attaches its view anew.
+    pub(crate) fn tick(&self) -> Result<(), Panicked> {
         if self.phase.get() != Phase::Open {
-            return;
+            return Ok(());
         }
-        if let Ok(mut editor) = self.editor.try_borrow_mut() {
+        let Ok(mut editor) = self.editor.try_borrow_mut() else {
+            return Ok(());
+        };
+        let ticked = panic::catch_unwind(AssertUnwindSafe(|| {
             editor.tick();
             self.catch_up(&mut **editor);
+        }));
+        if ticked.is_ok() {
+            return Ok(());
         }
+        self.closing.set(false);
+        // Closed already when the panic came from inside its `close`.
+        if self.phase.replace(Phase::Closed) != Phase::Closed {
+            // A panic here is part of the same fault: closed either way.
+            let _closed = panic::catch_unwind(AssertUnwindSafe(|| editor.close()));
+        }
+        Err(Panicked)
     }
 
     /// Tells an open editor in no call what the host gave.

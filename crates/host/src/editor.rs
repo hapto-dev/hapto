@@ -44,8 +44,10 @@ pub struct Size {
 ///    it to a screen of another scale, and [`tick`](Self::tick) on each of
 ///    the plugin's main-thread ticks, after
 ///    [`Plugin::idle`](crate::Plugin::idle).
-/// 4. [`close`](Self::close) when the host removes it, or when the view goes
-///    while open. Another [`open`](Self::open) may follow, with a new window.
+/// 4. [`close`](Self::close) when the host removes it, when the view goes
+///    while open, or after a panic in [`tick`](Self::tick), which is caught
+///    and is a fault of the instance. Another [`open`](Self::open) may
+///    follow, with a new window.
 ///
 /// The host may call back into the exporter from inside any of these, while
 /// the editor is still in the call. The exporter never calls into an editor

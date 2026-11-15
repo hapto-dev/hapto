@@ -1088,8 +1088,8 @@ move its line here; when a decision gains code, add one.
 - `crates/host/src/boundary/window.rs`: `ParentWindow`
 - `crates/host/src/plugin.rs`: `Plugin::editor`
 - `crates/host/src/engine/mod.rs`: `Engine::editor`, `Engine::tick`, `Engine::tick_editors`, `OnThread`
-- `crates/host/src/engine/editor.rs`: module, `EditorSlot`, `EditorSlot::open`, `EditorSlot::tell`
-- test `crates/host/src/vst3/view/tests.rs`: `a_plugin_with_no_editor_offers_no_view`, `attaching_tells_the_editor_its_scale_and_size_then_opens_it`, `a_tick_reaches_an_open_editor_and_not_a_closed_one`, `two_views_each_have_an_editor_of_their_own`
+- `crates/host/src/engine/editor.rs`: module, `EditorSlot`, `EditorSlot::open`, `EditorSlot::tell`, `EditorSlot::tick`, `Panicked`
+- test `crates/host/src/vst3/view/tests.rs`: `a_plugin_with_no_editor_offers_no_view`, `attaching_tells_the_editor_its_scale_and_size_then_opens_it`, `a_tick_reaches_an_open_editor_and_not_a_closed_one`, `two_views_each_have_an_editor_of_their_own`, `an_editor_whose_tick_panics_is_closed_and_the_others_tick_on`
 
 ### D101. The VST3 editor view
 

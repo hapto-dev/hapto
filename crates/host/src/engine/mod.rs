@@ -820,7 +820,9 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
     /// Ticks each open editor, after the plugin's idle and what it told the
     /// host. An editor's tick may reach the host, which may call back in,
     /// even to make or drop a view, so the list is borrowed for one editor at
-    /// a time; and an editor still in a call of its own is passed over.
+    /// a time; and an editor still in a call of its own is passed over. An
+    /// editor whose tick panics is a fault and is closed, and the editors
+    /// after it still tick.
     #[cfg(feature = "vst3")]
     fn tick_editors(&self, main: &Main<P, H>) {
         let Some(on_thread) = &main.on_thread else {
@@ -835,8 +837,10 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
                 },
                 Err(_) => return,
             };
-            if let Some(slot) = slot {
-                slot.tick();
+            if let Some(slot) = slot
+                && slot.tick().is_err()
+            {
+                self.editor_panicked();
             }
             index += 1;
         }
@@ -853,8 +857,8 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
         );
     }
 
-    /// Records an editor that panicked inside its `open`, which was caught
-    /// there.
+    /// Records an editor that panicked inside its `open` or its tick, which
+    /// was caught there.
     #[cfg(feature = "vst3")]
     pub(crate) fn editor_panicked(&self) {
         self.faults.record(Fault::Panic);

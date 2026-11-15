@@ -50,6 +50,8 @@ thread_local! {
     static PLUGINS_DROPPED: Cell<u32> = const { Cell::new(0) };
     /// Whether the next stub to drop panics as it does.
     static PANICS_AS_IT_DROPS: Cell<bool> = const { Cell::new(false) };
+    /// Whether the next stub to tick panics in its tick.
+    static PANICS_IN_TICK: Cell<bool> = const { Cell::new(false) };
 }
 
 fn calls() -> Vec<Call> {
@@ -109,6 +111,9 @@ impl Editor for Stub {
 
     fn tick(&mut self) {
         record(Call::Tick);
+        if PANICS_IN_TICK.with(Cell::take) {
+            panic!("the editor's bug in its tick");
+        }
     }
 }
 
@@ -343,6 +348,28 @@ fn two_views_each_have_an_editor_of_their_own() {
     assert_eq!(calls(), [Call::Close]);
     host.tick();
     assert_eq!(calls(), [Call::Tick]);
+}
+
+#[test]
+fn an_editor_whose_tick_panics_is_closed_and_the_others_tick_on() {
+    let (host, first) = viewed();
+    let second = host.view().expect("a second editor");
+    first.attach_raw(1).expect("opens");
+    second.attach_raw(2).expect("opens");
+    calls();
+    PANICS_IN_TICK.with(|panics| panics.set(true));
+    host.tick();
+    host.expect_faults(1);
+    // The first panicked and was closed; the second still ticked.
+    assert_eq!(calls(), [Call::Tick, Call::Close, Call::Tick]);
+    host.tick();
+    assert_eq!(calls(), [Call::Tick], "the second alone");
+    // Attached again by the host, the first opens and ticks again.
+    first.remove().expect("removed");
+    first.attach_raw(1).expect("opens again");
+    assert_eq!(calls(), [Call::Open]);
+    host.tick();
+    assert_eq!(calls(), [Call::Tick, Call::Tick]);
 }
 
 #[test]

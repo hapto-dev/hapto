@@ -146,8 +146,9 @@ page in a plugin window, and MIDI delivered to a plugin through an exporter.
   Windows, as a resizable view that follows the screen's scale; elsewhere it
   offers the host no view, and the host shows its own controls. The instance's
   timer ticks an open editor after `Plugin::idle`. An editor that fails to open
-  is a fault with its reason, a panic in its `open` or its drop is a fault, and
-  the host and the audio go on.
+  is a fault with its reason, a panic in its `open`, its tick or its drop is a
+  fault, an editor whose tick panicked is closed, and the host and the audio go
+  on.
   `vst3::TestView` drives a view in tests, and on Windows attaches it to a
   `vst3::HiddenWindow`, which gives a real editor a window that is never shown.
 - `seam-host`: on Windows, once an editor has opened, the plugin's module stays
