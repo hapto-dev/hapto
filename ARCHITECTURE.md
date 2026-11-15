@@ -259,8 +259,9 @@ with `cargo doc -p seam-host --features vst3,cabi,test-host
 ## Decided, not built
 
 - The page path beyond Windows: wry inside a plugin window on macOS, and
-  Tauri for the standalone. Open: that macOS WebKit inside a host process
-  loads plain `http://127.0.0.1` is not verified.
+  the JUCE adapter's own editor, which brings the page to AU hosts and a
+  standalone app. Open: that macOS WebKit inside a host process loads plain
+  `http://127.0.0.1` is not verified.
 - MIDI-CI: a VST3 host speaks it for the plugin, which states what it supports
   through VST3's interfaces. Everywhere else a core crate, `seam-ci`, answers
   with UMP in and out, SysEx7 included, through the C interface and CLAP. Open:
