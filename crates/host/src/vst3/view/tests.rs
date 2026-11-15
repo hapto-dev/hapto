@@ -52,6 +52,8 @@ thread_local! {
     static PLUGINS_DROPPED: Cell<u32> = const { Cell::new(0) };
     /// Whether the next stub to drop panics as it does.
     static PANICS_AS_IT_DROPS: Cell<bool> = const { Cell::new(false) };
+    /// Whether the next stub to close panics in its `close`.
+    static PANICS_IN_CLOSE: Cell<bool> = const { Cell::new(false) };
     /// Whether the next stub to tick panics in its tick.
     static PANICS_IN_TICK: Cell<bool> = const { Cell::new(false) };
 }
@@ -105,6 +107,9 @@ impl Editor for Stub {
         record(Call::Close);
         if let Some(during) = DURING_CLOSE.with(|slot| slot.borrow_mut().take()) {
             during();
+        }
+        if PANICS_IN_CLOSE.with(Cell::take) {
+            panic!("the editor's bug in its close");
         }
     }
 
@@ -408,6 +413,24 @@ fn an_editor_that_panics_as_it_drops_is_a_fault_and_the_host_goes_on() {
     assert_eq!(calls(), [Call::Close]);
     assert_eq!(EDITORS_DROPPED.with(Cell::get), dropped + 1);
     host.expect_faults(1);
+    host.tick();
+}
+
+#[test]
+fn an_editor_that_panics_in_close_and_as_it_drops_is_two_faults_and_the_host_goes_on() {
+    let (host, view) = viewed();
+    view.attach_raw(1).expect("opens");
+    calls();
+    let dropped = EDITORS_DROPPED.with(Cell::get);
+    PANICS_IN_CLOSE.with(|panics| panics.set(true));
+    PANICS_AS_IT_DROPS.with(|panics| panics.set(true));
+    // The panic in `close` is caught before the editor drops: were it still
+    // unwinding, or the editor left for the view's own fields to drop, the
+    // second panic would reach the host.
+    drop(view);
+    assert_eq!(calls(), [Call::Close]);
+    assert_eq!(EDITORS_DROPPED.with(Cell::get), dropped + 1);
+    host.expect_faults(2);
     host.tick();
 }
 

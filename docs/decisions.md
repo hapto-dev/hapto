@@ -2663,8 +2663,10 @@ and answers null for none and on any other platform. The view
   the view goes, and a view released while attached closes its editor first.
 - **Main thread, guarded.** Every call runs inside the instance's panic guard
   and the main-thread rule: on another thread it is refused and counted. So
-  does the view's release, which drops the editor inside the guard, so that a
-  panic in the editor's drop is a fault and never reaches the host.
+  does the view's release, which closes the editor, catches a panic in its
+  `close` there, and then drops it inside the guard, so that a panic in the
+  editor's `close`, in its drop or in both is a fault and never reaches the
+  host.
 - **`HWND` only.** It attaches to a Windows window, and only there is one
   made: on any other platform `createView` answers null without asking the
   plugin, so a host shows its own controls.

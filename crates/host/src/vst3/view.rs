@@ -196,7 +196,11 @@ impl<P: Plugin> Drop for View<P> {
         // the guard, unless a tick still holds it. Elsewhere the state
         // leaks, as bound state does, and the call is a fault.
         self.call(kResultOk, |state, slot| {
-            slot.close();
+            // Guarded on its own, so a panic in the editor's `close` ends
+            // here and the slot is still taken: the editor then drops as
+            // this call returns, inside its guard, and not while that panic
+            // unwinds, where a panic in its drop would abort the host.
+            self.engine().guard((), || slot.close());
             drop(state.slot.take());
             kResultOk
         });

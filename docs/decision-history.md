@@ -942,7 +942,11 @@ Changed again the same day, after a review of those changes. The refused
 attach was counted only where the removal before it had arrived inside the
 editor's `open`, or the attach inside its `close`. One that followed a
 removal inside the editor's tick, or inside a size or scale call, was still
-refused silently, and is now a failed open with a line too.
+refused silently, and is now a failed open with a line too. And an editor
+whose `close` panicked at the view's release still dropped outside the
+guard, since that panic unwound past the step that takes the editor from the
+view, so a second panic, in its drop, aborted the host; the release now
+catches the first on its own and drops the editor inside the guard.
 
 ### D105. The module stays loaded once an editor has opened
 
