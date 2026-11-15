@@ -68,6 +68,7 @@ describe("webviewTransport", () => {
       type: "snapshot",
       protocol: PROTOCOL_VERSION,
       params: [{ param: "gain", normalized: 0.5, text: "-24 dB" }],
+      values: [],
     });
     const gain = client.bindParam("gain", () => {});
     expect(gain.current()?.text).toBe("-24 dB");

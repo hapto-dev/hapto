@@ -142,6 +142,7 @@ comments never cite an id: they state the reason in words, and
 | D103 | [Where does the WebView keep its data? (D16)](#d103-the-webviews-data-folder) | In a folder of the plugin's own below the user's local application data, named by its id, shared by every instance of it. | to confirm |
 | D104 | [How do the page's messages cross the WebView, and what does the WebView take from the host? (D16, B1)](#d104-the-webviews-messages-and-what-it-takes) | The page posts through the WebView's IPC and the native side answers with a script, in order; a panic in a WebView callback is caught. The WebView takes no focus as it opens, and a release build shows no browser menu or shortcut. | to confirm |
 | D105 | [What keeps valid what an editor leaves with the host, when the host unloads the module? (D59, D101)](#d105-the-module-stays-loaded-once-an-editor-has-opened) | Once any editor has opened, the module stays loaded until the process ends: one call at every open, before the editor is told its size or opened, for every editor of every plugin. The plugin's file then stays in use until the host exits. | to confirm |
+| D106 | [How does a page show and write plugin state that is not a parameter? (B1, B2, D99)](#d106-page-bound-values) | As a value the plugin binds by key (`Values::value`, `Page::value`): the snapshot carries it, a `value` message brings each change at the tick whatever made it, and a `setValue` is the user's write through `Value::set`, stored when it decodes to the value's type and answered either way. | to confirm |
 
 **Open.** D25 is held until `seam-ci` needs it. It keeps its recommendation
 until decided, and no rule depends on it.
@@ -2838,6 +2839,59 @@ toolkit registered, which Seam cannot know.
 
 [History](decision-history.md#d105-the-module-stays-loaded-once-an-editor-has-opened)
 
+### D106. Page-bound values
+
+**Question and C++ Seam.** How does a page show and write plugin state that
+is not a parameter, such as a name or a path, and hear when something else
+changes it? (B1, B2, D99) Not checked against C++.
+
+**Rust.** A plugin binds a `Value<T>` for its page under a key, with
+`Values::value` in `seam-bridge` or `Page::value` in `seam-webview`, for any
+`T` serde writes and reads. The page reads it with `useValue(key)`, typed by a
+`Values` map written by hand, and the value crosses whole, as the JSON serde
+writes for `T`. A value's key is its own: it never names a parameter.
+
+- **The snapshot** carries every bound value, in the order the plugin bound
+  them, beside the parameters.
+- **Changes.** The dispatcher keeps, per value, the change count of the state
+  it last posted. Each tick compares it with the value's count, one atomic
+  load, and posts a `value` message for each that moved, whatever moved it:
+  a load, undo, the plugin's own write or another surface. A tick with
+  nothing moved allocates nothing.
+- **Writes.** A `setValue` that decodes to `T` is stored through
+  `Value::set`, the user's write, so undo records it where the plugin
+  enrolled the value, with no gesture, as it does any plain value's: the
+  writes between two ticks are one step, the latest winning. It is answered
+  with the value's state, stored or not, as a `set` is, so a page whose write
+  was not stored goes back to what the plugin holds. One that does not decode
+  stores nothing; one that names a key nothing was bound under is dropped
+  unanswered. Both are counted in `Refusals`.
+- **Order.** A value is replaced whole and the transport keeps the order of
+  messages, so the newest message is the value and none carries a revision
+  number. Before the snapshot, the page's held queue keeps one write per key
+  between two held calls, the latest, where the key's first write there was.
+- **Types.** `T` must be one serde can write as JSON: a map keyed by tuples
+  is not, and a debug build panics with the reason when it reads the value,
+  so the page gets no snapshot, where a release build sends null. A page's
+  numbers are doubles, so a whole number past 2^53 changes when the page
+  writes the value back; such a number crosses as a string.
+
+A plugin that must check, refuse or change what the page writes keeps a
+command for it: a bound value stores every write that decodes. Open: a value
+dragged by a control, such as a slider on a plain value, would record a step
+per tick the drag spans; gestures on a value wait for a page control that
+needs one. The
+page's `Values` map is not generated from Rust yet.
+
+**Alternatives.** The alternatives were a read command and a write command
+per value, which tell the page of no change made elsewhere, so a load left
+the page showing the old value; an event the plugin posts by hand after each
+change, which every plugin would have to remember on every path that
+writes; and a revisioned update, which a container changed in part needs and
+a value replaced whole does not.
+
+[History](decision-history.md#d106-page-bound-values)
+
 ## How to read this
 
 Each rule has an id, the **invariant**, **why** it exists, and its **Rust**
@@ -4421,9 +4475,10 @@ container. It does not matter, since Rust does not load C++ blocks (D5).
 
 **Invariant.** The page installs its listener, then announces itself with
 `ready`, again every second until it is answered (D79); the native side answers
-with every parameter's state. Changes after that arrive one by one. A page built
-against another protocol version stops: it drops writes and rejects calls rather
-than misreading messages. The native side answers a `ready` of a version it
+with every parameter's state and every value the plugin binds for its page
+(D106). Changes after that arrive one by one. A page built against another
+protocol version stops: it drops writes and rejects calls rather than
+misreading messages. The native side answers a `ready` of a version it
 cannot serve with a `reject` carrying its own version, which is what stops the
 page, and a `ready` decodes whatever a newer page adds to it, so the reject
 always reaches it (D78). The native side is `Dispatcher` in `seam-bridge`; the

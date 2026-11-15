@@ -1,7 +1,8 @@
-// The gain's page: a slider on the gain, which drags it as a user would, and
-// a field for the plugin's label, through two commands.
+// The gain's page: a slider on the gain, which drags it as a user would, a
+// field for the plugin's label, a value the plugin binds, and the plugin's
+// version, through a command.
 
-import { StrictMode, useCallback, useEffect, useRef, useState } from "react";
+import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { createClient, createHooks, webviewTransport } from "seam-page";
 
@@ -10,12 +11,16 @@ import "./styles.css";
 
 /** The commands `examples/gain/src/page.rs` adds. */
 interface Commands {
-  getLabel: { args: void; returns: string };
-  setLabel: { args: string; returns: null };
+  version: { args: void; returns: string };
+}
+
+/** The values `examples/gain/src/page.rs` binds. */
+interface Values {
+  label: string;
 }
 
 const client = createClient(webviewTransport());
-const { useParam, useCommand } = createHooks<Params, Record<string, never>, Commands>(client);
+const { useParam, useValue, useCommand } = createHooks<Params, Record<string, never>, Commands, Values>(client);
 
 function GainSlider() {
   const gain = useParam("gain");
@@ -39,55 +44,41 @@ function GainSlider() {
 }
 
 function LabelField() {
-  const { run: fetchLabel } = useCommand("getLabel");
-  const { run: storeLabel, error } = useCommand("setLabel");
-  const [label, setLabel] = useState("");
-  // The label as the plugin last had it, read or stored; null until read.
-  // The page hears of no change the host makes, such as a load, so it reads
-  // the label again on focus, and stores only text that differs from it: a
-  // click into the field and out never writes an old label over a new one.
-  const known = useRef<string | null>(null);
-  // Counts the stores sent, so a read that a store overtook is dropped.
-  const stores = useRef(0);
-  const read = useCallback(() => {
-    const asked = stores.current;
-    fetchLabel().then(
-      (current) => {
-        if (stores.current !== asked) return;
-        const before = known.current;
-        known.current = current;
-        // Text typed since the last read is the user's, and stays.
-        setLabel((shown) => (before === null || shown === before ? current : shown));
-      },
-      () => {},
-    );
-  }, [fetchLabel]);
-  useEffect(read, [read]);
+  const label = useValue("label");
+  // The text the user is typing, from their first key until the field loses
+  // the focus; null otherwise, when the field shows the label as the plugin
+  // holds it, so a load or an undo shows at once.
+  const [draft, setDraft] = useState<string | null>(null);
+  // Stores only text that differs from the label, so a click into the field
+  // and out stores nothing.
   const commit = () => {
-    const before = known.current;
-    if (before === null || label === before) return;
-    known.current = label;
-    stores.current += 1;
-    storeLabel(label).catch(() => {
-      known.current = before;
-    });
+    if (draft !== null && draft !== label.value) label.set(draft);
+    setDraft(null);
   };
   return (
     <label className="row">
       <span className="name">Label</span>
       <input
         type="text"
-        value={label}
-        onChange={(event) => setLabel(event.currentTarget.value)}
-        onFocus={read}
+        value={draft ?? label.value ?? ""}
+        onChange={(event) => setDraft(event.currentTarget.value)}
         onBlur={commit}
         onKeyDown={(event) => {
-          if (event.key === "Enter") commit();
+          // Enter ends the edit: the blur stores it, once. Not while an input
+          // method composes, where Enter picks the text being composed.
+          if (event.key === "Enter" && !event.nativeEvent.isComposing) event.currentTarget.blur();
         }}
       />
-      <output>{error ? "not saved" : ""}</output>
     </label>
   );
+}
+
+function Version() {
+  const { run, data } = useCommand("version");
+  useEffect(() => {
+    run().catch(() => {});
+  }, [run]);
+  return <span className="version">{data === undefined ? "" : `v${data}`}</span>;
 }
 
 function Gain() {
@@ -95,7 +86,10 @@ function Gain() {
   if (failure) return <p className="failure">{failure.message}</p>;
   return (
     <main>
-      <h1>Seam Example Gain</h1>
+      <header>
+        <h1>Seam Example Gain</h1>
+        <Version />
+      </header>
       <GainSlider />
       <LabelField />
     </main>

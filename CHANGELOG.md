@@ -162,36 +162,44 @@ exporter.
   does. Decoding refuses a position outside 0 to 1, from either side.
 - `seam-bridge`: the native side of the page protocol, `Dispatcher`, which a
   shell hands each message the page sends and ticks with the plugin. It answers
-  every `ready`, `set` and `gestureEnd`, writes the page's drags through
-  `UiParams` as a user's, runs the commands a plugin adds to `Commands`, tells
-  the page of every change at the tick, and drops and counts what it cannot
-  read (`Refusals`). `end_session` ends a page session when the page goes away
-  and the dispatcher stays.
-- `seam-webview`: a plugin's page in the host's window, on Windows. `Page`
-  makes the editor from the page's files built into the plugin, a size and the
-  commands the page may call: a WebView2 child window, through wry 0.57.2,
-  which serves the files over a scheme of its own, keeps its data in the
-  plugin's own folder below the user's local application data, and joins the
-  page to a `Dispatcher`. A debug build loads `SEAM_PAGE_DEV_URL` when it is
-  set, with or without the files built in; with neither, `into_editor` gives
-  `None`. The WebView stays on the page: it navigates nowhere else, takes no
-  message from another document, and opens no file dropped on it. One that
-  fails to start leaves nothing shown in the host's window. A command may run
-  a dialog: the page's messages keep their order around it. Elsewhere
-  `into_editor` gives `None`.
+  every `ready`, `set`, `gestureEnd` and `setValue`, writes the page's drags
+  through `UiParams` as a user's, stores the page's writes to the values a
+  plugin binds in `Values` as a user's, runs the commands a plugin adds to
+  `Commands`, tells the page of every change to a parameter or a value at the
+  tick, and drops and counts what it cannot read (`Refusals`). `end_session`
+  ends a page session when the page goes away and the dispatcher stays.
+- `seam-bridge`: values a page shows and writes, state that is not a
+  parameter. A plugin binds a `Value<T>` under a key with `Values::value`; the
+  snapshot carries it, a `value` message brings each change whatever made it,
+  and a page's `setValue` that decodes to `T` is stored as the user's write,
+  so undo records it.
+- `seam-webview`: a plugin's page in the host's window, on Windows. `Page` makes
+  the editor from the page's files built into the plugin, a size, the values the
+  page shows and writes (`Page::value`) and the commands the page may call: a
+  WebView2 child window, through wry 0.57.2, which serves the files over a
+  scheme of its own, keeps its data in the plugin's own folder below the user's
+  local application data, and joins the page to a `Dispatcher`. A debug build
+  loads `SEAM_PAGE_DEV_URL` when it is set, with or without the files built in;
+  with neither, `into_editor` gives `None`. The WebView stays on the page: it
+  navigates nowhere else, takes no message from another document, and opens no
+  file dropped on it. One that fails to start leaves nothing shown in the host's
+  window. A command may run a dialog: the page's messages keep their order
+  around it. Elsewhere `into_editor` gives `None`.
 - `page`: `webviewTransport`, the transport of a page in a plugin's window.
-- `page`: React hooks (`useParam`, `useEvent`, `useCommand`) over a pluggable
-  transport. A held queue keeps the writes made before the native side answers
-  and sends them in the order the page made them. A native message of the wrong
-  shape fails the client visibly.
+- `page`: React hooks (`useParam`, `useValue`, `useEvent`, `useCommand`) over
+  a pluggable transport, typed by the page's four maps. A held queue keeps the
+  writes made before the native side answers and sends them in the order the
+  page made them. A native message of the wrong shape fails the client
+  visibly.
 - `adapters/juce`: a generic JUCE adapter that builds any Seam plugin as a JUCE
   plugin, through `seam.h` and `seam_add_juce_plugin`, for the formats JUCE
   builds. Checked as VST3 on Windows; CI builds VST3 and AU on macOS.
 - `examples/gain`: a gain in dB with a bypass, a mode of three names, an
   undoable label saved with the plugin, and a gain MIDI learn can drive, as a
-  VST3 module. Its page, a Vite and React app, shows a slider on the gain and
-  a field for the label in the host's window on Windows, when it was built
-  in. [docs/first-plugin.md](docs/first-plugin.md) walks through it.
+  VST3 module. Its page, a Vite and React app, shows a slider on the gain, a
+  field for the label, which shows a load or an undo at once, and the
+  version, in the host's window on Windows, when it was built in.
+  [docs/first-plugin.md](docs/first-plugin.md) walks through it.
 - `examples/eq`: an EQ of six biquad bands and an output gain, as a VST3 module
   or a static library for the adapter.
 - `xtask`: `cargo xtask gen` writes every generated file, and CI fails when one

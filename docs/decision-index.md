@@ -1149,6 +1149,25 @@ move its line here; when a decision gains code, add one.
 - `crates/host/src/editor.rs`: `Editor`
 - `crates/host/src/vst3/mod.rs`: module
 
+### D106. Page-bound values
+
+[Record section](decisions.md#d106-page-bound-values)
+
+- `crates/bridge/src/protocol.rs`: `PageMessage::SetValue`, `NativeMessage::Value`, `NativeMessage::Snapshot`, `ValueState`
+- `crates/bridge/src/dispatcher.rs`: `Bound`, `Values`, `Values::value`, `Shown`, `Refusals`, `Dispatcher::new`, `Dispatcher::tick`, `Dispatcher::ready`, `Dispatcher::set_value`, `Dispatcher::value_state`
+- `crates/webview/src/lib.rs`: `Page::value`
+- `page/src/client.ts`: `bindValue`, `BoundValue`
+- `page/src/held.ts`: `ValueWrite`, `HeldValue`
+- `page/src/hooks.ts`: `useValue`, `UseValueResult`
+- `page/src/native.ts`: `isValueState`
+- `examples/gain/src/page.rs`: `editor`
+- test `crates/bridge/tests/dispatcher.rs`: `a_ready_of_this_version_is_answered_with_every_parameter_and_value_in_order`, `a_load_an_undo_and_the_plugins_own_write_of_a_value_reach_the_page_at_the_next_tick_once`, `a_set_value_is_the_users_write_one_undo_step_and_is_answered`, `a_set_value_of_the_wrong_type_stores_nothing_is_counted_and_answered_with_the_value_held`, `a_set_value_naming_a_key_the_plugin_does_not_bind_is_dropped_and_counted`, `a_second_ready_answers_with_the_values_as_they_are_then`, `a_value_bound_twice_panics`
+- test `crates/bridge/tests/alloc_gate.rs`: `a_tick_with_nothing_moved_does_not_allocate`
+- test `crates/webview/tests/hidden_window.rs`: `a_page_in_a_hidden_window_is_answered_and_its_set_reaches_the_parameter`
+- test `page/test/useValue.test.ts`: module
+- test `page/test/client.test.ts`: `caches the snapshot's values and later value messages`, `onValue fires for each later value of its key only, never a parameter's of the same name`, `writes before the snapshot wait, the latest of a key replacing the rest until a held call`
+- test `page/test/held.test.ts`: `held writes and calls keep their order, gestures, values at each call and bound`, `a value's key never meets a parameter's of the same name`
+
 ## Parameters
 
 ### P1. One store per parameter
@@ -1809,7 +1828,7 @@ move its line here; when a decision gains code, add one.
 - `crates/bridge/src/protocol.rs`: `PageMessage::Ready`, `NativeMessage::Snapshot`, `NativeMessage::Reject`
 - `crates/bridge/src/dispatcher.rs`: `Dispatcher::ready`
 - `page/src/client.ts`: `createClient`
-- test `crates/bridge/tests/dispatcher.rs`: `a_ready_of_this_version_is_answered_with_every_parameter_in_order`, `a_ready_of_another_version_is_rejected_with_this_sides_version`
+- test `crates/bridge/tests/dispatcher.rs`: `a_ready_of_this_version_is_answered_with_every_parameter_and_value_in_order`, `a_ready_of_another_version_is_rejected_with_this_sides_version`
 - test `page/test/client.test.ts`: `sends ready only after the listener is installed`, `repeats until a snapshot arrives`
 
 ### B2. A drag owns the control

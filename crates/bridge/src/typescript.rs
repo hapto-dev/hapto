@@ -12,15 +12,18 @@ use std::fmt::Write as _;
 use seam_params::{Kind, ParamSet};
 use ts_rs::{Config, TS};
 
-use crate::protocol::{CallResult, NativeMessage, PROTOCOL_VERSION, PageMessage, ParamState};
+use crate::protocol::{
+    CallResult, NativeMessage, PROTOCOL_VERSION, PageMessage, ParamState, ValueState,
+};
 
 /// The protocol's message types as TypeScript declarations, in a fixed order.
-fn declarations() -> [String; 4] {
+fn declarations() -> [String; 5] {
     let cfg = Config::new();
     [
         PageMessage::decl(&cfg),
         NativeMessage::decl(&cfg),
         ParamState::decl(&cfg),
+        ValueState::decl(&cfg),
         CallResult::decl(&cfg),
     ]
 }
@@ -146,7 +149,7 @@ pub fn param_map(set: &ParamSet, source: &str) -> String {
     }
     out.push_str(
         "} as const;\n\n\
-         /** The page's parameter map, for `createHooks<Params, Events, Commands>`. */\n\
+         /** The page's parameter map, for `createHooks<Params, Events, Commands, Values>`. */\n\
          export type Params = typeof PARAMS;\n",
     );
     out

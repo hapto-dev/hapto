@@ -11,8 +11,8 @@ function setup(wrap: (client: Client) => Client = (client) => client) {
   const t = memoryTransport();
   const client = wrap(createClient(t.page));
   // The native side is listening already, so writes and calls are sent at once.
-  t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [] });
-  const { useParam } = createHooks<Params, Record<string, never>, Record<string, never>>(client);
+  t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [], values: [] });
+  const { useParam } = createHooks<Params, Record<string, never>, Record<string, never>, Record<string, never>>(client);
   const writes = () => t.native.received.slice(1).map((m) => (m.type === "set" ? `set:${m.normalized}` : m.type));
   return { t, useParam, writes };
 }
@@ -32,7 +32,7 @@ function answer(t: MemoryTransport, store: () => number) {
 describe("useParam", () => {
   test("seeds from the client cache on mount", () => {
     const { t, useParam } = setup();
-    t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [state(0.4)] });
+    t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [state(0.4)], values: [] });
     const { result } = renderHook(() => useParam("gain"));
     expect(result.current.value).toBe(0.4);
     expect(result.current.text).toBe("t0.4");
@@ -43,7 +43,7 @@ describe("useParam", () => {
     const { result } = renderHook(() => useParam("gain"));
     expect(result.current.value).toBe(0);
     expect(result.current.text).toBe("");
-    act(() => t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [state(0.4)] }));
+    act(() => t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [state(0.4)], values: [] }));
     expect(result.current.value).toBe(0.4);
   });
 
@@ -84,7 +84,7 @@ describe("useParam", () => {
 
   test("the answer to a drag's end wins over what arrived during the drag", () => {
     const { t, useParam } = setup();
-    t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [state(0.5)] });
+    t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [state(0.5)], values: [] });
     // A host value that landed mid-drag stands at the close, so the end's
     // answer is 0.5 while the drag's own answers were 0.3.
     answer(t, () => 0.5);
@@ -101,7 +101,7 @@ describe("useParam", () => {
 
   test("a drag end with its answers still in flight keeps the dragged value until they land", () => {
     const { t, useParam } = setup();
-    t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [state(0.5)] });
+    t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [state(0.5)], values: [] });
     const { result } = renderHook(() => useParam("gain"));
     act(() => {
       result.current.onDragStart();
@@ -115,7 +115,7 @@ describe("useParam", () => {
 
   test("a one-shot set shows the native side's answer, even when the store did not move", () => {
     const { t, useParam } = setup();
-    t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [state(0.5)] });
+    t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [state(0.5)], values: [] });
     const { result } = renderHook(() => useParam("gain"));
     act(() => result.current.setValue(0.3));
     expect(result.current.value).toBe(0.3);
@@ -125,7 +125,7 @@ describe("useParam", () => {
 
   test("a non-finite position is neither shown nor sent", () => {
     const { t, useParam, writes } = setup();
-    t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [state(0.5)] });
+    t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [state(0.5)], values: [] });
     const { result } = renderHook(() => useParam("gain"));
     act(() => {
       result.current.setValue(Number.NaN);
@@ -221,7 +221,7 @@ describe("useParam", () => {
 
   test("an id change mid-drag ends the old gesture, then binds the new id", () => {
     const { t, useParam, writes } = setup();
-    t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [state(0.1), state(0.9, "p", "pan")] });
+    t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [state(0.1), state(0.9, "p", "pan")], values: [] });
     const { result, rerender } = renderHook(({ id }: { id: "gain" | "pan" }) => useParam(id), {
       initialProps: { id: "gain" },
     });
@@ -249,7 +249,7 @@ describe("useParam", () => {
     const { t, useParam, writes } = setup();
     const { result } = renderHook(() => useParam("gain"));
     expect(result.current.failure).toBeUndefined();
-    act(() => t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION + 1, params: [] }));
+    act(() => t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION + 1, params: [], values: [] }));
     expect(result.current.failure?.message).toMatch(/protocol mismatch/);
     act(() => result.current.setValue(0.5));
     expect(writes()).toEqual([]);

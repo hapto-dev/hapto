@@ -1,7 +1,9 @@
 //! The page in a real WebView2, in a window of the test's own that is never
 //! shown, through the VST3 exporter as a host drives it: the page loads from
 //! the files built into the plugin, its `ready` is answered with a
-//! snapshot, its `set` reaches the parameter, and it cannot navigate away.
+//! snapshot, its `set` reaches the parameter and its `setValue` the value,
+//! a native change to the value reaches it at the tick, and it cannot
+//! navigate away.
 //! Ignored in a normal run, since it needs the WebView2 runtime and starts
 //! its browser processes; run it by hand on Windows with `cargo test -p
 //! seam-webview --test hidden_window -- --ignored`.
@@ -20,36 +22,45 @@ use seam_host::{
     AuCodes, Block, Category, Editor, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor,
     Size, Status,
 };
-use seam_params::{Declarer, Float, FloatDecl, Params};
+use seam_params::{Declarer, Float, FloatDecl, Params, Value};
 use seam_webview::{Asset, Page};
 
 /// A page that speaks the protocol by hand, as `seam-page`'s client does:
-/// it listens, sends `ready`, and once the snapshot arrives reports it
-/// through a command and sets the level to 0.75. Then it tries to leave for
-/// another address and, still there a moment later, reports that it stayed.
+/// it listens, sends `ready`, and once the snapshot arrives reports the
+/// level and the label in it through a command, sets the level to 0.75 and
+/// the label to "Page". Then it tries to leave for another address and,
+/// still there a moment later, reports that it stayed. It reports each
+/// label the native side sends it after the snapshot.
 const PAGE: &[Asset] = &[Asset {
     path: "index.html",
     bytes: br#"<!doctype html>
 <html><body><p>page</p><script>
   const send = (message) => window.ipc.postMessage(JSON.stringify(message));
+  let call = 0;
+  const seen = (text) => send({ type: "invoke", call: ++call, command: "seen", args: text });
   window.__seam = {
     receive(text) {
       const message = JSON.parse(text);
       if (message.type === "snapshot") {
-        send({ type: "invoke", call: 1, command: "seen", args: message.params[0].text });
+        seen(message.params[0].text);
+        seen(`label ${message.values[0].value}`);
         send({ type: "set", param: "level", normalized: 0.75 });
+        send({ type: "setValue", key: "label", value: "Page" });
         location.href = "http://127.0.0.1:9/";
-        setTimeout(() => send({ type: "invoke", call: 2, command: "seen", args: "stayed" }), 300);
+        setTimeout(() => seen("stayed"), 300);
       }
+      if (message.type === "value") seen(`label ${message.state.value}`);
     },
   };
-  send({ type: "ready", protocol: 2 });
+  send({ type: "ready", protocol: 3 });
 </script></body></html>"#,
 }];
 
 thread_local! {
-    /// What the page reported it saw in its snapshot.
+    /// What the page reported it saw.
     static SEEN: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+    /// The label of the last probe made, as the test writes it natively.
+    static LABEL: RefCell<Option<Value<String>>> = const { RefCell::new(None) };
 }
 
 struct ProbeParams {
@@ -78,6 +89,7 @@ impl Processor for Through {
 
 struct Probe {
     parts: Parts,
+    label: Value<String>,
 }
 
 impl Plugin for Probe {
@@ -104,7 +116,9 @@ impl Plugin for Probe {
     type Processor = Through;
 
     fn new(_params: ProbeParams, parts: Parts) -> Self {
-        Probe { parts }
+        let label = Value::new(String::from("Init"), parts.set());
+        LABEL.with(|shared| *shared.borrow_mut() = Some(label.clone()));
+        Probe { parts, label }
     }
 
     fn activate(&mut self, _setup: &ProcessSetup) -> Through {
@@ -117,6 +131,7 @@ impl Plugin for Probe {
                 width: 400,
                 height: 300,
             })
+            .value("label", &self.label)
             .command("seen", |text: String| {
                 SEEN.with(|seen| seen.borrow_mut().push(text));
                 Ok(())
@@ -209,6 +224,16 @@ fn seen() -> Vec<String> {
     SEEN.with(|seen| seen.borrow().clone())
 }
 
+/// Whether the pages reported `text`.
+fn has_seen(text: &str) -> bool {
+    SEEN.with(|seen| seen.borrow().iter().any(|seen| seen == text))
+}
+
+/// The label of the last probe made.
+fn label() -> Value<String> {
+    LABEL.with(|label| label.borrow().clone().expect("a probe was made"))
+}
+
 fn level(host: &TestHost<Probe>) -> f64 {
     host.plain(
         seam_params::host_id("level"),
@@ -232,26 +257,41 @@ fn a_page_in_a_hidden_window_is_answered_and_its_set_reaches_the_parameter() {
     );
     let hosts = [host];
     let answered = until(&hosts, Duration::from_secs(30), || {
-        level(&hosts[0]) == 75.0 && seen().len() == 2
+        level(&hosts[0]) == 75.0 && has_seen("label Page") && has_seen("stayed")
     });
     println!(
         "open returned after {} ms; the page's set arrived after {} ms",
         opened.as_millis(),
         started.elapsed().as_millis()
     );
-    assert!(answered, "the page's set or its stay never arrived");
+    assert!(
+        answered,
+        "the page's set, its value's answer or its stay never arrived"
+    );
     hold_open(&hosts);
-    // The page's navigation was cancelled, so it stayed to say so.
-    assert_eq!(seen(), ["50.00 %", "stayed"]);
+    // The snapshot held the label, the page's write reached it and was
+    // answered, and the page's navigation was cancelled, so it stayed to say
+    // so.
+    assert_eq!(seen()[..2], ["50.00 %", "label Init"]);
+    assert_eq!(label().get(), "Page");
+    // The plugin renames itself: the next tick tells the page.
+    label().set(String::from("Native"));
+    let heard = until(&hosts, Duration::from_secs(10), || has_seen("label Native"));
+    assert!(heard, "the page never heard the plugin's rename");
+    let first = seen();
+    assert_eq!(first.len(), 5, "{first:?}");
     assert_eq!(view.remove(), Ok(()));
     // Closed: ticks reach no page.
+    label().set(String::from("Closed"));
     until(&hosts, Duration::from_millis(200), || false);
-    assert_eq!(seen().len(), 2);
+    assert_eq!(seen().len(), 5);
     // Opened again: a new page asks for its snapshot and reports it.
     assert_eq!(view.attach(&window), Ok(()));
-    let reopened = until(&hosts, Duration::from_secs(30), || seen().len() == 4);
-    assert!(reopened, "the reopened page never reported");
-    assert_eq!(seen(), ["50.00 %", "stayed", "75.00 %", "stayed"]);
+    let reopened = until(&hosts, Duration::from_secs(30), || {
+        seen().len() == 9 && seen().iter().filter(|seen| *seen == "stayed").count() == 2
+    });
+    assert!(reopened, "the reopened page never reported: {:?}", seen());
+    assert_eq!(seen()[5..7], ["75.00 %", "label Closed"]);
     assert_eq!(view.remove(), Ok(()));
     assert_eq!(window.shown_children(), 0, "closed, it left nothing");
     drop(view);

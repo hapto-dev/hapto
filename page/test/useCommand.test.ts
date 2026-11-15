@@ -17,9 +17,11 @@ interface Commands {
 
 function setup() {
   const t = memoryTransport();
-  const { useCommand } = createHooks<Record<string, never>, Record<string, never>, Commands>(createClient(t.page));
+  const { useCommand } = createHooks<Record<string, never>, Record<string, never>, Commands, Record<string, never>>(
+    createClient(t.page),
+  );
   // The native side is listening already, so writes and calls are sent at once.
-  t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [] });
+  t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [], values: [] });
   const invokes = () => t.native.received.flatMap((m) => (m.type === "invoke" ? [m] : []));
   const reply = (call: number, result: { status: "ok"; value: unknown } | { status: "err"; message: string }) =>
     act(async () => t.native.send({ type: "reply", call, result }));

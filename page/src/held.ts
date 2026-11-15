@@ -22,11 +22,19 @@
 // and closes each parameter's gestures as the page did, and at each held call
 // every parameter stands at the gesture depth and the value the page had given
 // it when it made the call.
+//
+// A value the plugin binds has no gestures: between two barriers each value's
+// key holds one write, the latest the page made, which goes out where the
+// key's first write there was started. So at each held call every value stands
+// at what the page had written to it when it made the call. A value's key is
+// its own: it never meets a parameter's, even one of the same name.
 
 import type { PageMessage } from "./generated/protocol";
 
 /** A write to one parameter. */
 export type ParamWrite = Extract<PageMessage, { type: "gestureBegin" | "set" | "gestureEnd" }>;
+/** A write to one value the plugin binds. */
+export type ValueWrite = Extract<PageMessage, { type: "setValue" }>;
 /** A call to a native command. */
 export type InvokeMessage = Extract<PageMessage, { type: "invoke" }>;
 
@@ -41,7 +49,8 @@ export type InvokeMessage = Extract<PageMessage, { type: "invoke" }>;
     piece of ends more than its whole pieces there, so at most
     `2 * max(HELD_PER_PARAM, r) + 2 * r` pieces in all. A piece is a few
     numbers. A gesture or a piece of ends goes out as one message per begin and
-    end the page made. */
+    end the page made. A value's key keeps one write per interval it was
+    written in, so at most `HELD_INVOKES + 1`. */
 export const HELD_PER_PARAM = 16;
 /** The most calls that wait; the next one is refused. */
 export const HELD_INVOKES = 256;
@@ -66,10 +75,16 @@ const carriesValue = (piece: Piece): boolean =>
 
 const startOf = (run: Piece[]): number => run[0]?.started ?? Infinity;
 
+/** A value's latest write between two held calls, ordered by its key's
+    first write there. */
+type HeldValue = { value: unknown; started: number };
+
 /** The writes between two held calls, and the call that ends them. */
 interface Interval {
   /** Each parameter's pieces, oldest first; never an empty one. */
   runs: Map<string, Piece[]>;
+  /** Each value's write, by key. */
+  values: Map<string, HeldValue>;
   /** Undefined for the newest interval, which takes the writes. */
   call: InvokeMessage | undefined;
 }
@@ -156,8 +171,10 @@ export interface Census {
 
 /** Writes and calls held in order, bounded as `HELD_PER_PARAM` states. */
 export interface HeldQueue {
-  /** Holds a write. Past the cap it drops a whole piece, as `HELD_PER_PARAM` states. */
-  write(write: ParamWrite): void;
+  /** Holds a write. Past the cap it drops a whole piece, as `HELD_PER_PARAM`
+      states; a value's write replaces the key's held one until a held call
+      comes between. */
+  write(write: ParamWrite | ValueWrite): void;
   /** Holds a call after every write held so far. Holds nothing and returns
       false when `HELD_INVOKES` calls wait already. */
   call(message: InvokeMessage): boolean;
@@ -167,15 +184,21 @@ export interface HeldQueue {
   clear(): void;
 }
 
-const censuses = new WeakMap<HeldQueue, (param: string) => Census>();
+const censuses = new WeakMap<HeldQueue, { param(param: string): Census; value(key: string): number }>();
 
 /** How much `queue` holds for `param`: for tests, which check the bound. */
 export function census(queue: HeldQueue, param: string): Census {
-  return censuses.get(queue)?.(param) ?? { whole: 0, pieces: 0, runs: 0 };
+  return censuses.get(queue)?.param(param) ?? { whole: 0, pieces: 0, runs: 0 };
+}
+
+/** How many writes `queue` holds for the value `key`: for tests, which check
+    the bound. */
+export function valueCensus(queue: HeldQueue, key: string): number {
+  return censuses.get(queue)?.value(key) ?? 0;
 }
 
 export function heldQueue(): HeldQueue {
-  const fresh = (): Interval => ({ runs: new Map(), call: undefined });
+  const fresh = (): Interval => ({ runs: new Map(), values: new Map(), call: undefined });
   let intervals: Interval[] = [fresh()];
   // The piece `take` is handing out.
   let out: Taking | undefined;
@@ -218,7 +241,13 @@ export function heldQueue(): HeldQueue {
 
   const queue: HeldQueue = {
     write(write) {
-      const { runs } = intervals[intervals.length - 1]!;
+      const { runs, values } = intervals[intervals.length - 1]!;
+      if (write.type === "setValue") {
+        const held = values.get(write.key);
+        if (held) held.value = write.value;
+        else values.set(write.key, { value: write.value, started: started++ });
+        return;
+      }
       let run = runs.get(write.param);
       if (!run) runs.set(write.param, (run = []));
       if (hold(run, write, started++)) trim(write.param);
@@ -240,6 +269,16 @@ export function heldQueue(): HeldQueue {
         for (const entry of oldest.runs) {
           if (!next || startOf(entry[1]) < startOf(next[1])) next = entry;
         }
+        // The value whose write started first, when it started before that.
+        let value: [string, HeldValue] | undefined;
+        for (const entry of oldest.values) {
+          if (!value || entry[1].started < value[1].started) value = entry;
+        }
+        if (value && value[1].started < (next ? startOf(next[1]) : Infinity)) {
+          const [key, held] = value;
+          oldest.values.delete(key);
+          return { type: "setValue", key, value: held.value };
+        }
         if (next) {
           const [param, run] = next;
           const piece = run.shift();
@@ -257,10 +296,13 @@ export function heldQueue(): HeldQueue {
       out = undefined;
     },
   };
-  censuses.set(queue, (param) => {
-    const runs = runsOf(param);
-    const pieces = runs.flatMap(({ run }) => run);
-    return { whole: pieces.filter(isWhole).length, pieces: pieces.length, runs: runs.length };
+  censuses.set(queue, {
+    param(param) {
+      const runs = runsOf(param);
+      const pieces = runs.flatMap(({ run }) => run);
+      return { whole: pieces.filter(isWhole).length, pieces: pieces.length, runs: runs.length };
+    },
+    value: (key) => intervals.filter((interval) => interval.values.has(key)).length,
   });
   return queue;
 }

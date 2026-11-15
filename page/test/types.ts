@@ -2,7 +2,7 @@
 // fails the build if the line below it stops being an error.
 
 import { createClient } from "../src/client";
-import { createHooks, type UseCommandResult, type UseParamResult } from "../src/hooks";
+import { createHooks, type UseCommandResult, type UseParamResult, type UseValueResult } from "../src/hooks";
 import { memoryTransport } from "../src/transport";
 import type { Params } from "./generated/params";
 
@@ -14,8 +14,12 @@ interface Commands {
   rename: { args: { name: string }; returns: boolean };
   ping: { args: void; returns: null };
 }
+interface Values {
+  label: string;
+  view: { zoom: number; tab: "main" | "fx" };
+}
 
-const { useParam, useEvent, useCommand } = createHooks<Params, Events, Commands>(
+const { useParam, useValue, useEvent, useCommand } = createHooks<Params, Events, Commands, Values>(
   createClient(memoryTransport().page),
 );
 
@@ -29,6 +33,23 @@ export function typeChecks(): void {
   useParam("gian");
   // @ts-expect-error an event name is not a parameter id
   useParam("clipWarning");
+  // @ts-expect-error a value's key is not a parameter id
+  useParam("label");
+
+  const label = useValue("label");
+  assertType<Equal<typeof label, UseValueResult<string>>>();
+  assertType<Equal<typeof label.value, string | undefined>>();
+  label.set("Lead");
+  // @ts-expect-error a value of another type
+  label.set(1);
+  const view = useValue("view");
+  view.set({ zoom: 2, tab: "fx" });
+  // @ts-expect-error a field the value's type does not have
+  view.set({ zoom: 2, tab: "fx", extra: true });
+  // @ts-expect-error typo'd value key
+  useValue("lable");
+  // @ts-expect-error a parameter id is not a value's key
+  useValue("gain");
 
   useEvent("clipWarning", (payload) => assertType<Equal<typeof payload, { channel: number; peakDb: number }>>());
   // @ts-expect-error typo'd event name
@@ -60,4 +81,6 @@ export function typeChecks(): void {
 }
 
 // @ts-expect-error a command map entry must be { args, returns }
-createHooks<Params, Events, { bad: string }>(createClient(memoryTransport().page));
+createHooks<Params, Events, { bad: string }, Values>(createClient(memoryTransport().page));
+// @ts-expect-error the value map is not optional
+createHooks<Params, Events, Commands>(createClient(memoryTransport().page));

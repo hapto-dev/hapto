@@ -1,16 +1,27 @@
-// Random sequences of begins, ends, sets and calls on several parameters, made
-// before the snapshot. What goes out after it keeps each parameter's order and
-// gestures, its value at each call and at the end, and the order of the calls.
-// Where no parameter passes the cap, it is exactly every parameter's pieces in
-// the order they were started, which checks the order across parameters. What
-// waits stays within the bound `HELD_PER_PARAM` states. Then the cap's choice,
-// case by case: which pieces it drops, and which it keeps.
+// Random sequences of begins, ends, sets and calls on several parameters, and
+// writes to values whose keys are the parameters' names, made before the
+// snapshot. What goes out after it keeps each parameter's order and gestures,
+// its value at each call and at the end, each value's at each call and at the
+// end, and the order of the calls. Where no parameter passes the cap, it is
+// exactly every parameter's pieces and every value's write in the order they
+// were started, which checks the order across them. What waits stays within
+// the bound `HELD_PER_PARAM` states. Then the cap's choice, case by case:
+// which pieces it drops, and which it keeps.
 
 import { expect, test } from "vitest";
 
 import { createClient } from "../src/client";
 import { PROTOCOL_VERSION, type PageMessage } from "../src/generated/protocol";
-import { HELD_INVOKES, HELD_PER_PARAM, census, heldQueue, type HeldQueue, type ParamWrite } from "../src/held";
+import {
+  HELD_INVOKES,
+  HELD_PER_PARAM,
+  census,
+  heldQueue,
+  valueCensus,
+  type HeldQueue,
+  type ParamWrite,
+  type ValueWrite,
+} from "../src/held";
 import { memoryTransport } from "../src/transport";
 
 const CASES = 4096;
@@ -30,21 +41,24 @@ function generator(seed: number): () => number {
   };
 }
 
-type Op = ParamWrite | { type: "invoke"; args: number };
+type Op = ParamWrite | ValueWrite | { type: "invoke"; args: number };
 
 function randomOps(random: () => number): Op[] {
   // Each case draws its parameters, the weight of each kind and the sets in a
   // control's whole drag anew. So long drags, runs of sets or of stray ends,
-  // taps with no set, one busy parameter and dense calls all turn up.
+  // taps with no set, one busy parameter, runs of value writes and dense calls
+  // all turn up.
   const params = PARAMS.slice(0, 1 + Math.floor(random() * PARAMS.length));
-  const [begin, end, set, call, drag] = [random(), random(), random(), random() / 3, random()];
+  const [begin, end, set, call, drag, write] = [random(), random(), random(), random() / 3, random(), random()];
   const dragSets = Math.floor(random() * 4);
-  const total = begin + end + set + call + drag;
+  const total = begin + end + set + call + drag + write;
   const length = Math.floor(random() * MAX_OPS);
   const ops: Op[] = [];
   let sets = 0;
+  let writes = 0;
   let calls = 0;
-  // Unique values, so each set that goes out names the set it was.
+  // Unique values, so each set or value write that goes out names the one it
+  // was.
   const setOf = (param: string): Op => ({ type: "set", param, normalized: ++sets / 1024 });
   while (ops.length < length) {
     const param = params[Math.floor(random() * params.length)] ?? "a";
@@ -53,6 +67,7 @@ function randomOps(random: () => number): Op[] {
     else if ((pick -= end) < 0) ops.push({ type: "gestureEnd", param });
     else if ((pick -= set) < 0) ops.push(setOf(param));
     else if ((pick -= call) < 0) ops.push({ type: "invoke", args: calls++ });
+    else if ((pick -= write) < 0) ops.push({ type: "setValue", key: param, value: ++writes });
     else {
       ops.push({ type: "gestureBegin", param });
       for (let i = Math.floor(random() * (dragSets + 1)); i > 0; i--) ops.push(setOf(param));
@@ -80,7 +95,7 @@ function walk(stream: readonly (PageMessage | Op)[], param: string): Walk {
     if (message.type === "invoke") {
       out.depths.push({ native, net });
       interval += 1;
-    } else if (message.type !== "ready" && message.param === param) {
+    } else if (message.type !== "ready" && message.type !== "setValue" && message.param === param) {
       if (message.type === "gestureBegin") {
         native += 1;
         net += 1;
@@ -93,6 +108,18 @@ function walk(stream: readonly (PageMessage | Op)[], param: string): Walk {
     }
   }
   out.depths.push({ native, net });
+  return out;
+}
+
+/** One value's writes in `stream`: each value written, and how many calls
+    came before it. */
+function valueWalk(stream: readonly (PageMessage | Op)[], key: string): { value: unknown; interval: number }[] {
+  const out: { value: unknown; interval: number }[] = [];
+  let interval = 0;
+  for (const message of stream) {
+    if (message.type === "invoke") interval += 1;
+    else if (message.type === "setValue" && message.key === key) out.push({ value: message.value, interval });
+  }
   return out;
 }
 
@@ -129,6 +156,28 @@ function problems(ops: Op[], sent: PageMessage[]): string[] {
       const got = valueAt(out.sets, interval);
       if (got !== want) found.push(`${param}'s value before call ${interval} was ${got}, made ${want}`);
     }
+    // The value of the same name: each write that goes out was made, in the
+    // same interval and in order, one per interval, and at each call and at
+    // the end the value stands where the page left it.
+    const written = valueWalk(ops, param);
+    const sentValues = valueWalk(sent, param);
+    let lastWrite = -1;
+    for (const write of sentValues) {
+      const index = written.findIndex((candidate) => candidate.value === write.value);
+      if (index <= lastWrite || written[index]?.interval !== write.interval) {
+        found.push(`value ${param}'s write ${String(write.value)} was never made there, or went out of order`);
+      }
+      lastWrite = index;
+    }
+    const intervals = sentValues.map((write) => write.interval);
+    if (new Set(intervals).size !== intervals.length) found.push(`value ${param} went out twice between two calls`);
+    const writtenAt = (writes: typeof written, interval: number) =>
+      writes.filter((write) => write.interval <= interval).at(-1)?.value;
+    for (let interval = 0; interval < made.depths.length; interval++) {
+      const want = writtenAt(written, interval);
+      const got = writtenAt(sentValues, interval);
+      if (got !== want) found.push(`value ${param} before call ${interval} was ${String(got)}, made ${String(want)}`);
+    }
   }
   return found;
 }
@@ -141,6 +190,8 @@ function overBound(queue: HeldQueue, calls: number): string[] {
     if (whole > Math.max(HELD_PER_PARAM, runs)) found.push(`${param} holds ${whole} whole pieces in ${runs} runs`);
     if (pieces > 2 * whole + 2 * runs) found.push(`${param} holds ${pieces} pieces, ${whole} whole, in ${runs} runs`);
     if (runs > calls + 1) found.push(`${param} has ${runs} runs between ${calls} calls`);
+    const values = valueCensus(queue, param);
+    if (values > calls + 1) found.push(`value ${param} holds ${values} writes between ${calls} calls`);
     return found;
   });
 }
@@ -148,25 +199,31 @@ function overBound(queue: HeldQueue, calls: number): string[] {
 const withoutIds = (stream: PageMessage[]) =>
   stream.map((message) => (message.type === "invoke" ? { ...message, call: 0 } : message));
 
-/** A piece as the rules at the top of held.ts define it. */
+/** A piece as the rules at the top of held.ts define it: a parameter's, or a
+    value's write, whose `param` is the value's key. */
 interface ModelPiece {
   param: string;
-  kind: "set" | "gesture" | "open" | "ends";
+  kind: "set" | "gesture" | "open" | "ends" | "value";
   begins: number;
   value: number | undefined;
   ends: number;
 }
 
 /** What goes out for `ops` by those rules: between two calls, every
-    parameter's pieces in the order they were started, each as its begins,
-    its latest set and its ends. Undefined when a parameter passes the cap,
-    whose drops the model leaves to the other checks. */
+    parameter's pieces and every value's write in the order they were
+    started, a piece as its begins, its latest set and its ends, and a write
+    as the value's latest. Undefined when a parameter passes the cap, whose
+    drops the model leaves to the other checks. */
 function inOrderStarted(ops: Op[]): PageMessage[] | undefined {
   const out: PageMessage[] = [];
   let pieces: ModelPiece[] = [];
   const whole = new Map<string, number>();
   const release = () => {
-    for (const { param, begins, value, ends } of pieces) {
+    for (const { param, kind, begins, value, ends } of pieces) {
+      if (kind === "value") {
+        out.push({ type: "setValue", key: param, value });
+        continue;
+      }
       for (let i = 0; i < begins; i++) out.push({ type: "gestureBegin", param });
       if (value !== undefined) out.push({ type: "set", param, normalized: value });
       for (let i = 0; i < ends; i++) out.push({ type: "gestureEnd", param });
@@ -179,9 +236,15 @@ function inOrderStarted(ops: Op[]): PageMessage[] | undefined {
       out.push({ type: "invoke", call: 0, command: "c", args: op.args });
       continue;
     }
+    if (op.type === "setValue") {
+      const held = pieces.find((piece) => piece.kind === "value" && piece.param === op.key);
+      if (held) held.value = op.value as number;
+      else pieces.push({ param: op.key, kind: "value", begins: 0, value: op.value as number, ends: 0 });
+      continue;
+    }
     const { param } = op;
     let last: ModelPiece | undefined;
-    for (const piece of pieces) if (piece.param === param) last = piece;
+    for (const piece of pieces) if (piece.param === param && piece.kind !== "value") last = piece;
     const start = (kind: ModelPiece["kind"], piece: Partial<ModelPiece>) =>
       pieces.push({ param, kind, begins: 0, value: undefined, ends: 0, ...piece });
     let madeWhole = false;
@@ -243,9 +306,14 @@ test("held writes and calls keep their order, gestures, values at each call and 
     const t = memoryTransport();
     const client = createClient(t.page);
     const bound = new Map(PARAMS.map((param) => [param, client.bindParam(param, () => {})]));
+    const boundValues = new Map(PARAMS.map((key) => [key, client.bindValue(key, () => {})]));
     for (const op of ops) {
       if (op.type === "invoke") {
         client.invoke("c", op.args).catch(() => {});
+        continue;
+      }
+      if (op.type === "setValue") {
+        boundValues.get(op.key)?.set(op.value);
         continue;
       }
       const param = bound.get(op.param);
@@ -253,7 +321,7 @@ test("held writes and calls keep their order, gestures, values at each call and 
       else if (op.type === "gestureEnd") param?.gestureEnd();
       else param?.set(op.normalized);
     }
-    t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [] });
+    t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [], values: [] });
     client.dispose();
     const sent = t.native.received.slice(1);
 
@@ -319,6 +387,37 @@ test("every interval keeps its value, even when that leaves more whole pieces th
   expect(out.map((m) => (m.type === "set" ? m.normalized : "call"))).toEqual(
     Array.from({ length: intervals }, (_, i) => [i, "call"]).flat(),
   );
+});
+
+test("a value's later writes replace its held one until a held call, which goes out where the first was made", () => {
+  const queue = heldQueue();
+  queue.write({ type: "setValue", key: "a", value: "first" });
+  queue.write({ type: "set", param: "b", normalized: 0.5 });
+  queue.write({ type: "setValue", key: "a", value: "second" });
+  queue.call({ type: "invoke", call: 0, command: "c", args: null });
+  queue.write({ type: "setValue", key: "a", value: "third" });
+  expect(valueCensus(queue, "a")).toBe(2);
+  expect(drain(queue)).toEqual([
+    { type: "setValue", key: "a", value: "second" },
+    { type: "set", param: "b", normalized: 0.5 },
+    { type: "invoke", call: 0, command: "c", args: null },
+    { type: "setValue", key: "a", value: "third" },
+  ]);
+});
+
+test("a value's key never meets a parameter's of the same name", () => {
+  const queue = heldQueue();
+  queue.write({ type: "gestureBegin", param: "a" });
+  queue.write({ type: "setValue", key: "a", value: 1 });
+  queue.write({ type: "set", param: "a", normalized: 0.25 });
+  queue.write({ type: "gestureEnd", param: "a" });
+  for (let i = 0; i < HELD_PER_PARAM; i++) drag(queue, "a", i);
+  // The parameter's cap dropped its oldest gesture, and the value's write
+  // was neither dropped nor counted against it.
+  expect(census(queue, "a").whole).toBe(HELD_PER_PARAM);
+  const out = drain(queue);
+  expect(out.filter((m) => m.type === "setValue")).toEqual([{ type: "setValue", key: "a", value: 1 }]);
+  expect(setsOf(out)).toEqual(Array.from({ length: HELD_PER_PARAM }, (_, i) => i));
 });
 
 test("a piece of many ends goes out whole, one message at a time", () => {

@@ -1,8 +1,8 @@
-//! The gain's page: a slider on the gain and a field for the label, in the
-//! host's window. Its source is `page/`, a Vite and React app; `npm run
-//! build` there writes the files below, which the plugin is built with. A
-//! build that finds them missing says so, and the plugin offers no editor,
-//! unless a debug build loads the page from a dev server.
+//! The gain's page: a slider on the gain, a field for the label and the
+//! plugin's version, in the host's window. Its source is `page/`, a Vite and
+//! React app; `npm run build` there writes the files below, which the plugin
+//! is built with. A build that finds them missing says so, and the plugin
+//! offers no editor, unless a debug build loads the page from a dev server.
 
 use seam_host::{Editor, Plugin, Size};
 use seam_webview::{Asset, Page};
@@ -32,19 +32,16 @@ pub const PAGE: Option<&[Asset]> = None;
 
 /// The editor that shows the page: none when the page was not built in and
 /// no dev server serves it.
-/// The label's two commands go through the same value the plugin saves, so
-/// a rename from the page is one undo step and saved with the plugin.
+/// The page binds the value the plugin saves, so it shows the label a load or
+/// an undo brings, and a rename from the page is the user's write, which undo
+/// records and the plugin saves.
 pub(crate) fn editor(gain: &Gain) -> Option<Box<dyn Editor>> {
-    let (read, write) = (gain.label.clone(), gain.label.clone());
     Page::new(&Gain::INFO, gain.ui().clone(), PAGE.unwrap_or_default())
         .with_size(Size {
             width: 420,
             height: 220,
         })
-        .command("getLabel", move |()| Ok(read.get()))
-        .command("setLabel", move |label: String| {
-            write.set(label);
-            Ok(())
-        })
+        .value("label", &gain.label)
+        .command("version", |()| Ok(Gain::INFO.version))
         .into_editor()
 }

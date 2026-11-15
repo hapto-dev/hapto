@@ -3,7 +3,8 @@
 //! side.
 //!
 //! A plugin describes its page with [`Page`]: the files built into it, its
-//! size, and the commands the page may call. [`Page::into_editor`] gives the
+//! size, the values the page shows and writes, and the commands it may call.
+//! [`Page::into_editor`] gives the
 //! [`Editor`] that [`Plugin::editor`](seam_host::Plugin::editor) hands out,
 //! and the exporter does the rest: it opens the editor in the host's window,
 //! sizes it, ticks it after the plugin's idle, and closes it.
@@ -45,10 +46,11 @@
 //!
 //! # Examples
 //!
-//! A plugin's editor: its built page, a size, and one command.
+//! A plugin's editor: its built page, a size, one value and one command.
 //!
 //! ```
 //! use seam_host::{Editor, Plugin, Size};
+//! use seam_params::Value;
 //! use seam_webview::{Asset, Page};
 //! # use seam_host::{AuCodes, Block, Category, Layout, Parts, PluginInfo, ProcessSetup, Processor, Status};
 //! # struct Through;
@@ -61,6 +63,7 @@
 //!
 //! struct Panel {
 //!     parts: Parts,
+//!     title: Value<String>,
 //! }
 //!
 //! impl Plugin for Panel {
@@ -84,7 +87,8 @@
 //!     type Processor = Through;
 //!
 //!     fn new(_params: (), parts: Parts) -> Self {
-//!         Panel { parts }
+//!         let title = Value::new(String::from("Untitled"), parts.set());
+//!         Panel { parts, title }
 //!     }
 //!
 //!     fn activate(&mut self, _setup: &ProcessSetup) -> Through {
@@ -94,6 +98,7 @@
 //!     fn editor(&mut self) -> Option<Box<dyn Editor>> {
 //!         Page::new(&Self::INFO, self.parts.ui().clone(), PAGE)
 //!             .with_size(Size { width: 480, height: 320 })
+//!             .value("title", &self.title)
 //!             .command("version", |()| Ok(Self::INFO.version))
 //!             .into_editor()
 //!     }
@@ -114,16 +119,17 @@ mod assets;
 #[cfg(windows)]
 mod windows;
 
-use seam_bridge::Commands;
+use seam_bridge::{Commands, Values};
 use seam_host::{Editor, PluginInfo, Size};
-use seam_params::UiParams;
+use seam_params::{UiParams, Value};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 pub use assets::Asset;
 
-/// A plugin's page: the files built into it, its size and the commands it
-/// may call, from which [`into_editor`](Self::into_editor) makes the editor.
+/// A plugin's page: the files built into it, its size, the values it shows
+/// and writes and the commands it may call, from which
+/// [`into_editor`](Self::into_editor) makes the editor.
 ///
 /// The [crate overview](crate) shows a plugin that hands one out.
 ///
@@ -132,6 +138,7 @@ pub use assets::Asset;
 /// ```
 /// # use seam_params::{Kind, ParamDecl, ParamSet};
 /// use seam_host::{AuCodes, Category, Layout, PluginInfo, Size};
+/// use seam_params::Value;
 /// use seam_webview::{Asset, Page};
 ///
 /// # const INFO: PluginInfo = PluginInfo {
@@ -145,8 +152,10 @@ pub use assets::Asset;
 /// # let ui = set.take_ui().expect("the first UI handle");
 /// const PAGE: &[Asset] = &[Asset { path: "index.html", bytes: b"<!doctype html>" }];
 ///
+/// let name = Value::new(String::from("Untitled"), &set);
 /// let editor = Page::new(&INFO, ui, PAGE)
 ///     .with_size(Size { width: 480, height: 320 })
+///     .value("name", &name)
 ///     .command("greet", |name: String| Ok(format!("hello, {name}")))
 ///     .into_editor();
 /// if let Some(editor) = editor {
@@ -164,6 +173,7 @@ pub struct Page {
     ui: UiParams,
     assets: &'static [Asset],
     size: Size,
+    values: Values,
     commands: Commands,
 }
 
@@ -188,6 +198,7 @@ impl Page {
             ui,
             assets,
             size: Self::SIZE,
+            values: Values::new(),
             commands: Commands::new(),
         }
     }
@@ -196,6 +207,22 @@ impl Page {
     /// from there.
     pub fn with_size(mut self, size: Size) -> Self {
         self.size = size;
+        self
+    }
+
+    /// Binds a value the page shows and writes with `useValue(key)`, as
+    /// [`Values::value`] binds one: state that is not a parameter, shown as
+    /// it is whatever changed it, and written by the page as the user.
+    /// [`Page`] shows one.
+    ///
+    /// # Panics
+    ///
+    /// When `key` was bound already: give each value its own key.
+    pub fn value<T>(mut self, key: &str, value: &Value<T>) -> Self
+    where
+        T: Clone + Serialize + DeserializeOwned + 'static,
+    {
+        self.values = self.values.value(key, value);
         self
     }
 
@@ -244,6 +271,7 @@ impl std::fmt::Debug for Page {
         f.debug_struct("Page")
             .field("plugin", &self.name)
             .field("size", &self.size)
+            .field("values", &self.values)
             .field("commands", &self.commands)
             .finish_non_exhaustive()
     }
@@ -311,6 +339,18 @@ mod tests {
         // A debug build run with `SEAM_PAGE_DEV_URL` set has a dev server.
         let served = assets::dev_url().is_some();
         assert_eq!(editor.is_some(), cfg!(windows) && served);
+    }
+
+    #[test]
+    #[should_panic(expected = "is bound twice")]
+    fn a_value_bound_twice_panics() {
+        let set = ParamSet::from_decls([ParamDecl::new("gain", "Gain", Kind::Bool, 0.0)])
+            .expect("valid declarations");
+        let ui = set.take_ui().expect("the first UI handle");
+        let name = Value::new(String::new(), &set);
+        let _ = Page::new(&INFO, ui, PAGE)
+            .value("name", &name)
+            .value("name", &name);
     }
 
     #[test]

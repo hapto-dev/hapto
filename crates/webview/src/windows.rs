@@ -155,7 +155,12 @@ impl PageEditor {
             size: page.size,
             scale: 1.0,
             native: Rc::new(Native {
-                dispatcher: RefCell::new(Dispatcher::new(page.ui, page.commands, outbox)),
+                dispatcher: RefCell::new(Dispatcher::new(
+                    page.ui,
+                    page.commands,
+                    page.values,
+                    outbox,
+                )),
                 held: RefCell::new(VecDeque::new()),
                 ending: Cell::new(false),
             }),
@@ -354,7 +359,7 @@ mod tests {
         bytes: b"<!doctype html>",
     }];
 
-    const READY: &str = r#"{"type":"ready","protocol":2}"#;
+    const READY: &str = r#"{"type":"ready","protocol":3}"#;
     const DIALOG: &str = r#"{"type":"invoke","call":1,"command":"dialog","args":null}"#;
 
     thread_local! {

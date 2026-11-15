@@ -1,9 +1,9 @@
 # seam-page
 
 The page side of a Seam plugin UI: a client for the native protocol and React
-hooks (`useParam`, `useEvent`, `useCommand`) typed against the page's own
-parameter, event and command maps. Rust owns the parameters; the page only
-mirrors and edits them.
+hooks (`useParam`, `useValue`, `useEvent`, `useCommand`) typed against the
+page's own parameter, value, event and command maps. Rust owns the parameters
+and the values; the page only mirrors and edits them.
 
 ## The Transport seam
 
@@ -20,14 +20,17 @@ is `Dispatcher`, in the `seam-bridge` crate. The message types in
 ## Recipe
 
 Implement a `Transport` for your host, create the client from it, then call
-`createHooks<Params, Events, Commands>(client)` once at module scope and export
-the three hooks it returns. `Params` is the `Params` type of the plugin's
-generated parameter map (any interface keyed by id works). `Events` is an
-interface keyed by id, whose values are payload types. `Commands` maps each name
-to `{ args, returns }`: `args: void` for none, and `returns: null` for a command
-with no result, which resolves `null` because the native side always sends a
-value. Components call `useParam("gain")`, `useEvent("clipWarning", handler)`
-and `useCommand("getOrder")`; an id that is not in its map is a compile error.
+`createHooks<Params, Events, Commands, Values>(client)` once at module scope
+and export the four hooks it returns. `Params` is the `Params` type of the
+plugin's generated parameter map (any interface keyed by id works). `Events` is
+an interface keyed by id, whose values are payload types. `Commands` maps each
+name to `{ args, returns }`: `args: void` for none, and `returns: null` for a
+command with no result, which resolves `null` because the native side always
+sends a value. `Values` maps the key of each value the plugin binds for its
+page (`Values::value` in `seam-bridge`, `Page::value` in `seam-webview`) to
+the type serde writes for it. Components call `useParam("gain")`,
+`useValue("label")`, `useEvent("clipWarning", handler)` and
+`useCommand("getOrder")`; an id that is not in its map is a compile error.
 
 The client sends `ready` after it starts listening, and again every second until
 a snapshot or a `reject` arrives. It holds its writes and calls until the
@@ -38,14 +41,14 @@ fails visibly (`client.failure()`, `useParam().failure`) when the native side
 rejects its protocol version. The native side answers a `ready` of another
 version with a `reject` carrying its own version, and every other `ready` with a
 snapshot. It answers every `set` and `gestureEnd` with the parameter's state, so
-a control ends on the store.
+a control ends on the store, and every `setValue` with the value the plugin
+holds, stored or not. `useValue` gives `undefined` until the snapshot arrives,
+and after a `set` shows the value set until that answer.
 
 ## Not built yet
 
 Each needs a protocol message the Rust side does not have today.
 
-- `useValue` (plain page-bound values): a value snapshot entry and a
-  `param`-like `value` message, plus a `setValue` page message.
 - `useObservable` (revisioned containers): an observable snapshot, an update
   message carrying `{ rev, op, value }`, and a page `setObservable` message for
   writable ones.

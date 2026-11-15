@@ -6,23 +6,28 @@ use std::sync::Arc;
 
 use seam_bridge::{
     CallResult, Commands, Dispatcher, NativeMessage, PROTOCOL_VERSION, ParamState, Refusals,
+    ValueState, Values,
 };
 use seam_params::{
-    HostEvent, HostEventDrain, Kind, ParamDecl, ParamId, ParamSet, UiParams, host_id,
+    HostEvent, HostEventDrain, Kind, Origin, ParamDecl, ParamId, ParamSet, UiParams, host_id,
 };
 use seam_undo::{Bound, History};
 use serde_json::{Value, json};
 
 const MODES: [&str; 3] = ["Clean", "Warm", "Hot"];
 
-/// A plugin's side of one page: its parameters, the handle its page writes
-/// through, the host's drain, an undo history of both parameters, and the
-/// native side under test.
+/// A plugin's side of one page: its parameters and two plain values, the
+/// handle its page writes through, the host's drain, an undo history of both
+/// parameters and the label, and the native side under test.
 struct Plugin {
     set: Arc<ParamSet>,
     ui: UiParams,
     host: HostEventDrain,
     history: History,
+    /// Bound for the page second, and enrolled in undo.
+    label: seam_params::Value<String>,
+    /// Bound for the page first, and not enrolled.
+    zoom: seam_params::Value<f64>,
     native: Dispatcher<Vec<String>>,
 }
 
@@ -49,12 +54,18 @@ impl Plugin {
         for id in set.ids() {
             history.enroll_param(id).expect("a listed parameter");
         }
-        let native = Dispatcher::new(ui.clone(), commands, Vec::new());
+        let label = seam_params::Value::new(String::from("Untitled"), &set);
+        history.enroll(&label, "Rename").expect("a new value");
+        let zoom = seam_params::Value::new(1.0, &set);
+        let values = Values::new().value("zoom", &zoom).value("label", &label);
+        let native = Dispatcher::new(ui.clone(), commands, values, Vec::new());
         Plugin {
             set,
             ui,
             host,
             history,
+            label,
+            zoom,
             native,
         }
     }
@@ -115,6 +126,20 @@ fn invoke(call: u32, command: &str, args: Value) -> Value {
     json!({ "type": "invoke", "call": call, "command": command, "args": args })
 }
 
+fn set_value(key: &str, value: Value) -> Value {
+    json!({ "type": "setValue", "key": key, "value": value })
+}
+
+/// The state of the value `key` the page was sent.
+fn value(key: &str, value: Value) -> NativeMessage {
+    NativeMessage::Value {
+        state: ValueState {
+            key: key.to_owned(),
+            value,
+        },
+    }
+}
+
 /// The state of `param` the page was sent, as `normalized` and `text`.
 fn param(param: &str, normalized: f64, text: &str) -> NativeMessage {
     let state: ParamState = serde_json::from_value(json!({
@@ -137,9 +162,10 @@ fn begins_and_ends(heard: &[HostEvent]) -> (usize, usize) {
 }
 
 #[test]
-fn a_ready_of_this_version_is_answered_with_every_parameter_in_order() {
+fn a_ready_of_this_version_is_answered_with_every_parameter_and_value_in_order() {
     let mut plugin = Plugin::new();
     plugin.ui.write(plugin.gain(), -12.0);
+    plugin.label.set(String::from("Lead"));
     plugin.page_sends(ready(PROTOCOL_VERSION));
     let expected: NativeMessage = serde_json::from_value(json!({
         "type": "snapshot",
@@ -147,6 +173,11 @@ fn a_ready_of_this_version_is_answered_with_every_parameter_in_order() {
         "params": [
             { "param": "gain", "normalized": 48.0 / 72.0, "text": "-12 dB" },
             { "param": "mode", "normalized": 0.0, "text": "Clean" },
+        ],
+        // In the order they were bound, not by key.
+        "values": [
+            { "key": "zoom", "value": 1.0 },
+            { "key": "label", "value": "Lead" },
         ],
     }))
     .expect("a snapshot");
@@ -357,8 +388,150 @@ fn a_change_by_the_host_by_undo_and_by_a_load_reaches_the_page_at_the_next_tick(
 fn nothing_is_posted_before_the_first_ready() {
     let mut plugin = Plugin::new();
     plugin.set.audio().host_write(plugin.gain(), 1.0);
+    plugin.label.set(String::from("Lead"));
     plugin.native.tick();
     assert!(plugin.page_got().is_empty());
+}
+
+#[test]
+fn a_load_an_undo_and_the_plugins_own_write_of_a_value_reach_the_page_at_the_next_tick_once() {
+    let mut plugin = Plugin::listening();
+    plugin.native.tick();
+    assert!(plugin.page_got().is_empty(), "nothing moved");
+
+    // The plugin renames itself, as its own code or another surface would.
+    plugin.label.set(String::from("Lead"));
+    plugin.history.tick();
+    plugin.native.tick();
+    assert_eq!(plugin.page_got(), [value("label", json!("Lead"))]);
+    plugin.native.tick();
+    assert!(plugin.page_got().is_empty(), "posted once");
+
+    assert_eq!(plugin.history.undo(), Ok(true));
+    plugin.native.tick();
+    assert_eq!(plugin.page_got(), [value("label", json!("Untitled"))]);
+
+    // A load writes the value as a restore.
+    plugin
+        .label
+        .set_from(String::from("Loaded"), Origin::Restore);
+    plugin.native.tick();
+    assert_eq!(plugin.page_got(), [value("label", json!("Loaded"))]);
+
+    // Many writes between two ticks reach the page as the latest, once, and
+    // each value as its own message.
+    for zoom in [1.5, 2.0, 3.0] {
+        plugin.zoom.set(zoom);
+    }
+    plugin.label.set(String::from("Pad"));
+    plugin.native.tick();
+    assert_eq!(
+        plugin.page_got(),
+        [value("zoom", json!(3.0)), value("label", json!("Pad"))]
+    );
+}
+
+#[test]
+fn a_set_value_is_the_users_write_one_undo_step_and_is_answered() {
+    let mut plugin = Plugin::listening();
+    plugin.page_sends(set_value("label", json!("Lead")));
+    assert_eq!(plugin.label.read().origin, Origin::User);
+    assert_eq!(plugin.page_got(), [value("label", json!("Lead"))]);
+    // The answer showed it: the tick does not post it again.
+    plugin.native.tick();
+    assert!(plugin.page_got().is_empty());
+    plugin.history.tick();
+    assert_eq!(plugin.history.len(), 1);
+    assert_eq!(plugin.history.undo(), Ok(true));
+    assert_eq!(plugin.label.get(), "Untitled");
+    // A value no undo enrolled is stored and answered the same way.
+    plugin.page_sends(set_value("zoom", json!(2)));
+    assert_eq!(plugin.zoom.get(), 2.0);
+    assert_eq!(plugin.page_got(), [value("zoom", json!(2.0))]);
+    assert_eq!(plugin.native.refusals(), Refusals::default());
+}
+
+#[test]
+fn a_set_value_of_the_wrong_type_stores_nothing_is_counted_and_answered_with_the_value_held() {
+    let mut plugin = Plugin::listening();
+    plugin.label.set(String::from("Lead"));
+    plugin.native.tick();
+    plugin.page_got();
+    let changes = plugin.label.changes();
+    // A page sends an absent value as null, which no string decodes from.
+    plugin.page_sends(json!({ "type": "setValue", "key": "label" }));
+    plugin.page_sends(set_value("label", json!(42)));
+    plugin.page_sends(set_value("zoom", json!("big")));
+    assert_eq!(plugin.label.changes(), changes, "nothing stored");
+    assert_eq!(plugin.label.get(), "Lead");
+    assert_eq!(
+        plugin.page_got(),
+        [
+            value("label", json!("Lead")),
+            value("label", json!("Lead")),
+            value("zoom", json!(1.0)),
+        ]
+    );
+    assert_eq!(
+        plugin.native.refusals(),
+        Refusals {
+            mistyped_values: 3,
+            ..Refusals::default()
+        }
+    );
+    plugin.history.tick();
+    assert_eq!(plugin.history.len(), 1, "the plugin's own rename alone");
+}
+
+#[test]
+fn a_set_value_naming_a_key_the_plugin_does_not_bind_is_dropped_and_counted() {
+    let mut plugin = Plugin::listening();
+    // A parameter's key is not a value's.
+    plugin.page_sends(set_value("gain", json!(0.5)));
+    plugin.page_sends(set_value("title", json!("Lead")));
+    assert!(plugin.page_got().is_empty());
+    assert_eq!(plugin.set.value(plugin.gain()), 0.0);
+    assert_eq!(
+        plugin.native.refusals(),
+        Refusals {
+            unknown_values: 2,
+            ..Refusals::default()
+        }
+    );
+}
+
+#[test]
+fn a_second_ready_answers_with_the_values_as_they_are_then() {
+    let mut plugin = Plugin::listening();
+    plugin.label.set(String::from("Lead"));
+    // A reload before the tick: the snapshot shows the rename.
+    plugin.page_sends(ready(PROTOCOL_VERSION));
+    let got = plugin.page_got();
+    let [NativeMessage::Snapshot { values, .. }] = &got[..] else {
+        panic!("a snapshot, got {got:?}");
+    };
+    assert_eq!(values[1].value, json!("Lead"));
+    plugin.native.tick();
+    assert!(plugin.page_got().is_empty(), "the snapshot showed it");
+    // A session ended and started again shows the values as they are then.
+    plugin.native.end_session();
+    plugin.label.set(String::from("Pad"));
+    plugin.native.tick();
+    assert!(plugin.page_got().is_empty(), "no page is listening");
+    plugin.page_sends(ready(PROTOCOL_VERSION));
+    let got = plugin.page_got();
+    let [NativeMessage::Snapshot { values, .. }] = &got[..] else {
+        panic!("a snapshot, got {got:?}");
+    };
+    assert_eq!(values[1].value, json!("Pad"));
+}
+
+#[test]
+#[should_panic(expected = "is bound twice")]
+fn a_value_bound_twice_panics() {
+    let set = ParamSet::from_decls([]).expect("no declarations");
+    let label = seam_params::Value::new(String::new(), &set);
+    let _ = Values::new().value("label", &label).value("label", &label);
 }
 
 #[test]
@@ -386,7 +559,12 @@ fn dropping_it_closes_the_gestures_the_page_left_open() {
     assert!(plugin.ui.is_open(plugin.gain()));
     let native = std::mem::replace(
         &mut plugin.native,
-        Dispatcher::new(plugin.ui.clone(), Commands::new(), Vec::new()),
+        Dispatcher::new(
+            plugin.ui.clone(),
+            Commands::new(),
+            Values::new(),
+            Vec::new(),
+        ),
     );
     drop(native); // the editor closed mid-drag
     assert!(!plugin.ui.is_open(plugin.gain()));
@@ -528,6 +706,7 @@ fn the_fixtures_page_messages_are_answered_as_the_rules_say() {
                     NativeMessage::Snapshot { .. } => "snapshot",
                     NativeMessage::Reject { .. } => "reject",
                     NativeMessage::Param { .. } => "param",
+                    NativeMessage::Value { .. } => "value",
                     NativeMessage::Reply { .. } => "reply",
                     NativeMessage::Event { .. } => "event",
                 })
@@ -544,13 +723,16 @@ fn the_fixtures_page_messages_are_answered_as_the_rules_say() {
             ("gesture end", vec!["param"]),
             ("invoke with arguments", vec!["reply"]),
             ("invoke with null arguments", vec!["reply"]),
+            ("set value", vec!["value"]),
         ]
     );
     assert_eq!(plugin.native.refusals(), Refusals::default());
-    // The fixture's set reached the gain, through the host's own conversion.
+    // The fixture's set reached the gain, through the host's own conversion,
+    // and its value write the label.
     let gain = plugin.gain();
     assert_eq!(plugin.set.host_id(gain), host_id("gain"));
     assert_eq!(plugin.set.value(gain), -42.0);
+    assert_eq!(plugin.label.get(), "Lead");
 }
 
 #[test]
