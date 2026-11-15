@@ -2761,6 +2761,12 @@ waits for the next tick. The dispatcher's messages reach the page, in order,
 as a script that calls `window.__seam.receive`, which the page's
 `webviewTransport` installs. A panic inside a WebView callback, the IPC
 handler's or the scheme's, is caught, since it would unwind into WebView2.
+The WebView stays on the page: a navigation to any address but the page's,
+the embedded one or a debug build's dev server, is cancelled; a message from
+any other document is dropped; and a file dropped on it from outside is taken
+to nothing, where WebView2 would open it in the page's place, a file a user
+drags from a DAW's browser among them. Taking drops also turns off HTML drag
+and drop inside the page, since wry's handler replaces WebView2's.
 The WebView takes no keyboard focus as it opens, so the host keeps it until
 the page is clicked. A release build turns off the browser's context menu
 and its shortcuts, such as a reload; a debug build keeps both, and its

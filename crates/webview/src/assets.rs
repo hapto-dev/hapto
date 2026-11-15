@@ -11,6 +11,10 @@ pub(crate) const SCHEME: &str = "seam";
 /// The URL of the page built into the plugin.
 const EMBEDDED: &str = "seam://localhost/index.html";
 
+/// The origin the page built into the plugin is loaded from, as WebView2
+/// names it.
+const EMBEDDED_ORIGIN: &str = "http://seam.localhost";
+
 /// One file of a page built into the plugin: its path below the page's
 /// root, as the page's HTML names it, and its bytes, as `include_bytes!`
 /// gives them.
@@ -85,6 +89,24 @@ fn content_type(path: &str) -> &'static str {
 /// the page built into the plugin otherwise.
 pub(crate) fn page_url(dev: Option<String>) -> String {
     dev.unwrap_or_else(|| EMBEDDED.to_owned())
+}
+
+/// Whether a document at `url` is the page: the one built into the plugin,
+/// or, when `dev` names a dev server, one from that server's origin. The
+/// WebView goes nowhere else, and takes no message from anywhere else.
+pub(crate) fn is_page(url: &str, dev: Option<&str>) -> bool {
+    let Some(origin) = origin(url) else {
+        return false;
+    };
+    origin == EMBEDDED_ORIGIN || dev.and_then(self::origin) == Some(origin)
+}
+
+/// The scheme, host and port of `url`, the part before its path; `None`
+/// for a URL with no `://`.
+fn origin(url: &str) -> Option<&str> {
+    let (scheme, rest) = url.split_once("://")?;
+    let authority = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    url.get(..scheme.len() + "://".len() + authority)
 }
 
 /// The dev server a debug build loads the page from: `SEAM_PAGE_DEV_URL`,
@@ -193,6 +215,46 @@ mod tests {
             page_url(Some("http://localhost:5173/".into())),
             "http://localhost:5173/"
         );
+    }
+
+    #[test]
+    fn only_the_page_is_the_page() {
+        for url in [
+            "http://seam.localhost/index.html",
+            "http://seam.localhost/",
+            "http://seam.localhost",
+            "http://seam.localhost/assets/index.js?v=1",
+        ] {
+            assert!(is_page(url, None), "{url}");
+        }
+        for url in [
+            "file:///C:/Users/me/kick.wav",
+            "https://example.com/",
+            "http://seam.localhost.example.com/",
+            "http://seam.localhost@example.com/",
+            "http://seam.localhost:8080/",
+            "https://seam.localhost/",
+            "about:blank",
+            "",
+        ] {
+            assert!(!is_page(url, None), "{url}");
+        }
+    }
+
+    #[test]
+    fn a_dev_servers_page_is_the_page_only_when_it_is_given() {
+        let dev = Some("http://localhost:5173/");
+        assert!(!is_page("http://localhost:5173/", None));
+        assert!(is_page("http://localhost:5173/", dev));
+        assert!(is_page("http://localhost:5173/src/main.tsx", dev));
+        assert!(is_page(
+            "http://localhost:5173",
+            Some("http://localhost:5173")
+        ));
+        assert!(!is_page("http://localhost:51730/", dev));
+        assert!(!is_page("http://localhost:5174/", dev));
+        assert!(is_page("http://seam.localhost/index.html", dev));
+        assert!(!is_page("https://example.com/", Some("not a url")));
     }
 
     #[test]

@@ -25,7 +25,7 @@ use wry::http::{Response, StatusCode};
 use wry::{Rect, WebContext, WebView, WebViewBuilder, WebViewBuilderExtWindows};
 
 use crate::Page;
-use crate::assets::{SCHEME, data_folder, dev_url, page_url, serve};
+use crate::assets::{SCHEME, data_folder, dev_url, is_page, page_url, serve};
 
 /// The page's side of the conversation: what the dispatcher posts goes to
 /// the WebView open now, in order, and nowhere while none is.
@@ -138,12 +138,27 @@ impl Editor for PageEditor {
         let mut context = WebContext::new(Some(self.folder.clone()));
         let (assets, name) = (self.assets, self.name);
         let (native, held) = (Rc::clone(&self.native), Rc::clone(&self.held));
+        let dev = dev_url();
+        let (navigable, speaks) = (dev.clone(), dev.clone());
         let built = WebViewBuilder::new_with_web_context(&mut context)
-            .with_url(page_url(dev_url()))
+            .with_url(page_url(dev))
             .with_custom_protocol(SCHEME.to_owned(), move |_, request| {
                 respond(assets, request.uri().path())
             })
-            .with_ipc_handler(move |request| deliver(name, &native, &held, request.into_body()))
+            .with_ipc_handler(move |request| {
+                // Only the page speaks for the user: any other document's
+                // message is dropped.
+                if is_page(&request.uri().to_string(), speaks.as_deref()) {
+                    deliver(name, &native, &held, request.into_body());
+                }
+            })
+            // The WebView shows the page and nothing else: a link or a
+            // script cannot take it elsewhere.
+            .with_navigation_handler(move |url| is_page(&url, navigable.as_deref()))
+            // WebView2 opens a file dropped on it from outside in the page's
+            // place. A drop handler turns that off, and this one takes the
+            // files to nothing.
+            .with_drag_drop_handler(|_| true)
             .with_bounds(self.bounds())
             // The page takes the keyboard when it is clicked, not as the
             // window opens, so the host keeps it until then.

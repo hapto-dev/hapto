@@ -1,10 +1,10 @@
 //! The page in a real WebView2, in a window of the test's own that is never
 //! shown, through the VST3 exporter as a host drives it: the page loads from
 //! the files built into the plugin, its `ready` is answered with a
-//! snapshot, and its `set` reaches the parameter. Ignored in a normal run,
-//! since it needs the WebView2 runtime and starts its browser processes; run
-//! it by hand on Windows with `cargo test -p seam-webview --test
-//! hidden_window -- --ignored`.
+//! snapshot, its `set` reaches the parameter, and it cannot navigate away.
+//! Ignored in a normal run, since it needs the WebView2 runtime and starts
+//! its browser processes; run it by hand on Windows with `cargo test -p
+//! seam-webview --test hidden_window -- --ignored`.
 //!
 //! It never shows a window, takes focus or sends input: the page acts by
 //! itself, as its script says.
@@ -24,7 +24,8 @@ use seam_webview::{Asset, Page};
 
 /// A page that speaks the protocol by hand, as `seam-page`'s client does:
 /// it listens, sends `ready`, and once the snapshot arrives reports it
-/// through a command and sets the level to 0.75.
+/// through a command and sets the level to 0.75. Then it tries to leave for
+/// another address and, still there a moment later, reports that it stayed.
 const PAGE: &[Asset] = &[Asset {
     path: "index.html",
     bytes: br#"<!doctype html>
@@ -36,6 +37,8 @@ const PAGE: &[Asset] = &[Asset {
       if (message.type === "snapshot") {
         send({ type: "invoke", call: 1, command: "seen", args: message.params[0].text });
         send({ type: "set", param: "level", normalized: 0.75 });
+        location.href = "http://127.0.0.1:9/";
+        setTimeout(() => send({ type: "invoke", call: 2, command: "seen", args: "stayed" }), 300);
       }
     },
   };
@@ -148,6 +151,11 @@ fn hold_open(hosts: &[TestHost<Probe>]) {
     }
 }
 
+/// What the pages reported, in order.
+fn seen() -> Vec<String> {
+    SEEN.with(|seen| seen.borrow().clone())
+}
+
 fn level(host: &TestHost<Probe>) -> f64 {
     host.plain(
         seam_params::host_id("level"),
@@ -166,20 +174,26 @@ fn a_page_in_a_hidden_window_is_answered_and_its_set_reaches_the_parameter() {
     let opened = started.elapsed();
     let hosts = [host];
     let answered = until(&hosts, Duration::from_secs(30), || {
-        level(&hosts[0]) == 75.0 && SEEN.with(|seen| !seen.borrow().is_empty())
+        level(&hosts[0]) == 75.0 && seen().len() == 2
     });
     println!(
         "open returned after {} ms; the page's set arrived after {} ms",
         opened.as_millis(),
         started.elapsed().as_millis()
     );
-    assert!(answered, "the page's set never reached the parameter");
+    assert!(answered, "the page's set or its stay never arrived");
     hold_open(&hosts);
-    assert_eq!(SEEN.with(|seen| seen.borrow().clone()), ["50.00 %"]);
+    // The page's navigation was cancelled, so it stayed to say so.
+    assert_eq!(seen(), ["50.00 %", "stayed"]);
     assert_eq!(view.remove(), Ok(()));
-    // Closed: a tick reaches no page, and the view opens again.
-    let reopened = view.attach(&window);
-    assert_eq!(reopened, Ok(()));
+    // Closed: ticks reach no page.
+    until(&hosts, Duration::from_millis(200), || false);
+    assert_eq!(seen().len(), 2);
+    // Opened again: a new page asks for its snapshot and reports it.
+    assert_eq!(view.attach(&window), Ok(()));
+    let reopened = until(&hosts, Duration::from_secs(30), || seen().len() == 4);
+    assert!(reopened, "the reopened page never reported");
+    assert_eq!(seen(), ["50.00 %", "stayed", "75.00 %", "stayed"]);
     assert_eq!(view.remove(), Ok(()));
     drop(view);
 }

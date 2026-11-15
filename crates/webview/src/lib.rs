@@ -20,6 +20,10 @@
 //!   it arrives; what the dispatcher posts reaches the page in order. The
 //!   page's side is `webviewTransport` in the `seam-page` package. Each tick
 //!   tells the page what changed.
+//! - **Only the page.** The WebView navigates nowhere but the page, takes no
+//!   message from any other document, and takes a file dropped on it from
+//!   outside to nothing, where WebView2 would open it in the page's place.
+//!   On Windows that also turns off HTML drag and drop inside the page.
 //! - **Its data folder** is the plugin's own, below the user's local
 //!   application data, named by the plugin's
 //!   [`id`](seam_host::PluginInfo::id): the WebView's default, beside the
