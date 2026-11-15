@@ -1320,7 +1320,7 @@ fn a_sync_made_while_no_handler_is_linked_is_told_to_the_next_one() {
 
 /// A component, initialized on this thread, with no timer.
 fn initialized() -> ComWrapper<Component<Probe>> {
-    let component = ComWrapper::new(Component::<Probe>::new(false));
+    let component = Component::<Probe>::wrap(false);
     let plugin = component.as_com_ref::<IComponent>().expect("a component");
     // SAFETY: a call on a live component, passing no pointer.
     let initialized = unsafe { plugin.initialize(std::ptr::null_mut()) };
@@ -1330,7 +1330,7 @@ fn initialized() -> ComWrapper<Component<Probe>> {
 
 #[test]
 fn the_plugin_is_built_at_initialize_on_the_thread_that_calls_it() {
-    let component = std::thread::spawn(|| ComWrapper::new(Component::<Probe>::new(false)))
+    let component = std::thread::spawn(|| Component::<Probe>::wrap(false))
         .join()
         .expect("created on another thread");
     let plugin = component.to_com_ptr::<IComponent>().expect("a component");
@@ -1876,7 +1876,7 @@ fn a_bus_wider_than_stereo_is_refused_by_name() {
 /// A component with its own timer, initialized on this thread, which runs
 /// the timer; and the timer's handle.
 fn ticking() -> (ComWrapper<Component<Probe>>, crate::engine::timer::Handle) {
-    let component = ComWrapper::new(Component::<Probe>::new(true));
+    let component = Component::<Probe>::wrap(true);
     let plugin = component.as_com_ref::<IComponent>().expect("a component");
     // SAFETY: a call on a live component, passing no pointer.
     let initialized = unsafe { plugin.initialize(std::ptr::null_mut()) };
@@ -2084,7 +2084,7 @@ impl Plugin for Unbuilt {
 fn a_refused_declaration_builds_no_instance_and_says_why_through_the_vst3_exporter() {
     let faults = thread_faults();
     written();
-    let component = ComWrapper::new(Component::<Unbuilt>::new(false));
+    let component = Component::<Unbuilt>::wrap(false);
     let plugin = component.to_com_ptr::<IComponent>().expect("a component");
     // SAFETY: the component was just made and `plugin` holds it;
     // `initialize` takes a null context.
@@ -2095,4 +2095,61 @@ fn a_refused_declaration_builds_no_instance_and_says_why_through_the_vst3_export
     let refusal = "seam: Probe: no instance was built, since a declaration was refused: \
                    key \"gain\" is declared twice.";
     assert!(lines.iter().any(|line| line == refusal), "{lines:?}");
+}
+
+/// Off Windows the exporter offers no view, and does not ask the plugin for
+/// an editor, so a host shows its own controls.
+#[cfg(not(windows))]
+#[test]
+fn off_windows_a_plugin_with_an_editor_offers_no_view() {
+    use crate::{Editor, ParentWindow, Size};
+
+    thread_local! {
+        static ASKED: Cell<bool> = const { Cell::new(false) };
+    }
+
+    struct Blank;
+
+    impl Editor for Blank {
+        fn size(&self) -> Size {
+            Size {
+                width: 320,
+                height: 200,
+            }
+        }
+
+        fn open(&mut self, _parent: &ParentWindow) -> Result<(), Box<dyn Error>> {
+            Ok(())
+        }
+
+        fn close(&mut self) {}
+        fn set_size(&mut self, _size: Size) {}
+        fn set_scale(&mut self, _scale: f64) {}
+        fn tick(&mut self) {}
+    }
+
+    struct WithEditor;
+
+    impl Plugin for WithEditor {
+        const INFO: PluginInfo = Probe::INFO;
+        type Params = ();
+        type Processor = ShapedProcessor;
+
+        fn new((): (), _: Parts) -> Self {
+            WithEditor
+        }
+
+        fn activate(&mut self, _: &ProcessSetup) -> ShapedProcessor {
+            unreachable!("never activated")
+        }
+
+        fn editor(&mut self) -> Option<Box<dyn Editor>> {
+            ASKED.with(|asked| asked.set(true));
+            Some(Box::new(Blank))
+        }
+    }
+
+    let host = TestHost::<WithEditor>::new();
+    assert!(host.view().is_none());
+    assert!(!ASKED.with(Cell::get), "the plugin was not asked");
 }

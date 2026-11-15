@@ -9,6 +9,8 @@
 //! to it; a shell frees it only when [`Engine::release`] says it may.
 
 mod automation;
+#[cfg(feature = "vst3")]
+mod editor;
 mod process;
 pub(crate) mod timer;
 
@@ -16,9 +18,13 @@ pub(crate) mod timer;
 mod tests;
 
 use std::cell::{Cell, RefCell};
+#[cfg(feature = "vst3")]
+use std::fmt::Display;
 use std::num::NonZeroUsize;
 #[cfg(feature = "vst3")]
 use std::ptr::NonNull;
+#[cfg(feature = "vst3")]
+use std::rc::{Rc, Weak};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
@@ -31,6 +37,8 @@ use automation::Automation;
 pub(crate) use automation::Points;
 #[cfg(all(test, feature = "vst3"))]
 pub(crate) use automation::{MAX_SKIPPED_QUEUES, Point};
+#[cfg(feature = "vst3")]
+pub(crate) use editor::{EditorSlot, Opened};
 #[cfg(any(feature = "vst3", feature = "cabi"))]
 pub(crate) use process::Outcome;
 use process::{Audio, PendingReset, install};
@@ -251,11 +259,15 @@ struct OnThread {
     /// activation learn's audio side.
     driver: Driver,
     timer: RefCell<Option<Timer>>,
+    /// The editors the plugin handed out, one for each view a host asked
+    /// for, as long as the view keeps it; each tick ticks the open ones.
+    #[cfg(feature = "vst3")]
+    editors: RefCell<Vec<Weak<EditorSlot>>>,
 }
 
 impl<P: Plugin, H> Main<P, H> {
     /// Whether the state holds what only its own thread may: the parts'
-    /// driver and the timer slot.
+    /// driver, the timer slot and the editors.
     #[cfg(all(test, feature = "cabi"))]
     pub(crate) fn holds_on_thread(&self) -> bool {
         self.on_thread.is_some()
@@ -390,8 +402,9 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
             // are `Send` (the bounds above), so the plugin holds no `Parts`,
             // which are not. So are the event drain and the `Cell`s and
             // `RefCell`s around them. Everything that is not, the parts'
-            // driver and the timer slot, is in `on_thread`, which is `None`
-            // here and stays so: `start_timer` starts no timer without it.
+            // driver, the timer slot and the editors, is in `on_thread`,
+            // which is `None` here and stays so: `start_timer` starts no
+            // timer without it, and `editor` hands out none.
             // The driver `build` made stays in the shadowed `main` above and
             // drops as this closure returns, on the thread that made it, and
             // `build` hands the parts to the plugin on this thread and keeps
@@ -431,6 +444,8 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
             on_thread: Some(OnThread {
                 driver,
                 timer: RefCell::new(None),
+                #[cfg(feature = "vst3")]
+                editors: RefCell::new(Vec::new()),
             }),
         };
         let automation = Automation::new(set.len(), H::QUEUES);
@@ -776,6 +791,78 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
             Err(_) => return,
         }
         self.tell_host(main);
+        #[cfg(feature = "vst3")]
+        self.tick_editors(main);
+    }
+
+    /// Asks the plugin for an editor, for a view a host asked for, and keeps
+    /// it for the tick as long as the view keeps it. `None` when the plugin
+    /// has none, and when it is busy in a call that reached the host, which
+    /// counts as a fault.
+    #[cfg(feature = "vst3")]
+    pub(crate) fn editor(&self, main: &Main<P, H>) -> Option<Rc<EditorSlot>> {
+        let on_thread = main.on_thread.as_ref()?;
+        let Ok(mut plugin) = main.plugin.try_borrow_mut() else {
+            self.faults.record(Fault::Reentered);
+            return None;
+        };
+        let editor = plugin.editor()?;
+        drop(plugin);
+        let slot = Rc::new(EditorSlot::new(editor));
+        let Ok(mut editors) = on_thread.editors.try_borrow_mut() else {
+            self.faults.record(Fault::Reentered);
+            return None;
+        };
+        editors.retain(|editor| editor.strong_count() > 0);
+        editors.push(Rc::downgrade(&slot));
+        Some(slot)
+    }
+
+    /// Ticks each open editor, after the plugin's idle and what it told the
+    /// host. An editor's tick may reach the host, which may call back in,
+    /// even to make or drop a view, so the list is borrowed for one editor at
+    /// a time; and an editor still in a call of its own is passed over. An
+    /// editor whose tick panics is a fault and is closed, and the editors
+    /// after it still tick.
+    #[cfg(feature = "vst3")]
+    fn tick_editors(&self, main: &Main<P, H>) {
+        let Some(on_thread) = &main.on_thread else {
+            return;
+        };
+        let mut index = 0;
+        loop {
+            let slot = match on_thread.editors.try_borrow() {
+                Ok(editors) => match editors.get(index) {
+                    Some(editor) => editor.upgrade(),
+                    None => return,
+                },
+                Err(_) => return,
+            };
+            if let Some(slot) = slot
+                && slot.tick().is_err()
+            {
+                self.editor_panicked();
+            }
+            index += 1;
+        }
+    }
+
+    /// Records an editor that failed to open, with `reason`, the editor's
+    /// or Seam's, as [`faults`](crate::faults) says.
+    #[cfg(feature = "vst3")]
+    pub(crate) fn editor_failed(&self, reason: &dyn Display) {
+        self.faults.record_with_reason(
+            Fault::NoEditor,
+            || format!("{} (instance {})", P::INFO.name, self.number),
+            reason,
+        );
+    }
+
+    /// Records an editor that panicked inside its `open` or its tick, which
+    /// was caught there.
+    #[cfg(feature = "vst3")]
+    pub(crate) fn editor_panicked(&self) {
+        self.faults.record(Fault::Panic);
     }
 
     /// Tells the host of the edits the plugin made since the last call, and

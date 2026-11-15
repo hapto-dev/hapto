@@ -362,7 +362,11 @@ jobs:
     env:
       PACKAGES: --workspace --exclude seam-testkit --exclude xtask
       FEATURES: --no-default-features --features seam-host/cabi,seam-host/test-host,seam-example-eq/cabi
-      EXCLUDE: '(/tests/|/benches/|/testkit/|test_host\.rs|tests\.rs)'
+      # Tests, benchmarks and the test hosts are not measured. Nor are the
+      # VST3 editor view and the slot that drives an editor for it: Linux
+      # builds both, but the exporter offers a view on Windows alone, so
+      # only Windows runs them, in the view's own tests.
+      EXCLUDE: '(/tests/|/benches/|/testkit/|test_host\.rs|/test_host/|tests\.rs|/vst3/view\.rs|/engine/editor\.rs)'
       # Measured line coverage minus one point (docs/testing.md).
       COVERAGE_LINES: "92"
     steps:

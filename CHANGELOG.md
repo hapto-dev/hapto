@@ -141,6 +141,20 @@ page in a plugin window, and MIDI delivered to a plugin through an exporter.
   each piece of a block's channels in place, and a model of every way a host may
   hand its buffers checks that. Test hosts drive a plugin through either
   exporter, and answer a refused call with what the host was told.
+- `seam-host`: a plugin's editor. `Plugin::editor` hands out an `Editor`,
+  `None` by default, which the VST3 exporter opens in the host's window on
+  Windows, as a resizable view that follows the screen's scale; elsewhere it
+  offers the host no view, and the host shows its own controls. The instance's
+  timer ticks an open editor after `Plugin::idle`. An editor that fails to open
+  is a fault with its reason, a panic in its `open`, its tick or its drop is a
+  fault, an editor whose tick panicked is closed, and the host and the audio go
+  on.
+  `vst3::TestView` drives a view in tests, and on Windows attaches it to a
+  `vst3::HiddenWindow`, which gives a real editor a window that is never shown.
+- `seam-host`: on Windows, once an editor has opened, the plugin's module stays
+  loaded until the process ends, so what the editor left with the host stays
+  valid when the host unloads the module and loads it again. The plugin's file
+  stays in use until the host exits.
 - `seam-bridge`: the page protocol, versioned, with its TypeScript generated
   from the Rust types and a check that the version moves when a message's shape
   does. Decoding refuses a position outside 0 to 1, from either side.

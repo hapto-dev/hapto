@@ -137,8 +137,9 @@ What keeps that true:
   the line goes to a list the test reads instead.
 
   `seam_host::vst3::TestHost` drives a plugin through the VST3 exporter's own
-  COM interfaces. `seam_host::cabi::TestHost` drives it through the C
-  interface's table, as the JUCE adapter calls it. A call the plugin may refuse
+  COM interfaces, its editor's view included (`TestHost::view`).
+  `seam_host::cabi::TestHost` drives it through the C interface's table, as
+  the JUCE adapter calls it. A call the plugin may refuse
   answers `Result<(), Refused>`: the VST3 host's `Refused` carries the
   `tresult`, the C interface's stands for its `false`, so a test pins what the
   host was told. Both exist only with `seam-host`'s `test-host` feature, which a
@@ -664,7 +665,11 @@ the fuzz crate's own unit test (`cargo test --manifest-path fuzz/Cargo.toml
 ## Coverage
 
 `cargo llvm-cov` over the code Linux builds measured 93.5 % of lines on the day
-the lane was added. Test files, benchmarks and the test hosts are left out. The
+the lane was added. Test files, benchmarks and the test hosts are left out. So
+are the VST3 editor view and the slot that drives an editor for it
+(`vst3/view.rs`, `engine/editor.rs`): Linux builds both, but the exporter
+offers a view on Windows alone, so only Windows runs them, in the view's own
+tests (`crates/host/src/vst3/view/tests.rs`). The
 lane fails below 92 %, the measured figure less one point, rounded down to a
 whole number. When coverage rises, raise the number in `ci.yml`'s
 `COVERAGE_LINES` the same way; never lower it to land a change. The lane uploads
