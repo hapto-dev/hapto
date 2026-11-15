@@ -1131,7 +1131,8 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d104-the-webviews-messages-and-what-it-takes)
 
-- `crates/webview/src/windows.rs`: module, `ToPage`, `script`, `deliver`, `respond`, `PageEditor::open`, `PageEditor::close`, `PageEditor::tick`
+- `crates/webview/src/windows.rs`: module, `ToPage`, `script`, `deliver`, `respond`, `Native`, `Native::deliver`, `Native::end_session`, `Native::catch_up`, `PageEditor::open`, `PageEditor::close`, `PageEditor::tick`
+- test `crates/webview/src/windows.rs`: `a_message_held_while_a_command_runs_keeps_its_place`, `a_close_while_a_command_runs_ends_the_session_as_it_returns`
 - `crates/webview/src/assets.rs`: `is_page`, `origin`
 - `page/src/transport.ts`: `webviewTransport`, `WebViewGlobals`
 - test `crates/webview/tests/hidden_window.rs`: module, `a_page_in_a_hidden_window_is_answered_and_its_set_reaches_the_parameter`, `a_page_that_cannot_start_leaves_nothing_shown_in_the_window`

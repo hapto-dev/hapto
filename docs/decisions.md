@@ -2758,9 +2758,11 @@ WebView bridge.
 
 **Rust.** The page posts each message as JSON text through
 `window.ipc.postMessage`, which wry provides, and the editor hands it to the
-dispatcher as it arrives; one that arrives while the dispatcher is in a call
-waits for the next tick. The dispatcher's messages reach the page, in order,
-as a script that calls `window.__seam.receive`, which the page's
+dispatcher as it arrives. A command may run a message loop of its own, such
+as a file dialog's: a message that arrives inside it is held and handed over
+once the call returns, before any later one, and a close that arrives inside
+it ends the page's session then. The dispatcher's messages reach the page,
+in order, as a script that calls `window.__seam.receive`, which the page's
 `webviewTransport` installs. A panic inside a WebView callback, the IPC
 handler's or the scheme's, is caught, since it would unwind into WebView2.
 The WebView stays on the page: a navigation to any address but the page's,
