@@ -2,13 +2,14 @@
 //! one command, in any shell.
 //!
 //! It builds the crate's page when the crate has one, then the crate in
-//! release, then lays the bundle out under `target/bundle/` and prints its
-//! path; with `--install` or `--install-system` it copies the bundle into a
-//! VST3 folder the host scans. A crate's page is the npm package in its
-//! `page` folder. The page is type-checked and built every time, so a page
-//! that does not check, or a missing or stale build, never reaches a bundle
-//! unseen; Cargo itself never runs Node, so this task does. Windows only for
-//! now: a macOS bundle has another layout.
+//! release, or in debug with `--debug`, then lays the bundle out under
+//! `target/bundle/` and prints its path; with `--install` or
+//! `--install-system` it copies the bundle into a VST3 folder the host scans.
+//! A crate's page is the npm package in its `page` folder. The page is
+//! type-checked and built every time, so a page that does not check, or a
+//! missing or stale build, never reaches a bundle unseen; Cargo itself never
+//! runs Node, so this task does. Windows only for now: a macOS bundle has
+//! another layout.
 
 use std::fs;
 use std::io;
@@ -17,10 +18,11 @@ use std::process::Command;
 use std::time::SystemTime;
 
 /// The usage line `cargo xtask` prints for this task.
-pub const USAGE: &str = "  bundle -p <crate> [--no-page] [--install | --install-system]
+pub const USAGE: &str = "  bundle -p <crate> [--no-page] [--debug] [--install | --install-system]
                     check and build the crate's page, build the crate in release, lay out its
-                    VST3 bundle under target/bundle/ and print its path; --install copies it to
-                    the per-user VST3 folder, --install-system to the one in Program Files";
+                    VST3 bundle under target/bundle/ and print its path; --debug bundles the
+                    debug build, --install copies the bundle to the per-user VST3 folder,
+                    --install-system to the one in Program Files";
 
 /// The Windows error a copy over a file another process holds fails with:
 /// `ERROR_SHARING_VIOLATION`.
@@ -33,6 +35,8 @@ pub struct Options {
     pub package: String,
     /// Whether to build the crate's page first; `--no-page` turns it off.
     pub page: bool,
+    /// The build the module comes from; `--debug` picks the debug one.
+    pub profile: Profile,
     /// The VST3 folder to copy the bundle into, if any.
     pub install: Option<Folder>,
 }
@@ -47,6 +51,7 @@ impl Options {
     pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Options, String> {
         let mut package = None;
         let mut page = true;
+        let mut profile = Profile::Release;
         let mut install = None;
         let mut args = args.into_iter();
         while let Some(arg) = args.next() {
@@ -55,6 +60,7 @@ impl Options {
                     package = Some(args.next().ok_or("-p wants a crate's name")?);
                 }
                 "--no-page" => page = false,
+                "--debug" => profile = Profile::Debug,
                 "--install" | "--install-system" => {
                     let folder = if arg == "--install" {
                         Folder::User
@@ -72,8 +78,38 @@ impl Options {
         Ok(Options {
             package,
             page,
+            profile,
             install,
         })
+    }
+}
+
+/// The Cargo build a bundle's module comes from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Profile {
+    /// The optimised build, for listening and for shipping.
+    Release,
+    /// The debug build, which loads its page from a dev server when the
+    /// host's environment sets `SEAM_PAGE_DEV_URL`, so the page reloads live
+    /// in the host. Its DSP runs unoptimised.
+    Debug,
+}
+
+impl Profile {
+    /// Returns the arguments `cargo build` takes for it.
+    pub fn cargo_args(self) -> &'static [&'static str] {
+        match self {
+            Profile::Release => &["--release"],
+            Profile::Debug => &[],
+        }
+    }
+
+    /// Returns the folder under the target folder the build writes.
+    pub fn dir(self) -> &'static str {
+        match self {
+            Profile::Release => "release",
+            Profile::Debug => "debug",
+        }
     }
 }
 
@@ -258,11 +294,12 @@ pub fn run(args: impl IntoIterator<Item = String>) -> Result<usize, String> {
     }
     run_tool(
         cargo()
-            .args(["build", "--release", "-p", &options.package])
+            .args(["build", "-p", &options.package])
+            .args(options.profile.cargo_args())
             .current_dir(&root),
         "cargo build",
     )?;
-    let built = target.join("release").join(format!(
+    let built = target.join(options.profile.dir()).join(format!(
         "{}{}{}",
         std::env::consts::DLL_PREFIX,
         plugin.lib,
@@ -273,6 +310,12 @@ pub fn run(args: impl IntoIterator<Item = String>) -> Result<usize, String> {
     println!("bundled {}", bundle.display());
     if let Some(folder) = options.install {
         install(&bundle, &plugin.name, folder)?;
+    }
+    if options.profile == Profile::Debug {
+        println!(
+            "a debug build: start the host with SEAM_PAGE_DEV_URL set to the address \
+             `npm run dev` prints, and the page reloads live"
+        );
     }
     Ok(0)
 }

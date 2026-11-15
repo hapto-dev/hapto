@@ -8,7 +8,8 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use xtask::bundle::{
-    Folder, Options, Plugin, arch_folder, copy_error, layout, needs_npm_ci, page_scripts, plugin,
+    Folder, Options, Plugin, Profile, arch_folder, copy_error, layout, needs_npm_ci, page_scripts,
+    plugin,
 };
 
 fn parse(args: &[&str]) -> Result<Options, String> {
@@ -23,12 +24,23 @@ fn the_crate_and_flags_are_read() {
         Options {
             package: "gain".into(),
             page: false,
+            profile: Profile::Release,
             install: Some(Folder::User),
         }
     );
     let options = parse(&["--install-system", "--package", "gain"]).expect("valid");
     assert!(options.page);
     assert_eq!(options.install, Some(Folder::System));
+    let options = parse(&["-p", "gain", "--debug"]).expect("valid");
+    assert_eq!(options.profile, Profile::Debug);
+}
+
+#[test]
+fn each_profile_builds_and_reads_its_own_folder() {
+    assert_eq!(Profile::Release.cargo_args(), ["--release"]);
+    assert_eq!(Profile::Release.dir(), "release");
+    assert!(Profile::Debug.cargo_args().is_empty());
+    assert_eq!(Profile::Debug.dir(), "debug");
 }
 
 #[test]

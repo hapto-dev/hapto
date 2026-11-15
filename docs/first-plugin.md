@@ -456,7 +456,14 @@ lockfile, then `npm run typecheck`, when the page has that script, and `npm run
 build` every time. Vite's build strips the page's types without checking them,
 so the check is what stops a page whose keys disagree with its generated
 parameter map; neither that nor a stale page reaches the bundle.
-`--no-page` skips the page for a Rust-only rebuild. The bundle goes to
+`--no-page` skips the page for a Rust-only rebuild.
+
+`--debug` bundles the debug build instead, for working on the page in the
+host: run `npm run dev` in `page/`, and start the host with
+`SEAM_PAGE_DEV_URL` set to the address it prints, and the page reloads as you
+edit it. From PowerShell, `$env:SEAM_PAGE_DEV_URL = "http://localhost:5173"`,
+then the host's executable from that shell. The DSP runs unoptimised in that
+build, so listen to a release bundle. The bundle goes to
 `target/bundle/Seam Example Gain.vst3`, named from `[package.metadata.seam]`.
 `--install` copies it to the per-user VST3 folder,
 `%LOCALAPPDATA%\Programs\Common\VST3`, which needs no administrator;
