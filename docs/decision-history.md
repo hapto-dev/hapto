@@ -948,6 +948,45 @@ guard, since that panic unwound past the step that takes the editor from the
 view, so a second panic, in its drop, aborted the host; the release now
 catches the first on its own and drops the editor inside the guard.
 
+### D102. A page's files and a build without them
+
+[The decision](decisions.md#d102-a-pages-files-and-a-build-without-them)
+
+Built on 2026-11-13 with the first page in a plugin window, the example
+gain's. To confirm.
+
+Changed on 2026-11-14 after its review. With no page built, the gain's build
+script watched three files that did not exist, which reran it and rebuilt the
+gain on every command; it now watches the page folder until the page is
+built. A debug build given a dev server now makes the editor with no files
+built in, as the guide already said it did. The page lane now checks that
+the three files are there by name.
+
+### D103. The WebView's data folder
+
+[The decision](decisions.md#d103-the-webviews-data-folder)
+
+Built on 2026-11-13. Sixteen editors of one plugin were opened in one process
+that day, in windows never shown. To confirm.
+
+### D104. The WebView's messages and what it takes
+
+[The decision](decisions.md#d104-the-webviews-messages-and-what-it-takes)
+
+Built on 2026-11-13. Whether the host keeps its shortcuts while the page has
+the keyboard waits for a run in a host. To confirm.
+
+Changed on 2026-11-14 after its review. Nothing kept the WebView on the
+page: a file dragged onto the plugin window replaced it, and any document in
+it could reach the dispatcher. A navigation elsewhere is now cancelled, a
+message from another document dropped, and a dropped file taken to nothing.
+A failed start left wry's window visible and blank in the host's; the
+WebView is now shown once it started. A message held while a command ran
+could be overtaken by a later one, and a close inside a command left the
+page's drag open for the host; held messages now go first, and the session
+ends as the call returns. The scheme's handler now catches a panic, as the
+record already said.
+
 ### D105. The module stays loaded once an editor has opened
 
 [The decision](decisions.md#d105-the-module-stays-loaded-once-an-editor-has-opened)
