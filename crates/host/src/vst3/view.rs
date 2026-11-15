@@ -14,7 +14,7 @@
 //! logical ones, so the view converts with the scale the host last gave. A
 //! scale that changes while the editor is open asks the host's frame for the
 //! size the editor now needs. Only Windows' `HWND` is a platform a view
-//! attaches to.
+//! attaches to, and the exporter makes no view anywhere else.
 
 use std::cell::{Cell, RefCell};
 use std::ffi::{CStr, c_void};
@@ -364,5 +364,5 @@ impl<P: Plugin> std::fmt::Debug for View<P> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, windows))]
 mod tests;

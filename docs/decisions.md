@@ -137,7 +137,7 @@ comments never cite an id: they state the reason in words, and
 | D98 | [What does the native side do with a page's write that names a key the plugin does not list? (B2)](#d98-a-page-write-naming-an-unknown-key) | It drops it unanswered and counts it in `Refusals`: no parameter has a state to answer with. | to confirm |
 | D99 | [What becomes of a page's call still running when a new page session starts? (B5)](#d99-a-call-across-page-sessions) | None can be: a command runs to its end inside the call, so its reply always goes to the session that asked. | to confirm |
 | D100 | [How does a plugin hand out an editor, and what ticks it? (D53)](#d100-a-plugins-editor-and-its-tick) | `Plugin::editor` returns an `Editor`, `None` by default; the trait knows no toolkit. The exporter drives it, and the plugin's one main-thread timer ticks an open editor after `Plugin::idle`. | to confirm |
-| D101 | [What does the VST3 exporter's view of the editor keep to? (D59, D60)](#d101-the-vst3-editor-view) | A view holds its component; it attaches to `HWND` only; its sizes are the screen's pixels at the scale the host gave; it puts off what a host asks while the editor is in a call; a failed open is a fault with its reason. | to confirm |
+| D101 | [What does the VST3 exporter's view of the editor keep to? (D59, D60)](#d101-the-vst3-editor-view) | A view holds its component; it is made and attaches on Windows only; its sizes are the screen's pixels at the scale the host gave; it puts off what a host asks while the editor is in a call; a failed open is a fault with its reason. | to confirm |
 | D105 | [What keeps valid what an editor leaves with the host, when the host unloads the module? (D59, D101)](#d105-the-module-stays-loaded-once-an-editor-has-opened) | Once any editor has opened, the module stays loaded until the process ends: one call at every open, before the editor's code runs, for every editor of every plugin. The plugin's file then stays in use until the host exits. | to confirm |
 
 **Open.** D25 is held until `seam-ci` needs it. It keeps its recommendation
@@ -2624,7 +2624,8 @@ JUCE `AudioProcessorEditor` with its own timer.
 
 **Rust.** `Plugin::editor(&mut self) -> Option<Box<dyn Editor>>`, `None` by
 default, so a plugin with no editor writes nothing and the host shows its own
-controls. Seam calls it each time a host asks for a view. `Editor` knows no
+controls. Seam calls it each time a host asks for a view where one can
+attach: on Windows, for now (D101). `Editor` knows no
 toolkit: `size`, read once; `open` with the host's window as a
 `ParentWindow`, which implements `raw-window-handle`'s `HasWindowHandle` and
 is lent to that call alone; `close`; `set_size` in logical pixels;
@@ -2650,8 +2651,9 @@ window is.
 **Question and C++ Seam.** What does the VST3 exporter's `IPlugView` keep
 to? (D59, D60) JUCE's VST3 wrapper wrote the C++ Seam's.
 
-**Rust.** `createView("editor")` asks the plugin for an editor and answers
-null for none. The view (`vst3/view.rs`) keeps to these:
+**Rust.** `createView("editor")` asks the plugin for an editor on Windows,
+and answers null for none and on any other platform. The view
+(`vst3/view.rs`) keeps to these:
 
 - **It holds its component.** A view keeps a reference to the component, as
   the SDK's own views do, so a host that releases the component first, or
@@ -2661,8 +2663,9 @@ null for none. The view (`vst3/view.rs`) keeps to these:
   and the main-thread rule: on another thread it is refused and counted. So
   does the view's release, which drops the editor inside the guard, so that a
   panic in the editor's drop is a fault and never reaches the host.
-- **`HWND` only.** It attaches to a Windows window; on any other platform it
-  says no platform is supported, so a host shows its own controls.
+- **`HWND` only.** It attaches to a Windows window, and only there is one
+  made: on any other platform `createView` answers null without asking the
+  plugin, so a host shows its own controls.
 - **Sizes.** VST3 gives a view's size in the screen's pixels on Windows, and
   the editor's is logical, so the view converts with the scale from
   `IPlugViewContentScaleSupport`, 1 until the host gives one. The view is
@@ -2707,7 +2710,7 @@ a toolkit may leave its window behind when its start-up fails. The first
 call pins the module and every later one changes nothing, so no flag records
 it. It is one call for every editor of every plugin, and names no toolkit.
 The leaked timer's pin (D59) is the same call. No editor opens on macOS yet,
-since the view attaches to `HWND` only (D101).
+since the exporter offers a view on Windows only (D101).
 
 After `ExitDll` the host's next load gets the same mapping, and `InitDll`
 runs again with every static as it was left. No static in Seam assumes a

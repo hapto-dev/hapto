@@ -66,8 +66,9 @@ use crate::parts::Parts;
 ///   [`editor`](Self::editor), the VST3 exporter opens it in the window the
 ///   host makes, drives its size and scale, ticks it after each
 ///   [`idle`](Self::idle) while it is open, and closes it with the window. A
-///   plugin writes no pump and no timer for it. The C interface shows no
-///   editor.
+///   plugin writes no pump and no timer for it. That is on Windows: on other
+///   platforms the VST3 exporter offers the host no view, and the C
+///   interface shows no editor on any.
 /// - **Programs.** A plugin has one program, and the exporters offer the
 ///   host none to choose.
 /// - **Samples.** 32-bit float only: an exporter refuses a host that asks
@@ -426,10 +427,10 @@ pub trait Plugin: 'static {
     /// `None`, the default, for a plugin the host shows with its own
     /// controls.
     ///
-    /// Seam calls it each time a host asks for a view. The editor keeps what
-    /// it needs of the plugin, a clone of [`Parts::ui`] for its writes among
-    /// them, since the exporter drives it apart from the plugin: [`Editor`]
-    /// says how.
+    /// Seam calls it each time a host asks for a view, on Windows alone for
+    /// now. The editor keeps what it needs of the plugin, a clone of
+    /// [`Parts::ui`] for its writes among them, since the exporter drives it
+    /// apart from the plugin: [`Editor`] says how.
     ///
     /// Thread: main.
     ///

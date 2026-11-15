@@ -1,6 +1,7 @@
 //! The editor's view through its COM interfaces, with a stub editor that
 //! records each call the exporter makes of it, and a host that calls back in
-//! from inside the editor's own `open`.
+//! from inside the editor's own `open`. Windows only: the exporter offers no
+//! view elsewhere.
 
 use std::cell::{Cell, RefCell};
 use std::error::Error;
@@ -214,7 +215,7 @@ fn a_view_of_another_name_is_not_offered() {
 #[test]
 fn the_view_attaches_to_a_windows_window_only() {
     let (_host, view) = viewed();
-    assert_eq!(view.supports(c"HWND"), cfg!(windows));
+    assert!(view.supports(c"HWND"));
     assert!(!view.supports(c"NSView"));
     assert!(view.can_resize());
 }

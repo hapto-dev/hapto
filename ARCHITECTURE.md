@@ -206,9 +206,9 @@ with `cargo doc -p seam-host --features vst3,cabi,test-host
   the example EQ's JUCE settings) are committed and compared byte for byte in
   CI ([what runs the generator][generator], [keeping the header true][header]).
 - Absent: no WebView glue exists yet, so no plugin in the repository has an
-  editor, though the VST3 exporter opens one a plugin hands out; and no
-  exporter delivers MIDI events yet ([where the WebView pieces live][webview],
-  [the VST3 exporter's shape][vst3]).
+  editor, though the VST3 exporter opens one a plugin hands out, on Windows
+  alone; and no exporter delivers MIDI events yet ([where the WebView pieces
+  live][webview], [the VST3 exporter's shape][vst3]).
 
 ## Threads
 

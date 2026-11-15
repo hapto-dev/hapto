@@ -143,7 +143,8 @@ page in a plugin window, and MIDI delivered to a plugin through an exporter.
   exporter, and answer a refused call with what the host was told.
 - `seam-host`: a plugin's editor. `Plugin::editor` hands out an `Editor`,
   `None` by default, which the VST3 exporter opens in the host's window on
-  Windows, as a resizable view that follows the screen's scale. The instance's
+  Windows, as a resizable view that follows the screen's scale; elsewhere it
+  offers the host no view, and the host shows its own controls. The instance's
   timer ticks an open editor after `Plugin::idle`. An editor that fails to open
   is a fault with its reason, a panic in its `open` or its drop is a fault, and
   the host and the audio go on.

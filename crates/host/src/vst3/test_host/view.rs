@@ -19,7 +19,8 @@ use crate::Plugin;
 impl<P: Plugin> TestHost<P> {
     /// Asks the plugin for its editor's view, as a host does when the user
     /// opens the editor, and gives it a frame: `None` for a plugin with no
-    /// editor.
+    /// editor, and on any platform but Windows, where the exporter offers
+    /// none.
     ///
     /// The view keeps the instance alive, so it may outlive this host.
     pub fn view(&self) -> Option<TestView> {
@@ -53,6 +54,8 @@ impl<P: Plugin> TestHost<P> {
 ///
 /// ```
 #[doc = include_str!("../../../doc/editor.rs")]
+/// # #[cfg(windows)]
+/// # {
 /// use seam_host::vst3::TestHost;
 ///
 /// let host = TestHost::<Panel>::new();
@@ -66,6 +69,7 @@ impl<P: Plugin> TestHost<P> {
 /// assert_eq!(view.resizes(), [(640, 400)]);
 /// assert_eq!(view.size(), Some((640, 400)));
 /// view.remove()?;
+/// # }
 /// # Ok::<(), seam_host::vst3::Refused>(())
 /// ```
 pub struct TestView {
@@ -175,7 +179,7 @@ impl TestView {
     }
 
     /// The view's interface, for the exporter's own tests.
-    #[cfg(test)]
+    #[cfg(all(test, windows))]
     pub(crate) fn interface(&self) -> &ComPtr<IPlugView> {
         &self.view
     }

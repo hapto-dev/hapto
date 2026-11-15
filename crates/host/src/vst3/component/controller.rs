@@ -182,6 +182,12 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
     }
 
     unsafe fn createView(&self, name: FIDString) -> *mut IPlugView {
+        // A view attaches to a Windows window alone, so elsewhere none is
+        // offered and the plugin is not asked: a host then shows its own
+        // controls. `cfg!` keeps the view's code checked on every platform.
+        if !cfg!(windows) {
+            return std::ptr::null_mut();
+        }
         self.guard(std::ptr::null_mut(), || {
             // SAFETY: the SDK's contract: `name` is null or a NUL-terminated
             // string valid during the call.

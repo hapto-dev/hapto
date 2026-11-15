@@ -488,8 +488,8 @@ mod imp {
     /// Nothing to undo: the timers hold no class.
     pub(crate) fn unregister() {}
 
-    /// Does nothing yet: the VST3 view attaches to a Windows window only,
-    /// so no host opens an editor here.
+    /// Does nothing yet: the VST3 exporter offers a view on Windows only,
+    /// so no editor opens here.
     pub(crate) fn keep_module_loaded() {}
 
     /// Runs this thread's run loop for `period`, as a host's would, so a
