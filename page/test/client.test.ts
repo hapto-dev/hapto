@@ -14,7 +14,7 @@ function setup() {
 // A client whose native side has answered, as when it was listening already.
 function answeredSetup() {
   const made = setup();
-  made.t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [] });
+  made.t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [], values: [] });
   return made;
 }
 
@@ -27,7 +27,7 @@ describe("seed", () => {
     const listen = t.page.listen;
     t.native.listen(() => {
       // The native side answers inside the ready delivery; the snapshot must land.
-      t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [gain(0.5)] });
+      t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [gain(0.5)], values: [] });
     });
     const client = createClient({
       send: (m) => {
@@ -47,7 +47,7 @@ describe("seed", () => {
     const { t, client } = setup();
     const bound = client.bindParam("gain", () => {});
     expect(bound.current()).toBeUndefined();
-    t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [gain(0.2)] });
+    t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [gain(0.2)], values: [] });
     expect(bound.current()).toEqual(gain(0.2));
     t.native.send({ type: "param", state: gain(0.7) });
     expect(bound.current()).toEqual(gain(0.7));
@@ -61,7 +61,7 @@ describe("bindParam", () => {
     client.bindParam("gain", (s) => seen.push(s.normalized));
     t.native.send({ type: "param", state: { param: "pan", normalized: 0.1, text: "" } });
     t.native.send({ type: "param", state: gain(0.3) });
-    t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [gain(0.4)] });
+    t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [gain(0.4)], values: [] });
     expect(seen).toEqual([0.3, 0.4]);
   });
 
@@ -137,6 +137,75 @@ describe("bindParam", () => {
   });
 });
 
+describe("bindValue", () => {
+  const label = (value: unknown) => ({ type: "value", state: { key: "label", value } }) as const;
+
+  test("caches the snapshot's values and later value messages", () => {
+    const { t, client } = setup();
+    const bound = client.bindValue("label", () => {});
+    expect(bound.current()).toBeUndefined();
+    t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [], values: [{ key: "label", value: "Lead" }] });
+    expect(bound.current()).toBe("Lead");
+    t.native.send(label({ name: "Pad" }));
+    expect(bound.current()).toEqual({ name: "Pad" });
+  });
+
+  test("onValue fires for each later value of its key only, never a parameter's of the same name", () => {
+    const { t, client } = answeredSetup();
+    const seen: unknown[] = [];
+    client.bindValue("label", (value) => seen.push(value));
+    t.native.send({ type: "value", state: { key: "sample", value: "kick.wav" } });
+    t.native.send({ type: "param", state: { param: "label", normalized: 0.5, text: "x" } });
+    t.native.send(label("Lead"));
+    t.native.send(label("Lead"));
+    expect(seen).toEqual(["Lead", "Lead"]);
+  });
+
+  test("a write becomes a setValue message, and undefined goes as no value", () => {
+    const { t, client } = answeredSetup();
+    const bound = client.bindValue("label", () => {});
+    bound.set("Lead");
+    bound.set(undefined);
+    // What crosses a transport is JSON text, which drops an undefined field.
+    expect(JSON.parse(JSON.stringify(t.native.received.slice(1)))).toEqual([
+      { type: "setValue", key: "label", value: "Lead" },
+      { type: "setValue", key: "label" },
+    ]);
+  });
+
+  test("writes before the snapshot wait, the latest of a key replacing the rest until a held call", () => {
+    const { t, client } = setup();
+    const bound = client.bindValue("label", () => {});
+    bound.set("first");
+    bound.set("second");
+    client.invoke("c", null).catch(() => {});
+    bound.set("third");
+    expect(t.native.received).toEqual([{ type: "ready", protocol: PROTOCOL_VERSION }]);
+    t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [], values: [] });
+    expect(t.native.received.slice(1)).toEqual([
+      { type: "setValue", key: "label", value: "second" },
+      { type: "invoke", call: 1, command: "c", args: null },
+      { type: "setValue", key: "label", value: "third" },
+    ]);
+  });
+
+  test("a reject drops the held value writes", () => {
+    const { t, client } = setup();
+    client.bindValue("label", () => {}).set("Lead");
+    t.native.send({ type: "reject", protocol: PROTOCOL_VERSION + 1, message: "too new" });
+    t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [], values: [] });
+    expect(t.native.received).toEqual([{ type: "ready", protocol: PROTOCOL_VERSION }]);
+  });
+
+  test("dispose stops onValue", () => {
+    const { t, client } = answeredSetup();
+    const seen: unknown[] = [];
+    client.bindValue("label", (value) => seen.push(value)).dispose();
+    t.native.send(label("Lead"));
+    expect(seen).toEqual([]);
+  });
+});
+
 describe("protocol mismatch", () => {
   test("a reject fails the client with the native side's version and reason", async () => {
     const { t, client } = setup();
@@ -160,7 +229,7 @@ describe("protocol mismatch", () => {
     client.onFailure((f) => failures.push(f));
     const early = client.invoke("x", null);
 
-    t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION + 1, params: [gain(0.5)] });
+    t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION + 1, params: [gain(0.5)], values: [] });
 
     expect(client.failure()?.message).toMatch(/protocol mismatch/);
     expect(failures).toHaveLength(1);
@@ -266,7 +335,7 @@ describe("call ids", () => {
 
 describe("before the snapshot", () => {
   const snapshot = (t: ReturnType<typeof memoryTransport>) =>
-    t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [] });
+    t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [], values: [] });
   const sent = (t: ReturnType<typeof memoryTransport>) => t.native.received.slice(1);
 
   test("a write waits for the snapshot and goes out after it", () => {
@@ -533,7 +602,7 @@ describe("before the snapshot", () => {
     const { t, client } = setup();
     client.bindParam("gain", () => {}).set(0.3);
     const call = client.invoke("x", null);
-    t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION + 1, params: [] });
+    t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION + 1, params: [], values: [] });
     await expect(call).rejects.toThrow(/protocol mismatch/);
     expect(sent(t)).toEqual([]);
   });
@@ -561,7 +630,7 @@ describe("ready retry", () => {
     expect(readies(t)).toBe(1);
     vi.advanceTimersByTime(3000);
     expect(readies(t)).toBe(4);
-    t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [] });
+    t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [], values: [] });
     vi.advanceTimersByTime(5000);
     expect(readies(t)).toBe(4);
   });
@@ -569,7 +638,7 @@ describe("ready retry", () => {
   test("does not repeat when the first ready is answered at once", () => {
     vi.useFakeTimers();
     const t = memoryTransport();
-    t.native.listen(() => t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [] }));
+    t.native.listen(() => t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [], values: [] }));
     createClient(t.page);
     vi.advanceTimersByTime(5000);
     expect(readies(t)).toBe(1);
@@ -605,7 +674,7 @@ describe("ready retry", () => {
   test("stops when a snapshot of another version fails the client", () => {
     vi.useFakeTimers();
     const { t, client } = setup();
-    t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION + 1, params: [] });
+    t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION + 1, params: [], values: [] });
     expect(client.failure()).toBeDefined();
     vi.advanceTimersByTime(5000);
     expect(readies(t)).toBe(1);

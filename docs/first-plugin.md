@@ -384,8 +384,8 @@ cargo test -p seam-example-gain
 
 ## 9. A page in the host's window
 
-The gain's editor is a page: a slider on the gain and a field for the label,
-a small Vite and React app in
+The gain's editor is a page: a slider on the gain, a field for the label and
+the plugin's version, a small Vite and React app in
 [`examples/gain/page`](../examples/gain/page/src/main.tsx) on the `seam-page`
 hooks, typed by the gain's parameter map, which a test of the gain keeps in
 step with its declarations. `npm run build` there writes three files under
@@ -403,39 +403,41 @@ fn editor(&mut self) -> Option<Box<dyn Editor>> {
 ```
 
 [`Page`](../crates/webview/src/lib.rs), from `seam-webview`, makes it from the
-built files, a size and two commands. The label's commands go through the
-same value the plugin saves, so a rename from the page is one undo step,
-saved with the plugin:
+built files, a size, the label and one command:
 
 ```rust
 pub(crate) fn editor(gain: &Gain) -> Option<Box<dyn Editor>> {
-    let (read, write) = (gain.label.clone(), gain.label.clone());
     Page::new(&Gain::INFO, gain.ui().clone(), PAGE.unwrap_or_default())
         .with_size(Size {
             width: 420,
             height: 220,
         })
-        .command("getLabel", move |()| Ok(read.get()))
-        .command("setLabel", move |label: String| {
-            write.set(label);
-            Ok(())
-        })
+        .value("label", &gain.label)
+        .command("version", |()| Ok(Gain::INFO.version))
         .into_editor()
 }
 ```
 
-The page hears of no change the host makes to the label, such as a load, so
-its field reads the label again when it takes focus, and stores it only when
-the text differs from what it read: a click into the field and out never
-writes an old label over the one a load brought. The page writes the gain
-through a clone of the parts' handle, as a user would: one host gesture and
-one undo step per drag. The VST3 exporter opens the editor in the host's
-window on Windows, follows its size and scale, and ticks it after each idle;
-elsewhere `into_editor` gives `None`, and the host shows its own controls. A
-debug build loads the page from Vite's dev server, with hot reload, when
-`SEAM_PAGE_DEV_URL` holds the address `npm run dev` prints, whether or not
-the page was built in; with no files and no dev server, `into_editor` gives
-`None`.
+`value` binds the label for the page: the same value the plugin saves and
+undo records, which the page reads with `useValue("label")`. The page shows
+it as the plugin holds it, whatever changed it, a load or an undo included,
+and a rename from the page is the user's write: one undo step, saved with the
+plugin. A value crosses as the JSON serde writes for its type, and the
+page's `Values` map, written by hand, gives each key that type. The field
+keeps the text being typed only until Enter or the field loses the focus,
+and stores it only when it differs from the label, so a load while the field
+is idle shows at once and a click into the field and out stores nothing. A
+command is for what is not state, such as the version the page asks for
+once and shows beside its title, or a write the plugin must check or refuse.
+
+The page writes the gain through a clone of the parts' handle, as a user
+would: one host gesture and one undo step per drag. The VST3 exporter opens
+the editor in the host's window on Windows, follows its size and scale, and
+ticks it after each idle; elsewhere `into_editor` gives `None`, and the host
+shows its own controls. A debug build loads the page from Vite's dev server,
+with hot reload, when `SEAM_PAGE_DEV_URL` holds the address `npm run dev`
+prints, whether or not the page was built in; with no files and no dev
+server, `into_editor` gives `None`.
 
 ## 10. Build and bundle the module
 

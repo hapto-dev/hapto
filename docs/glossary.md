@@ -45,6 +45,13 @@ Three senses:
 - **A reserved block**: a range of NRPN numbers the plugin's own protocol owns
   (see [reservation](#reservation)).
 
+### Bound value
+
+A plain value a plugin binds for its page under a key
+([`Values`](../crates/bridge/src/dispatcher.rs)): the page shows it as the
+plugin holds it, whatever changed it, and writes it as the user, with
+`useValue`. No host sees it.
+
 ### Burst
 
 A run of learned values for one UI-tier [target](#target), written as one
@@ -315,7 +322,8 @@ registers its key.
 Two senses: learn's dispatch snapshot, the table of mappings the audio thread
 reads ([snapshot.rs](../crates/learn/src/snapshot.rs)), and the page protocol's
 `snapshot` message: the native side's answer to a page's `ready`, with every
-parameter's state ([seam-bridge](../crates/bridge/src/lib.rs)).
+parameter's state and every [bound value](#bound-value)
+([seam-bridge](../crates/bridge/src/lib.rs)).
 
 ### Staged
 

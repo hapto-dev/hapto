@@ -53,8 +53,9 @@ reading how Seam works inside, start with
   knows no toolkit; `engine/editor.rs` drives one for each view a host asks
   for, and the VST3 exporter's view is `vst3/view.rs`.
 - `crates/bridge`: the page protocol, its native side (`Dispatcher`, which
-  answers a page and tells it of every change), and the TypeScript generated
-  from it.
+  answers a page and tells it of every change to the parameters and to the
+  values a plugin binds for it in `Values`), and the TypeScript generated from
+  it.
 - `crates/webview`: the shell that shows a plugin's page in the host's
   window, on Windows: `Page` makes the `Editor`, a WebView2 child window
   through wry, which serves the page from bytes built into the plugin and

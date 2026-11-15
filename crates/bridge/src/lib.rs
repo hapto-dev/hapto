@@ -18,12 +18,13 @@
 //!   second until it is answered. The native side answers every `ready`: with
 //!   a [snapshot][glossary-snapshot] ([`NativeMessage::Snapshot`]) when it
 //!   speaks the page's protocol version, with a [`NativeMessage::Reject`]
-//!   when it does not. Later changes arrive as [`NativeMessage::Param`].
-//!   Subscribing first means no change can fall between the seed and the
-//!   subscription.
-//! - A page [holds][glossary-held] its sets, gestures and calls until the
-//!   snapshot arrives, then sends them in the order and within the bound that
-//!   [`page/src/held.ts`][held] states, and a `reject` drops them.
+//!   when it does not. Later changes arrive as [`NativeMessage::Param`] and
+//!   [`NativeMessage::Value`]. Subscribing first means no change can fall
+//!   between the seed and the subscription.
+//! - A page [holds][glossary-held] its sets, gestures, value writes and
+//!   calls until the snapshot arrives, then sends them in the order and
+//!   within the bound that [`page/src/held.ts`][held] states, and a `reject`
+//!   drops them.
 //! - Each `ready` starts a page session, which holds the gestures the page
 //!   opens. The next `ready`, or the page going away, closes those it left
 //!   open, once. Every write follows the page's last `ready`, so a repeated
@@ -32,11 +33,15 @@
 //!   when a new session starts.
 //! - Every [`PageMessage::Set`] and [`PageMessage::GestureEnd`] is answered
 //!   with a [`NativeMessage::Param`], changed or not, so the page ends on the
-//!   [store][glossary-store]'s value. A write that names a key the plugin
-//!   does not list is refused unanswered, and counted ([`Refusals`]).
+//!   [store][glossary-store]'s value. Every [`PageMessage::SetValue`] is
+//!   answered with a [`NativeMessage::Value`], stored or not, so the page
+//!   ends on what the plugin holds. A write that names a key the plugin does
+//!   not list or bind is refused unanswered, and counted ([`Refusals`]).
 //! - Parameter values cross as normalised positions (0 to 1) and as the
 //!   display text Rust formats. Ranges, skew and snapping stay in Rust, so
 //!   the page never repeats that arithmetic.
+//! - A value the plugin binds for its page ([`Values`]), state that is not a
+//!   parameter, crosses whole, as the JSON serde writes for its type.
 //! - Decoding never truncates, wraps or clamps a number to fit: it refuses
 //!   ([`PageMessage::decode`] lists what), so the page limits a control's
 //!   position to 0 to 1 before it sends it.
@@ -51,7 +56,7 @@
 //! [`Outbox`], here a test's buffer:
 //!
 //! ```
-//! use seam_bridge::{Commands, Dispatcher, NativeMessage, ParamState, Position};
+//! use seam_bridge::{Commands, Dispatcher, NativeMessage, ParamState, Position, Values};
 //! use seam_params::{Kind, ParamDecl, ParamSet};
 //!
 //! let set = ParamSet::from_decls([
@@ -59,10 +64,10 @@
 //!         .with_unit("%"),
 //! ])?;
 //! let ui = set.take_ui().expect("the first UI handle");
-//! let mut native = Dispatcher::new(ui, Commands::new(), Vec::<String>::new());
+//! let mut native = Dispatcher::new(ui, Commands::new(), Values::new(), Vec::<String>::new());
 //!
 //! // The page is listening, then sets the mix.
-//! native.receive(r#"{"type":"ready","protocol":2}"#);
+//! native.receive(r#"{"type":"ready","protocol":3}"#);
 //! native.receive(r#"{"type":"set","param":"mix","normalized":0.5}"#);
 //!
 //! // The native side answered the ready with a snapshot, and the set with the
@@ -90,8 +95,8 @@ pub mod protocol;
 #[cfg_attr(docsrs, doc(cfg(feature = "typescript")))]
 pub mod typescript;
 
-pub use dispatcher::{Commands, Dispatcher, Refusals};
-pub use protocol::{CallResult, DecodeError, PROTOCOL_VERSION, ParamState, Position};
+pub use dispatcher::{Commands, Dispatcher, Refusals, Values};
+pub use protocol::{CallResult, DecodeError, PROTOCOL_VERSION, ParamState, Position, ValueState};
 #[doc(inline)]
 pub use protocol::{NativeMessage, PageMessage};
 

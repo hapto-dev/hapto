@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
-import { position, type BoundParam, type Client } from "./client";
+import { position, type BoundParam, type BoundValue, type Client } from "./client";
 
 /** One command's shape: the single value sent as `args` and the value returned.
     Use `void` for a command that takes no arguments, and `returns: null` for
@@ -41,6 +41,18 @@ export interface UseParamResult {
   failure: Error | undefined;
 }
 
+export interface UseValueResult<T> {
+  /** The value as the plugin holds it, or undefined until the snapshot
+      arrives. After `set`, the value set, until the native side's answer. */
+  value: T | undefined;
+  /** Stores `value` as the user's write: one undo step where the plugin
+      enrolled the value. The native side answers with the value it holds,
+      stored or not, which `value` then shows. */
+  set: (value: T) => void;
+  /** Set once the client has failed (protocol mismatch). Writes are then dropped. */
+  failure: Error | undefined;
+}
+
 export interface UseCommandResult<Args, Returns> {
   /** Runs the command. Concurrent calls are fine. */
   run: (...args: RunArgs<Args>) => Promise<Returns>;
@@ -52,8 +64,9 @@ export interface UseCommandResult<Args, Returns> {
   error: Error | undefined;
 }
 
-export interface Hooks<Params, Events, Commands extends CommandMap<Commands>> {
+export interface Hooks<Params, Events, Commands extends CommandMap<Commands>, Values> {
   useParam<K extends Extract<keyof Params, string>>(id: K): UseParamResult;
+  useValue<K extends Extract<keyof Values, string>>(key: K): UseValueResult<Values[K]>;
   useEvent<K extends Extract<keyof Events, string>>(
     name: K,
     handler: (payload: Events[K]) => void,
@@ -77,14 +90,16 @@ function useFailure(client: Client): Error | undefined {
 }
 
 /**
- * Creates `useParam`, `useEvent` and `useCommand` for one page. Call it once at
- * module scope with the page's three maps. The parameter map is generated from
- * the Rust declarations (`seam_bridge::typescript::param_map`); the event and
- * command maps are written by hand until Rust generates them too:
+ * Creates `useParam`, `useValue`, `useEvent` and `useCommand` for one page.
+ * Call it once at module scope with the page's four maps. The parameter map is
+ * generated from the Rust declarations (`seam_bridge::typescript::param_map`);
+ * the event, command and value maps are written by hand until Rust generates
+ * them too. The value map gives each key the type serde writes for the value
+ * bound under it:
  *
  * ```ts
- * export const { useParam, useEvent, useCommand } =
- *   createHooks<Params, Events, Commands>(createClient(transport));
+ * export const { useParam, useValue, useEvent, useCommand } =
+ *   createHooks<Params, Events, Commands, Values>(createClient(transport));
  * ```
  *
  * The maps are fixed here, so each returned hook has a single type parameter,
@@ -93,9 +108,9 @@ function useFailure(client: Client): Error | undefined {
  * type parameter would leave it free, and TypeScript would then infer a map
  * containing whatever id was typed, so nothing would ever fail.
  */
-export function createHooks<Params, Events, Commands extends CommandMap<Commands>>(
+export function createHooks<Params, Events, Commands extends CommandMap<Commands>, Values>(
   client: Client,
-): Hooks<Params, Events, Commands> {
+): Hooks<Params, Events, Commands, Values> {
   function useParam<K extends Extract<keyof Params, string>>(id: K): UseParamResult {
     const [shown, setShown] = useState({ value: 0, text: "" });
     const draggingRef = useRef(false);
@@ -176,6 +191,36 @@ export function createHooks<Params, Events, Commands extends CommandMap<Commands
     };
   }
 
+  function useValue<K extends Extract<keyof Values, string>>(key: K): UseValueResult<Values[K]> {
+    type T = Values[K];
+    // Boxed, so a value is never taken for a state updater.
+    const [shown, setShown] = useState<{ value: T | undefined }>({ value: undefined });
+    const boundRef = useRef<BoundValue | null>(null);
+    const failure = useFailure(client);
+
+    // Layout effect so the cached value is on screen before first paint.
+    useLayoutEffect(() => {
+      // The client passes on every value, repeats included; returning `prev`
+      // for the same one lets React skip the render.
+      const bound = client.bindValue(key, (value) =>
+        setShown((prev) => (prev.value === value ? prev : { value: value as T })),
+      );
+      boundRef.current = bound;
+      setShown({ value: bound.current() as T | undefined });
+      return () => {
+        bound.dispose();
+        boundRef.current = null;
+      };
+    }, [key]);
+
+    const set = useCallback((value: T) => {
+      setShown({ value });
+      boundRef.current?.set(value);
+    }, []);
+
+    return { value: shown.value, set, failure };
+  }
+
   function useEvent<K extends Extract<keyof Events, string>>(
     name: K,
     handler: (payload: Events[K]) => void,
@@ -241,5 +286,5 @@ export function createHooks<Params, Events, Commands extends CommandMap<Commands
     return { run, pending, data, error };
   }
 
-  return { useParam, useEvent, useCommand };
+  return { useParam, useValue, useEvent, useCommand };
 }

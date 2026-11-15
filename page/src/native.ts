@@ -43,6 +43,8 @@ const fits = (fields: Fields) => (value: unknown): boolean => mismatch(value, fi
 
 const isParamState = fits({ param: isString, normalized: isPosition, text: isString });
 
+const isValueState = fits({ key: isString, value: anything });
+
 const isCallResult = (value: unknown): boolean =>
   fits({ status: (status) => status === "ok", value: anything })(value) ||
   fits({ status: (status) => status === "err", message: isString })(value);
@@ -50,9 +52,15 @@ const isCallResult = (value: unknown): boolean =>
 // Keyed by every type, so a new NativeMessage variant fails the typecheck
 // until it is listed.
 const SHAPES: Record<NativeMessage["type"], Fields> = {
-  snapshot: { type: anything, protocol: isU32, params: (params) => Array.isArray(params) && params.every(isParamState) },
+  snapshot: {
+    type: anything,
+    protocol: isU32,
+    params: (params) => Array.isArray(params) && params.every(isParamState),
+    values: (values) => Array.isArray(values) && values.every(isValueState),
+  },
   reject: { type: anything, protocol: isU32, message: isString },
   param: { type: anything, state: isParamState },
+  value: { type: anything, state: isValueState },
   reply: { type: anything, call: isU32, result: isCallResult },
   event: { type: anything, name: isString, payload: anything },
 };

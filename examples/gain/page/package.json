@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "The example gain's page: a slider on the gain and a field for the label, in the plugin's window.",
+  "description": "The example gain's page: a slider on the gain, a field for the label and the version, in the plugin's window.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

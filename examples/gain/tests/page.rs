@@ -20,7 +20,7 @@ use seam_host::{
 use seam_webview::Page;
 
 thread_local! {
-    /// How many times the page asked for the label.
+    /// How many times the page asked for the version.
     static ASKED: Cell<u32> = const { Cell::new(0) };
 }
 
@@ -32,7 +32,7 @@ impl Processor for Through {
     }
 }
 
-/// The gain's parameters and page, with commands that record their calls.
+/// The gain's parameters and page, with a command that records its calls.
 struct Probe {
     parts: Parts,
 }
@@ -71,11 +71,10 @@ impl Plugin for Probe {
     fn editor(&mut self) -> Option<Box<dyn Editor>> {
         let page = PAGE.expect("the page built in: run `npm run build` in examples/gain/page");
         Page::new(&Self::INFO, self.parts.ui().clone(), page)
-            .command("getLabel", |()| {
+            .command("version", |()| {
                 ASKED.with(|asked| asked.set(asked.get() + 1));
-                Ok("Lead")
+                Ok(Self::INFO.version)
             })
-            .command("setLabel", |_label: String| Ok(()))
             .into_editor()
     }
 }

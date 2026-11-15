@@ -13,7 +13,7 @@ use ts_rs::TS;
 /// [crate overview](crate) describes the handshake. A test fails when the
 /// message shapes change and this does not (`tests/protocol_version.rs`); a
 /// change to what decodes has no such test, so it is raised by hand.
-pub const PROTOCOL_VERSION: u32 = 2;
+pub const PROTOCOL_VERSION: u32 = 3;
 
 /// A message from the page.
 ///
@@ -91,6 +91,19 @@ pub enum PageMessage {
         #[cfg_attr(feature = "typescript", ts(type = "unknown"))]
         args: serde_json::Value,
     },
+    /// Stores a value the plugin binds for its page, as the user. The native
+    /// side answers with a [`NativeMessage::Value`], stored or not, so the
+    /// page ends on what the plugin holds.
+    SetValue {
+        /// The value's key, as the plugin binds it
+        /// ([`Values::value`](crate::Values::value)).
+        key: String,
+        /// The value, as serde reads the bound value's type. Absent decodes
+        /// as null: JSON drops an `undefined` field.
+        #[serde(default)]
+        #[cfg_attr(feature = "typescript", ts(type = "unknown"))]
+        value: serde_json::Value,
+    },
 }
 
 /// A message to the page.
@@ -126,6 +139,9 @@ pub enum NativeMessage {
         protocol: u32,
         /// Every parameter, in declaration order.
         params: Vec<ParamState>,
+        /// Every value the plugin binds for its page, in the order it bound
+        /// them.
+        values: Vec<ValueState>,
     },
     /// The answer to a [`PageMessage::Ready`] of a version the native side
     /// cannot serve. The page fails: it stops sending and rejects its calls.
@@ -144,6 +160,15 @@ pub enum NativeMessage {
     Param {
         /// Its new state.
         state: ParamState,
+    },
+    /// A bound value's state, after a change or in answer to a write.
+    ///
+    /// The native side sends one after a change by any origin (a load, undo,
+    /// the plugin's own write, another surface), and in answer to every
+    /// [`PageMessage::SetValue`], stored or not.
+    Value {
+        /// Its new state.
+        state: ValueState,
     },
     /// The answer to an [`PageMessage::Invoke`].
     Reply {
@@ -195,6 +220,34 @@ pub struct ParamState {
     pub normalized: Position,
     /// Its value as text, in its unit ("-6.0 dB").
     pub text: String,
+}
+
+/// A value the plugin binds for its page, as the page shows it: plugin state
+/// that is not a parameter, such as a name or a path.
+///
+/// # Examples
+///
+/// ```
+/// use seam_bridge::{NativeMessage, ValueState};
+///
+/// // A value crosses as the JSON serde writes for its type.
+/// let message = NativeMessage::Value {
+///     state: ValueState { key: "label".into(), value: "Lead".into() },
+/// };
+/// assert_eq!(
+///     message.encode(),
+///     r#"{"type":"value","state":{"key":"label","value":"Lead"}}"#,
+/// );
+/// ```
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(TS))]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ValueState {
+    /// The value's key, as the plugin binds it.
+    pub key: String,
+    /// The value, as serde writes the bound value's type.
+    #[cfg_attr(feature = "typescript", ts(type = "unknown"))]
+    pub value: serde_json::Value,
 }
 
 /// What a command returned.
@@ -448,6 +501,22 @@ mod tests {
                 args: serde_json::Value::Null
             }
         );
+    }
+
+    #[test]
+    fn a_set_value_without_a_value_decodes_with_a_null_value() {
+        let message = PageMessage::decode(r#"{"type":"setValue","key":"label"}"#).unwrap();
+        assert_eq!(
+            message,
+            PageMessage::SetValue {
+                key: "label".into(),
+                value: serde_json::Value::Null
+            }
+        );
+        // The key is the one field it cannot do without.
+        assert!(PageMessage::decode(r#"{"type":"setValue","value":"Lead"}"#).is_err());
+        let text = r#"{"type":"setValue","key":"label","value":1,"x":0}"#;
+        assert!(PageMessage::decode(text).is_err());
     }
 
     #[test]

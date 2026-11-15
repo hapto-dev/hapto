@@ -23,6 +23,7 @@ describe("the shared message fixture", () => {
     const t = memoryTransport();
     const client = createClient(t.page);
     const bound = client.bindParam("gain", () => {});
+    const label = client.bindValue("label", () => {});
     for (const { message } of fixture.page) {
       switch (message.type) {
         case "ready":
@@ -40,6 +41,10 @@ describe("the shared message fixture", () => {
         case "invoke":
           client.invoke(message.command, message.args).catch(() => {});
           break;
+        case "setValue":
+          expect(message.key).toBe("label");
+          label.set(message.value);
+          break;
         default: {
           const unhandled: never = message;
           void unhandled;
@@ -48,7 +53,7 @@ describe("the shared message fixture", () => {
     }
     // The writes and calls waited for the snapshot; it releases them in order.
     expect(t.native.received).toEqual([{ type: "ready", protocol: PROTOCOL_VERSION }]);
-    t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [] });
+    t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [], values: [] });
     client.dispose();
     // What crosses a transport is JSON text: compare what it would carry.
     expect(JSON.parse(JSON.stringify(t.native.received))).toEqual(fixture.page.map((e) => e.message));
@@ -59,8 +64,10 @@ describe("the shared message fixture", () => {
     const t = memoryTransport();
     const client = createClient(t.page);
     const states: unknown[] = [];
+    const values: unknown[] = [];
     const events: unknown[] = [];
     client.bindParam("gain", (state) => states.push(state));
+    client.bindValue("label", (value) => values.push(value));
     client.onEvent("learned", (payload) => events.push(payload));
     const calls = [1, 2, 3].map((n) => client.invoke(`command${n}`, null).then(
       (value) => ({ ok: value }),
@@ -76,9 +83,14 @@ describe("the shared message fixture", () => {
       switch (message.type) {
         case "snapshot":
           expect(client.bindParam("mode", () => {}).current()).toEqual(message.params[1]);
+          expect(client.bindValue("sample", () => {}).current()).toBe(null);
+          expect(values).toEqual([message.values[0]?.value]);
           break;
         case "param":
           expect(states.at(-1)).toEqual(message.state);
+          break;
+        case "value":
+          expect(values.at(-1)).toEqual(message.state.value);
           break;
         case "event":
           expect(events.at(-1)).toEqual(message.payload);
@@ -98,7 +110,7 @@ describe("the shared message fixture", () => {
     }
     // The three replies in the fixture settle the three calls, in order.
     expect(await Promise.all(calls)).toEqual([{ ok: { renamed: true } }, { ok: null }, { err: "no such command" }]);
-    expect([...seen].sort()).toEqual(["event", "param", "reject", "reply", "snapshot"]);
+    expect([...seen].sort()).toEqual(["event", "param", "reject", "reply", "snapshot", "value"]);
   });
 
   test("the widest numbers the native side writes are read as it wrote them", () => {
@@ -108,7 +120,7 @@ describe("the shared message fixture", () => {
     for (const { name, message } of fixture.nativeLimits) {
       const t = memoryTransport();
       const client = createClient(t.page);
-      t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [] });
+      t.native.send({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [], values: [] });
       const states: unknown[] = [];
       client.bindParam("gain", (state) => states.push(state));
       t.native.send(JSON.parse(JSON.stringify(message)));

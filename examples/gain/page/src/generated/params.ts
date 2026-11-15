@@ -31,5 +31,5 @@ export const PARAMS = {
   },
 } as const;
 
-/** The page's parameter map, for `createHooks<Params, Events, Commands>`. */
+/** The page's parameter map, for `createHooks<Params, Events, Commands, Values>`. */
 export type Params = typeof PARAMS;

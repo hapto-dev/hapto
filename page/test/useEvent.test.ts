@@ -23,7 +23,7 @@ function setup() {
       return client.onEvent(name, handler);
     },
   };
-  const { useEvent } = createHooks<Record<string, never>, Events, Record<string, never>>(counting);
+  const { useEvent } = createHooks<Record<string, never>, Events, Record<string, never>, Record<string, never>>(counting);
   const emit = (name: string, payload: unknown) => act(() => t.native.send({ type: "event", name, payload }));
   return { useEvent, emit, subscribes, t };
 }

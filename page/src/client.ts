@@ -1,8 +1,8 @@
-// The page's connection to the native side: caches parameter state, sends
-// writes as protocol messages, and correlates invoke replies.
+// The page's connection to the native side: caches parameter and value state,
+// sends writes as protocol messages, and correlates invoke replies.
 
-import { PROTOCOL_VERSION, type NativeMessage, type ParamState } from "./generated/protocol";
-import { heldQueue, type ParamWrite } from "./held";
+import { PROTOCOL_VERSION, type NativeMessage, type ParamState, type ValueState } from "./generated/protocol";
+import { heldQueue, type ParamWrite, type ValueWrite } from "./held";
 import { malformed, reasonOf, versionOf } from "./native";
 import type { Transport } from "./transport";
 
@@ -25,12 +25,31 @@ export interface BoundParam {
   dispose(): void;
 }
 
+/** One value the plugin binds for its page, as a control sees it. */
+export interface BoundValue {
+  /** Stores `value` as the user's write. The native side stores it when it
+      decodes to the value's type, and answers with the value it holds,
+      stored or not. Until the snapshot arrives the write waits, and goes out
+      after it; a reject drops it. While it waits, the key's later writes
+      replace it until a held call comes between. */
+  set(value: unknown): void;
+  /** The latest value the native side sent, or undefined before the snapshot. */
+  current(): unknown;
+  /** Stops `onValue`. */
+  dispose(): void;
+}
+
 export interface Client {
   /** Calls `onState` with every state the native side sends for this
       parameter after the call, an unchanged one included: the native side
       answers every `set` and `gestureEnd`, and that answer is news to a
       control still showing its own value even when the store did not move. */
   bindParam(id: string, onState: (state: ParamState) => void): BoundParam;
+  /** Calls `onValue` with every value the native side sends for this key
+      after the call, an unchanged one included: the native side answers
+      every `setValue`, and that answer is news to a control still showing
+      its own value. A value's key is its own, never a parameter's. */
+  bindValue(key: string, onValue: (value: unknown) => void): BoundValue;
   /** Runs a native command. Rejects with the native message on `err`, and with
       the failure once the client has failed. Until the snapshot arrives the call
       waits and goes out after it, behind every write made before it; a reject
@@ -112,6 +131,8 @@ const READY_RETRY_MS = 1000;
 export function createClient(transport: Transport): Client {
   const cache = new Map<string, ParamState>();
   const paramHandlers = new Map<string, Set<(state: ParamState) => void>>();
+  const values = new Map<string, unknown>();
+  const valueHandlers = new Map<string, Set<(value: unknown) => void>>();
   const eventHandlers = new Map<string, Set<(payload: unknown) => void>>();
   const failureHandlers = new Set<(failure: Error) => void>();
   const pending = new Map<number, Pending>();
@@ -142,6 +163,13 @@ export function createClient(transport: Transport): Client {
     cache.set(state.param, state);
     for (const handler of [...(paramHandlers.get(state.param) ?? [])]) {
       isolate(() => handler(state));
+    }
+  }
+
+  function storeValue(state: ValueState): void {
+    values.set(state.key, state.value);
+    for (const handler of [...(valueHandlers.get(state.key) ?? [])]) {
+      isolate(() => handler(state.value));
     }
   }
 
@@ -179,6 +207,7 @@ export function createClient(transport: Transport): Client {
       case "snapshot":
         stopReadyRetry();
         for (const state of message.params) store(state);
+        for (const state of message.values) storeValue(state);
         ready = true;
         flush();
         return;
@@ -187,6 +216,9 @@ export function createClient(transport: Transport): Client {
         return;
       case "param":
         store(message.state);
+        return;
+      case "value":
+        storeValue(message.state);
         return;
       case "reply": {
         const call = pending.get(message.call);
@@ -231,7 +263,7 @@ export function createClient(transport: Transport): Client {
     );
   }
 
-  function write(message: ParamWrite): void {
+  function write(message: ParamWrite | ValueWrite): void {
     if (failed || disposed) return;
     if (ready && !flushing) transport.send(message);
     else held.write(message);
@@ -248,6 +280,14 @@ export function createClient(transport: Transport): Client {
         },
         gestureEnd: () => write({ type: "gestureEnd", param: id }),
         current: () => cache.get(id),
+        dispose: remove,
+      };
+    },
+    bindValue(key, onValue) {
+      const remove = add(valueHandlers, key, onValue);
+      return {
+        set: (value) => write({ type: "setValue", key, value }),
+        current: () => values.get(key),
         dispose: remove,
       };
     },
