@@ -5,9 +5,10 @@
 //! release, then lays the bundle out under `target/bundle/` and prints its
 //! path; with `--install` or `--install-system` it copies the bundle into a
 //! VST3 folder the host scans. A crate's page is the npm package in its
-//! `page` folder. The page is built every time, so a missing or stale build
-//! never reaches a bundle unseen; Cargo itself never runs Node, so this task
-//! does. Windows only for now: a macOS bundle has another layout.
+//! `page` folder. The page is type-checked and built every time, so a page
+//! that does not check, or a missing or stale build, never reaches a bundle
+//! unseen; Cargo itself never runs Node, so this task does. Windows only for
+//! now: a macOS bundle has another layout.
 
 use std::fs;
 use std::io;
@@ -17,9 +18,9 @@ use std::time::SystemTime;
 
 /// The usage line `cargo xtask` prints for this task.
 pub const USAGE: &str = "  bundle -p <crate> [--no-page] [--install | --install-system]
-                    build the crate's page and the crate in release, lay out its VST3 bundle under
-                    target/bundle/ and print its path; --install copies it to the per-user VST3
-                    folder, --install-system to the one in Program Files";
+                    check and build the crate's page, build the crate in release, lay out its
+                    VST3 bundle under target/bundle/ and print its path; --install copies it to
+                    the per-user VST3 folder, --install-system to the one in Program Files";
 
 /// The Windows error a copy over a file another process holds fails with:
 /// `ERROR_SHARING_VIOLATION`.
@@ -196,6 +197,15 @@ pub fn layout(root: &Path, name: &str, arch: &str) -> (PathBuf, PathBuf) {
     (bundle, module)
 }
 
+/// Returns the npm scripts that build a page, in order, from its
+/// `package.json`: `typecheck` when the page has one, since Vite's build
+/// strips types without checking them, then `build`.
+pub fn page_scripts(package: &serde_json::Value) -> Vec<&'static str> {
+    let has = |script: &str| package["scripts"][script].is_string();
+    let check = has("typecheck").then_some("typecheck");
+    check.into_iter().chain(["build"]).collect()
+}
+
 /// Says whether a page's packages need `npm ci`: when `node_modules` is
 /// missing, or older than the lockfile. Each is the time its file was last
 /// written; `node_modules` is dated by the lockfile `npm ci` writes into it.
@@ -296,10 +306,17 @@ fn build_page(page: &Path) -> Result<(), String> {
     if needs_npm_ci(installed, modified(page.join("package-lock.json"))) {
         run_tool(Command::new(npm).arg("ci").current_dir(page), "npm ci")?;
     }
-    run_tool(
-        Command::new(npm).args(["run", "build"]).current_dir(page),
-        "npm run build",
-    )
+    let manifest = page.join("package.json");
+    let package = fs::read(&manifest).map_err(|e| format!("{}: {e}", manifest.display()))?;
+    let package =
+        serde_json::from_slice(&package).map_err(|e| format!("{}: {e}", manifest.display()))?;
+    for script in page_scripts(&package) {
+        run_tool(
+            Command::new(npm).args(["run", script]).current_dir(page),
+            &format!("npm run {script}"),
+        )?;
+    }
+    Ok(())
 }
 
 fn run_tool(command: &mut Command, what: &str) -> Result<(), String> {

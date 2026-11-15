@@ -1,13 +1,14 @@
 //! `cargo xtask bundle` reads its arguments and `cargo metadata`, lays a
-//! bundle out where a host looks, runs `npm ci` only when needed, and words a
-//! failed copy so the user knows what to do.
+//! bundle out where a host looks, checks a page's types before building it,
+//! runs `npm ci` only when needed, and words a failed copy so the user knows
+//! what to do.
 
 use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use xtask::bundle::{
-    Folder, Options, Plugin, arch_folder, copy_error, layout, needs_npm_ci, plugin,
+    Folder, Options, Plugin, arch_folder, copy_error, layout, needs_npm_ci, page_scripts, plugin,
 };
 
 fn parse(args: &[&str]) -> Result<Options, String> {
@@ -155,4 +156,15 @@ fn a_refused_system_copy_says_it_needs_an_administrator() {
 fn each_folder_names_the_other() {
     assert_eq!(Folder::User.other(), Folder::System);
     assert_eq!(Folder::System.other(), Folder::User);
+}
+
+#[test]
+fn a_page_is_type_checked_before_it_is_built() {
+    let checked = serde_json::json!({
+        "scripts": { "dev": "vite", "build": "vite build", "typecheck": "tsc --noEmit" }
+    });
+    assert_eq!(page_scripts(&checked), ["typecheck", "build"]);
+    let unchecked = serde_json::json!({ "scripts": { "build": "vite build" } });
+    assert_eq!(page_scripts(&unchecked), ["build"]);
+    assert_eq!(page_scripts(&serde_json::json!({})), ["build"]);
 }

@@ -452,8 +452,11 @@ cargo xtask bundle -p seam-example-gain --install
 ```
 
 It runs `npm ci` in `page/` when `node_modules` is missing or older than the
-lockfile, and `npm run build` every time, so a stale page never reaches the
-bundle; `--no-page` skips the page for a Rust-only rebuild. The bundle goes to
+lockfile, then `npm run typecheck`, when the page has that script, and `npm run
+build` every time. Vite's build strips the page's types without checking them,
+so the check is what stops a page whose keys disagree with its generated
+parameter map; neither that nor a stale page reaches the bundle.
+`--no-page` skips the page for a Rust-only rebuild. The bundle goes to
 `target/bundle/Seam Example Gain.vst3`, named from `[package.metadata.seam]`.
 `--install` copies it to the per-user VST3 folder,
 `%LOCALAPPDATA%\Programs\Common\VST3`, which needs no administrator;
@@ -467,7 +470,7 @@ library goes in as the module itself, under the architecture's folder, as CI
 lays out the EQ's bundle:
 
 ```sh
-cd examples/gain/page && npm ci && npm run build && cd ../../..
+cd examples/gain/page && npm ci && npm run typecheck && npm run build && cd ../../..
 cargo build -p seam-example-gain --release
 bundle="target/bundle/Seam Example Gain.vst3"
 mkdir -p "$bundle/Contents/x86_64-win"
