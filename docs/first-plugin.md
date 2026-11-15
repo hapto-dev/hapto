@@ -422,8 +422,12 @@ pub(crate) fn editor(gain: &Gain) -> Option<Box<dyn Editor>> {
 }
 ```
 
-The page writes the gain through a clone of the parts' handle, as a user
-would: one host gesture and one undo step per drag. The VST3 exporter opens
+The page hears of no change the host makes to the label, such as a load, so
+its field reads the label again when it takes focus, and stores it only when
+the text differs from what it read: a click into the field and out never
+writes an old label over the one a load brought. The page writes the gain
+through a clone of the parts' handle, as a user would: one host gesture and
+one undo step per drag. The VST3 exporter opens
 the editor in the host's window on Windows, follows its size and scale, and
 ticks it after each idle; elsewhere `into_editor` gives `None`, and the host
 shows its own controls. A debug build loads the page from Vite's dev server,

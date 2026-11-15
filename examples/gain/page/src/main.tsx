@@ -1,7 +1,7 @@
 // The gain's page: a slider on the gain, which drags it as a user would, and
 // a field for the plugin's label, through two commands.
 
-import { StrictMode, useEffect, useState } from "react";
+import { StrictMode, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { createClient, createHooks, webviewTransport } from "seam-page";
 
@@ -42,11 +42,35 @@ function LabelField() {
   const { run: fetchLabel } = useCommand("getLabel");
   const { run: storeLabel, error } = useCommand("setLabel");
   const [label, setLabel] = useState("");
-  useEffect(() => {
-    fetchLabel().then(setLabel, () => {});
+  // The label as the plugin last had it, read or stored; null until read.
+  // The page hears of no change the host makes, such as a load, so it reads
+  // the label again on focus, and stores only text that differs from it: a
+  // click into the field and out never writes an old label over a new one.
+  const known = useRef<string | null>(null);
+  // Counts the stores sent, so a read that a store overtook is dropped.
+  const stores = useRef(0);
+  const read = useCallback(() => {
+    const asked = stores.current;
+    fetchLabel().then(
+      (current) => {
+        if (stores.current !== asked) return;
+        const before = known.current;
+        known.current = current;
+        // Text typed since the last read is the user's, and stays.
+        setLabel((shown) => (before === null || shown === before ? current : shown));
+      },
+      () => {},
+    );
   }, [fetchLabel]);
+  useEffect(read, [read]);
   const commit = () => {
-    storeLabel(label).catch(() => {});
+    const before = known.current;
+    if (before === null || label === before) return;
+    known.current = label;
+    stores.current += 1;
+    storeLabel(label).catch(() => {
+      known.current = before;
+    });
   };
   return (
     <label className="row">
@@ -55,6 +79,7 @@ function LabelField() {
         type="text"
         value={label}
         onChange={(event) => setLabel(event.currentTarget.value)}
+        onFocus={read}
         onBlur={commit}
         onKeyDown={(event) => {
           if (event.key === "Enter") commit();
