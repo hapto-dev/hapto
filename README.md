@@ -92,5 +92,6 @@ reaches `main`.
 ## Licence
 
 MIT ([LICENSE](LICENSE)). A plugin built with Seam also carries the VST3 SDK's
-MIT notice and `triple_buffer`'s MPL-2.0 notice, in
-[THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES).
+MIT notice and `triple_buffer`'s MPL-2.0 notice, and one whose editor is a
+page those of wry's WebView2 bindings, Microsoft's WebView2 loader, `bytes`
+and `dpi`, all in [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES).
