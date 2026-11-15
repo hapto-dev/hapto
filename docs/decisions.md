@@ -2720,10 +2720,13 @@ editor's own (`seam://localhost/`, which WebView2 reaches as
 `http://seam.localhost/`) with their content types, and 404 for any other
 path. A debug build loads `SEAM_PAGE_DEV_URL` instead when it is set (D26). The
 example gain's page builds with Vite to fixed names, and the gain's `build.rs`
-sets a cfg when the three files are there. Without them the plugin offers no
-editor, so a host shows its own controls, and the build warns; it never shows
-a placeholder page. Cargo never runs Node, and CI builds the page in the page
-lane so it cannot rot.
+sets a cfg when the three files are there. It watches those files, or, while
+they are missing, the `page` folder: a missing file that is watched reruns
+the script and rebuilds the gain on every command, and Cargo looks through a
+watched folder for anything newer, so a page built later is built in with no
+clean. Without them the plugin offers no editor, so a host shows its own
+controls, and the build warns; it never shows a placeholder page. Cargo never
+runs Node, and CI builds the page in the page lane so it cannot rot.
 
 **Alternatives.** The alternatives were a placeholder page when the build
 lacks one, which a user could ship by mistake, and a build script that runs

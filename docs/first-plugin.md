@@ -392,7 +392,8 @@ step with its declarations. `npm run build` there writes three files under
 fixed names, which
 [`src/page.rs`](../examples/gain/src/page.rs) builds into the plugin when they
 are there. When they are not, `build.rs` warns and the plugin offers no
-editor: Cargo never runs Node. The plugin hands the editor out:
+editor, until `npm run build` writes them and the next Cargo build takes them
+in: Cargo never runs Node. The plugin hands the editor out:
 
 ```rust
 fn editor(&mut self) -> Option<Box<dyn Editor>> {
