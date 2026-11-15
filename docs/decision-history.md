@@ -891,6 +891,22 @@ package's, with no key to give the plugin another; the layouts and the MIDI
 flags stay in Rust; the class id is written as a UUID; and a version with a
 pre-release part is refused.
 
+### D98. A page write naming an unknown key
+
+[The decision](decisions.md#d98-a-page-write-naming-an-unknown-key)
+
+Left open in `seam-bridge`'s crate docs until the native side was built, on
+2026-11-13, when it was settled the simplest safe way: refused and counted. To
+confirm.
+
+### D99. A call across page sessions
+
+[The decision](decisions.md#d99-a-call-across-page-sessions)
+
+Left open in `seam-bridge`'s crate docs until the native side was built, on
+2026-11-13. Commands were built to answer inside the call, which leaves no
+call to drop. To confirm.
+
 ## Rules
 
 ### P7. The host write: sanitise, clamp, convert, snap, store, publish
