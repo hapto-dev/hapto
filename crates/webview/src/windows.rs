@@ -25,7 +25,7 @@ use wry::http::{Response, StatusCode};
 use wry::{Rect, WebContext, WebView, WebViewBuilder, WebViewBuilderExtWindows};
 
 use crate::Page;
-use crate::assets::{SCHEME, data_folder, dev_url, is_page, page_url, serve};
+use crate::assets::{SCHEME, Served, data_folder, dev_url, is_page, page_url, serve};
 
 /// The page's side of the conversation: what the dispatcher posts goes to
 /// the WebView open now, in order, and nowhere while none is.
@@ -286,7 +286,20 @@ fn deliver(name: &'static str, native: &Native, message: String) {
 /// The scheme's answer to a request for `path`, built from the page's
 /// files with no copy.
 fn respond(assets: &'static [crate::Asset], path: &str) -> Response<Cow<'static, [u8]>> {
-    let served = serve(assets, path);
+    answer(|| serve(assets, path))
+}
+
+/// What a request is answered when serving it panicked.
+const FAILED: Served = Served {
+    status: 500,
+    content_type: "text/plain; charset=utf-8",
+    body: b"the file could not be served",
+};
+
+/// The response for what `serve` gives, or 500 when it panics: it runs
+/// inside WebView2's callback, where a panic must not unwind.
+fn answer(serve: impl FnOnce() -> Served) -> Response<Cow<'static, [u8]>> {
+    let served = panic::catch_unwind(AssertUnwindSafe(serve)).unwrap_or(FAILED);
     let mut response = Response::new(Cow::Borrowed(served.body));
     *response.status_mut() = StatusCode::from_u16(served.status).unwrap_or(StatusCode::NOT_FOUND);
     response
@@ -372,6 +385,19 @@ mod tests {
     fn poster(editor: &PageEditor) -> impl Fn(&str) + 'static {
         let native = Rc::clone(&editor.native);
         move |message| deliver("Panel", &native, message.to_owned())
+    }
+
+    #[test]
+    fn a_file_is_served_and_a_panic_while_serving_answers_500() {
+        let served = respond(PAGE, "/index.html");
+        assert_eq!(served.status(), StatusCode::OK);
+        assert_eq!(served.body().as_ref(), b"<!doctype html>");
+        let failed = answer(|| panic!("a bug while serving"));
+        assert_eq!(failed.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(
+            failed.headers().get(CONTENT_TYPE),
+            Some(&HeaderValue::from_static("text/plain; charset=utf-8"))
+        );
     }
 
     #[test]

@@ -2769,7 +2769,8 @@ once the call returns, before any later one, and a close that arrives inside
 it ends the page's session then. The dispatcher's messages reach the page,
 in order, as a script that calls `window.__seam.receive`, which the page's
 `webviewTransport` installs. A panic inside a WebView callback, the IPC
-handler's or the scheme's, is caught, since it would unwind into WebView2.
+handler's or the scheme's, is caught, since it would unwind into WebView2:
+the message is dropped, and the file answered 500.
 The WebView stays on the page: a navigation to any address but the page's,
 the embedded one or a debug build's dev server, is cancelled; a message from
 any other document is dropped; and a file dropped on it from outside is taken
