@@ -14,7 +14,8 @@
 //!   over a scheme of the editor's own, with their content types; any other
 //!   path is answered 404. A debug build loads a dev server instead when
 //!   `SEAM_PAGE_DEV_URL` is set, so the page's hot reload works in the
-//!   plugin's window. A release build never reads it.
+//!   plugin's window, with or without the files built in. A release build
+//!   never reads it.
 //! - **Messages.** What the page posts goes to a
 //!   [`Dispatcher`](seam_bridge::Dispatcher) over the plugin's parameters, as
 //!   it arrives; what the dispatcher posts reaches the page in order. The
@@ -176,7 +177,8 @@ impl Page {
 
     /// Describes the page of the plugin `info` names, writing to its
     /// parameters through `ui`, a clone of its parts' handle (`Parts::ui`),
-    /// so a drag on the page is a user's, and served from `assets`.
+    /// so a drag on the page is a user's, and served from `assets`, its
+    /// built files. With none, only a debug build's dev server shows it.
     ///
     /// Thread: main. [`Page`] shows one.
     pub fn new(info: &PluginInfo, ui: UiParams, assets: &'static [Asset]) -> Self {
@@ -219,8 +221,12 @@ impl Page {
     /// Makes the editor that shows the page, for
     /// [`Plugin::editor`](seam_host::Plugin::editor) to hand out: `None` on
     /// a platform with no WebView here, where the host shows its own
-    /// controls. [`Page`] shows one.
+    /// controls, and for a page with no files that no dev server serves.
+    /// [`Page`] shows one.
     pub fn into_editor(self) -> Option<Box<dyn Editor>> {
+        if self.assets.is_empty() && assets::dev_url().is_none() {
+            return None;
+        }
         #[cfg(windows)]
         {
             Some(Box::new(windows::PageEditor::new(self)))
@@ -294,6 +300,17 @@ mod tests {
         if let Some(editor) = editor {
             assert_eq!(editor.size(), size, "nothing opens until the host attaches");
         }
+    }
+
+    #[test]
+    fn a_page_with_no_files_is_an_editor_only_where_a_dev_server_serves_it() {
+        let set = ParamSet::from_decls([ParamDecl::new("gain", "Gain", Kind::Bool, 0.0)])
+            .expect("valid declarations");
+        let ui = set.take_ui().expect("the first UI handle");
+        let editor = Page::new(&INFO, ui, &[]).into_editor();
+        // A debug build run with `SEAM_PAGE_DEV_URL` set has a dev server.
+        let served = assets::dev_url().is_some();
+        assert_eq!(editor.is_some(), cfg!(windows) && served);
     }
 
     #[test]

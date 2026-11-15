@@ -1114,6 +1114,7 @@ move its line here; when a decision gains code, add one.
 - `examples/gain/build.rs`: `BUILT`, `main`
 - `examples/gain/src/page.rs`: module, `PAGE`, `editor`
 - `.github/workflows/ci.yml`: `page:`
+- test `crates/webview/src/lib.rs`: `a_page_with_no_files_is_an_editor_only_where_a_dev_server_serves_it`
 - test `crates/webview/src/assets.rs`: `the_root_and_each_file_are_served_with_their_content_type`, `anything_else_is_not_found`, `the_embedded_page_unless_a_dev_server_is_given`
 - test `examples/gain/tests/page.rs`: `the_built_page_renders_and_calls_the_plugin_once_answered`
 - test `examples/gain/tests/page_params.rs`: `the_pages_parameter_map_matches_the_gains_declarations`

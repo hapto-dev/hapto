@@ -392,8 +392,9 @@ step with its declarations. `npm run build` there writes three files under
 fixed names, which
 [`src/page.rs`](../examples/gain/src/page.rs) builds into the plugin when they
 are there. When they are not, `build.rs` warns and the plugin offers no
-editor, until `npm run build` writes them and the next Cargo build takes them
-in: Cargo never runs Node. The plugin hands the editor out:
+editor but a dev server's (below), until `npm run build` writes them and the
+next Cargo build takes them in: Cargo never runs Node. The plugin hands the
+editor out:
 
 ```rust
 fn editor(&mut self) -> Option<Box<dyn Editor>> {
@@ -409,7 +410,7 @@ saved with the plugin:
 ```rust
 pub(crate) fn editor(gain: &Gain) -> Option<Box<dyn Editor>> {
     let (read, write) = (gain.label.clone(), gain.label.clone());
-    Page::new(&Gain::INFO, gain.ui().clone(), PAGE?)
+    Page::new(&Gain::INFO, gain.ui().clone(), PAGE.unwrap_or_default())
         .with_size(Size {
             width: 420,
             height: 220,
@@ -428,12 +429,13 @@ its field reads the label again when it takes focus, and stores it only when
 the text differs from what it read: a click into the field and out never
 writes an old label over the one a load brought. The page writes the gain
 through a clone of the parts' handle, as a user would: one host gesture and
-one undo step per drag. The VST3 exporter opens
-the editor in the host's window on Windows, follows its size and scale, and
-ticks it after each idle; elsewhere `into_editor` gives `None`, and the host
-shows its own controls. A debug build loads the page from Vite's dev server,
-with hot reload, when `SEAM_PAGE_DEV_URL` holds the address `npm run dev`
-prints.
+one undo step per drag. The VST3 exporter opens the editor in the host's
+window on Windows, follows its size and scale, and ticks it after each idle;
+elsewhere `into_editor` gives `None`, and the host shows its own controls. A
+debug build loads the page from Vite's dev server, with hot reload, when
+`SEAM_PAGE_DEV_URL` holds the address `npm run dev` prints, whether or not
+the page was built in; with no files and no dev server, `into_editor` gives
+`None`.
 
 ## 10. Build and bundle the module
 

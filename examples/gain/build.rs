@@ -1,6 +1,7 @@
 //! Builds the gain's page in when `page/dist` holds it, by setting the
 //! `seam_page` cfg `src/page.rs` reads, and warns when it does not: the
-//! plugin then offers no editor. Cargo never runs Node.
+//! plugin then offers no editor, unless a debug build loads the page from a
+//! dev server. Cargo never runs Node.
 
 use std::path::Path;
 
@@ -24,8 +25,9 @@ fn main() {
         // folder for anything newer, so the page's first build is still seen.
         println!("cargo::rerun-if-changed=page");
         println!(
-            "cargo::warning=the gain's page is not built, so the plugin has no editor; \
-             build it with `npm ci` and `npm run build` in examples/gain/page"
+            "cargo::warning=the gain's page is not built, so the plugin has no editor \
+             but a debug build's dev server; build it with `npm ci` and `npm run build` \
+             in examples/gain/page"
         );
     }
 }

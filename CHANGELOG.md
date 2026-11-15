@@ -172,7 +172,8 @@ exporter.
   which serves the files over a scheme of its own, keeps its data in the
   plugin's own folder below the user's local application data, and joins the
   page to a `Dispatcher`. A debug build loads `SEAM_PAGE_DEV_URL` when it is
-  set. The WebView stays on the page: it navigates nowhere else, takes no
+  set, with or without the files built in; with neither, `into_editor` gives
+  `None`. The WebView stays on the page: it navigates nowhere else, takes no
   message from another document, and opens no file dropped on it. One that
   fails to start leaves nothing shown in the host's window. A command may run
   a dialog: the page's messages keep their order around it. Elsewhere
