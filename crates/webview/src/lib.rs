@@ -32,6 +32,8 @@
 //!   browser process.
 //! - **Faults.** A WebView that does not start fails `open`, which is a fault
 //!   of the instance with the WebView's reason: the host and the audio go on.
+//!   wry leaves its window in the host's then, so the WebView is made hidden
+//!   and shown once it started: a failed one shows nothing.
 //!   The first time a page answers its `ready` after an open, one line says
 //!   how long it took, where the fault lines go.
 //!

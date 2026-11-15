@@ -295,6 +295,31 @@ impl HiddenWindow {
         };
         (!window.is_null()).then_some(HiddenWindow { window })
     }
+
+    /// Returns how many of the windows directly inside it would show, were
+    /// it shown: what an editor left in it that a user would see.
+    pub fn shown_children(&self) -> usize {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            GW_CHILD, GW_HWNDNEXT, GWL_STYLE, GetWindow, GetWindowLongPtrW, WS_VISIBLE,
+        };
+
+        let mut shown = 0;
+        // SAFETY: the window this made, alive while `self` is, on the thread
+        // that made it; the call only reads.
+        let mut child = unsafe { GetWindow(self.window, GW_CHILD) };
+        while !child.is_null() {
+            // SAFETY: a window the system named as this one's child just
+            // now, on this thread, which no other code here destroys; the
+            // calls only read.
+            let style = unsafe { GetWindowLongPtrW(child, GWL_STYLE) } as u32;
+            if style & WS_VISIBLE != 0 {
+                shown += 1;
+            }
+            // SAFETY: as above.
+            child = unsafe { GetWindow(child, GW_HWNDNEXT) };
+        }
+        shown
+    }
 }
 
 #[cfg(windows)]

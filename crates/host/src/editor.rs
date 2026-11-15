@@ -37,9 +37,9 @@ pub struct Size {
 /// 2. [`set_scale`](Self::set_scale) and [`set_size`](Self::set_size), each
 ///    when the host gave a value the editor was not told yet, then
 ///    [`open`](Self::open) with the host's window. An error there leaves
-///    nothing in the window and is a fault of the instance, with its text in
-///    the fault report; the host is told the editor did not open, and the
-///    audio goes on.
+///    nothing shown in the window and is a fault of the instance, with its
+///    text in the fault report; the host is told the editor did not open,
+///    and the audio goes on.
 /// 3. While open, [`set_size`](Self::set_size) and
 ///    [`set_scale`](Self::set_scale) as the host resizes the window or moves
 ///    it to a screen of another scale, and [`tick`](Self::tick) on each of
@@ -128,8 +128,9 @@ pub trait Editor {
     /// # Errors
     ///
     /// Whatever kept it from opening, such as a toolkit the system lacks. It
-    /// leaves nothing inside `parent`, and [`close`](Self::close) is not
-    /// called after it.
+    /// leaves nothing shown inside `parent`: what it made there and cannot
+    /// remove, it hides, and that goes with the parent.
+    /// [`close`](Self::close) is not called after it.
     fn open(&mut self, parent: &ParentWindow) -> Result<(), Box<dyn Error>>;
 
     /// Closes: whatever [`open`](Self::open) made inside the parent goes.

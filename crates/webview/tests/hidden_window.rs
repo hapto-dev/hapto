@@ -12,6 +12,7 @@
 #![cfg(windows)]
 
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use seam_host::vst3::{HiddenWindow, TestHost};
@@ -124,6 +125,58 @@ impl Plugin for Probe {
     }
 }
 
+/// A plugin whose page cannot start: a file stands where the WebView would
+/// keep its data.
+struct Unstartable {
+    parts: Parts,
+}
+
+impl Plugin for Unstartable {
+    const INFO: PluginInfo = PluginInfo {
+        name: "Seam WebView Probe That Cannot Start",
+        id: "dev.seam.webview-probe-unstartable",
+        vst3_class_id: [10; 16],
+        au_codes: AuCodes {
+            subtype: *b"wvpu",
+            manufacturer: *b"Seam",
+        },
+        ..Probe::INFO
+    };
+    type Params = ProbeParams;
+    type Processor = Through;
+
+    fn new(_params: ProbeParams, parts: Parts) -> Self {
+        Unstartable { parts }
+    }
+
+    fn activate(&mut self, _setup: &ProcessSetup) -> Through {
+        Through
+    }
+
+    fn editor(&mut self) -> Option<Box<dyn Editor>> {
+        Page::new(&Self::INFO, self.parts.ui().clone(), PAGE).into_editor()
+    }
+}
+
+/// A file where a plugin's WebView data folder would be made, removed
+/// when dropped.
+struct Blocker(PathBuf);
+
+impl Blocker {
+    fn new(id: &str) -> Self {
+        let base = std::env::var_os("LOCALAPPDATA").expect("LOCALAPPDATA is set");
+        let path = PathBuf::from(base).join(id);
+        std::fs::write(&path, b"").expect("a file where the data folder would be");
+        Blocker(path)
+    }
+}
+
+impl Drop for Blocker {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
 /// Ticks `hosts` and runs this thread's message loop until `done` holds,
 /// for at most `patience`; returns whether it holds.
 fn until(hosts: &[TestHost<Probe>], patience: Duration, mut done: impl FnMut() -> bool) -> bool {
@@ -172,6 +225,11 @@ fn a_page_in_a_hidden_window_is_answered_and_its_set_reaches_the_parameter() {
     let started = Instant::now();
     assert_eq!(view.attach(&window), Ok(()));
     let opened = started.elapsed();
+    assert_eq!(
+        window.shown_children(),
+        1,
+        "the WebView shows once it started"
+    );
     let hosts = [host];
     let answered = until(&hosts, Duration::from_secs(30), || {
         level(&hosts[0]) == 75.0 && seen().len() == 2
@@ -195,6 +253,23 @@ fn a_page_in_a_hidden_window_is_answered_and_its_set_reaches_the_parameter() {
     assert!(reopened, "the reopened page never reported");
     assert_eq!(seen(), ["50.00 %", "stayed", "75.00 %", "stayed"]);
     assert_eq!(view.remove(), Ok(()));
+    assert_eq!(window.shown_children(), 0, "closed, it left nothing");
+    drop(view);
+}
+
+#[test]
+#[ignore = "fails to start a real WebView2 in a hidden window: run by hand on Windows"]
+fn a_page_that_cannot_start_leaves_nothing_shown_in_the_window() {
+    let _blocker = Blocker::new(Unstartable::INFO.id);
+    let host = TestHost::<Unstartable>::new();
+    let window = HiddenWindow::new().expect("a window");
+    let view = host.view().expect("an editor");
+    assert!(
+        view.attach(&window).is_err(),
+        "the WebView has no data folder"
+    );
+    host.expect_faults(1);
+    assert_eq!(window.shown_children(), 0);
     drop(view);
 }
 

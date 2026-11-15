@@ -1134,7 +1134,7 @@ move its line here; when a decision gains code, add one.
 - `crates/webview/src/windows.rs`: module, `ToPage`, `script`, `deliver`, `respond`, `PageEditor::open`, `PageEditor::close`, `PageEditor::tick`
 - `crates/webview/src/assets.rs`: `is_page`, `origin`
 - `page/src/transport.ts`: `webviewTransport`, `WebViewGlobals`
-- test `crates/webview/tests/hidden_window.rs`: module, `a_page_in_a_hidden_window_is_answered_and_its_set_reaches_the_parameter`
+- test `crates/webview/tests/hidden_window.rs`: module, `a_page_in_a_hidden_window_is_answered_and_its_set_reaches_the_parameter`, `a_page_that_cannot_start_leaves_nothing_shown_in_the_window`
 - test `crates/webview/src/assets.rs`: `only_the_page_is_the_page`, `a_dev_servers_page_is_the_page_only_when_it_is_given`
 - test `page/test/webviewTransport.test.ts`: `sends each message as JSON text through ipc`, `delivers what the native side posts to every listener, in order`, `carries a client's handshake both ways`
 

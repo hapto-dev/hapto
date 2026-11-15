@@ -173,7 +173,8 @@ exporter.
   plugin's own folder below the user's local application data, and joins the
   page to a `Dispatcher`. A debug build loads `SEAM_PAGE_DEV_URL` when it is
   set. The WebView stays on the page: it navigates nowhere else, takes no
-  message from another document, and opens no file dropped on it. Elsewhere
+  message from another document, and opens no file dropped on it. One that
+  fails to start leaves nothing shown in the host's window. Elsewhere
   `into_editor` gives `None`.
 - `page`: `webviewTransport`, the transport of a page in a plugin's window.
 - `page`: React hooks (`useParam`, `useEvent`, `useCommand`) over a pluggable

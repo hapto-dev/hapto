@@ -160,6 +160,10 @@ impl Editor for PageEditor {
             // files to nothing.
             .with_drag_drop_handler(|_| true)
             .with_bounds(self.bounds())
+            // Shown once it started: wry leaves its window in the host's
+            // when the WebView fails to start, and hidden, it shows nothing
+            // there until the host's window goes.
+            .with_visible(false)
             // The page takes the keyboard when it is clicked, not as the
             // window opens, so the host keeps it until then.
             .with_focused(false)
@@ -168,16 +172,23 @@ impl Editor for PageEditor {
             .with_default_context_menus(cfg!(debug_assertions))
             .with_browser_accelerator_keys(cfg!(debug_assertions))
             .build_as_child(parent);
-        match built {
+        let shown = built
+            .map_err(|error| format!("the WebView did not start: {error}"))
+            .and_then(|webview| match webview.set_visible(true) {
+                Ok(()) => Ok(webview),
+                // Dropped, it destroys its window.
+                Err(error) => Err(format!("the WebView did not show: {error}")),
+            });
+        match shown {
             Ok(webview) => {
                 let webview = Rc::new(webview);
                 *self.target.borrow_mut() = Rc::downgrade(&webview);
                 self.webview = Some(webview);
                 Ok(())
             }
-            Err(error) => {
+            Err(reason) => {
                 self.opened.set(None);
-                Err(format!("the WebView did not start: {error}").into())
+                Err(reason.into())
             }
         }
     }

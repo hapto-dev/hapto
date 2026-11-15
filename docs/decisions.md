@@ -2687,7 +2687,9 @@ and answers null for none and on any other platform. The view
   reference to the view, so a host that releases the view from inside one
   frees it only as the call ends.
 - **A failed open** answers `attached` with `kResultFalse` and is a fault of
-  the instance; the first writes a line with the editor's reason. A panic in
+  the instance; the first writes a line with the editor's reason. It leaves
+  nothing shown in the host's window: what an editor made there and cannot
+  remove, it hides, and that goes with the window. A panic in
   `open` is a fault too. The host and the audio go on, and the view may be
   attached again. An `attached` that follows a `removed` while the editor is
   still in a call, its `open`, its tick or its `close` among them, cannot
@@ -2768,9 +2770,11 @@ to nothing, where WebView2 would open it in the page's place, a file a user
 drags from a DAW's browser among them. Taking drops also turns off HTML drag
 and drop inside the page, since wry's handler replaces WebView2's.
 The WebView takes no keyboard focus as it opens, so the host keeps it until
-the page is clicked. A release build turns off the browser's context menu
-and its shortcuts, such as a reload; a debug build keeps both, and its
-developer tools.
+the page is clicked. It is made hidden and shown once it started: wry leaves
+its window in the host's when the WebView fails to start, and hidden, that
+window shows nothing until the host's goes. A release build turns off the
+browser's context menu and its shortcuts, such as a reload; a debug build
+keeps both, and its developer tools.
 
 **Alternatives.** The alternative for the way back was WebView2's own message
 channel, which needs a call `seam-webview` could make only with `unsafe`.
