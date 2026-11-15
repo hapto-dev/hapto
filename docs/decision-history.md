@@ -1013,13 +1013,16 @@ shown four ways, as built, the field off the page, an event the plugin posts
 by hand, and a value bound for the page, and took the last, for plain values
 only, as the first of the many fields a plugin keeps that are not parameters.
 He approved its plan the same day, with its choices: the names, no
-revision number, one undo step per write with no gesture, no check of a
-write but its type, the page's map written by hand, `useValue` undefined
+revision number, a write from the page undone with no gesture, no check of
+a write but its type, the page's map written by hand, `useValue` undefined
 until the snapshot, and the gain keeping one command beside the value. Built
-the same day. The implementer's choices wait for the owner: both ways of
-binding take the value by reference, a write with no value decodes as null,
-as a call's absent arguments do, and `useValue` shows a value set until the
-native side's answer, as `useParam` does. To confirm.
+the same day. The plan called each write one undo step; a review the same day
+found that, as for any plain value, the writes between two ticks are one
+step, the latest winning, and the record says so. The implementer's choices
+wait for the owner: both ways of binding take the value by reference, a
+write with no value decodes as null, as a call's absent arguments do, and
+`useValue` shows a value set until the native side's answer, as `useParam`
+does. To confirm.
 
 ## Rules
 

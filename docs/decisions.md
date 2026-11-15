@@ -2860,7 +2860,8 @@ writes for `T`. A value's key is its own: it never names a parameter.
   nothing moved allocates nothing.
 - **Writes.** A `setValue` that decodes to `T` is stored through
   `Value::set`, the user's write, so undo records it where the plugin
-  enrolled the value: one step per write, with no gesture. It is answered
+  enrolled the value, with no gesture, as it does any plain value's: the
+  writes between two ticks are one step, the latest winning. It is answered
   with the value's state, stored or not, as a `set` is, so a page whose write
   was not stored goes back to what the plugin holds. One that does not decode
   stores nothing; one that names a key nothing was bound under is dropped
@@ -2869,11 +2870,17 @@ writes for `T`. A value's key is its own: it never names a parameter.
   messages, so the newest message is the value and none carries a revision
   number. Before the snapshot, the page's held queue keeps one write per key
   between two held calls, the latest, where the key's first write there was.
+- **Types.** `T` must be one serde can write as JSON: a map keyed by tuples
+  is not, and a debug build panics with the reason when it reads the value,
+  so the page gets no snapshot, where a release build sends null. A page's
+  numbers are doubles, so a whole number past 2^53 changes when the page
+  writes the value back; such a number crosses as a string.
 
 A plugin that must check, refuse or change what the page writes keeps a
 command for it: a bound value stores every write that decodes. Open: a value
 dragged by a control, such as a slider on a plain value, would record a step
-per write; gestures on a value wait for a page control that needs one. The
+per tick the drag spans; gestures on a value wait for a page control that
+needs one. The
 page's `Values` map is not generated from Rust yet.
 
 **Alternatives.** The alternatives were a read command and a write command

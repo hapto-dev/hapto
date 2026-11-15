@@ -421,14 +421,15 @@ pub(crate) fn editor(gain: &Gain) -> Option<Box<dyn Editor>> {
 `value` binds the label for the page: the same value the plugin saves and
 undo records, which the page reads with `useValue("label")`. The page shows
 it as the plugin holds it, whatever changed it, a load or an undo included,
-and a rename from the page is the user's write: one undo step, saved with the
-plugin. A value crosses as the JSON serde writes for its type, and the
-page's `Values` map, written by hand, gives each key that type. The field
-keeps the text being typed only until Enter or the field loses the focus,
-and stores it only when it differs from the label, so a load while the field
-is idle shows at once and a click into the field and out stores nothing. A
-command is for what is not state, such as the version the page asks for
-once and shows beside its title, or a write the plugin must check or refuse.
+and a rename from the page is the user's write, which undo records as it does
+the plugin's own sets and the plugin saves. A value crosses as the JSON
+serde writes for its type, and the page's `Values` map, written by hand,
+gives each key that type. The field keeps the text being typed only until
+Enter or the field loses the focus, and stores it only when it differs from
+the label, so a load while the field is idle shows at once and a click into
+the field and out stores nothing. A command is for what is not state, such
+as the version the page asks for once and shows beside its title, or a write
+the plugin must check or refuse.
 
 The page writes the gain through a clone of the parts' handle, as a user
 would: one host gesture and one undo step per drag. The VST3 exporter opens

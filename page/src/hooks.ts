@@ -45,8 +45,9 @@ export interface UseValueResult<T> {
   /** The value as the plugin holds it, or undefined until the snapshot
       arrives. After `set`, the value set, until the native side's answer. */
   value: T | undefined;
-  /** Stores `value` as the user's write: one undo step where the plugin
-      enrolled the value. The native side answers with the value it holds,
+  /** Stores `value` as the user's write, which undo records where the
+      plugin enrolled the value: the writes between two ticks are one step,
+      the latest winning. The native side answers with the value it holds,
       stored or not, which `value` then shows. */
   set: (value: T) => void;
   /** Set once the client has failed (protocol mismatch). Writes are then dropped. */

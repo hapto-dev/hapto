@@ -33,8 +33,8 @@ pub const PAGE: Option<&[Asset]> = None;
 /// The editor that shows the page: none when the page was not built in and
 /// no dev server serves it.
 /// The page binds the value the plugin saves, so it shows the label a load or
-/// an undo brings, and a rename from the page is one undo step, saved with
-/// the plugin.
+/// an undo brings, and a rename from the page is the user's write, which undo
+/// records and the plugin saves.
 pub(crate) fn editor(gain: &Gain) -> Option<Box<dyn Editor>> {
     Page::new(&Gain::INFO, gain.ui().clone(), PAGE.unwrap_or_default())
         .with_size(Size {

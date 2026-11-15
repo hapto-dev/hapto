@@ -64,8 +64,9 @@ function LabelField() {
         onChange={(event) => setDraft(event.currentTarget.value)}
         onBlur={commit}
         onKeyDown={(event) => {
-          // Enter ends the edit: the blur stores it, once.
-          if (event.key === "Enter") event.currentTarget.blur();
+          // Enter ends the edit: the blur stores it, once. Not while an input
+          // method composes, where Enter picks the text being composed.
+          if (event.key === "Enter" && !event.nativeEvent.isComposing) event.currentTarget.blur();
         }}
       />
     </label>

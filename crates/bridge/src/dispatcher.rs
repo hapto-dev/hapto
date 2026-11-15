@@ -172,10 +172,18 @@ where
 ///
 /// Each is a [`Value`] the plugin keeps, so the page shows it as it is,
 /// whatever changed it: a load, undo, the plugin's own write. A write from
-/// the page is the user's, through [`Value::set`]: one undo step where the
-/// plugin enrolled the value. A value crosses as the JSON serde writes for
-/// its type, and a write from the page is stored when it decodes to that
-/// type, and only then. The page binds one with `useValue(key)`.
+/// the page is the user's, through [`Value::set`], so undo records it where
+/// the plugin enrolled the value, as it does any plain value's: the writes
+/// between two ticks are one step, the latest winning. A value crosses as
+/// the JSON serde writes for its type, and a write from the page is stored
+/// when it decodes to that type, and only then. The page binds one with
+/// `useValue(key)`.
+///
+/// The type must be one serde can write as JSON: a map keyed by tuples is
+/// not, and a debug build panics with the reason when it reads the value, so
+/// the page gets no snapshot, where a release build sends null. A page's
+/// numbers are doubles, so a whole number past 2^53 changes when the page
+/// writes the value back; such a number crosses as a string.
 ///
 /// A plugin that must refuse or change what the page writes keeps a command
 /// for it ([`Commands`]): a bound value stores every write that decodes.
