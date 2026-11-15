@@ -2726,7 +2726,9 @@ the script and rebuilds the gain on every command, and Cargo looks through a
 watched folder for anything newer, so a page built later is built in with no
 clean. Without them the plugin offers no editor, so a host shows its own
 controls, and the build warns; it never shows a placeholder page. Cargo never
-runs Node, and CI builds the page in the page lane so it cannot rot.
+runs Node. CI builds the page in the page lane and checks that the three files
+are there by those names, so it cannot rot unseen. Open: no lane compiles the
+gain with its page built in.
 
 **Alternatives.** The alternatives were a placeholder page when the build
 lacks one, which a user could ship by mistake, and a build script that runs

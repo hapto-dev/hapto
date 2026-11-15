@@ -265,6 +265,14 @@ jobs:
       - name: The gain's page builds
         working-directory: examples/gain/page
         run: npm run build
+      # The gain builds these in by name (`examples/gain/build.rs`): a name
+      # Vite changes would leave the plugin with no editor and no failure.
+      - name: The gain's page writes the files the gain builds in
+        working-directory: examples/gain/page
+        run: |
+          test -f dist/index.html
+          test -f dist/assets/index.js
+          test -f dist/assets/index.css
 
   # Everything Seam supports on Linux: the core, the bridge, the C interface
   # and the example EQ through it. The VST3 exporter refuses to build here by

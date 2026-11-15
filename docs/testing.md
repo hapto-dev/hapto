@@ -91,7 +91,7 @@ real-time sanitizer, which needs Linux.
 | `protocol shape history` (pull requests) | `crates/bridge/protocol-shape.txt` only gains lines against the base revision (see [Repository checks](#repository-checks)). |
 | `loom models` | The lock-free hand-offs are correct under every interleaving their atomics allow, and `scripts/run-loom.py` fails unless every model ran (section 3). |
 | `page`: Typecheck, Test | The page compiles against the committed generated types, and its tests pass. |
-| `page`: the gain's page | The example gain's page installs, type-checks against the package and the gain's generated parameter map, and builds the files the gain embeds. |
+| `page`: the gain's page | The example gain's page installs, type-checks against the package and the gain's generated parameter map, and builds the files the gain embeds, under the names it embeds them by. No lane compiles the gain with them built in. |
 | `JUCE adapter` (macOS, started by hand) | The example EQ builds through the adapter as VST3 and AU, at the JUCE commit `bench/` pins, and both the Rust library and the plugin binaries hold arm64 and x86_64. It does not load the plugin. |
 | `JUCE adapter` (Windows, started by hand) | The example EQ's VST3 build through the adapter passes the Steinberg validator, built from the VST3 SDK at the pinned commit, as the native `plugin validators (windows)` lane passes Seam's own. |
 | Nightly: `miri` | `seam-host`'s tests, the core crates' unit tests and some integration tests find no undefined behaviour under Stacked Borrows and Tree Borrows (see [Miri](#miri)). |
