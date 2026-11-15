@@ -2658,7 +2658,9 @@ null for none. The view (`vst3/view.rs`) keeps to these:
   never removes the view, leaves nothing dangling: the instance lives until
   the view goes, and a view released while attached closes its editor first.
 - **Main thread, guarded.** Every call runs inside the instance's panic guard
-  and the main-thread rule: on another thread it is refused and counted.
+  and the main-thread rule: on another thread it is refused and counted. So
+  does the view's release, which drops the editor inside the guard, so that a
+  panic in the editor's drop is a fault and never reaches the host.
 - **`HWND` only.** It attaches to a Windows window; on any other platform it
   says no platform is supported, so a host shows its own controls.
 - **Sizes.** VST3 gives a view's size in the screen's pixels on Windows, and

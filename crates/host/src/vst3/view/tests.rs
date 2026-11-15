@@ -45,6 +45,8 @@ thread_local! {
     static DURING_OPEN: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
     static EDITORS_DROPPED: Cell<u32> = const { Cell::new(0) };
     static PLUGINS_DROPPED: Cell<u32> = const { Cell::new(0) };
+    /// Whether the next stub to drop panics as it does.
+    static PANICS_AS_IT_DROPS: Cell<bool> = const { Cell::new(false) };
 }
 
 fn calls() -> Vec<Call> {
@@ -102,6 +104,9 @@ impl Editor for Stub {
 impl Drop for Stub {
     fn drop(&mut self) {
         EDITORS_DROPPED.with(|count| count.set(count.get() + 1));
+        if PANICS_AS_IT_DROPS.with(Cell::take) {
+            panic!("the editor's bug in its drop");
+        }
     }
 }
 
@@ -340,6 +345,22 @@ fn a_view_released_while_attached_closes_its_editor() {
     assert_eq!(EDITORS_DROPPED.with(Cell::get), dropped + 1);
     host.tick();
     assert!(calls().is_empty());
+}
+
+#[test]
+fn an_editor_that_panics_as_it_drops_is_a_fault_and_the_host_goes_on() {
+    let (host, view) = viewed();
+    view.attach(1).expect("opens");
+    calls();
+    let dropped = EDITORS_DROPPED.with(Cell::get);
+    PANICS_AS_IT_DROPS.with(|panics| panics.set(true));
+    // The host's last reference: the editor closes and drops inside the
+    // view's release, where a panic must not reach the host.
+    drop(view);
+    assert_eq!(calls(), [Call::Close]);
+    assert_eq!(EDITORS_DROPPED.with(Cell::get), dropped + 1);
+    host.expect_faults(1);
+    host.tick();
 }
 
 #[test]

@@ -40,7 +40,8 @@ const HWND: &CStr = c"HWND";
 
 /// One view of the plugin's editor.
 pub(crate) struct View<P: Plugin> {
-    /// Dropped first, so the editor goes before the component may.
+    /// Dropped first, so the frame goes before the component may; the
+    /// editor goes earlier still, in `drop`.
     state: MainThread<ViewState>,
     /// The component's engine, which `component` keeps alive.
     engine: NonNull<Engine<P, Handler>>,
@@ -50,7 +51,9 @@ pub(crate) struct View<P: Plugin> {
 
 /// What only the plugin's main thread touches.
 struct ViewState {
-    slot: Rc<EditorSlot>,
+    /// The editor's slot, taken as the view drops, so that the editor drops
+    /// inside the view's guard: a panic in its drop must not reach the host.
+    slot: RefCell<Option<Rc<EditorSlot>>>,
     frame: RefCell<Option<ComPtr<IPlugFrame>>>,
     /// This view as the host holds it, without a reference of its own:
     /// what a resize request names, and what a call holds the view by.
@@ -72,7 +75,7 @@ pub(crate) fn create<P: Plugin>(
 ) -> *mut IPlugView {
     let view = ComWrapper::new(View {
         state: MainThread::bound(ViewState {
-            slot,
+            slot: RefCell::new(Some(slot)),
             frame: RefCell::new(None),
             this: Cell::new(std::ptr::null_mut()),
         }),
@@ -98,18 +101,27 @@ impl<P: Plugin> View<P> {
     }
 
     /// Runs a call's body inside the instance's guard, on its main thread
-    /// only: answers `refused` on another thread, which counts as a fault,
-    /// or when the body panics.
-    fn call(&self, refused: tresult, body: impl FnOnce(&ViewState) -> tresult) -> tresult {
+    /// only, with the view's state and the editor's slot: answers `refused`
+    /// on another thread, which counts as a fault, or when the body panics.
+    fn call(
+        &self,
+        refused: tresult,
+        body: impl FnOnce(&ViewState, &EditorSlot) -> tresult,
+    ) -> tresult {
         let engine = self.engine();
         engine.guard(refused, || {
             let Some(_main) = engine.main() else {
                 return refused;
             };
-            match self.state.lend() {
-                Ok(state) => body(&state),
-                Err(_) => refused,
-            }
+            let Ok(state) = self.state.lend() else {
+                return refused;
+            };
+            // Cloned out, so no borrow is held while the editor or the host
+            // runs. It drops inside the guard, and the editor may with it.
+            let Some(slot) = state.slot.borrow().clone() else {
+                return refused;
+            };
+            body(&state, &slot)
         })
     }
 
@@ -118,14 +130,18 @@ impl<P: Plugin> View<P> {
     /// release the view from inside it. The reference goes after the guard
     /// and the main thread's loan have ended, so a release that frees the
     /// view there, and with it maybe the component, comes last.
-    fn call_held(&self, refused: tresult, body: impl FnOnce(&ViewState) -> tresult) -> tresult {
+    fn call_held(
+        &self,
+        refused: tresult,
+        body: impl FnOnce(&ViewState, &EditorSlot) -> tresult,
+    ) -> tresult {
         let mut held = None;
-        let answer = self.call(refused, |state| {
+        let answer = self.call(refused, |state, slot| {
             // SAFETY: `this` is this view's own interface, set as it was
             // made, and this is one of its calls, so it is alive.
             // `to_com_ptr` adds the reference `held` keeps.
             held = unsafe { ComRef::from_raw(state.this.get()) }.map(|view| view.to_com_ptr());
-            body(state)
+            body(state, slot)
         });
         // Nothing touches the view after this.
         drop(held);
@@ -159,11 +175,11 @@ impl<P: Plugin> View<P> {
 
     /// Asks the host's frame to resize the view to the editor's size at the
     /// scale given last, as when the scale changed.
-    fn ask_to_resize(state: &ViewState) {
+    fn ask_to_resize(state: &ViewState, slot: &EditorSlot) {
         // Cloned out, so no borrow is held while the host calls back in.
         let frame = state.frame.borrow().clone();
         if let Some(frame) = frame {
-            let mut rect = Self::rect(state.slot.size(), state.slot.scale());
+            let mut rect = Self::rect(slot.size(), slot.scale());
             // SAFETY: `frame` holds a reference to the host's frame; `this`
             // is this view, alive for this call; `rect` is valid for the
             // call. The host may call `onSize` from inside, which borrows
@@ -176,10 +192,12 @@ impl<P: Plugin> View<P> {
 impl<P: Plugin> Drop for View<P> {
     fn drop(&mut self) {
         // A view the host releases without removing it closes its editor
-        // here, on the main thread. Elsewhere the state leaks, as bound
-        // state does, and the call is a fault.
-        self.call(kResultOk, |state| {
-            state.slot.close();
+        // here, on the main thread, and the editor drops here too, inside
+        // the guard, unless a tick still holds it. Elsewhere the state
+        // leaks, as bound state does, and the call is a fault.
+        self.call(kResultOk, |state, slot| {
+            slot.close();
+            drop(state.slot.take());
             kResultOk
         });
     }
@@ -187,7 +205,7 @@ impl<P: Plugin> Drop for View<P> {
 
 impl<P: Plugin> IPlugViewTrait for View<P> {
     unsafe fn isPlatformTypeSupported(&self, r#type: FIDString) -> tresult {
-        self.call(kResultFalse, |_| {
+        self.call(kResultFalse, |_, _| {
             // SAFETY: the SDK's contract: `type` is null or a NUL-terminated
             // string valid during the call.
             if cfg!(windows) && !r#type.is_null() && unsafe { CStr::from_ptr(r#type) } == HWND {
@@ -201,7 +219,7 @@ impl<P: Plugin> IPlugViewTrait for View<P> {
     unsafe fn attached(&self, parent: *mut c_void, r#type: FIDString) -> tresult {
         // Held: the editor's `open` may run the message loop, and the host
         // may release the view inside it.
-        self.call_held(kResultFalse, |state| {
+        self.call_held(kResultFalse, |_, slot| {
             // SAFETY: as in `isPlatformTypeSupported`.
             if r#type.is_null() || unsafe { CStr::from_ptr(r#type) } != HWND {
                 return kResultFalse;
@@ -209,7 +227,7 @@ impl<P: Plugin> IPlugViewTrait for View<P> {
             let Some(parent) = parent_window(parent) else {
                 return kInvalidArgument;
             };
-            match state.slot.open(&parent) {
+            match slot.open(&parent) {
                 Opened::Yes => kResultOk,
                 Opened::Already => kResultFalse,
                 Opened::Failed(error) => {
@@ -225,8 +243,8 @@ impl<P: Plugin> IPlugViewTrait for View<P> {
     }
 
     unsafe fn removed(&self) -> tresult {
-        self.call_held(kResultFalse, |state| {
-            state.slot.close();
+        self.call_held(kResultFalse, |_, slot| {
+            slot.close();
             kResultOk
         })
     }
@@ -246,25 +264,25 @@ impl<P: Plugin> IPlugViewTrait for View<P> {
     }
 
     unsafe fn getSize(&self, size: *mut ViewRect) -> tresult {
-        self.call(kInternalError, |state| {
+        self.call(kInternalError, |_, slot| {
             // SAFETY: the SDK's contract: `size` is null or valid for writing
             // one `ViewRect` until the call returns.
             let Some(size) = (unsafe { size.as_mut() }) else {
                 return kInvalidArgument;
             };
-            *size = Self::rect(state.slot.size(), state.slot.scale());
+            *size = Self::rect(slot.size(), slot.scale());
             kResultOk
         })
     }
 
     unsafe fn onSize(&self, new_size: *mut ViewRect) -> tresult {
-        self.call_held(kInternalError, |state| {
+        self.call_held(kInternalError, |_, slot| {
             // SAFETY: the SDK's contract: `new_size` is null or valid for
             // reading one `ViewRect` until the call returns.
             let Some(rect) = (unsafe { new_size.as_ref() }) else {
                 return kInvalidArgument;
             };
-            state.slot.set_size(Self::size(rect, state.slot.scale()));
+            slot.set_size(Self::size(rect, slot.scale()));
             kResultOk
         })
     }
@@ -274,7 +292,7 @@ impl<P: Plugin> IPlugViewTrait for View<P> {
     }
 
     unsafe fn setFrame(&self, frame: *mut IPlugFrame) -> tresult {
-        self.call(kInternalError, |state| {
+        self.call(kInternalError, |state, _| {
             // SAFETY: the SDK's contract: `frame` is null or the host's live
             // frame during the call; `to_com_ptr` adds a reference, which
             // keeps it alive until the next `setFrame` or the view's drop.
@@ -291,7 +309,7 @@ impl<P: Plugin> IPlugViewTrait for View<P> {
     }
 
     unsafe fn checkSizeConstraint(&self, rect: *mut ViewRect) -> tresult {
-        self.call(kInternalError, |_| {
+        self.call(kInternalError, |_, _| {
             // Any size the host offers is taken as it is.
             if rect.is_null() {
                 kInvalidArgument
@@ -304,13 +322,13 @@ impl<P: Plugin> IPlugViewTrait for View<P> {
 
 impl<P: Plugin> IPlugViewContentScaleSupportTrait for View<P> {
     unsafe fn setContentScaleFactor(&self, factor: ScaleFactor) -> tresult {
-        self.call_held(kInternalError, |state| {
+        self.call_held(kInternalError, |state, slot| {
             let scale = f64::from(factor);
             if !(scale.is_finite() && scale > 0.0) {
                 return kInvalidArgument;
             }
-            if state.slot.set_scale(scale) && state.slot.is_open() {
-                Self::ask_to_resize(state);
+            if slot.set_scale(scale) && slot.is_open() {
+                Self::ask_to_resize(state, slot);
             }
             kResultOk
         })

@@ -145,7 +145,8 @@ page in a plugin window, and MIDI delivered to a plugin through an exporter.
   `None` by default, which the VST3 exporter opens in the host's window on
   Windows, as a resizable view that follows the screen's scale. The instance's
   timer ticks an open editor after `Plugin::idle`. An editor that fails to open
-  is a fault with its reason, and the host and the audio go on.
+  is a fault with its reason, a panic in its `open` or its drop is a fault, and
+  the host and the audio go on.
   `vst3::TestView` drives a view in tests, and `vst3::HiddenWindow` gives a real
   editor a window that is never shown.
 - `seam-host`: on Windows, once an editor has opened, the plugin's module stays
