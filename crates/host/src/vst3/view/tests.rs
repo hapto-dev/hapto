@@ -224,13 +224,13 @@ fn the_view_attaches_to_a_windows_window_only() {
 fn attaching_tells_the_editor_its_scale_and_size_then_opens_it() {
     let (_host, view) = viewed();
     assert_eq!(view.size(), Some((320, 200)));
-    assert_eq!(view.attach(1), Ok(()));
+    assert_eq!(view.attach_raw(1), Ok(()));
     assert_eq!(
         calls(),
         [Call::Scale(1.0), Call::Size(320, 200), Call::Open]
     );
     // Attached twice with no removal between: refused, the editor untouched.
-    assert_eq!(view.attach(1), Err(Refused(kResultFalse)));
+    assert_eq!(view.attach_raw(1), Err(Refused(kResultFalse)));
     assert!(calls().is_empty());
     assert_eq!(view.remove(), Ok(()));
     assert_eq!(calls(), [Call::Close]);
@@ -239,14 +239,14 @@ fn attaching_tells_the_editor_its_scale_and_size_then_opens_it() {
 #[test]
 fn a_null_window_is_refused_and_the_editor_not_opened() {
     let (_host, view) = viewed();
-    assert!(view.attach(0).is_err());
+    assert!(view.attach_raw(0).is_err());
     assert!(calls().is_empty());
 }
 
 #[test]
 fn a_resize_reaches_the_editor_in_logical_pixels() {
     let (_host, view) = viewed();
-    view.attach(1).expect("opens");
+    view.attach_raw(1).expect("opens");
     calls();
     view.resize(640, 480).expect("resizes");
     assert_eq!(calls(), [Call::Size(640, 480)]);
@@ -266,7 +266,7 @@ fn a_scale_before_opening_sizes_the_window_and_asks_for_nothing() {
     view.set_scale(2.0).expect("scales");
     assert!(view.resizes().is_empty());
     assert_eq!(view.size(), Some((640, 400)));
-    view.attach(1).expect("opens");
+    view.attach_raw(1).expect("opens");
     assert_eq!(
         calls(),
         [Call::Scale(2.0), Call::Size(320, 200), Call::Open]
@@ -276,7 +276,7 @@ fn a_scale_before_opening_sizes_the_window_and_asks_for_nothing() {
 #[test]
 fn a_new_scale_while_open_asks_the_frame_for_the_editors_size_there() {
     let (_host, view) = viewed();
-    view.attach(1).expect("opens");
+    view.attach_raw(1).expect("opens");
     calls();
     view.set_scale(1.25).expect("scales");
     // The frame passes the size straight back to `onSize`, as a host does;
@@ -292,11 +292,11 @@ fn a_new_scale_while_open_asks_the_frame_for_the_editors_size_there() {
 #[test]
 fn a_view_attaches_again_after_it_was_removed() {
     let (_host, view) = viewed();
-    view.attach(1).expect("opens");
+    view.attach_raw(1).expect("opens");
     view.remove().expect("removed");
     view.resize(400, 300).expect("resizes while closed");
     calls();
-    view.attach(2).expect("opens again");
+    view.attach_raw(2).expect("opens again");
     assert_eq!(calls(), [Call::Size(400, 300), Call::Open]);
     // A removal of a closed view closes nothing.
     view.remove().expect("removed");
@@ -309,7 +309,7 @@ fn a_tick_reaches_an_open_editor_and_not_a_closed_one() {
     let (host, view) = viewed();
     host.tick();
     assert!(calls().is_empty(), "not opened yet");
-    view.attach(1).expect("opens");
+    view.attach_raw(1).expect("opens");
     calls();
     host.tick();
     host.tick();
@@ -324,8 +324,8 @@ fn a_tick_reaches_an_open_editor_and_not_a_closed_one() {
 fn two_views_each_have_an_editor_of_their_own() {
     let (host, first) = viewed();
     let second = host.view().expect("a second editor");
-    first.attach(1).expect("opens");
-    second.attach(2).expect("opens");
+    first.attach_raw(1).expect("opens");
+    second.attach_raw(2).expect("opens");
     calls();
     host.tick();
     assert_eq!(calls(), [Call::Tick, Call::Tick]);
@@ -338,7 +338,7 @@ fn two_views_each_have_an_editor_of_their_own() {
 #[test]
 fn a_view_released_while_attached_closes_its_editor() {
     let (host, view) = viewed();
-    view.attach(1).expect("opens");
+    view.attach_raw(1).expect("opens");
     calls();
     let dropped = EDITORS_DROPPED.with(Cell::get);
     drop(view);
@@ -351,7 +351,7 @@ fn a_view_released_while_attached_closes_its_editor() {
 #[test]
 fn an_editor_that_panics_as_it_drops_is_a_fault_and_the_host_goes_on() {
     let (host, view) = viewed();
-    view.attach(1).expect("opens");
+    view.attach_raw(1).expect("opens");
     calls();
     let dropped = EDITORS_DROPPED.with(Cell::get);
     PANICS_AS_IT_DROPS.with(|panics| panics.set(true));
@@ -367,7 +367,7 @@ fn an_editor_that_panics_as_it_drops_is_a_fault_and_the_host_goes_on() {
 #[test]
 fn the_instance_released_before_its_view_lives_until_the_view_goes() {
     let (host, view) = viewed();
-    view.attach(1).expect("opens");
+    view.attach_raw(1).expect("opens");
     calls();
     let plugins = PLUGINS_DROPPED.with(Cell::get);
     // The host terminates and releases the instance with the view still
@@ -420,7 +420,7 @@ fn an_editor_that_fails_to_open_is_a_fault_with_its_reason() {
     let (host, view) = viewed();
     OPENS.with(|opens| opens.set(Opens::Fails));
     written();
-    assert_eq!(view.attach(1), Err(Refused(kResultFalse)));
+    assert_eq!(view.attach_raw(1), Err(Refused(kResultFalse)));
     host.expect_faults(1);
     let lines = written();
     assert_eq!(lines.len(), 1, "{lines:?}");
@@ -433,27 +433,27 @@ fn an_editor_that_fails_to_open_is_a_fault_with_its_reason() {
         calls(),
         [Call::Scale(1.0), Call::Size(320, 200), Call::Open]
     );
-    assert!(view.attach(1).is_err());
+    assert!(view.attach_raw(1).is_err());
     host.expect_faults(1);
     assert!(written().is_empty());
     assert_eq!(calls(), [Call::Open], "told its size and scale already");
     // It opens once the editor can.
     OPENS.with(|opens| opens.set(Opens::Fine));
-    assert_eq!(view.attach(1), Ok(()));
+    assert_eq!(view.attach_raw(1), Ok(()));
 }
 
 #[test]
 fn an_editor_that_panics_in_open_is_a_fault_and_stays_closed() {
     let (host, view) = viewed();
     OPENS.with(|opens| opens.set(Opens::Panics));
-    assert_eq!(view.attach(1), Err(Refused(kResultFalse)));
+    assert_eq!(view.attach_raw(1), Err(Refused(kResultFalse)));
     host.expect_faults(1);
     calls();
     host.tick();
     view.remove().expect("removed");
     assert!(calls().is_empty(), "never opened");
     OPENS.with(|opens| opens.set(Opens::Fine));
-    assert_eq!(view.attach(1), Ok(()));
+    assert_eq!(view.attach_raw(1), Ok(()));
 }
 
 #[test]
@@ -474,7 +474,7 @@ fn a_resize_and_a_tick_from_inside_open_wait_until_it_returns() {
         // for the call.
         assert_eq!(unsafe { interface.onSize(&mut rect) }, 0);
     });
-    assert_eq!(view.attach(1), Ok(()));
+    assert_eq!(view.attach_raw(1), Ok(()));
     // The tick passed the editor over; the size is told once `open`
     // returned.
     assert_eq!(
@@ -508,7 +508,7 @@ fn a_removal_from_inside_open_closes_the_editor_once_it_returns() {
             assert_eq!(interface.removed(), 0);
         }
     });
-    assert_eq!(view.attach(1), Ok(()));
+    assert_eq!(view.attach_raw(1), Ok(()));
     // Closed straight after `open`, with no size told to a closing editor.
     assert_eq!(
         calls(),
@@ -521,7 +521,7 @@ fn a_removal_from_inside_open_closes_the_editor_once_it_returns() {
     );
     host.tick();
     assert!(calls().is_empty(), "closed");
-    assert_eq!(view.attach(1), Ok(()), "and opens again");
+    assert_eq!(view.attach_raw(1), Ok(()), "and opens again");
     assert_eq!(calls(), [Call::Size(500, 400), Call::Open]);
 }
 

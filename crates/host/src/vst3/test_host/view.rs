@@ -3,13 +3,13 @@
 //! asks of it.
 
 use std::cell::RefCell;
-use std::ffi::{CStr, c_void};
+use std::ffi::CStr;
 
 use ::vst3::Steinberg::Vst::IEditControllerTrait;
 use ::vst3::Steinberg::{
     IPlugFrame, IPlugFrameTrait, IPlugView, IPlugViewContentScaleSupport,
-    IPlugViewContentScaleSupportTrait, IPlugViewTrait, ViewRect, kInvalidArgument,
-    kPlatformTypeHWND, kResultOk, kResultTrue, tresult,
+    IPlugViewContentScaleSupportTrait, IPlugViewTrait, ViewRect, kInvalidArgument, kResultOk,
+    kResultTrue, tresult,
 };
 use ::vst3::{Class, ComPtr, ComRef, ComWrapper};
 
@@ -56,7 +56,7 @@ impl<P: Plugin> TestHost<P> {
 #[doc = include_str!("../../../doc/editor.rs")]
 /// # #[cfg(windows)]
 /// # {
-/// use seam_host::vst3::TestHost;
+/// use seam_host::vst3::{HiddenWindow, TestHost};
 ///
 /// let host = TestHost::<Panel>::new();
 /// let view = host.view().expect("the plugin has an editor");
@@ -64,7 +64,8 @@ impl<P: Plugin> TestHost<P> {
 ///
 /// // A screen at 150 %: the view asks the host for its size there.
 /// view.set_scale(1.5)?;
-/// view.attach(1)?; // the panel never touches the window
+/// let window = HiddenWindow::new().expect("a window");
+/// view.attach(&window)?;
 /// view.set_scale(2.0)?;
 /// assert_eq!(view.resizes(), [(640, 400)]);
 /// assert_eq!(view.size(), Some((640, 400)));
@@ -87,19 +88,33 @@ impl TestView {
         unsafe { self.view.isPlatformTypeSupported(platform.as_ptr()) == kResultTrue }
     }
 
-    /// Attaches the view to `window`, a Windows window handle, as a host
-    /// does once it has made the window: the editor opens in it.
-    ///
-    /// A test whose editor never touches the window may pass any number but
-    /// 0; one that opens a real editor passes a [`HiddenWindow`]'s.
+    /// Attaches the view to `window`, as a host does once it has made the
+    /// window: the editor opens in it. Windows only.
     ///
     /// # Errors
     ///
     /// The [`Refused`] answer: the editor did not open.
-    pub fn attach(&self, window: isize) -> Result<(), Refused> {
-        // SAFETY: the view is alive while this holds it. The handle is the
-        // test's: a window that lives until `remove`, or a number its editor
-        // never touches.
+    #[cfg(windows)]
+    pub fn attach(&self, window: &HiddenWindow) -> Result<(), Refused> {
+        self.attach_raw(window.window as isize)
+    }
+
+    /// Attaches the view to the window handle `window`. The exporter's own
+    /// tests pass a number, any but 0, for stub editors that never touch the
+    /// window.
+    ///
+    /// # Errors
+    ///
+    /// As [`attach`](Self::attach).
+    #[cfg(windows)]
+    pub(crate) fn attach_raw(&self, window: isize) -> Result<(), Refused> {
+        use std::ffi::c_void;
+
+        use ::vst3::Steinberg::kPlatformTypeHWND;
+
+        // SAFETY: the view is alive while this holds it. The handle is a
+        // hidden window that outlives the attachment, or a number that only
+        // a stub editor, which never borrows it, is given.
         Refused::check(unsafe { self.view.attached(window as *mut c_void, kPlatformTypeHWND) })
     }
 
@@ -238,7 +253,7 @@ impl IPlugFrameTrait for Frame {
 /// let host = TestHost::<Panel>::new();
 /// let view = host.view().expect("the plugin has an editor");
 /// let window = HiddenWindow::new().expect("a window");
-/// view.attach(window.handle())?;
+/// view.attach(&window)?;
 /// view.remove()?;
 /// # }
 /// # Ok::<(), seam_host::vst3::Refused>(())
@@ -279,11 +294,6 @@ impl HiddenWindow {
             )
         };
         (!window.is_null()).then_some(HiddenWindow { window })
-    }
-
-    /// Returns its handle, for [`TestView::attach`].
-    pub fn handle(&self) -> isize {
-        self.window as isize
     }
 }
 

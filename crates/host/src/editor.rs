@@ -111,9 +111,9 @@ pub trait Editor {
     /// the host makes its window.
     fn size(&self) -> Size;
 
-    /// Opens inside `parent`, the window the host made for it, which is
-    /// valid until [`close`](Self::close) and may be borrowed only during
-    /// this call.
+    /// Opens inside `parent`, the window the host made for it, which may be
+    /// borrowed only during this call: [`ParentWindow`] says how long the
+    /// host keeps it.
     ///
     /// # Errors
     ///
