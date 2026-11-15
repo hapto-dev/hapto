@@ -267,7 +267,7 @@ struct OnThread {
 
 impl<P: Plugin, H> Main<P, H> {
     /// Whether the state holds what only its own thread may: the parts'
-    /// driver and the timer slot.
+    /// driver, the timer slot and the editors.
     #[cfg(all(test, feature = "cabi"))]
     pub(crate) fn holds_on_thread(&self) -> bool {
         self.on_thread.is_some()
@@ -402,8 +402,9 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
             // are `Send` (the bounds above), so the plugin holds no `Parts`,
             // which are not. So are the event drain and the `Cell`s and
             // `RefCell`s around them. Everything that is not, the parts'
-            // driver and the timer slot, is in `on_thread`, which is `None`
-            // here and stays so: `start_timer` starts no timer without it.
+            // driver, the timer slot and the editors, is in `on_thread`,
+            // which is `None` here and stays so: `start_timer` starts no
+            // timer without it, and `editor` hands out none.
             // The driver `build` made stays in the shadowed `main` above and
             // drops as this closure returns, on the thread that made it, and
             // `build` hands the parts to the plugin on this thread and keeps

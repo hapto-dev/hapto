@@ -138,7 +138,7 @@ comments never cite an id: they state the reason in words, and
 | D99 | [What becomes of a page's call still running when a new page session starts? (B5)](#d99-a-call-across-page-sessions) | None can be: a command runs to its end inside the call, so its reply always goes to the session that asked. | to confirm |
 | D100 | [How does a plugin hand out an editor, and what ticks it? (D53)](#d100-a-plugins-editor-and-its-tick) | `Plugin::editor` returns an `Editor`, `None` by default; the trait knows no toolkit. The exporter drives it, and the plugin's one main-thread timer ticks an open editor after `Plugin::idle`. | to confirm |
 | D101 | [What does the VST3 exporter's view of the editor keep to? (D59, D60)](#d101-the-vst3-editor-view) | A view holds its component; it is made and attaches on Windows only; its sizes are the screen's pixels at the scale the host gave; it puts off what a host asks while the editor is in a call; a failed open is a fault with its reason. | to confirm |
-| D105 | [What keeps valid what an editor leaves with the host, when the host unloads the module? (D59, D101)](#d105-the-module-stays-loaded-once-an-editor-has-opened) | Once any editor has opened, the module stays loaded until the process ends: one call at every open, before the editor's code runs, for every editor of every plugin. The plugin's file then stays in use until the host exits. | to confirm |
+| D105 | [What keeps valid what an editor leaves with the host, when the host unloads the module? (D59, D101)](#d105-the-module-stays-loaded-once-an-editor-has-opened) | Once any editor has opened, the module stays loaded until the process ends: one call at every open, before the editor is told its size or opened, for every editor of every plugin. The plugin's file then stays in use until the host exits. | to confirm |
 
 **Open.** D25 is held until `seam-ci` needs it. It keeps its recommendation
 until decided, and no rule depends on it.
@@ -2631,7 +2631,7 @@ toolkit: `size`, read once; `open` with the host's window as a
 is lent to that call alone; `close`; `set_size` in logical pixels;
 `set_scale`; and `tick`. It is not `Send`: every call and its drop are on the
 plugin's main thread. The exporter tells it the size and scale the host gave
-before each `open`, and after while it is open.
+that it was not told yet: before an `open`, and while it is open.
 
 No editor runs a timer of its own (D53): the instance's one main-thread tick
 runs the parts, then `Plugin::idle`, then tells the host of the edits, then
@@ -2711,9 +2711,12 @@ left this to JUCE's VST3 wrapper.
 
 **Rust.** Once any editor has opened, the plugin's module stays loaded until
 the process ends. On Windows every `EditorSlot::open` makes the call that
-pins it, after the checks that find the editor open already and before any
-of the editor's code runs, so an open that fails or panics is covered too:
-a toolkit may leave its window behind when its start-up fails. The first
+pins it, after the checks that find the editor open already and before the
+editor is told its size and scale or opened, so an open that fails or panics
+is covered too: a toolkit may leave its window behind when its start-up
+fails. The plugin makes the editor, and its size is read, earlier, at
+`createView`, with the module not pinned, so `Editor` asks an editor to
+register nothing with the system before then. The first
 call pins the module and every later one changes nothing, so no flag records
 it. It is one call for every editor of every plugin, and names no toolkit.
 The leaked timer's pin (D59) is the same call. No editor opens on macOS yet,

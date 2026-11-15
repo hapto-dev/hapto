@@ -914,6 +914,13 @@ call to drop. To confirm.
 Built on 2026-11-13 for the first page in a plugin window, from a planned
 shape that was left to the implementer. To confirm.
 
+Changed on 2026-11-14 after its review: a panic in an editor's tick had
+stopped every editor after it from ticking, on every tick, so each tick is
+now caught and the editor that panicked is closed. The record had said the
+editor is told its size and scale before each `open`; it is told only what
+changed since it was last told, as it always was, and the record now says
+so.
+
 ### D101. The VST3 editor view
 
 [The decision](decisions.md#d101-the-vst3-editor-view)
@@ -921,6 +928,15 @@ shape that was left to the implementer. To confirm.
 Built on 2026-11-13 with D100. A resize the editor asks for itself was planned
 and not built, since nothing asks for one; the view asks the frame only for a
 new scale. To confirm.
+
+Changed on 2026-11-14 after its review. Off Windows `createView` had handed
+out a view that could never attach, which a host may take for an editor and
+show as an empty window; it now answers null there. A panic in an editor's
+drop aborted the host, since the view's last reference to the editor dropped
+outside the guard, inside the release; the editor now drops inside it. An
+attach that follows a removal while the editor is still in its `open` was
+refused silently; it is now a failed open with a line, and keeping its
+window for a later open waits until a host is seen to do it.
 
 ### D105. The module stays loaded once an editor has opened
 
@@ -930,6 +946,12 @@ Built on 2026-11-14, after a host unloaded a module whose editor had opened
 and loaded it again at another address: a window class the editor's toolkit
 had registered with the host still named the first load's code, and the next
 editor to open called it. To confirm.
+
+Reworded on 2026-11-14 after its review: the pin comes before the editor is
+told its size or opened, not before any of its code runs, since the plugin
+makes the editor, and its size is read, at `createView`, with the module not
+pinned. `Editor` now asks an editor to register nothing with the system
+before then.
 
 ## Rules
 

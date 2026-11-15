@@ -99,13 +99,14 @@ impl EditorSlot {
     }
 
     /// Opens the editor inside `parent`, after telling it the size and
-    /// scale the host gave so far. A panic inside the editor's `open` is
-    /// caught and answered as [`Opened::Panicked`].
+    /// scale the host gave since it was last told them. A panic inside the
+    /// editor's `open` is caught and answered as [`Opened::Panicked`].
     ///
-    /// Before any of the editor's code runs, it keeps the module loaded until
-    /// the process ends, whatever the open comes to: on Windows, what an
-    /// editor registers with the system stays valid for the life of the
-    /// process.
+    /// Before the editor is told anything or opened, it keeps the module
+    /// loaded until the process ends, whatever the open comes to: on Windows,
+    /// what an editor registers with the system stays valid for the life of
+    /// the process. The plugin made the editor, and its size was read,
+    /// earlier and with the module not kept, which `Editor` allows for.
     pub(crate) fn open(&self, parent: &ParentWindow) -> Opened {
         match self.phase.get() {
             Phase::Closed => {}

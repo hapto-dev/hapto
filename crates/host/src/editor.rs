@@ -34,11 +34,12 @@ pub struct Size {
 /// plugin writes nothing more: no pump and no timer. In order:
 ///
 /// 1. [`size`](Self::size), once: the size the host's window is made for.
-/// 2. [`set_scale`](Self::set_scale) and [`set_size`](Self::set_size), with
-///    what the host gave so far, then [`open`](Self::open) with the host's
-///    window. An error there leaves nothing in the window and is a fault of
-///    the instance, with its text in the fault report; the host is told the
-///    editor did not open, and the audio goes on.
+/// 2. [`set_scale`](Self::set_scale) and [`set_size`](Self::set_size), each
+///    when the host gave a value the editor was not told yet, then
+///    [`open`](Self::open) with the host's window. An error there leaves
+///    nothing in the window and is a fault of the instance, with its text in
+///    the fault report; the host is told the editor did not open, and the
+///    audio goes on.
 /// 3. While open, [`set_size`](Self::set_size) and
 ///    [`set_scale`](Self::set_scale) as the host resizes the window or moves
 ///    it to a screen of another scale, and [`tick`](Self::tick) on each of
@@ -62,7 +63,11 @@ pub struct Size {
 /// So what an editor registers with the system, such as a window class,
 /// stays valid for the life of the process, and the module's statics keep
 /// their values into the host's next load. An editor still removes what it
-/// made at [`close`](Self::close).
+/// made at [`close`](Self::close). It registers nothing with the system
+/// before it is first told a scale or a size, or opened: the plugin makes
+/// it, and its [`size`](Self::size) is read, before the module is kept
+/// loaded, and a host may release a view it never attached and unload the
+/// module.
 ///
 /// Thread: main. An editor is not `Send`: every call, and its drop, is on
 /// the plugin's main thread.
