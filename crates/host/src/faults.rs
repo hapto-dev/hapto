@@ -32,8 +32,9 @@
 //!   the plugin's name and the reason, on the thread that tried to create
 //!   it: no instance exists to report it once.
 //! - **An editor that failed to open** is a fault of its instance, and the
-//!   first of an instance writes its line at once, with the editor's reason,
-//!   on the main thread that tried to open it. Later ones are counted.
+//!   first of an instance writes its line at once, with the editor's reason
+//!   or Seam's, on the main thread that tried to open it. Later ones are
+//!   counted.
 //!
 //! The panic itself is another matter. A processor that panics does so on
 //! the audio thread. There the panic allocates its payload, and std's

@@ -37,8 +37,13 @@ pub(crate) enum Opened {
     /// It opened. A close the host asked for while it opened has closed it
     /// again since.
     Yes,
-    /// It was open or opening already.
+    /// It was open or opening already, and not removed since: the host
+    /// attached it twice.
     Already,
+    /// The host removed it and attached it again while it was still in its
+    /// open or its close, so it cannot open in the new window. It stays
+    /// closed, and that window empty, until the host attaches it again.
+    Busy,
     /// The editor refused, with its reason. It is closed.
     Failed(Box<dyn Error>),
     /// The editor panicked inside `open`. It is closed.
@@ -98,11 +103,15 @@ impl EditorSlot {
     /// editor registers with the system stays valid for the life of the
     /// process.
     pub(crate) fn open(&self, parent: &ParentWindow) -> Opened {
-        if self.phase.get() != Phase::Closed {
-            return Opened::Already;
+        match self.phase.get() {
+            Phase::Closed => {}
+            // A removal arrived inside `open`, and its close waits for it.
+            Phase::Opening if self.closing.get() => return Opened::Busy,
+            Phase::Opening | Phase::Open => return Opened::Already,
         }
+        // Closed and still borrowed: inside its `close`.
         let Ok(mut editor) = self.editor.try_borrow_mut() else {
-            return Opened::Already;
+            return Opened::Busy;
         };
         // Before the editor is told anything or opened: an open that fails or
         // panics may still have left the host something that points into the

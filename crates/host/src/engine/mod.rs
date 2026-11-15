@@ -19,7 +19,7 @@ mod tests;
 
 use std::cell::{Cell, RefCell};
 #[cfg(feature = "vst3")]
-use std::error::Error;
+use std::fmt::Display;
 use std::num::NonZeroUsize;
 #[cfg(feature = "vst3")]
 use std::ptr::NonNull;
@@ -842,14 +842,14 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
         }
     }
 
-    /// Records an editor that failed to open, with the editor's `reason`,
-    /// as [`faults`](crate::faults) says.
+    /// Records an editor that failed to open, with `reason`, the editor's
+    /// or Seam's, as [`faults`](crate::faults) says.
     #[cfg(feature = "vst3")]
-    pub(crate) fn editor_failed(&self, reason: &dyn Error) {
+    pub(crate) fn editor_failed(&self, reason: &dyn Display) {
         self.faults.record_with_reason(
             Fault::NoEditor,
             || format!("{} (instance {})", P::INFO.name, self.number),
-            &reason,
+            reason,
         );
     }
 

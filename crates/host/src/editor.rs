@@ -51,7 +51,9 @@ pub struct Size {
 /// the editor is still in the call. The exporter never calls into an editor
 /// that is in a call already. A size, a scale or a close that arrives then
 /// waits until the call returns, so a close the host asks for while
-/// [`open`](Self::open) runs comes right after it.
+/// [`open`](Self::open) runs comes right after it. A window the host hands
+/// over after that close, while the call still runs, is refused as an open
+/// that failed, and stays empty until the host hands one over again.
 ///
 /// On Windows, once any editor has opened, the plugin's module stays loaded
 /// until the process ends, even when the host unloads it and loads it again.

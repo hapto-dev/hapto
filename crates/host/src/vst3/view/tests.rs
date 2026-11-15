@@ -44,6 +44,8 @@ thread_local! {
     /// What the host does from inside the editor's `open`, as a message
     /// loop run there would deliver it.
     static DURING_OPEN: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
+    /// What the host does from inside the editor's `close`.
+    static DURING_CLOSE: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
     static EDITORS_DROPPED: Cell<u32> = const { Cell::new(0) };
     static PLUGINS_DROPPED: Cell<u32> = const { Cell::new(0) };
     /// Whether the next stub to drop panics as it does.
@@ -61,6 +63,11 @@ fn record(call: Call) {
 /// Runs `during` from inside the next `open`.
 fn during_open(during: impl FnOnce() + 'static) {
     DURING_OPEN.with(|slot| *slot.borrow_mut() = Some(Box::new(during)));
+}
+
+/// Runs `during` from inside the next `close`.
+fn during_close(during: impl FnOnce() + 'static) {
+    DURING_CLOSE.with(|slot| *slot.borrow_mut() = Some(Box::new(during)));
 }
 
 struct Stub;
@@ -87,6 +94,9 @@ impl Editor for Stub {
 
     fn close(&mut self) {
         record(Call::Close);
+        if let Some(during) = DURING_CLOSE.with(|slot| slot.borrow_mut().take()) {
+            during();
+        }
     }
 
     fn set_size(&mut self, size: Size) {
@@ -523,6 +533,62 @@ fn a_removal_from_inside_open_closes_the_editor_once_it_returns() {
     assert!(calls().is_empty(), "closed");
     assert_eq!(view.attach_raw(1), Ok(()), "and opens again");
     assert_eq!(calls(), [Call::Size(500, 400), Call::Open]);
+}
+
+#[test]
+fn an_attach_after_a_removal_inside_open_is_refused_and_counted() {
+    let (host, view) = viewed();
+    let interface = view.interface().clone();
+    written();
+    during_open(move || {
+        // SAFETY: the view is alive while `view` holds it; the second window
+        // is a number the stub never touches.
+        unsafe {
+            assert_eq!(interface.removed(), 0);
+            let second = std::ptr::dangling_mut::<c_void>();
+            assert_eq!(interface.attached(second, kPlatformTypeHWND), kResultFalse);
+        }
+    });
+    assert_eq!(view.attach_raw(1), Ok(()));
+    // The second window cannot be opened in while the first open runs, so
+    // the host hears no and the developer reads why.
+    host.expect_faults(1);
+    let lines = written();
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    assert!(lines[0].contains("editor failed to open"), "{}", lines[0]);
+    assert!(lines[0].contains("attached the view again"), "{}", lines[0]);
+    assert_eq!(
+        calls(),
+        [
+            Call::Scale(1.0),
+            Call::Size(320, 200),
+            Call::Open,
+            Call::Close
+        ]
+    );
+    host.tick();
+    assert!(calls().is_empty(), "closed, and the second window empty");
+    assert_eq!(view.attach_raw(2), Ok(()), "until the editor opens again");
+}
+
+#[test]
+fn an_attach_while_the_editor_closes_is_refused_and_counted() {
+    let (host, view) = viewed();
+    let interface = view.interface().clone();
+    view.attach_raw(1).expect("opens");
+    calls();
+    written();
+    during_close(move || {
+        let second = std::ptr::dangling_mut::<c_void>();
+        // SAFETY: the view is alive while `view` holds it; the second window
+        // is a number the stub never touches.
+        let answer = unsafe { interface.attached(second, kPlatformTypeHWND) };
+        assert_eq!(answer, kResultFalse);
+    });
+    view.remove().expect("removed");
+    host.expect_faults(1);
+    assert_eq!(written().len(), 1);
+    assert_eq!(calls(), [Call::Close]);
 }
 
 #[test]
