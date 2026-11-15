@@ -880,6 +880,17 @@ mappings for them are made in one step when its pass finishes, learn's restore
 clearing them with the rest, and that a count of loads the saved state keeps,
 not the restore clock, decides which were declared before a load.
 
+### D97. A plugin's identity in its manifest
+
+[The decision](decisions.md#d97-a-plugins-identity-in-its-manifest)
+
+Proposed on 2026-11-14 from a fork, so that a plugin's identity sits with its
+package's and its version is written once, and built the same day. The
+choices made while building it wait for the owner: the description is the
+package's, with no key to give the plugin another; the layouts and the MIDI
+flags stay in Rust; the class id is written as a UUID; and a version with a
+pre-release part is refused.
+
 ## Rules
 
 ### P7. The host write: sanitise, clamp, convert, snap, store, publish

@@ -16,8 +16,15 @@
 //! label that refuses a label no choice could have, on that label, and one
 //! per written discriminant that refuses one that is not its variant's
 //! position, on that discriminant.
+//!
+//! With the `manifest` feature, `manifest_info!` writes a plugin's
+//! `seam_host::PluginInfo` from the plugin crate's manifest. Use it through
+//! `seam-host` with its `manifest` feature, where it is documented with an
+//! example.
 
 mod choices;
+#[cfg(feature = "manifest")]
+mod manifest;
 
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as Tokens};
@@ -54,6 +61,25 @@ pub fn derive_choices(input: TokenStream) -> TokenStream {
     match choices::choices(&input) {
         Ok(tokens) => tokens.into(),
         Err(error) => error.to_compile_error().into(),
+    }
+}
+
+/// Writes a plugin's `seam_host::PluginInfo` from its manifest and the
+/// fields it is given.
+///
+/// Documented, with an example, as `seam_host::manifest_info`.
+#[cfg(feature = "manifest")]
+#[proc_macro]
+pub fn manifest_info(input: TokenStream) -> TokenStream {
+    match manifest::expand(input.into()) {
+        Ok(tokens) => tokens.into(),
+        Err(error) => {
+            // The errors are macro calls one after another, which an item's
+            // place takes and an expression's does not, so they go in a
+            // block whose value has any type.
+            let errors = error.to_compile_error();
+            quote! { { #errors ::core::unreachable!() } }.into()
+        }
     }
 }
 

@@ -1049,6 +1049,22 @@ move its line here; when a decision gains code, add one.
 - test `crates/params/tests/run_time.rs`: module, `a_typed_value_reaches_both_kinds_through_each_call`, `a_gesture_on_a_parameter_made_at_run_time_has_no_id_and_tells_the_host_nothing`, `a_parameter_made_at_run_time_is_born_holding_its_held_value`, `the_plugin_holds_a_parameter_until_its_last_typed_one_drops`, `the_id_of_a_parameter_made_at_run_time_is_a_contract_panic_naming_the_fix`, `a_user_write_while_a_restore_applies_names_the_fix_for_a_parameter_made_at_run_time`, `another_instances_parameter_is_a_contract_panic_and_changes_nothing`, `another_instances_parameter_is_refused_and_changes_nothing`, `a_mistake_in_a_struct_made_at_run_time_panics_with_the_fix`
 - test `crates/session/tests/session.rs`: `a_finished_pass_covers_the_stored_count_it_began_at`
 
+### D97. A plugin's identity in its manifest
+
+[Record section](decisions.md#d97-a-plugins-identity-in-its-manifest)
+
+- `Cargo.toml`: `toml`
+- `crates/host/Cargo.toml`: `[package.metadata.seam]`, `manifest`
+- `crates/macros/src/lib.rs`: `manifest_info`
+- `crates/macros/src/manifest.rs`: module, `expand`, `written_once`, `refusal`, `info`, `identity`, `Reader`, `uuid`, `is_plain_version`
+- `examples/eq/Cargo.toml`: `[package.metadata.seam]`
+- `examples/eq/src/lib.rs`: `ExampleEq::INFO`
+- `examples/gain/Cargo.toml`: `[package.metadata.seam]`
+- `examples/gain/src/lib.rs`: `Gain::INFO`
+- test `crates/macros/src/manifest.rs`: `the_categories_and_features_name_the_hosts_variants`, `a_manifest_reads_as_the_plugins_identity`, `every_mistake_is_refused_on_its_line`, `a_manifest_without_the_table_is_refused`, `a_version_with_a_pre_release_part_is_refused`, `a_field_the_manifest_gives_is_refused_in_rust`, `a_uuid_reads_as_its_bytes`
+- test `crates/host/src/info/manifest_refusals.rs`: module, `FieldTheManifestGives`, `FieldInNeither`
+- test `examples/gain/tests/gain.rs`: `the_manifest_gives_the_identity_hosts_know_the_gain_by`
+
 ## Parameters
 
 ### P1. One store per parameter

@@ -1,6 +1,6 @@
 [package]
 name = "seam-example-gain"
-description = "The example gain: a gain, a bypass, three modes, an undoable label and MIDI learn, on Seam"
+description = "A gain with three modes, a label and MIDI learn"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -16,6 +16,16 @@ publish.workspace = true
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+# Who the plugin is, to every host: `seam_host::manifest_info!` reads it,
+# with the version and description above.
+[package.metadata.seam]
+name = "Seam Example Gain"
+vendor = "Seam"
+id = "dev.seam.example-gain"
+vst3-class-id = "5b0ad271-3e96-4c18-a37f-e0248db56a19"
+au-codes = { subtype = "SmGn", manufacturer = "Seam" }
+category = "effect"
+
 [lib]
 # The cdylib is the VST3 module; the rlib lets tests drive it in-process.
 crate-type = ["cdylib", "rlib"]
@@ -26,7 +36,7 @@ default = ["vst3"]
 vst3 = ["seam-host/vst3"]
 
 [dependencies]
-seam-host.workspace = true
+seam-host = { workspace = true, features = ["manifest"] }
 seam-learn.workspace = true
 seam-params = { workspace = true, features = ["derive"] }
 seam-undo.workspace = true

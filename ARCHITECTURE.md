@@ -28,8 +28,10 @@ reading how Seam works inside, start with
   makes [parameters at run time](docs/glossary.md#parameter-made-at-run-time),
   in no set.
 - `crates/macros`: `#[derive(Params)]` and `#[derive(Choices)]`, which
-  `params` re-exports under its `derive` feature: a proc-macro crate below the
-  core, on `syn`.
+  `params` re-exports under its `derive` feature, and `manifest_info!`, which
+  `host` re-exports under its `manifest` feature and which reads a plugin's
+  identity from its manifest: a proc-macro crate below the core, on `syn`, and
+  for the manifest on `toml`'s parser.
 - `crates/undo`: undo history over parameters, plain values and lists.
 - `crates/session`: saved state: who contributes to it,
   [restore](docs/glossary.md#restore), late

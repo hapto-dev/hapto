@@ -1,5 +1,8 @@
 //! What a host reads about a plugin before creating it.
 
+#[cfg(all(doctest, feature = "manifest"))]
+mod manifest_refusals;
+
 /// What kind of plugin it is.
 ///
 /// # Examples
@@ -135,7 +138,8 @@ pub struct AuCodes {
 /// A plugin's identity and description, the same for every format.
 ///
 /// A plugin's [`Plugin::INFO`](crate::Plugin::INFO) is one of these, a
-/// constant.
+/// constant, written by hand as below or by `manifest_info!`, under the
+/// `manifest` feature, from the plugin's manifest.
 ///
 /// # Examples
 ///

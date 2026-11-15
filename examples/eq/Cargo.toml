@@ -1,6 +1,6 @@
 [package]
 name = "seam-example-eq"
-description = "The example EQ: six biquad bands and an output gain, on Seam"
+description = "Six biquad bands and an output gain"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -16,6 +16,17 @@ publish.workspace = true
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+# Who the plugin is, to every host: `seam_host::manifest_info!` reads it,
+# with the version and description above.
+[package.metadata.seam]
+name = "Seam Example EQ"
+vendor = "Seam"
+id = "dev.seam.example-eq"
+vst3-class-id = "44f0fc1b-fd79-434d-a987-84b801dc348b"
+au-codes = { subtype = "SmEq", manufacturer = "Seam" }
+category = "effect"
+features = ["equalizer"]
+
 [lib]
 # The cdylib is the VST3 module; the rlib lets tests drive it in-process. The
 # JUCE adapter builds the static library itself, with only `cabi` on.
@@ -30,7 +41,7 @@ vst3 = ["seam-host/vst3"]
 cabi = ["seam-host/cabi"]
 
 [dependencies]
-seam-host.workspace = true
+seam-host = { workspace = true, features = ["manifest"] }
 seam-params.workspace = true
 
 [dev-dependencies]

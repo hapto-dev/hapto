@@ -16,6 +16,19 @@ publish.workspace = true
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+# The plugin `manifest_info!`'s doc example declares, since the macro reads
+# the manifest of the crate it is used in. No plugin ships from this crate,
+# which is no cdylib.
+[package.metadata.seam]
+name = "Tone"
+vendor = "Example"
+url = "https://example.com"
+id = "com.example.tone"
+vst3-class-id = "8f3c2a71-5d0e-4b96-a1c4-7e25d9b03f68"
+au-codes = { subtype = "tone", manufacturer = "Exmp" }
+category = "effect"
+features = ["equalizer"]
+
 [features]
 # VST3, natively in Rust: parameters, automation, state, bus layouts and a
 # main-thread timer, for Windows and macOS. No MIDI reaches a plugin through
@@ -28,9 +41,13 @@ cabi = []
 # through an exporter in tests: for a plugin crate's dev-dependencies, so a
 # shipping plugin carries none of it.
 test-host = []
+# `manifest_info!`, which writes a plugin's `PluginInfo` from its manifest's
+# `[package.metadata.seam]`, checked while compiling.
+manifest = ["dep:seam-macros", "seam-macros/manifest"]
 
 [dependencies]
 seam-learn.workspace = true
+seam-macros = { workspace = true, optional = true }
 seam-params.workspace = true
 seam-session.workspace = true
 seam-ump.workspace = true
