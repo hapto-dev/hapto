@@ -100,7 +100,7 @@ pub use protocol::{CallResult, DecodeError, PROTOCOL_VERSION, ParamState, Positi
 #[doc(inline)]
 pub use protocol::{NativeMessage, PageMessage};
 
-/// Where the native side posts encoded messages for the page: wry, Tauri, a
+/// Where the native side posts encoded messages for the page: wry, a
 /// dev-mode socket, or a buffer in tests.
 ///
 /// # Examples

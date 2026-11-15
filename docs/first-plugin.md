@@ -444,42 +444,56 @@ server, `into_editor` gives `None`.
 
 `export_vst3!(Gain)` at the top of the crate's `lib.rs` turns the `cdylib` into
 a VST3 module, under the crate's own `vst3` feature from the manifest above.
-Build the page first, so the module has an editor:
+One command, in any shell, builds the page, then the module in release, lays
+out its bundle and installs it:
+
+```sh
+cargo xtask bundle -p seam-example-gain --install
+```
+
+It runs `npm ci` in `page/` when `node_modules` is missing or older than the
+lockfile, and `npm run build` every time, so a stale page never reaches the
+bundle; `--no-page` skips the page for a Rust-only rebuild. The bundle goes to
+`target/bundle/Seam Example Gain.vst3`, named from `[package.metadata.seam]`.
+`--install` copies it to the per-user VST3 folder,
+`%LOCALAPPDATA%\Programs\Common\VST3`, which needs no administrator;
+`--install-system` copies it to `C:\Program Files\Common Files\VST3` instead,
+from an administrator's shell. Either warns when the other folder holds a
+bundle of the same name, since the host then picks one. Rescan in the host,
+and it opens the page as the plugin's editor.
+
+What the command lays out: a VST3 bundle is a folder, and on Windows the
+library goes in as the module itself, under the architecture's folder, as CI
+lays out the EQ's bundle:
 
 ```sh
 cd examples/gain/page && npm ci && npm run build && cd ../../..
 cargo build -p seam-example-gain --release
-```
-
-A VST3 bundle is a folder. On Windows the library goes in as the module itself,
-under the architecture's folder, as CI lays out the EQ's bundle:
-
-```sh
-bundle="bundle/Seam Example Gain.vst3"
+bundle="target/bundle/Seam Example Gain.vst3"
 mkdir -p "$bundle/Contents/x86_64-win"
 cp target/release/seam_example_gain.dll \
   "$bundle/Contents/x86_64-win/Seam Example Gain.vst3"
 ```
 
-Copy the bundle to `C:\Program Files\Common Files\VST3` and rescan in the host.
-The host opens the page as the plugin's editor. It needs the WebView2 runtime,
-which Windows 11 ships; where it is missing, the editor does not open, the
-fault report says why, and the audio goes on. The page keeps its browser data
-in `%LOCALAPPDATA%\dev.seam.example-gain\WebView2`.
+The editor needs the WebView2 runtime, which Windows 11 ships; where it is
+missing, the editor does not open, the fault report says why, and the audio
+goes on. The page keeps its browser data in
+`%LOCALAPPDATA%\dev.seam.example-gain\WebView2`.
 [pluginval](https://github.com/Tracktion/pluginval) checks a bundle without a
 host. CI runs version 1.0.4 on the EQ's bundle with these options; for the
 gain's:
 
 ```sh
 pluginval --strictness-level 5 --validate-in-process --skip-gui-tests \
-  "bundle/Seam Example Gain.vst3"
+  "target/bundle/Seam Example Gain.vst3"
 ```
 
 Once a plugin's editor has opened, a host keeps the module's file in use until
-the host exits, so quit the host before replacing the bundle.
+the host exits, so quit the host before installing the bundle again: the
+command's copy fails until then, and says so.
 
 Open: CI lays out and validates the EQ's Windows bundle only, not the gain's.
-The macOS bundle is not built yet.
+The macOS bundle is not built yet, and the command refuses there.
 
 ## Your own crate
 
@@ -504,6 +518,14 @@ change the manifest:
   `[workspace.lints.clippy]` tables in as `[lints.rust]` and `[lints.clippy]`,
   or drop the `[lints]` table, and copy its `[profile.release]` for the same
   release build.
+
+The page takes `seam-page` from a checkout too, since the package is not on
+npm: in `page/package.json`, point it at the checkout's `page` folder by a
+path from the page's own folder, `"seam-page": "file:../../seam/page"` for a
+checkout beside the crate. The gain's path leads into this repository, so
+`npm ci` in a copy fails until it is changed. `cargo xtask bundle` is this
+repository's and bundles its crates only; lay out your own crate's bundle with
+the steps in section 10.
 
 ## Where to read on
 

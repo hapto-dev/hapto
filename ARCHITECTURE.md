@@ -76,6 +76,8 @@ reading how Seam works inside, start with
 - `adapters/juce`: the generic JUCE adapter: any Seam plugin, through `seam.h`,
   as a JUCE plugin.
 - `xtask`: `cargo xtask gen` writes every generated file; each has a drift gate.
+  `cargo xtask bundle` builds a plugin crate's page and module and lays out its
+  VST3 bundle.
 - `bench`: the comparison against plain JUCE.
 
 ## From a host's call to your block
