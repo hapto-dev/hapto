@@ -2683,11 +2683,11 @@ and answers null for none and on any other platform. The view
   the instance; the first writes a line with the editor's reason. A panic in
   `open` is a fault too. The host and the audio go on, and the view may be
   attached again. An `attached` that follows a `removed` while the editor is
-  still in its `open` or its `close` cannot open in the new window: it is a
-  failed open too, with a line that says why, and the new window stays empty
-  until the host attaches the view again. Open: keeping that window and
-  opening the editor in it once the call returns, if a host is seen to do
-  this.
+  still in a call, its `open`, its tick or its `close` among them, cannot
+  open in the new window: it is a failed open too, with a line that says
+  why, and the new window stays empty until the host attaches the view
+  again. Open: keeping that window and opening the editor in it once the
+  call returns, if a host is seen to do this.
 - **Keys** are not handled through `onKeyDown`: an editor's own window takes
   its keys from the system.
 

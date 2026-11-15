@@ -233,7 +233,7 @@ impl<P: Plugin> IPlugViewTrait for View<P> {
                 Opened::Busy => {
                     self.engine().editor_failed(
                         &"the host attached the view again while the editor was still \
-                          in its last open or close, so it stays closed until the next attach",
+                          in a call, so it stays closed until the next attach",
                     );
                     kResultFalse
                 }

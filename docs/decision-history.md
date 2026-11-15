@@ -938,6 +938,12 @@ attach that follows a removal while the editor is still in its `open` was
 refused silently; it is now a failed open with a line, and keeping its
 window for a later open waits until a host is seen to do it.
 
+Changed again the same day, after a review of those changes. The refused
+attach was counted only where the removal before it had arrived inside the
+editor's `open`, or the attach inside its `close`. One that followed a
+removal inside the editor's tick, or inside a size or scale call, was still
+refused silently, and is now a failed open with a line too.
+
 ### D105. The module stays loaded once an editor has opened
 
 [The decision](decisions.md#d105-the-module-stays-loaded-once-an-editor-has-opened)

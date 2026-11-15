@@ -7,7 +7,9 @@
 //! inside it: a resize, a removal, even a tick. The editor is borrowed for
 //! each call, so a call that finds it borrowed never borrows it twice. A tick
 //! skips it. A size or a scale is kept and told once the call returns, and a
-//! close is kept and done then.
+//! close is kept and done then. An open that follows such a close, while
+//! the call still runs, is refused: the editor cannot open in a new window
+//! from inside a call.
 //!
 //! An open keeps the plugin's module loaded until the process ends, since a
 //! toolkit may leave the host something that points into it and a host may
@@ -40,9 +42,10 @@ pub(crate) enum Opened {
     /// It was open or opening already, and not removed since: the host
     /// attached it twice.
     Already,
-    /// The host removed it and attached it again while it was still in its
-    /// open or its close, so it cannot open in the new window. It stays
-    /// closed, and that window empty, until the host attaches it again.
+    /// The host removed it and attached it again while it was still in a
+    /// call: the one the removal arrived in, such as its open or its tick,
+    /// or its close. So it cannot open in the new window. It stays closed,
+    /// and that window empty, until the host attaches it again.
     Busy,
     /// The editor refused, with its reason. It is closed.
     Failed(Box<dyn Error>),
@@ -110,8 +113,9 @@ impl EditorSlot {
     pub(crate) fn open(&self, parent: &ParentWindow) -> Opened {
         match self.phase.get() {
             Phase::Closed => {}
-            // A removal arrived inside `open`, and its close waits for it.
-            Phase::Opening if self.closing.get() => return Opened::Busy,
+            // A removal arrived inside one of the editor's calls, its `open`
+            // or its tick among them, and its close waits for that call.
+            Phase::Opening | Phase::Open if self.closing.get() => return Opened::Busy,
             Phase::Opening | Phase::Open => return Opened::Already,
         }
         // Closed and still borrowed: inside its `close`.
