@@ -45,12 +45,12 @@ function GainSlider() {
 
 function LabelField() {
   const label = useValue("label");
-  // The text the user is typing, from their first key until Enter or the
-  // field losing the focus; null otherwise, when the field shows the label as
-  // the plugin holds it, so a load or an undo shows at once.
+  // The text the user is typing, from their first key until the field loses
+  // the focus; null otherwise, when the field shows the label as the plugin
+  // holds it, so a load or an undo shows at once.
   const [draft, setDraft] = useState<string | null>(null);
   // Stores only text that differs from the label, so a click into the field
-  // and out, or Enter then a click away, stores nothing more.
+  // and out stores nothing.
   const commit = () => {
     if (draft !== null && draft !== label.value) label.set(draft);
     setDraft(null);
@@ -64,7 +64,8 @@ function LabelField() {
         onChange={(event) => setDraft(event.currentTarget.value)}
         onBlur={commit}
         onKeyDown={(event) => {
-          if (event.key === "Enter") commit();
+          // Enter ends the edit: the blur stores it, once.
+          if (event.key === "Enter") event.currentTarget.blur();
         }}
       />
     </label>
