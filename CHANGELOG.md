@@ -151,7 +151,8 @@ exporter.
   fault, an editor whose tick panicked is closed, and the host and the audio go
   on.
   `vst3::TestView` drives a view in tests, and on Windows attaches it to a
-  `vst3::HiddenWindow`, which gives a real editor a window that is never shown.
+  `vst3::HiddenWindow`, which gives a real editor a window that is never shown
+  and says what the editor left in it.
 - `seam-host`: on Windows, once an editor has opened, the plugin's module stays
   loaded until the process ends, so what the editor left with the host stays
   valid when the host unloads the module and loads it again. The plugin's file
