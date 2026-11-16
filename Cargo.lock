@@ -2135,6 +2135,7 @@ dependencies = [
  "seam-host",
  "seam-params",
  "seam-testkit",
+ "serde_json",
  "syn 2.0.119",
 ]
 

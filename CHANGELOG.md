@@ -203,7 +203,10 @@ exporter.
 - `examples/eq`: an EQ of six biquad bands and an output gain, as a VST3 module
   or a static library for the adapter.
 - `xtask`: `cargo xtask gen` writes every generated file, and CI fails when one
-  drifts. `cargo xtask wrap` holds comments and docs to 80 columns.
+  drifts. `cargo xtask wrap` holds comments and docs to 80 columns. `cargo
+  xtask bundle` builds a plugin crate's page and the crate in release, lays out
+  its VST3 bundle under `target/bundle/` and installs it, per user or for every
+  user, on Windows.
 - `bench`: the comparison of the example EQ against the same EQ in plain JUCE,
   with its reports in `bench/reports`.
 - Guarantees the tests keep: the audio path never allocates (allocation gates),

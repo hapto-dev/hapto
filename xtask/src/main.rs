@@ -3,7 +3,8 @@
 use std::io::Read;
 use std::process::ExitCode;
 
-/// The tasks every build has; `usage` adds `gen` for a build that has it.
+/// The tasks every build has but `bundle`; `usage` adds `bundle`, and `gen`
+/// for a build that has it.
 const TASKS: &str = "  scan              read Rust file paths from stdin, print their comments, string literals and fn names
   defs              read Rust file paths from stdin, print the names each defines
   wrap [--max N]    list the comment lines of crates/, examples/ and xtask/ longer than N columns (default 80)
@@ -16,7 +17,8 @@ fn usage() -> String {
     } else {
         ""
     };
-    format!("usage: cargo xtask <task>\n\n{gen_task}{TASKS}")
+    let bundle = xtask::bundle::USAGE;
+    format!("usage: cargo xtask <task>\n\n{gen_task}{bundle}\n{TASKS}")
 }
 
 fn main() -> ExitCode {
@@ -26,6 +28,7 @@ fn main() -> ExitCode {
     let result = match args.next().as_deref() {
         #[cfg(feature = "generate")]
         Some("gen") => generate(),
+        Some("bundle") => xtask::bundle::run(args),
         Some("scan") => per_file(xtask::scan::scan_report),
         Some("defs") => per_file(xtask::scan::definitions_report),
         Some("wrap") => wrap(args.collect()),
