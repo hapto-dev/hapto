@@ -11,7 +11,7 @@
 /// A float's arguments on a `Bool` field.
 ///
 /// ```compile_fail,E0061
-/// use seam_params::{Bool, Params};
+/// use hapto_params::{Bool, Params};
 ///
 /// #[derive(Params)]
 /// struct P {
@@ -21,7 +21,7 @@
 /// ```
 ///
 /// ```
-/// use seam_params::{Bool, Params};
+/// use hapto_params::{Bool, Params};
 ///
 /// #[derive(Params)]
 /// struct P {
@@ -34,7 +34,7 @@ struct FloatArgumentsOnBool;
 /// An option the kind does not have: a bool has no step.
 ///
 /// ```compile_fail,E0599
-/// use seam_params::{Bool, Params};
+/// use hapto_params::{Bool, Params};
 ///
 /// #[derive(Params)]
 /// struct P {
@@ -44,7 +44,7 @@ struct FloatArgumentsOnBool;
 /// ```
 ///
 /// ```
-/// use seam_params::{Bool, Params};
+/// use hapto_params::{Bool, Params};
 ///
 /// #[derive(Params)]
 /// struct P {
@@ -57,7 +57,7 @@ struct OptionTheKindLacks;
 /// A flag the kind does not have: only a bool can be the bypass.
 ///
 /// ```compile_fail,E0599
-/// use seam_params::{Float, Params};
+/// use hapto_params::{Float, Params};
 ///
 /// #[derive(Params)]
 /// struct P {
@@ -67,7 +67,7 @@ struct OptionTheKindLacks;
 /// ```
 ///
 /// ```
-/// use seam_params::{Bool, Params};
+/// use hapto_params::{Bool, Params};
 ///
 /// #[derive(Params)]
 /// struct P {
@@ -81,7 +81,7 @@ struct FlagTheKindLacks;
 /// are.
 ///
 /// ```compile_fail
-/// use seam_params::{Float, Params};
+/// use hapto_params::{Float, Params};
 ///
 /// #[derive(Params)]
 /// struct P {
@@ -91,7 +91,7 @@ struct FlagTheKindLacks;
 /// ```
 ///
 /// ```
-/// use seam_params::{Float, Params};
+/// use hapto_params::{Float, Params};
 ///
 /// #[derive(Params)]
 /// struct P {
@@ -104,7 +104,7 @@ struct MisspeltOption;
 /// Another enum's value for a `Choice<E>`.
 ///
 /// ```compile_fail,E0308
-/// # use seam_params::Choices;
+/// # use hapto_params::Choices;
 /// # #[derive(Debug, Clone, Copy)]
 /// # enum Mode { Clean, Warm }
 /// # #[derive(Debug, Clone, Copy)]
@@ -114,7 +114,7 @@ struct MisspeltOption;
 /// #     fn from_index(index: usize) -> Self { if index == 0 { Mode::Clean } else { Mode::Warm } }
 /// #     fn index(self) -> usize { self as usize }
 /// # }
-/// use seam_params::{Choice, Params};
+/// use hapto_params::{Choice, Params};
 ///
 /// #[derive(Params)]
 /// struct P {
@@ -124,7 +124,7 @@ struct MisspeltOption;
 /// ```
 ///
 /// ```
-/// # use seam_params::Choices;
+/// # use hapto_params::Choices;
 /// # #[derive(Debug, Clone, Copy)]
 /// # enum Mode { Clean, Warm }
 /// # #[derive(Debug, Clone, Copy)]
@@ -134,7 +134,7 @@ struct MisspeltOption;
 /// #     fn from_index(index: usize) -> Self { if index == 0 { Mode::Clean } else { Mode::Warm } }
 /// #     fn index(self) -> usize { self as usize }
 /// # }
-/// use seam_params::{Choice, Params};
+/// use hapto_params::{Choice, Params};
 ///
 /// #[derive(Params)]
 /// struct P {
@@ -147,7 +147,7 @@ struct ChoiceGivenOtherEnum;
 /// An argument after an option.
 ///
 /// ```compile_fail
-/// use seam_params::{Float, Params};
+/// use hapto_params::{Float, Params};
 ///
 /// #[derive(Params)]
 /// struct P {
@@ -157,7 +157,7 @@ struct ChoiceGivenOtherEnum;
 /// ```
 ///
 /// ```
-/// use seam_params::{Float, Params};
+/// use hapto_params::{Float, Params};
 ///
 /// #[derive(Params)]
 /// struct P {
@@ -170,7 +170,7 @@ struct ArgumentAfterOption;
 /// A range whose start is above its end.
 ///
 /// ```compile_fail,E0080
-/// use seam_params::{Float, Params};
+/// use hapto_params::{Float, Params};
 ///
 /// #[derive(Params)]
 /// struct P {
@@ -180,7 +180,7 @@ struct ArgumentAfterOption;
 /// ```
 ///
 /// ```
-/// use seam_params::{Float, Params};
+/// use hapto_params::{Float, Params};
 ///
 /// #[derive(Params)]
 /// struct P {
@@ -193,7 +193,7 @@ struct RangeBackwards;
 /// A default outside its range.
 ///
 /// ```compile_fail,E0080
-/// use seam_params::{Float, Params};
+/// use hapto_params::{Float, Params};
 ///
 /// #[derive(Params)]
 /// struct P {
@@ -203,7 +203,7 @@ struct RangeBackwards;
 /// ```
 ///
 /// ```
-/// use seam_params::{Float, Params};
+/// use hapto_params::{Float, Params};
 ///
 /// #[derive(Params)]
 /// struct P {
@@ -216,7 +216,7 @@ struct DefaultOutside;
 /// A key with a `/`.
 ///
 /// ```compile_fail,E0080
-/// use seam_params::{Bool, Params};
+/// use hapto_params::{Bool, Params};
 ///
 /// #[derive(Params)]
 /// struct P {
@@ -226,7 +226,7 @@ struct DefaultOutside;
 /// ```
 ///
 /// ```
-/// use seam_params::{Bool, Params};
+/// use hapto_params::{Bool, Params};
 ///
 /// #[derive(Params)]
 /// struct P {
@@ -239,7 +239,7 @@ struct KeyWithSlash;
 /// Two fields with one key.
 ///
 /// ```compile_fail,E0080
-/// use seam_params::{Bool, Float, Params};
+/// use hapto_params::{Bool, Float, Params};
 ///
 /// #[derive(Params)]
 /// struct P {
@@ -253,7 +253,7 @@ struct KeyWithSlash;
 /// ```
 ///
 /// ```
-/// use seam_params::{Bool, Float, Params};
+/// use hapto_params::{Bool, Float, Params};
 ///
 /// #[derive(Params)]
 /// struct P {
@@ -270,7 +270,7 @@ struct KeyTwice;
 /// A field that is neither a parameter nor a struct of them.
 ///
 /// ```compile_fail,E0277
-/// use seam_params::{Float, Params};
+/// use hapto_params::{Float, Params};
 ///
 /// #[derive(Params)]
 /// struct P {
@@ -281,7 +281,7 @@ struct KeyTwice;
 /// ```
 ///
 /// ```
-/// use seam_params::{Float, Params};
+/// use hapto_params::{Float, Params};
 ///
 /// #[derive(Params)]
 /// struct Inner {
@@ -301,7 +301,7 @@ struct NeitherParameterNorStruct;
 /// A mark on a field that is not a parameter.
 ///
 /// ```compile_fail,E0277
-/// use seam_params::Params;
+/// use hapto_params::Params;
 ///
 /// #[derive(Params)]
 /// struct P {
@@ -311,7 +311,7 @@ struct NeitherParameterNorStruct;
 /// ```
 ///
 /// ```
-/// use seam_params::{Bool, Params};
+/// use hapto_params::{Bool, Params};
 ///
 /// #[derive(Params)]
 /// struct P {
@@ -324,7 +324,7 @@ struct MarkOnOtherType;
 /// The derive on an enum.
 ///
 /// ```compile_fail
-/// use seam_params::{Float, Params};
+/// use hapto_params::{Float, Params};
 ///
 /// #[derive(Params)]
 /// enum P {
@@ -333,7 +333,7 @@ struct MarkOnOtherType;
 /// ```
 ///
 /// ```
-/// use seam_params::{Float, Params};
+/// use hapto_params::{Float, Params};
 ///
 /// #[derive(Params)]
 /// struct P {
@@ -346,14 +346,14 @@ struct OnEnum;
 /// The derive on a tuple struct.
 ///
 /// ```compile_fail
-/// use seam_params::{Float, Params};
+/// use hapto_params::{Float, Params};
 ///
 /// #[derive(Params)]
 /// struct P(#[param("gain", "Gain", -60.0..=12.0, 0.0)] Float);
 /// ```
 ///
 /// ```
-/// use seam_params::{Float, Params};
+/// use hapto_params::{Float, Params};
 ///
 /// #[derive(Params)]
 /// struct P {
@@ -366,7 +366,7 @@ struct OnTupleStruct;
 /// The derive on a generic struct.
 ///
 /// ```compile_fail
-/// use seam_params::{Float, Params};
+/// use hapto_params::{Float, Params};
 ///
 /// #[derive(Params)]
 /// struct P<T: Params> {
@@ -377,7 +377,7 @@ struct OnTupleStruct;
 /// ```
 ///
 /// ```
-/// use seam_params::{Float, Params};
+/// use hapto_params::{Float, Params};
 ///
 /// #[derive(Params)]
 /// struct P {
@@ -391,7 +391,7 @@ struct OnGenericStruct;
 /// `Choices` derived for a struct.
 ///
 /// ```compile_fail
-/// use seam_params::Choices;
+/// use hapto_params::Choices;
 ///
 /// #[derive(Clone, Copy, Choices)]
 /// struct Mode {
@@ -400,7 +400,7 @@ struct OnGenericStruct;
 /// ```
 ///
 /// ```
-/// use seam_params::Choices;
+/// use hapto_params::Choices;
 ///
 /// #[derive(Clone, Copy, Choices)]
 /// enum Mode {
@@ -413,7 +413,7 @@ struct ChoicesOnStruct;
 /// `Choices` derived for a union.
 ///
 /// ```compile_fail
-/// use seam_params::Choices;
+/// use hapto_params::Choices;
 ///
 /// #[derive(Clone, Copy, Choices)]
 /// union Mode {
@@ -422,7 +422,7 @@ struct ChoicesOnStruct;
 /// ```
 ///
 /// ```
-/// use seam_params::Choices;
+/// use hapto_params::Choices;
 ///
 /// #[derive(Clone, Copy, Choices)]
 /// enum Mode {
@@ -435,7 +435,7 @@ struct ChoicesOnUnion;
 /// A variant with fields.
 ///
 /// ```compile_fail
-/// use seam_params::Choices;
+/// use hapto_params::Choices;
 ///
 /// #[derive(Clone, Copy, Choices)]
 /// enum Mode {
@@ -445,7 +445,7 @@ struct ChoicesOnUnion;
 /// ```
 ///
 /// ```
-/// use seam_params::Choices;
+/// use hapto_params::Choices;
 ///
 /// #[derive(Clone, Copy, Choices)]
 /// enum Mode {
@@ -460,7 +460,7 @@ struct VariantWithFields;
 /// ```compile_fail
 /// use std::marker::PhantomData;
 ///
-/// use seam_params::Choices;
+/// use hapto_params::Choices;
 ///
 /// #[derive(Clone, Copy, Choices)]
 /// enum Mode<T: Copy> {
@@ -470,7 +470,7 @@ struct VariantWithFields;
 /// ```
 ///
 /// ```
-/// use seam_params::Choices;
+/// use hapto_params::Choices;
 ///
 /// #[derive(Clone, Copy, Choices)]
 /// enum Mode {
@@ -483,7 +483,7 @@ struct GenericEnum;
 /// An enum of one variant: a choice has two values at least.
 ///
 /// ```compile_fail
-/// use seam_params::Choices;
+/// use hapto_params::Choices;
 ///
 /// #[derive(Clone, Copy, Choices)]
 /// enum Mode {
@@ -492,7 +492,7 @@ struct GenericEnum;
 /// ```
 ///
 /// ```
-/// use seam_params::Choices;
+/// use hapto_params::Choices;
 ///
 /// #[derive(Clone, Copy, Choices)]
 /// enum Mode {
@@ -506,7 +506,7 @@ struct OneVariant;
 /// the discriminant. One that is the position compiles.
 ///
 /// ```compile_fail,E0080
-/// use seam_params::Choices;
+/// use hapto_params::Choices;
 ///
 /// #[derive(Clone, Copy, Choices)]
 /// enum Mode {
@@ -516,7 +516,7 @@ struct OneVariant;
 /// ```
 ///
 /// ```
-/// use seam_params::Choices;
+/// use hapto_params::Choices;
 ///
 /// #[derive(Clone, Copy, Choices)]
 /// enum Mode {
@@ -529,7 +529,7 @@ struct DiscriminantNotPosition;
 /// A label with whitespace at an end, refused on the label.
 ///
 /// ```compile_fail,E0080
-/// use seam_params::Choices;
+/// use hapto_params::Choices;
 ///
 /// #[derive(Clone, Copy, Choices)]
 /// enum Mode {
@@ -540,7 +540,7 @@ struct DiscriminantNotPosition;
 /// ```
 ///
 /// ```
-/// use seam_params::Choices;
+/// use hapto_params::Choices;
 ///
 /// #[derive(Clone, Copy, Choices)]
 /// enum Mode {
@@ -554,7 +554,7 @@ struct PaddedLabel;
 /// An empty label, refused on the label.
 ///
 /// ```compile_fail,E0080
-/// use seam_params::Choices;
+/// use hapto_params::Choices;
 ///
 /// #[derive(Clone, Copy, Choices)]
 /// enum Mode {
@@ -565,7 +565,7 @@ struct PaddedLabel;
 /// ```
 ///
 /// ```
-/// use seam_params::Choices;
+/// use hapto_params::Choices;
 ///
 /// #[derive(Clone, Copy, Choices)]
 /// enum Mode {
@@ -578,7 +578,7 @@ struct EmptyLabel;
 /// Two labels that differ only in ASCII case, refused on the second.
 ///
 /// ```compile_fail,E0080
-/// use seam_params::Choices;
+/// use hapto_params::Choices;
 ///
 /// #[derive(Clone, Copy, Choices)]
 /// enum Mode {
@@ -589,7 +589,7 @@ struct EmptyLabel;
 /// ```
 ///
 /// ```
-/// use seam_params::Choices;
+/// use hapto_params::Choices;
 ///
 /// #[derive(Clone, Copy, Choices)]
 /// enum Mode {
@@ -603,7 +603,7 @@ struct LabelsDifferInCase;
 /// A mark that is not one string.
 ///
 /// ```compile_fail
-/// use seam_params::Choices;
+/// use hapto_params::Choices;
 ///
 /// #[derive(Clone, Copy, Choices)]
 /// enum Mode {
@@ -614,7 +614,7 @@ struct LabelsDifferInCase;
 /// ```
 ///
 /// ```
-/// use seam_params::Choices;
+/// use hapto_params::Choices;
 ///
 /// #[derive(Clone, Copy, Choices)]
 /// enum Mode {
@@ -628,7 +628,7 @@ struct MarkNotAString;
 /// Two marks on one variant.
 ///
 /// ```compile_fail
-/// use seam_params::Choices;
+/// use hapto_params::Choices;
 ///
 /// #[derive(Clone, Copy, Choices)]
 /// enum Mode {
@@ -640,7 +640,7 @@ struct MarkNotAString;
 /// ```
 ///
 /// ```
-/// use seam_params::Choices;
+/// use hapto_params::Choices;
 ///
 /// #[derive(Clone, Copy, Choices)]
 /// enum Mode {
@@ -654,7 +654,7 @@ struct TwoMarks;
 /// A mark on the enum, not on a variant.
 ///
 /// ```compile_fail
-/// use seam_params::Choices;
+/// use hapto_params::Choices;
 ///
 /// #[derive(Clone, Copy, Choices)]
 /// #[choice("Mode")]
@@ -665,7 +665,7 @@ struct TwoMarks;
 /// ```
 ///
 /// ```
-/// use seam_params::Choices;
+/// use hapto_params::Choices;
 ///
 /// #[derive(Clone, Copy, Choices)]
 /// enum Mode {

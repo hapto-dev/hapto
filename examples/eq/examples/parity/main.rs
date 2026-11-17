@@ -3,7 +3,7 @@
 //! (`bench/`), before any audio is compared: one ulp of difference in a value
 //! or a coefficient already breaks the comparison's bar at low frequencies.
 //!
-//! `cargo run --release -p seam-example-eq --example parity -- <mode>`, one
+//! `cargo run --release -p hapto-example-eq --example parity -- <mode>`, one
 //! line per case on stdout, every number as its bits in hex:
 //!
 //! - `ranges`: each parameter's key, kind, start, end, interval, skew centre

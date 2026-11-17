@@ -184,7 +184,7 @@ fn the_report_escapes_what_would_break_a_line() {
 
 #[test]
 fn a_use_list_does_not_define_a_field_or_variant() {
-    let source = "use seam::{\n    Commit, ParamId,\n};\nfn f() {}\n";
+    let source = "use hapto::{\n    Commit, ParamId,\n};\nfn f() {}\n";
     assert!(!defines(source, "ParamId"));
     assert!(!defines(source, "Commit"));
 }

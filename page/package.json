@@ -1,9 +1,9 @@
 {
-  "name": "seam-page",
+  "name": "@hapto/page",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "React hooks for a Seam plugin page: typed parameters, values, events and commands over a pluggable transport.",
+  "description": "React hooks for a Hapto plugin page: typed parameters, values, events and commands over a pluggable transport.",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {

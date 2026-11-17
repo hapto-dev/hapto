@@ -5,7 +5,7 @@
 //! A plugin describes its page with [`Page`]: the files built into it, its
 //! size, the values the page shows and writes, and the commands it may call.
 //! [`Page::into_editor`] gives the
-//! [`Editor`] that [`Plugin::editor`](seam_host::Plugin::editor) hands out,
+//! [`Editor`] that [`Plugin::editor`](hapto_host::Plugin::editor) hands out,
 //! and the exporter does the rest: it opens the editor in the host's window,
 //! sizes it, ticks it after the plugin's idle, and closes it.
 //!
@@ -14,13 +14,13 @@
 //! - **The page's files** are served from the bytes built into the plugin,
 //!   over a scheme of the editor's own, with their content types; any other
 //!   path is answered 404. A debug build loads a dev server instead when
-//!   `SEAM_PAGE_DEV_URL` is set, so the page's hot reload works in the
+//!   `HAPTO_PAGE_DEV_URL` is set, so the page's hot reload works in the
 //!   plugin's window, with or without the files built in. A release build
 //!   never reads it.
 //! - **Messages.** What the page posts goes to a
-//!   [`Dispatcher`](seam_bridge::Dispatcher) over the plugin's parameters, as
+//!   [`Dispatcher`](hapto_bridge::Dispatcher) over the plugin's parameters, as
 //!   it arrives; what the dispatcher posts reaches the page in order. The
-//!   page's side is `webviewTransport` in the `seam-page` package. Each tick
+//!   page's side is `webviewTransport` in the `@hapto/page` package. Each tick
 //!   tells the page what changed.
 //! - **Only the page.** The WebView navigates nowhere but the page, takes no
 //!   message from any other document, and takes a file dropped on it from
@@ -28,7 +28,7 @@
 //!   On Windows that also turns off HTML drag and drop inside the page.
 //! - **Its data folder** is the plugin's own, below the user's local
 //!   application data, named by the plugin's
-//!   [`id`](seam_host::PluginInfo::id): the WebView's default, beside the
+//!   [`id`](hapto_host::PluginInfo::id): the WebView's default, beside the
 //!   host's executable, is not writable for a host below `Program Files`.
 //!   Every instance of the plugin shares it, and so shares one WebView
 //!   browser process.
@@ -41,7 +41,7 @@
 //!
 //! The editor exists on Windows only, with WebView2; elsewhere
 //! [`Page::into_editor`] gives `None`, and the host shows its own controls.
-//! This crate is a shell: `seam-bridge` and the core crates have no window
+//! This crate is a shell: `hapto-bridge` and the core crates have no window
 //! or WebView dependency.
 //!
 //! # Examples
@@ -49,10 +49,10 @@
 //! A plugin's editor: its built page, a size, one value and one command.
 //!
 //! ```
-//! use seam_host::{Editor, Plugin, Size};
-//! use seam_params::Value;
-//! use seam_webview::{Asset, Page};
-//! # use seam_host::{AuCodes, Block, Category, Layout, Parts, PluginInfo, ProcessSetup, Processor, Status};
+//! use hapto_host::{Editor, Plugin, Size};
+//! use hapto_params::Value;
+//! use hapto_webview::{Asset, Page};
+//! # use hapto_host::{AuCodes, Block, Category, Layout, Parts, PluginInfo, ProcessSetup, Processor, Status};
 //! # struct Through;
 //! # impl Processor for Through {
 //! #     fn process(&mut self, _block: Block<'_, '_>) -> Status { Status::Continue }
@@ -108,7 +108,7 @@
 //! let mut panel = Panel::new(params, parts);
 //! // An editor on Windows, none elsewhere.
 //! assert_eq!(panel.editor().is_some(), cfg!(windows));
-//! # Ok::<(), seam_params::DeclError>(())
+//! # Ok::<(), hapto_params::DeclError>(())
 //! ```
 
 #[cfg_attr(
@@ -119,9 +119,9 @@ mod assets;
 #[cfg(windows)]
 mod windows;
 
-use seam_bridge::{Commands, Values};
-use seam_host::{Editor, PluginInfo, Size};
-use seam_params::{UiParams, Value};
+use hapto_bridge::{Commands, Values};
+use hapto_host::{Editor, PluginInfo, Size};
+use hapto_params::{UiParams, Value};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
@@ -136,10 +136,10 @@ pub use assets::Asset;
 /// # Examples
 ///
 /// ```
-/// # use seam_params::{Kind, ParamDecl, ParamSet};
-/// use seam_host::{AuCodes, Category, Layout, PluginInfo, Size};
-/// use seam_params::Value;
-/// use seam_webview::{Asset, Page};
+/// # use hapto_params::{Kind, ParamDecl, ParamSet};
+/// use hapto_host::{AuCodes, Category, Layout, PluginInfo, Size};
+/// use hapto_params::Value;
+/// use hapto_webview::{Asset, Page};
 ///
 /// # const INFO: PluginInfo = PluginInfo {
 /// #     name: "Panel", vendor: "Example", url: "", email: "", description: "",
@@ -161,7 +161,7 @@ pub use assets::Asset;
 /// if let Some(editor) = editor {
 ///     assert_eq!(editor.size(), Size { width: 480, height: 320 });
 /// }
-/// # Ok::<(), seam_params::DeclError>(())
+/// # Ok::<(), hapto_params::DeclError>(())
 /// ```
 #[cfg_attr(
     not(windows),
@@ -246,7 +246,7 @@ impl Page {
     }
 
     /// Makes the editor that shows the page, for
-    /// [`Plugin::editor`](seam_host::Plugin::editor) to hand out: `None` on
+    /// [`Plugin::editor`](hapto_host::Plugin::editor) to hand out: `None` on
     /// a platform with no WebView here, where the host shows its own
     /// controls, and for a page with no files that no dev server serves.
     /// [`Page`] shows one.
@@ -279,8 +279,8 @@ impl std::fmt::Debug for Page {
 
 #[cfg(test)]
 mod tests {
-    use seam_host::{AuCodes, Category, Layout};
-    use seam_params::{Kind, ParamDecl, ParamSet};
+    use hapto_host::{AuCodes, Category, Layout};
+    use hapto_params::{Kind, ParamDecl, ParamSet};
 
     use super::*;
 
@@ -336,7 +336,7 @@ mod tests {
             .expect("valid declarations");
         let ui = set.take_ui().expect("the first UI handle");
         let editor = Page::new(&INFO, ui, &[]).into_editor();
-        // A debug build run with `SEAM_PAGE_DEV_URL` set has a dev server.
+        // A debug build run with `HAPTO_PAGE_DEV_URL` set has a dev server.
         let served = assets::dev_url().is_some();
         assert_eq!(editor.is_some(), cfg!(windows) && served);
     }

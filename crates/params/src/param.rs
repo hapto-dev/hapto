@@ -38,7 +38,7 @@ use crate::{Kind, ParamId, ParamSet, audio_thread};
 /// # Examples
 ///
 /// ```
-/// use seam_params::{Float, Kind, ParamDecl, ParamSet};
+/// use hapto_params::{Float, Kind, ParamDecl, ParamSet};
 ///
 /// let set = ParamSet::from_decls([
 ///     ParamDecl::new("gain", "Gain", Kind::continuous(-60.0, 12.0, 0.1, None), -6.0),
@@ -65,7 +65,7 @@ pub struct Float(pub(crate) Arc<ParamCell>);
 /// # Examples
 ///
 /// ```
-/// use seam_params::{Bool, Kind, ParamDecl, ParamSet};
+/// use hapto_params::{Bool, Kind, ParamDecl, ParamSet};
 ///
 /// let set = ParamSet::from_decls([ParamDecl::new("on", "On", Kind::Bool, 0.0)])?;
 /// let on: Bool = set.bind("on")?;
@@ -91,7 +91,7 @@ pub struct Bool(pub(crate) Arc<ParamCell>);
 /// # Examples
 ///
 /// ```
-/// use seam_params::{Choice, Choices, Kind, ParamDecl, ParamSet};
+/// use hapto_params::{Choice, Choices, Kind, ParamDecl, ParamSet};
 ///
 /// #[derive(Debug, Clone, Copy, PartialEq)]
 /// enum Shape {
@@ -149,7 +149,7 @@ impl<E> Choice<E> {
 
 impl Float {
     /// Returns the value now, in real units. One atomic load: any thread.
-    #[cfg_attr(seam_rtsan, sanitize(realtime = "nonblocking"))]
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn get(&self) -> f32 {
         self.0.value()
     }
@@ -173,7 +173,7 @@ impl Float {
 impl Bool {
     /// Returns the value now: on at 0.5 and above, as a bool's write snaps.
     /// One atomic load: any thread.
-    #[cfg_attr(seam_rtsan, sanitize(realtime = "nonblocking"))]
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn get(&self) -> bool {
         decode_bool(self.0.value())
     }
@@ -192,7 +192,7 @@ impl Bool {
 impl<E: Choices> Choice<E> {
     /// Returns the value now, as the plugin's enum. One atomic load and
     /// [`Choices::from_index`]: any thread.
-    #[cfg_attr(seam_rtsan, sanitize(realtime = "nonblocking"))]
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn get(&self) -> E {
         decode_choice(self.0.value())
     }
@@ -351,7 +351,7 @@ impl<E> Hash for Choice<E> {
 /// # Examples
 ///
 /// ```
-/// use seam_params::{Choices, Kind, ParamDecl};
+/// use hapto_params::{Choices, Kind, ParamDecl};
 ///
 /// #[derive(Debug, Clone, Copy, PartialEq)]
 /// enum Slope {
@@ -424,7 +424,7 @@ impl sealed::Sealed for ParamId {}
 /// A group of two kinds, named once and checked each block.
 ///
 /// ```
-/// use seam_params::{AnyParam, Bool, Changes, Float, Kind, ParamDecl, ParamSet};
+/// use hapto_params::{AnyParam, Bool, Changes, Float, Kind, ParamDecl, ParamSet};
 ///
 /// let set = ParamSet::from_decls([
 ///     ParamDecl::new("gain", "Gain", Kind::continuous(-60.0, 12.0, 0.1, None), 0.0),
@@ -445,13 +445,13 @@ pub trait AnyParam: sealed::Sealed {
     #[doc(hidden)]
     fn stamp(&self, token: sealed::Token) -> (u64, u64);
 
-    /// Returns the parameter with its type erased, as Seam's other crates
+    /// Returns the parameter with its type erased, as Hapto's other crates
     /// hold it.
     #[doc(hidden)]
     fn erased(&self) -> ParamRef;
 }
 
-/// A parameter of any kind with its type erased, as Seam's other crates hold
+/// A parameter of any kind with its type erased, as Hapto's other crates hold
 /// one: a learn route, an undo record, the save's list. It does not count as
 /// the plugin holding the parameter.
 ///
@@ -520,7 +520,7 @@ impl ParamRef {
     /// Writes a learned controller's 0 to 1, as
     /// [`AudioParams::learned_write`](crate::AudioParams::learned_write)
     /// does. Never allocates, locks or frees: audio thread.
-    #[cfg_attr(seam_rtsan, sanitize(realtime = "nonblocking"))]
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn learned_write(&self, normalized: f64) {
         self.0.learned_write(normalized);
     }
@@ -584,7 +584,7 @@ impl<E> AnyParam for Choice<E> {
 /// # Examples
 ///
 /// ```
-/// use seam_params::{Bool, Kind, ParamDecl, ParamSet, UiParams, Writable};
+/// use hapto_params::{Bool, Kind, ParamDecl, ParamSet, UiParams, Writable};
 ///
 /// /// Turns any bool-valued parameter on.
 /// fn switch_on<P: Writable<Value = bool>>(ui: &UiParams, param: P) -> bool {
@@ -703,7 +703,7 @@ impl<E: Choices> Writable for &Choice<E> {
 /// # Examples
 ///
 /// ```
-/// use seam_params::{Bind, BindError, Float, Kind, ParamDecl, ParamSet};
+/// use hapto_params::{Bind, BindError, Float, Kind, ParamDecl, ParamSet};
 ///
 /// /// A gain in dB, read as the factor a block multiplies by.
 /// #[derive(Debug, Clone)]
@@ -784,7 +784,7 @@ impl<E: Choices> Bind for Choice<E> {
 /// # Examples
 ///
 /// ```
-/// use seam_params::{BindError, Bool, Kind, ParamDecl, ParamSet};
+/// use hapto_params::{BindError, Bool, Kind, ParamDecl, ParamSet};
 ///
 /// let set = ParamSet::from_decls([
 ///     ParamDecl::new("gain", "Gain", Kind::continuous(-60.0, 12.0, 0.1, None), 0.0),
@@ -792,7 +792,7 @@ impl<E: Choices> Bind for Choice<E> {
 ///
 /// assert_eq!(set.bind::<Bool>("gain"), Err(BindError::WrongKind("gain")));
 /// assert_eq!(set.bind::<Bool>("bypass"), Err(BindError::NotDeclared("bypass")));
-/// # Ok::<(), seam_params::DeclError>(())
+/// # Ok::<(), hapto_params::DeclError>(())
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -837,7 +837,7 @@ impl ParamSet {
     /// type saying which to make.
     ///
     /// ```
-    /// use seam_params::{BindError, Bool, Float, Kind, ParamDecl, ParamSet};
+    /// use hapto_params::{BindError, Bool, Float, Kind, ParamDecl, ParamSet};
     ///
     /// struct Params {
     ///     gain: Float,

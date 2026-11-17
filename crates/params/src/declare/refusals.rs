@@ -9,68 +9,68 @@
 /// A range whose start is above its end.
 ///
 /// ```compile_fail
-/// const GAIN: seam_params::FloatDecl =
-///     seam_params::FloatDecl::new("gain", "Gain", 12.0..=-60.0, 0.0).checked();
+/// const GAIN: hapto_params::FloatDecl =
+///     hapto_params::FloatDecl::new("gain", "Gain", 12.0..=-60.0, 0.0).checked();
 /// ```
 ///
 /// ```
-/// const GAIN: seam_params::FloatDecl =
-///     seam_params::FloatDecl::new("gain", "Gain", -60.0..=12.0, 0.0).checked();
+/// const GAIN: hapto_params::FloatDecl =
+///     hapto_params::FloatDecl::new("gain", "Gain", -60.0..=12.0, 0.0).checked();
 /// ```
 struct RangeBackwards;
 
 /// A default outside its range.
 ///
 /// ```compile_fail
-/// const GAIN: seam_params::FloatDecl =
-///     seam_params::FloatDecl::new("gain", "Gain", -60.0..=12.0, 24.0).checked();
+/// const GAIN: hapto_params::FloatDecl =
+///     hapto_params::FloatDecl::new("gain", "Gain", -60.0..=12.0, 24.0).checked();
 /// ```
 ///
 /// ```
-/// const GAIN: seam_params::FloatDecl =
-///     seam_params::FloatDecl::new("gain", "Gain", -60.0..=12.0, 12.0).checked();
+/// const GAIN: hapto_params::FloatDecl =
+///     hapto_params::FloatDecl::new("gain", "Gain", -60.0..=12.0, 12.0).checked();
 /// ```
 struct DefaultOutside;
 
 /// An empty key.
 ///
 /// ```compile_fail
-/// const ON: seam_params::BoolDecl = seam_params::BoolDecl::new("", "On", true).checked();
+/// const ON: hapto_params::BoolDecl = hapto_params::BoolDecl::new("", "On", true).checked();
 /// ```
 ///
 /// ```
-/// const ON: seam_params::BoolDecl = seam_params::BoolDecl::new("on", "On", true).checked();
+/// const ON: hapto_params::BoolDecl = hapto_params::BoolDecl::new("on", "On", true).checked();
 /// ```
 struct EmptyKey;
 
 /// A key with a `/`.
 ///
 /// ```compile_fail
-/// const ON: seam_params::BoolDecl = seam_params::BoolDecl::new("fx/on", "On", true).checked();
+/// const ON: hapto_params::BoolDecl = hapto_params::BoolDecl::new("fx/on", "On", true).checked();
 /// ```
 ///
 /// ```
-/// const ON: seam_params::BoolDecl = seam_params::BoolDecl::new("fx.on", "On", true).checked();
+/// const ON: hapto_params::BoolDecl = hapto_params::BoolDecl::new("fx.on", "On", true).checked();
 /// ```
 struct KeyWithSlash;
 
 /// A key over 31 bytes.
 ///
 /// ```compile_fail
-/// const ON: seam_params::BoolDecl =
-///     seam_params::BoolDecl::new("a_key_that_runs_to_thirty_two_by", "On", true).checked();
+/// const ON: hapto_params::BoolDecl =
+///     hapto_params::BoolDecl::new("a_key_that_runs_to_thirty_two_by", "On", true).checked();
 /// ```
 ///
 /// ```
-/// const ON: seam_params::BoolDecl =
-///     seam_params::BoolDecl::new("a_key_that_runs_to_thirty_one_b", "On", true).checked();
+/// const ON: hapto_params::BoolDecl =
+///     hapto_params::BoolDecl::new("a_key_that_runs_to_thirty_one_b", "On", true).checked();
 /// ```
 struct KeyTooLong;
 
 /// A choice with one label.
 ///
 /// ```compile_fail
-/// # use seam_params::{ChoiceDecl, Choices};
+/// # use hapto_params::{ChoiceDecl, Choices};
 /// #[derive(Debug, Clone, Copy)]
 /// struct Only;
 ///
@@ -84,7 +84,7 @@ struct KeyTooLong;
 /// ```
 ///
 /// ```
-/// # use seam_params::{ChoiceDecl, Choices};
+/// # use hapto_params::{ChoiceDecl, Choices};
 /// #[derive(Debug, Clone, Copy)]
 /// struct Only;
 ///
@@ -101,7 +101,7 @@ struct OneLabel;
 /// A choice with two labels that differ only in case.
 ///
 /// ```compile_fail
-/// # use seam_params::{ChoiceDecl, Choices};
+/// # use hapto_params::{ChoiceDecl, Choices};
 /// #[derive(Debug, Clone, Copy)]
 /// struct Fast;
 ///
@@ -115,7 +115,7 @@ struct OneLabel;
 /// ```
 ///
 /// ```
-/// # use seam_params::{ChoiceDecl, Choices};
+/// # use hapto_params::{ChoiceDecl, Choices};
 /// #[derive(Debug, Clone, Copy)]
 /// struct Fast;
 ///
@@ -132,7 +132,7 @@ struct LabelsDifferInCase;
 /// A `Float` field given a `BoolDecl`.
 ///
 /// ```compile_fail
-/// use seam_params::{BoolDecl, Declarer, Float, Params};
+/// use hapto_params::{BoolDecl, Declarer, Float, Params};
 ///
 /// struct Gain {
 ///     gain: Float,
@@ -146,7 +146,7 @@ struct LabelsDifferInCase;
 /// ```
 ///
 /// ```
-/// use seam_params::{Declarer, Float, FloatDecl, Params};
+/// use hapto_params::{Declarer, Float, FloatDecl, Params};
 ///
 /// struct Gain {
 ///     gain: Float,
@@ -164,7 +164,7 @@ struct FloatGivenBool;
 /// the same labels.
 ///
 /// ```compile_fail
-/// use seam_params::{Choice, ChoiceDecl, Choices, Declarer, Params};
+/// use hapto_params::{Choice, ChoiceDecl, Choices, Declarer, Params};
 ///
 /// #[derive(Debug, Clone, Copy)]
 /// enum A { One, Two }
@@ -195,7 +195,7 @@ struct FloatGivenBool;
 /// ```
 ///
 /// ```
-/// use seam_params::{Choice, ChoiceDecl, Choices, Declarer, Params};
+/// use hapto_params::{Choice, ChoiceDecl, Choices, Declarer, Params};
 ///
 /// #[derive(Debug, Clone, Copy)]
 /// enum A { One, Two }
@@ -229,12 +229,12 @@ struct ChoiceGivenOtherEnum;
 /// `as_bypass` on a `FloatDecl`: only a bool can be the bypass.
 ///
 /// ```compile_fail
-/// const BYPASS: seam_params::FloatDecl =
-///     seam_params::FloatDecl::new("bypass", "Bypass", 0.0..=1.0, 0.0).as_bypass();
+/// const BYPASS: hapto_params::FloatDecl =
+///     hapto_params::FloatDecl::new("bypass", "Bypass", 0.0..=1.0, 0.0).as_bypass();
 /// ```
 ///
 /// ```
-/// const BYPASS: seam_params::BoolDecl =
-///     seam_params::BoolDecl::new("bypass", "Bypass", false).as_bypass();
+/// const BYPASS: hapto_params::BoolDecl =
+///     hapto_params::BoolDecl::new("bypass", "Bypass", false).as_bypass();
 /// ```
 struct BypassOnFloat;

@@ -1,11 +1,11 @@
 #pragma once
 
 // The comparison's baseline: the example EQ written straight in JUCE, with no
-// Seam. Six bands, then an output gain, over the first two channels; any
+// Hapto. Six bands, then an output gain, over the first two channels; any
 // further channels pass through. It matches the Rust EQ (examples/eq) sample
 // for sample under the conditions in bench/README.md:
 //
-//  1. Parameters snap and map 0..1 as Seam's do (EqParameters.h).
+//  1. Parameters snap and map 0..1 as Hapto's do (EqParameters.h).
 //  2. A band retunes at the start of a block when one of its values moved,
 //     from JUCE's coefficient makers (EqDsp.h).
 //  3. A band that is off still runs bypassed, as in a ProcessorChain, so it
@@ -13,7 +13,7 @@
 //  4. The output gain is a plain multiply, with no ramp.
 //
 // processBlock flushes denormals with ScopedNoDenormals, as JUCE's project
-// template does and as Seam's VST3 exporter does around the Rust EQ.
+// template does and as Hapto's VST3 exporter does around the Rust EQ.
 //
 // With BENCH_PORTED_DSP, the Rust EQ's own filters ported to C++ (EqPort.h)
 // replace JUCE's dsp::IIR, for A-port (bench/README.md, "The ladder").

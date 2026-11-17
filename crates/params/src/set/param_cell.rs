@@ -56,7 +56,7 @@ pub(crate) struct ParamCell {
     /// the padding the id word leaves.
     instance: u32,
     /// How many typed parameters (`Float`, `Bool`, `Choice`) hold it. What
-    /// Seam holds itself, a learn route, an undo step, an open gesture or
+    /// Hapto holds itself, a learn route, an undo step, an open gesture or
     /// the save's list, does not count, so learn and the save can tell when
     /// the plugin has let a parameter made at run time go.
     ///

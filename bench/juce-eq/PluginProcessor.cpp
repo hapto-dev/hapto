@@ -129,7 +129,7 @@ void JuceEq::retune() noexcept
 // Audio thread.
 void JuceEq::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
-    // As JUCE's project template does, and as Seam's exporters do around
+    // As JUCE's project template does, and as Hapto's exporters do around
     // every process call.
     juce::ScopedNoDenormals noDenormals;
     retune();

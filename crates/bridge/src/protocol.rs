@@ -23,7 +23,7 @@ pub const PROTOCOL_VERSION: u32 = 3;
 /// # Examples
 ///
 /// ```
-/// use seam_bridge::{PageMessage, Position};
+/// use hapto_bridge::{PageMessage, Position};
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let set = PageMessage::decode(r#"{"type":"set","param":"mix","normalized":0.75}"#)?;
@@ -111,7 +111,7 @@ pub enum PageMessage {
 /// # Examples
 ///
 /// ```
-/// use seam_bridge::{NativeMessage, ParamState, Position};
+/// use hapto_bridge::{NativeMessage, ParamState, Position};
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let message = NativeMessage::Param {
@@ -193,7 +193,7 @@ pub enum NativeMessage {
 /// # Examples
 ///
 /// ```
-/// use seam_bridge::{ParamState, Position};
+/// use hapto_bridge::{ParamState, Position};
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// // The page gets the position and the text Rust formatted, never the range.
@@ -228,7 +228,7 @@ pub struct ParamState {
 /// # Examples
 ///
 /// ```
-/// use seam_bridge::{NativeMessage, ValueState};
+/// use hapto_bridge::{NativeMessage, ValueState};
 ///
 /// // A value crosses as the JSON serde writes for its type.
 /// let message = NativeMessage::Value {
@@ -255,7 +255,7 @@ pub struct ValueState {
 /// # Examples
 ///
 /// ```
-/// use seam_bridge::{CallResult, NativeMessage};
+/// use hapto_bridge::{CallResult, NativeMessage};
 ///
 /// // The answer to the page's call 7, a command that returns nothing.
 /// let reply = NativeMessage::Reply {
@@ -291,7 +291,7 @@ pub enum CallResult {
 /// # Examples
 ///
 /// ```
-/// use seam_bridge::PageMessage;
+/// use hapto_bridge::PageMessage;
 ///
 /// let error = PageMessage::decode(r#"{"type":"teleport"}"#).err();
 /// assert!(error.is_some_and(|error| error.to_string().starts_with("malformed bridge message")));
@@ -318,7 +318,7 @@ impl std::error::Error for DecodeError {}
 /// # Examples
 ///
 /// ```
-/// use seam_bridge::{PageMessage, Position};
+/// use hapto_bridge::{PageMessage, Position};
 ///
 /// assert_eq!(Position::new(0.25).map(Position::get), Some(0.25));
 /// assert_eq!(Position::new(1.5), None);
@@ -378,7 +378,7 @@ impl PageMessage {
     /// # Examples
     ///
     /// ```
-    /// use seam_bridge::{PageMessage, Position};
+    /// use hapto_bridge::{PageMessage, Position};
     ///
     /// let message = PageMessage::decode(r#"{"type":"set","param":"mix","normalized":0.25}"#)?;
     /// let normalized = Position::new(0.25).ok_or("in range")?;
@@ -419,7 +419,7 @@ impl NativeMessage {
     /// # Examples
     ///
     /// ```
-    /// use seam_bridge::NativeMessage;
+    /// use hapto_bridge::NativeMessage;
     ///
     /// // The text is one JSON object tagged by `type`.
     /// let reject = NativeMessage::Reject { protocol: 2, message: "too old".into() };

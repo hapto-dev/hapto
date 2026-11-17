@@ -11,7 +11,7 @@
 //! -1 for any. `coarse` appears only on an NRPN whose capture saw no
 //! low byte. `curve` is left out when it is the identity.
 
-use seam_session::Section;
+use hapto_session::Section;
 use serde_json::{Map, Value as Json};
 
 use crate::{Control, Curve, Mapping, Source};

@@ -6,10 +6,10 @@
 
 use std::hint::black_box;
 
+use hapto_example_eq::ExampleEq;
+use hapto_host::{Block, EventList, Layout, Parts, Plugin, ProcessSetup, Processor};
+use hapto_params::{AudioParams, ParamId};
 use iai_callgrind::{library_benchmark, library_benchmark_group, main};
-use seam_example_eq::ExampleEq;
-use seam_host::{Block, EventList, Layout, Parts, Plugin, ProcessSetup, Processor};
-use seam_params::{AudioParams, ParamId};
 
 const FRAMES: usize = 256;
 

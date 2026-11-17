@@ -4,7 +4,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use seam_session::{ApplyError, Participant, Section, SessionError, SessionUi};
+use hapto_session::{ApplyError, Participant, Section, SessionError, SessionUi};
 use serde_json::Value as Json;
 
 use super::{Custom, Learn};
@@ -18,7 +18,7 @@ impl Learn {
     /// # Examples
     ///
     /// ```
-    /// use seam_learn::{Config, Control, Learn, Mapping, Source};
+    /// use hapto_learn::{Config, Control, Learn, Mapping, Source};
     #[doc = include_str!("../../doc/setup.rs")]
     /// let (mut learn, _audio) = Learn::new(&set, Config::default());
     /// learn.register("fader", Box::new(Fader))?;
@@ -83,10 +83,10 @@ impl Learn {
     /// # Examples
     ///
     /// ```
-    /// use seam_learn::{Control, Mapping, Source};
+    /// use hapto_learn::{Control, Mapping, Source};
     #[doc = include_str!("../../doc/setup.rs")]
-    /// # use seam_learn::Config;
-    /// # use seam_learn::Learn;
+    /// # use hapto_learn::Config;
+    /// # use hapto_learn::Learn;
     /// # let (mut learn, mut audio) = Learn::new(&set, Config::default());
     /// learn.map(gain, Mapping::new(Source::any(Control::Cc(7))))?;
     /// let saved = learn.save();
@@ -173,8 +173,8 @@ impl Learn {
     /// use std::cell::RefCell;
     /// use std::rc::Rc;
     ///
-    /// use seam_learn::{Config, Control, Learn, Mapping, SESSION_KEY, Source};
-    /// use seam_session::Session;
+    /// use hapto_learn::{Config, Control, Learn, Mapping, SESSION_KEY, Source};
+    /// use hapto_session::Session;
     #[doc = include_str!("../../doc/setup.rs")]
     /// let session = Session::new(&set);
     /// let ui = session.take_ui().ok_or("the first UI handle")?;

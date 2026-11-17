@@ -1,7 +1,7 @@
 # use std::cell::RefCell;
 # use std::rc::Rc;
-# use seam_params::ParamSetBuilder;
-# use seam_session::{ApplyError, Participant, Section, Session};
+# use hapto_params::ParamSetBuilder;
+# use hapto_session::{ApplyError, Participant, Section, Session};
 # use serde_json::json;
 # struct Zoom(f64);
 # impl Participant for Zoom {

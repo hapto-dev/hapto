@@ -5,12 +5,12 @@ import { PROTOCOL_VERSION, type NativeMessage } from "../src/generated/protocol"
 import { webviewTransport, type WebViewGlobals } from "../src/transport";
 
 // A fake of what a plugin window's WebView gives the page: `ipc`, which keeps
-// what the page posts, and the `__seam` the transport installs, which the
+// what the page posts, and the `__hapto` the transport installs, which the
 // native side delivers through.
 function window(): { scope: WebViewGlobals; posted: string[]; deliver: (message: NativeMessage) => void } {
   const posted: string[] = [];
   const scope: WebViewGlobals = { ipc: { postMessage: (text) => posted.push(text) } };
-  const deliver = (message: NativeMessage) => scope.__seam?.receive(JSON.stringify(message));
+  const deliver = (message: NativeMessage) => scope.__hapto?.receive(JSON.stringify(message));
   return { scope, posted, deliver };
 }
 
@@ -49,7 +49,7 @@ describe("webviewTransport", () => {
     const transport = webviewTransport(scope);
     const got: NativeMessage[] = [];
     transport.listen((message) => got.push(message));
-    scope.__seam?.receive("not json");
+    scope.__hapto?.receive("not json");
     deliver({ type: "event", name: "learned", payload: null });
     expect(got).toEqual([{ type: "event", name: "learned", payload: null }]);
   });

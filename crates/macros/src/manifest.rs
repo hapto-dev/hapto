@@ -1,5 +1,5 @@
-//! `manifest_info!`, which writes a plugin's `seam_host::PluginInfo`: who the
-//! plugin is from `[package.metadata.seam]` in the plugin crate's manifest,
+//! `manifest_info!`, which writes a plugin's `hapto_host::PluginInfo`: who the
+//! plugin is from `[package.metadata.hapto]` in the plugin crate's manifest,
 //! its version and description from `[package]`, and the rest from the fields
 //! the macro is given.
 //!
@@ -19,7 +19,7 @@ use syn::{Error, FieldValue, Member, Token};
 use toml::Spanned;
 use toml::de::{DeString, DeTable, DeValue};
 
-/// The keys of `[package.metadata.seam]`, each a `PluginInfo` field in kebab
+/// The keys of `[package.metadata.hapto]`, each a `PluginInfo` field in kebab
 /// case.
 const KEYS: &[&str] = &[
     "name",
@@ -39,10 +39,10 @@ const PACKAGE: &[&str] = &["version", "description"];
 /// The keys of `au-codes`, each an `AuCodes` field.
 const AU_CODES: &[&str] = &["subtype", "manufacturer"];
 
-/// The categories, each a `seam_host::Category` variant in kebab case.
+/// The categories, each a `hapto_host::Category` variant in kebab case.
 const CATEGORIES: &[&str] = &["effect", "instrument"];
 
-/// The features, each a `seam_host::Feature` variant in kebab case.
+/// The features, each a `hapto_host::Feature` variant in kebab case.
 const FEATURES: &[&str] = &[
     "analyzer",
     "delay",
@@ -96,7 +96,7 @@ fn written_once(fields: &Punctuated<FieldValue, Token![,]>) -> syn::Result<()> {
         let message = if PACKAGE.contains(&text.as_str()) {
             format!("`{name}` is the package's own: set it in the manifest's [package]")
         } else if KEYS.contains(&key.as_str()) {
-            format!("`{name}` comes from the manifest: set `{key}` in its [package.metadata.seam]")
+            format!("`{name}` comes from the manifest: set `{key}` in its [package.metadata.hapto]")
         } else {
             continue;
         };
@@ -157,7 +157,7 @@ fn info(
         {
             // Cargo builds the crate again when a file it includes changes.
             const _: &str = ::core::include_str!(#manifest);
-            ::seam_host::PluginInfo {
+            ::hapto_host::PluginInfo {
                 name: #name,
                 vendor: #vendor,
                 url: #url,
@@ -166,12 +166,12 @@ fn info(
                 version: ::core::env!("CARGO_PKG_VERSION"),
                 id: #id,
                 vst3_class_id: [#(#class_id),*],
-                au_codes: ::seam_host::AuCodes {
+                au_codes: ::hapto_host::AuCodes {
                     subtype: *#subtype,
                     manufacturer: *#manufacturer,
                 },
-                category: ::seam_host::Category::#category,
-                features: &[#(::seam_host::Feature::#features),*],
+                category: ::hapto_host::Category::#category,
+                features: &[#(::hapto_host::Feature::#features),*],
                 #fields
             }
         }
@@ -221,24 +221,24 @@ fn identity(manifest: &str, version: &str) -> Result<Identity, Vec<Mistake>> {
             format!("the package's version `{version}` is not major.minor.patch, as a plugin's is"),
         );
     }
-    let Some(seam) = reader.seam(document.get_ref()) else {
+    let Some(hapto) = reader.hapto(document.get_ref()) else {
         return Err(reader.mistakes);
     };
-    reader.unknown(seam, KEYS, "a key of [package.metadata.seam]");
-    let (subtype, manufacturer) = reader.au_codes(seam);
+    reader.unknown(hapto, KEYS, "a key of [package.metadata.hapto]");
+    let (subtype, manufacturer) = reader.au_codes(hapto);
     let identity = Identity {
-        name: reader.required(seam, "name", "the name hosts list").1,
-        vendor: reader.required(seam, "vendor", "who makes it").1,
-        url: reader.optional(seam, "url"),
-        email: reader.optional(seam, "email"),
+        name: reader.required(hapto, "name", "the name hosts list").1,
+        vendor: reader.required(hapto, "vendor", "who makes it").1,
+        url: reader.optional(hapto, "url"),
+        email: reader.optional(hapto, "email"),
         id: reader
-            .required(seam, "id", "a reverse-DNS id, com.vendor.product")
+            .required(hapto, "id", "a reverse-DNS id, com.vendor.product")
             .1,
-        vst3_class_id: reader.class_id(seam),
+        vst3_class_id: reader.class_id(hapto),
         subtype,
         manufacturer,
-        category: reader.category(seam),
-        features: reader.features(seam),
+        category: reader.category(hapto),
+        features: reader.features(hapto),
     };
     if reader.mistakes.is_empty() {
         Ok(identity)
@@ -272,18 +272,18 @@ impl Reader<'_> {
         self.mistakes.push(Mistake { line, message });
     }
 
-    /// `[package.metadata.seam]`, or `None` with the mistake kept.
-    fn seam<'t, 'i>(&mut self, document: &'t DeTable<'i>) -> Option<Table<'t, 'i>> {
+    /// `[package.metadata.hapto]`, or `None` with the mistake kept.
+    fn hapto<'t, 'i>(&mut self, document: &'t DeTable<'i>) -> Option<Table<'t, 'i>> {
         let mut table = Table {
             table: document,
             line: None,
             name: "the manifest",
         };
-        for key in ["package", "metadata", "seam"] {
+        for key in ["package", "metadata", "hapto"] {
             let Some((name, value)) = entry(table.table, key) else {
                 self.refuse(
                     None,
-                    "the manifest has no [package.metadata.seam], where manifest_info! reads who the plugin is".to_owned(),
+                    "the manifest has no [package.metadata.hapto], where manifest_info! reads who the plugin is".to_owned(),
                 );
                 return None;
             };
@@ -298,7 +298,7 @@ impl Reader<'_> {
             table = Table {
                 table: inner,
                 line,
-                name: "[package.metadata.seam]",
+                name: "[package.metadata.hapto]",
             };
         }
         Some(table)
@@ -556,16 +556,16 @@ mod tests {
 
     /// The gain's manifest, as the example's is.
     const GAIN: &str = r#"[package]
-name = "seam-example-gain"
+name = "hapto-example-gain"
 description = "A gain with three modes, a label and MIDI learn"
 version.workspace = true
 
-[package.metadata.seam]
-name = "Seam Example Gain"
-vendor = "Seam"
-id = "dev.seam.example-gain"
+[package.metadata.hapto]
+name = "Hapto Example Gain"
+vendor = "Hapto"
+id = "dev.hapto.example-gain"
 vst3-class-id = "5b0ad271-3e96-4c18-a37f-e0248db56a19"
-au-codes = { subtype = "SmGn", manufacturer = "Seam" }
+au-codes = { subtype = "SmGn", manufacturer = "Hapt" }
 category = "effect"
 features = ["equalizer", "pitch-shift"]
 "#;
@@ -582,10 +582,10 @@ features = ["equalizer", "pitch-shift"]
             .collect()
     }
 
-    /// The variants of `seam_host`'s enum `name`, in their order.
+    /// The variants of `hapto_host`'s enum `name`, in their order.
     fn host_variants(name: &str) -> Vec<String> {
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../host/src/info.rs");
-        let source = std::fs::read_to_string(&path).expect("seam-host's info.rs");
+        let source = std::fs::read_to_string(&path).expect("hapto-host's info.rs");
         let file = syn::parse_file(&source).expect("info.rs parses");
         let found = file.items.into_iter().find_map(|item| match item {
             Item::Enum(ItemEnum {
@@ -611,12 +611,12 @@ features = ["equalizer", "pitch-shift"]
     fn a_manifest_reads_as_the_plugins_identity() {
         let identity = identity(GAIN, "0.1.0").expect("the manifest is read");
         let expected = Identity {
-            name: "Seam Example Gain".to_owned(),
-            vendor: "Seam".to_owned(),
-            id: "dev.seam.example-gain".to_owned(),
+            name: "Hapto Example Gain".to_owned(),
+            vendor: "Hapto".to_owned(),
+            id: "dev.hapto.example-gain".to_owned(),
             vst3_class_id: 0x5b0a_d271_3e96_4c18_a37f_e024_8db5_6a19_u128.to_be_bytes(),
             subtype: *b"SmGn",
-            manufacturer: *b"Seam",
+            manufacturer: *b"Hapt",
             category: "Effect".to_owned(),
             features: vec!["Equalizer".to_owned(), "PitchShift".to_owned()],
             ..Identity::default()
@@ -627,25 +627,25 @@ features = ["equalizer", "pitch-shift"]
     #[test]
     fn every_mistake_is_refused_on_its_line() {
         let manifest = r#"[package]
-name = "seam-example-gain"
+name = "hapto-example-gain"
 
-[package.metadata.seam]
+[package.metadata.hapto]
 name = ""
-vendr = "Seam"
+vendr = "Hapto"
 version = "1.0.0"
 id = 7
 vst3-class-id = "5b0ad271-3e96-4c18-a37f"
-au-codes = { subtype = "SmG", manufacturer = "Seam", type = "aufx" }
+au-codes = { subtype = "SmG", manufacturer = "Hapt", type = "aufx" }
 category = "efect"
 features = ["equaliser", "delay", "delay"]
 "#;
         let expected = [
-            "6: `vendr` is not a key of [package.metadata.seam]: they are name, vendor, url, email, id, vst3-class-id, au-codes, category and features",
+            "6: `vendr` is not a key of [package.metadata.hapto]: they are name, vendor, url, email, id, vst3-class-id, au-codes, category and features",
             "7: `version` is the package's own: set it in [package]",
             "10: `type` is not an AU code: they are subtype and manufacturer",
             "10: `subtype` is four printable ASCII characters: \"SmG\" is not",
             "5: `name` is empty: the name hosts list",
-            "4: [package.metadata.seam] has no `vendor`: who makes it",
+            "4: [package.metadata.hapto] has no `vendor`: who makes it",
             "8: `id` is a string, not an integer",
             "9: `vst3-class-id` is a UUID, 8-4-4-4-12 hex digits: \"5b0ad271-3e96-4c18-a37f\" is not",
             "11: `efect` is not a category: one is effect or instrument",
@@ -661,7 +661,7 @@ features = ["equaliser", "delay", "delay"]
         assert_eq!(
             mistakes(manifest, "0.1.0"),
             [
-                "the manifest has no [package.metadata.seam], where manifest_info! reads who the plugin is"
+                "the manifest has no [package.metadata.hapto], where manifest_info! reads who the plugin is"
             ]
         );
     }
@@ -694,8 +694,8 @@ features = ["equaliser", "delay", "delay"]
         assert_eq!(
             messages,
             [
-                "`name` comes from the manifest: set `name` in its [package.metadata.seam]",
-                "`vst3_class_id` comes from the manifest: set `vst3-class-id` in its [package.metadata.seam]",
+                "`name` comes from the manifest: set `name` in its [package.metadata.hapto]",
+                "`vst3_class_id` comes from the manifest: set `vst3-class-id` in its [package.metadata.hapto]",
                 "`version` is the package's own: set it in the manifest's [package]",
             ]
         );

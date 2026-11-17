@@ -1,7 +1,7 @@
 //! The EQ's parameters: what every format, the saved block and the same EQ
 //! written straight in JUCE share.
 
-use seam_params::{Bool, BoolDecl, Declarer, Float, FloatDecl, Params};
+use hapto_params::{Bool, BoolDecl, Declarer, Float, FloatDecl, Params};
 
 use crate::dsp::Shape;
 

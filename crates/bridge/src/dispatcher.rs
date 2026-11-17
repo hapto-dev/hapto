@@ -16,7 +16,7 @@
 use std::collections::HashMap;
 use std::panic::{self, AssertUnwindSafe};
 
-use seam_params::{Gesture, ParamDecl, ParamId, UiParams, Value, Watch};
+use hapto_params::{Gesture, ParamDecl, ParamId, UiParams, Value, Watch};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value as Json;
@@ -46,7 +46,7 @@ type Command = Box<dyn FnMut(Json) -> Result<Json, String>>;
 /// use std::cell::RefCell;
 /// use std::rc::Rc;
 ///
-/// use seam_bridge::Commands;
+/// use hapto_bridge::Commands;
 ///
 /// let label = Rc::new(RefCell::new(String::from("Untitled")));
 /// let (read, write) = (Rc::clone(&label), Rc::clone(&label));
@@ -194,8 +194,8 @@ where
 /// next tick tells the page.
 ///
 /// ```
-/// use seam_bridge::{Commands, Dispatcher, Values};
-/// use seam_params::{ParamSet, Value};
+/// use hapto_bridge::{Commands, Dispatcher, Values};
+/// use hapto_params::{ParamSet, Value};
 ///
 /// let set = ParamSet::from_decls([])?;
 /// let ui = set.take_ui().expect("the first UI handle");
@@ -213,7 +213,7 @@ where
 ///     native.outbox_mut().last().map(String::as_str),
 ///     Some(r#"{"type":"value","state":{"key":"label","value":"Pad"}}"#),
 /// );
-/// # Ok::<(), seam_params::DeclError>(())
+/// # Ok::<(), hapto_params::DeclError>(())
 /// ```
 #[derive(Default)]
 pub struct Values {
@@ -270,8 +270,8 @@ impl std::fmt::Debug for Values {
 /// # Examples
 ///
 /// ```
-/// # use seam_params::{Kind, ParamDecl, ParamSet};
-/// use seam_bridge::{Commands, Dispatcher, Refusals, Values};
+/// # use hapto_params::{Kind, ParamDecl, ParamSet};
+/// use hapto_bridge::{Commands, Dispatcher, Refusals, Values};
 ///
 /// # let set = ParamSet::from_decls([ParamDecl::new("gain", "Gain", Kind::Bool, 0.0)])?;
 /// # let ui = set.take_ui().expect("the first UI handle");
@@ -281,7 +281,7 @@ impl std::fmt::Debug for Values {
 /// native.receive(r#"{"type":"setValue","key":"label","value":"Lead"}"#);
 /// let refused = Refusals { malformed: 1, unknown_params: 1, unknown_values: 1, ..Refusals::default() };
 /// assert_eq!(native.refusals(), refused);
-/// # Ok::<(), seam_params::DeclError>(())
+/// # Ok::<(), hapto_params::DeclError>(())
 /// ```
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Refusals {
@@ -366,8 +366,8 @@ struct Shown {
 /// tick tells the page.
 ///
 /// ```
-/// use seam_bridge::{Commands, Dispatcher, NativeMessage, Values};
-/// use seam_params::{Kind, ParamDecl, ParamSet};
+/// use hapto_bridge::{Commands, Dispatcher, NativeMessage, Values};
+/// use hapto_params::{Kind, ParamDecl, ParamSet};
 ///
 /// let set = ParamSet::from_decls([
 ///     ParamDecl::new("gain", "Gain", Kind::continuous(-60.0, 12.0, 0.1, None), 0.0)
@@ -426,7 +426,7 @@ impl<O: Outbox> Dispatcher<O> {
     /// the page's first `ready`.
     ///
     /// `ui` is a clone of the plugin's own handle (`Parts::ui` in
-    /// `seam-host`), so the page's drags are a user's: undo records them, and
+    /// `hapto-host`), so the page's drags are a user's: undo records them, and
     /// they share gestures with every other surface.
     ///
     /// Thread: UI, the thread `ui` lives on. [`Dispatcher`] shows one.
@@ -533,8 +533,8 @@ impl<O: Outbox> Dispatcher<O> {
     /// # Examples
     ///
     /// ```
-    /// # use seam_params::{Kind, ParamDecl, ParamSet};
-    /// use seam_bridge::{Commands, Dispatcher, Values};
+    /// # use hapto_params::{Kind, ParamDecl, ParamSet};
+    /// use hapto_bridge::{Commands, Dispatcher, Values};
     ///
     /// # let set = ParamSet::from_decls([ParamDecl::new("gain", "Gain", Kind::Bool, 0.0)])?;
     /// # let ui = set.take_ui().expect("the first UI handle");
@@ -548,7 +548,7 @@ impl<O: Outbox> Dispatcher<O> {
     ///     native.outbox_mut().last().map(String::as_str),
     ///     Some(r#"{"type":"event","name":"learned","payload":{"controller":74}}"#),
     /// );
-    /// # Ok::<(), seam_params::DeclError>(())
+    /// # Ok::<(), hapto_params::DeclError>(())
     /// ```
     pub fn event(&mut self, name: &str, payload: Json) {
         if self.live {
@@ -572,8 +572,8 @@ impl<O: Outbox> Dispatcher<O> {
     /// # Examples
     ///
     /// ```
-    /// # use seam_params::{Kind, ParamDecl, ParamSet};
-    /// use seam_bridge::{Commands, Dispatcher, Values};
+    /// # use hapto_params::{Kind, ParamDecl, ParamSet};
+    /// use hapto_bridge::{Commands, Dispatcher, Values};
     ///
     /// # let set = ParamSet::from_decls([ParamDecl::new("gain", "Gain", Kind::Bool, 0.0)])?;
     /// # let gain = set.id("gain").expect("declared");
@@ -586,7 +586,7 @@ impl<O: Outbox> Dispatcher<O> {
     /// // The editor closes mid-drag: the drag ends for the host.
     /// native.end_session();
     /// assert!(!ui.is_open(gain));
-    /// # Ok::<(), seam_params::DeclError>(())
+    /// # Ok::<(), hapto_params::DeclError>(())
     /// ```
     pub fn end_session(&mut self) {
         for listed in &mut self.params {

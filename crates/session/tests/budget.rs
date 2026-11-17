@@ -5,8 +5,8 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use seam_params::ParamSetBuilder;
-use seam_session::{
+use hapto_params::ParamSetBuilder;
+use hapto_session::{
     ApplyError, MAX_STATE_BYTES, Participant, Registration, Section, Session, SessionUi,
 };
 use serde_json::json;

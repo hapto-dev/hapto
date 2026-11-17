@@ -1,18 +1,18 @@
 //! Learn's audio entry neither allocates nor frees, including the
 //! first block after a publish, when it takes a new table.
 
-seam_testkit::install_alloc_gate!();
+hapto_testkit::install_alloc_gate!();
 
 use std::sync::Arc;
 
-use seam_learn::{
+use hapto_learn::{
     CcReservation, Config, Control, Learn, Learned, Mapping, NrpnReservation, Source, Takes, Target,
 };
-use seam_params::{
+use hapto_params::{
     Declarer, Float, FloatDecl, Kind, ParamDecl, ParamSet, ParamSetBuilder, Range, audio_thread,
 };
-use seam_testkit::alloc::assert_no_allocations;
-use seam_ump::{ChannelVoice, Event, EventList, Voice};
+use hapto_testkit::alloc::assert_no_allocations;
+use hapto_ump::{ChannelVoice, Event, EventList, Voice};
 
 const TARGETS: usize = 256;
 
@@ -236,7 +236,7 @@ fn dispatch_to_parameters_made_at_run_time_neither_allocates_nor_frees() {
     let (mut learn, mut audio) = Learn::new(&set, Config::default());
     let events = events();
     // Under the audio thread's mark too: a store let go here would panic.
-    let block = |audio: &mut seam_learn::LearnAudio| {
+    let block = |audio: &mut hapto_learn::LearnAudio| {
         let _mark = audio_thread::enter();
         audio.process(&events);
     };

@@ -3,10 +3,10 @@ the parity script's audio, bit for bit against the Rust EQ driven directly,
 and a saved state that reloads the same.
 
     python bench/scripts/hosted.py --tool bench/build/BenchHosted_artefacts/Release/BenchHosted.exe \\
-        --bundle "target/vst3/Seam Example EQ.vst3" --ids seam
+        --bundle "target/vst3/Hapto Example EQ.vst3" --ids hapto
 
---ids says how the build names parameters to hosts: `seam` for Seam's own
-exporter (B: Seam's hash of the key), `juce` for a build JUCE's wrapper makes
+--ids says how the build names parameters to hosts: `hapto` for Hapto's own
+exporter (B: Hapto's hash of the key), `juce` for a build JUCE's wrapper makes
 (A and C: JUCE's hash of the key, which JUCE offers no way to change). Every
 key's id must be one the build lists, so a wrong scheme fails at once. Exits
 1 on any mismatch.
@@ -21,8 +21,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import parity  # noqa: E402
 
 
-def seam_id(key):
-    """seam_params::host_id: 32-bit FNV-1a over the key's UTF-8, top bit cleared."""
+def hapto_id(key):
+    """hapto_params::host_id: 32-bit FNV-1a over the key's UTF-8, top bit cleared."""
     value = 0x811C9DC5
     for byte in key.encode():
         value = ((value ^ byte) * 0x01000193) & 0xFFFFFFFF
@@ -30,7 +30,7 @@ def seam_id(key):
 
 
 def juce_id(key):
-    """seam_host::cabi::juce_param_id: JUCE's String::hashCode, top bit cleared."""
+    """hapto_host::cabi::juce_param_id: JUCE's String::hashCode, top bit cleared."""
     value = 0
     for character in key:
         value = (value * 31 + ord(character)) & 0xFFFFFFFF
@@ -46,7 +46,7 @@ def hosted(tool, bundle, *arguments, lines=None):
 def check(tool, bundle, ids):
     """Checks one build as `main` does. Returns whether it matches, and the
     lines that say so."""
-    id_of = seam_id if ids == "seam" else juce_id
+    id_of = hapto_id if ids == "hapto" else juce_id
     said = []
     info = hosted(tool, bundle, "info")
     if info.returncode != 0:
@@ -84,7 +84,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--tool", required=True, type=pathlib.Path, help="the built bench-hosted")
     parser.add_argument("--bundle", required=True, type=pathlib.Path, help="the .vst3 to load")
-    parser.add_argument("--ids", required=True, choices=["seam", "juce"])
+    parser.add_argument("--ids", required=True, choices=["hapto", "juce"])
     arguments = parser.parse_args()
     ok, said = check(arguments.tool, arguments.bundle, arguments.ids)
     print("\n".join(said))

@@ -4,13 +4,13 @@ use std::cell::RefCell;
 use std::error::Error;
 use std::rc::Rc;
 
-use seam_learn::{Config, LearnAudio, SESSION_KEY, Takes};
+use hapto_learn::{Config, LearnAudio, SESSION_KEY, Takes};
 #[cfg(feature = "vst3")]
-use seam_params::host_id;
-use seam_params::{Declarer, Float, FloatDecl, Params, Value, audio_thread};
-use seam_session::{ApplyError, Participant, Registration, Section};
-use seam_ump::{ChannelVoice, EventList, Voice};
-use seam_undo::{Bound, History};
+use hapto_params::host_id;
+use hapto_params::{Declarer, Float, FloatDecl, Params, Value, audio_thread};
+use hapto_session::{ApplyError, Participant, Registration, Section};
+use hapto_ump::{ChannelVoice, EventList, Voice};
+use hapto_undo::{Bound, History};
 use serde_json::{Map, Value as Json};
 
 use crate::faults::written;
@@ -97,16 +97,16 @@ impl Drop for Adder {
 impl Plugin for Probe {
     const INFO: PluginInfo = PluginInfo {
         name: "Engine probe",
-        vendor: "Seam",
+        vendor: "Hapto",
         url: "",
         email: "",
         description: "",
         version: "1.0.0",
-        id: "dev.seam.engine-probe",
+        id: "dev.hapto.engine-probe",
         vst3_class_id: [7; 16],
         au_codes: AuCodes {
             subtype: *b"engp",
-            manufacturer: *b"Seam",
+            manufacturer: *b"Hapt",
         },
         category: Category::Effect,
         features: &[],
@@ -513,7 +513,7 @@ fn a_fault_on_the_audio_path_is_reported_at_the_next_tick_once_per_instance_and_
     let lines = written();
     assert_eq!(lines.len(), 1, "{lines:?}");
     assert!(
-        lines[0].starts_with("seam: Engine probe (instance ")
+        lines[0].starts_with("hapto: Engine probe (instance ")
             && lines[0].contains("the processor panicked"),
         "{lines:?}"
     );
@@ -769,7 +769,7 @@ impl Plugin for Idleless {
 
 through_every_shell!(
     Restoring:
-    seam_ticks_the_parts_before_the_plugin_s_idle,
+    hapto_ticks_the_parts_before_the_plugin_s_idle,
 );
 
 through_every_shell!(
@@ -782,7 +782,7 @@ through_every_shell!(
     a_plugin_that_dropped_its_parts_is_ticked_with_nothing_reported,
 );
 
-fn seam_ticks_the_parts_before_the_plugin_s_idle<S: Shell>() {
+fn hapto_ticks_the_parts_before_the_plugin_s_idle<S: Shell>() {
     let mut host = S::create();
     host.tick();
     assert_eq!(handed(|handed| handed.zoom_at_idle), Some(1.0));

@@ -1,31 +1,31 @@
 # The comparison
 
-Three VST3 builds of one EQ, loaded by one console host, so Seam's cost and
+Three VST3 builds of one EQ, loaded by one console host, so Hapto's cost and
 behaviour can be measured against plain JUCE:
 
-- **A.** The EQ written straight in JUCE, with no Seam: `bench/juce-eq`.
-- **B.** The Rust EQ (`examples/eq`) through Seam's own VST3 exporter.
-- **C.** The Rust EQ through Seam's C interface and the generic JUCE adapter.
+- **A.** The EQ written straight in JUCE, with no Hapto: `bench/juce-eq`.
+- **B.** The Rust EQ (`examples/eq`) through Hapto's own VST3 exporter.
+- **C.** The Rust EQ through Hapto's C interface and the generic JUCE adapter.
 
 And one reference build, for timing only:
 
 - **A-native.** A built with `BENCH_JUCE_NATIVE_RANGES`: its parameters use
   JUCE's own `NormalisableRange` with a skew for the centre, as a JUCE developer
-  would declare them, instead of the port of Seam's ranges that A needs to store
-  what the Rust EQ stores (rule 1 below). JUCE converts a host's write 8 times
-  on its way into an `AudioProcessorValueTreeState` parameter (the wrapper's
-  read and write, then the state's own listener), where Seam's exporter converts
-  it twice and the adapter four times. Each conversion through the port does the
-  same arithmetic as Seam's ranges, which MSVC runs at about 1.4 times Seam's
-  own cost here, so A pays Seam's range cost 8 times over, where JUCE's own
-  range is cheap. A-native is plain JUCE when parameters move.
+  would declare them, instead of the port of Hapto's ranges that A needs to
+  store what the Rust EQ stores (rule 1 below). JUCE converts a host's write 8
+  times on its way into an `AudioProcessorValueTreeState` parameter (the
+  wrapper's read and write, then the state's own listener), where Hapto's
+  exporter converts it twice and the adapter four times. Each conversion through
+  the port does the same arithmetic as Hapto's ranges, which MSVC runs at about
+  1.4 times Hapto's own cost here, so A pays Hapto's range cost 8 times over,
+  where JUCE's own range is cheap. A-native is plain JUCE when parameters move.
 
 And three more for timing only, A-port, A-port-clang and C-clang, which take the
 gap between A-native and C apart one cause at a time ("The ladder" below).
 
 The run is headless, on the bare EQ: parameters and saved state only, no
 editor. A second run, with each build's UI open, is planned for when a plugin
-window can show Seam's page, which nothing opens yet. It would set Seam's page
+window can show Hapto's page, which nothing opens yet. It would set Hapto's page
 in B and C against JUCE's generic editor with native sliders in A. Those UIs
 differ, so that run would set a WebView page against a native UI, not like
 against like.
@@ -54,7 +54,7 @@ Every case matched, bit for bit; the audio's difference is -inf dBFS. A planted
 difference (an off band skipped instead of run bypassed) shows as 124,000 to
 163,000 mismatched frames per rate, so the check can fail.
 
-A-native stores values a little apart from Seam's, so its output misses the bar
+A-native stores values a little apart from Hapto's, so its output misses the bar
 (the report gives by how much). It is timed beside the others and kept out of
 every match check. `compare.py` reports how far it is from A, and checks, with
 JUCE's range worked in f32, that none of its writes would leave its stored value
@@ -64,8 +64,8 @@ unchanged, so it skips no work A does.
 
 Each is needed for that match:
 
-1. **Values.** Every float parameter snaps and maps 0..1 through Seam's own
-   range (`juce-eq/SeamRange.h`, a port of `crates/params/src/decl.rs`): the
+1. **Values.** Every float parameter snaps and maps 0..1 through Hapto's own
+   range (`juce-eq/HaptoRange.h`, a port of `crates/params/src/decl.rs`): the
    lattice in whole numbers of its finest decimal place, nearest with ties to
    the higher, the end always reachable, the skew in double.
 2. **Coefficients.** From JUCE's `ArrayCoefficients<float>` makers, with float
@@ -95,12 +95,12 @@ Each is needed for that match:
 
 ## Build and run
 
-Visual Studio 2022 and CMake 3.25 or later. `SEAM_BENCH_JUCE_GIT` may name a
+Visual Studio 2022 and CMake 3.25 or later. `HAPTO_BENCH_JUCE_GIT` may name a
 local checkout that has JUCE 9.0.0 (`f8f8864`) instead of the network:
 
 ```sh
 cmake -S bench -B bench/build -G "Visual Studio 17 2022" -A x64
-cmake --build bench/build --config Release --target BenchParity BenchParityPort BenchHosted BenchJuceEq_VST3 BenchJuceEqNative_VST3 BenchJuceEqPort_VST3 BenchSeamJuceEq_VST3
+cmake --build bench/build --config Release --target BenchParity BenchParityPort BenchHosted BenchJuceEq_VST3 BenchJuceEqNative_VST3 BenchJuceEqPort_VST3 BenchHaptoJuceEq_VST3
 python bench/scripts/parity.py --tool bench/build/BenchParity_artefacts/Release/BenchParity.exe
 python bench/scripts/parity.py --tool bench/build/BenchParityPort_artefacts/Release/BenchParityPort.exe
 python bench/scripts/hosted.py --tool bench/build/BenchHosted_artefacts/Release/BenchHosted.exe --bundle <a .vst3> --ids juce
@@ -117,30 +117,30 @@ cmake -S bench -B bench/build-clang -G Ninja -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_SHARED_LINKER_FLAGS=/opt:lldlto=3 -DCMAKE_MODULE_LINKER_FLAGS=/opt:lldlto=3 \
   -DCMAKE_EXE_LINKER_FLAGS=/opt:lldlto=3 \
   -DFETCHCONTENT_SOURCE_DIR_JUCE=<this checkout>/bench/build/_deps/juce-src
-cmake --build bench/build-clang --target BenchParityPort BenchJuceEqPort_VST3 BenchSeamJuceEq_VST3
+cmake --build bench/build-clang --target BenchParityPort BenchJuceEqPort_VST3 BenchHaptoJuceEq_VST3
 python bench/scripts/parity.py --tool bench/build-clang/BenchParityPort_artefacts/Release/BenchParityPort.exe
 ```
 
 A lands in `bench/build/BenchJuceEq_artefacts/Release/VST3/`, A-native, as
 `Bench JUCE EQ native.vst3`, in
 `bench/build/BenchJuceEqNative_artefacts/Release/VST3/`, and C, as
-`Seam Example EQ JUCE.vst3`, in
-`bench/build/BenchSeamJuceEq_artefacts/Release/VST3/`. A-port lands, as
+`Hapto Example EQ JUCE.vst3`, in
+`bench/build/BenchHaptoJuceEq_artefacts/Release/VST3/`. A-port lands, as
 `Bench JUCE EQ port.vst3`, in `BenchJuceEqPort_artefacts/Release/VST3/`; the
 clang-cl folder holds A-port-clang, as `Bench JUCE EQ port clang.vst3`, and
 C-clang under the same paths. C's target runs cargo itself
-(`adapters/juce/SeamJuce.cmake`), so it needs the Rust toolchain too; its Debug
+(`adapters/juce/HaptoJuce.cmake`), so it needs the Rust toolchain too; its Debug
 configuration builds and plays the same as its Release one.
 
 B's module is the EQ crate's `cdylib`
-(`cargo build -p seam-example-eq --release`), which a bundle step puts in
-`Seam Example EQ.vst3/Contents/x86_64-win/`. Until `cargo xtask bundle` exists,
+(`cargo build -p hapto-example-eq --release`), which a bundle step puts in
+`Hapto Example EQ.vst3/Contents/x86_64-win/`. Until `cargo xtask bundle` exists,
 `scripts/compare.py` builds it and makes that bundle itself.
 
 `scripts/hosted.py` loads one build through JUCE's VST3 hosting
 (`hosted/hosted.cpp`, the `BenchHosted` target), names its parameters by the ids
-that build gives them (`--ids seam` for B, `juce` for A and C), and checks it as
-a host sees it. A, B and C each play the parity script's audio bit for bit
+that build gives them (`--ids hapto` for B, `juce` for A and C), and checks it
+as a host sees it. A, B and C each play the parity script's audio bit for bit
 against the Rust EQ driven directly, at all three rates, and reload their own
 saved state.
 
@@ -165,7 +165,7 @@ It writes `report.md` and `report.json` into `bench/build/compare/`: the output
 match, time per block (median and 99th percentile), the whole process's CPU and
 the main and other threads' shares, the first block's time, load time, the
 memory the plugin adds, binary size and lines of plugin code. Reports kept from
-past runs are in `reports/`, each with its `report.json`. They name Seam
+past runs are in `reports/`, each with its `report.json`. They name Hapto
 revisions of an earlier history of this repository, which no longer resolve;
 the EQ and the bench they measured are in the commits that add the example EQ
 (`9264dbe`) and the bench (`d727aec`), reworked since but playing the same
@@ -178,7 +178,7 @@ wrapper decides it behaves as A does:
 
 1. **Parameters by id.** A and C list JUCE's hidden bypass parameter, 26
    parameters to B's 25, and name each by JUCE's hash of its key, which JUCE
-   offers no way to set, where B uses Seam's own hash, so the host addresses
+   offers no way to set, where B uses Hapto's own hash, so the host addresses
    each by its key's id in that build, never its index.
 2. **Automation through `process` only.** A and C apply a controller write on
    the message thread whenever the transport is stopped; B ignores one while the
@@ -237,7 +237,7 @@ wrapper decides it behaves as A does:
    rounds. Every run times at least 1,000 blocks, so its 99th percentile is not
    its maximum.
 10. **Buffers.** JUCE's hosting hands every build one buffer as both input and
-    output. Seam's exporter processes it in place; JUCE's wrapper copies the
+    output. Hapto's exporter processes it in place; JUCE's wrapper copies the
     input into its own buffer and the result back out, in A and C alike. A host
     that passes separate buffers would make B copy too.
 
@@ -257,22 +257,22 @@ Three builds, for timing only, take those apart:
 - **C-clang.** C with its C++, JUCE's wrapper and the adapter, built by
   clang-cl. Its Rust is the same.
 
-Each step from plain JUCE to Seam's own build changes one thing:
+Each step from plain JUCE to Hapto's own build changes one thing:
 
 | Step | Ratio | What changes |
 | --- | --- | --- |
 | port | A-port / A-native | JUCE's filter code against the port, both MSVC |
 | compiler | A-port-clang / A-port | clang-cl against MSVC, on the same C++ |
-| framework | C-clang / A-port-clang | Seam's parameters, the adapter and the C interface, with the filters in Rust, against JUCE's `AudioProcessorValueTreeState` with the same filters in C++: all LLVM, inside the same clang-built wrapper |
+| framework | C-clang / A-port-clang | Hapto's parameters, the adapter and the C interface, with the filters in Rust, against JUCE's `AudioProcessorValueTreeState` with the same filters in C++: all LLVM, inside the same clang-built wrapper |
 | wrapper compiler | C / C-clang | C's wrapper and adapter built by MSVC against clang-cl |
-| exporter | B / C | Seam's VST3 exporter against JUCE's wrapper and the adapter |
+| exporter | B / C | Hapto's VST3 exporter against JUCE's wrapper and the adapter |
 
 The rules those builds follow:
 
 1. **The same work.** `BenchParityPort` is the parity tool on the port with
-   Seam's ranges; `parity.py` checks it case for case against the Rust EQ, built
-   by each compiler, and every case matches bit for bit. In every timed run
-   A-native, A-port and A-port-clang must match each other bit for bit, and
+   Hapto's ranges; `parity.py` checks it case for case against the Rust EQ,
+   built by each compiler, and every case matches bit for bit. In every timed
+   run A-native, A-port and A-port-clang must match each other bit for bit, and
    C-clang must match A.
 2. **The same flags.** JUCE's recommended config and LTO flags under each
    compiler, `/fp:precise`, the dynamic C runtime, and no CPU-specific flags.

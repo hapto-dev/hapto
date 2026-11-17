@@ -3,11 +3,11 @@
 use std::io::{BufRead, Write};
 use std::sync::Arc;
 
-use seam_example_eq::ExampleEq;
-use seam_example_eq::dsp::{Shape, coefficients};
-use seam_example_eq::params::EqParams;
-use seam_host::{Block, EventList, Layout, Parts, Plugin, ProcessSetup, Processor};
-use seam_params::{Float, Kind, ParamDecl, ParamSet, Range};
+use hapto_example_eq::ExampleEq;
+use hapto_example_eq::dsp::{Shape, coefficients};
+use hapto_example_eq::params::EqParams;
+use hapto_host::{Block, EventList, Layout, Parts, Plugin, ProcessSetup, Processor};
+use hapto_params::{Float, Kind, ParamDecl, ParamSet, Range};
 
 fn bits(value: f32) -> String {
     format!("{:08x}", value.to_bits())

@@ -4,8 +4,8 @@
 
 use std::sync::Arc;
 
-use seam_params::{Kind, List, ParamDecl, ParamSet, ParamSetBuilder, UiParams, Value};
-use seam_undo::{Bound, History};
+use hapto_params::{Kind, List, ParamDecl, ParamSet, ParamSetBuilder, UiParams, Value};
+use hapto_undo::{Bound, History};
 
 /// What every step books on top of its values, as `Bound` documents it.
 const OVERHEAD: usize = 32;

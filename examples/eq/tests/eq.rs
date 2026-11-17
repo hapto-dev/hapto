@@ -3,9 +3,9 @@
 
 use std::sync::Arc;
 
-use seam_example_eq::EqProcessor;
-use seam_host::{Block, EventList, Layout, Plugin, ProcessSetup, Processor, SavedState};
-use seam_params::{Kind, ParamDecl};
+use hapto_example_eq::EqProcessor;
+use hapto_host::{Block, EventList, Layout, Plugin, ProcessSetup, Processor, SavedState};
+use hapto_params::{Kind, ParamDecl};
 
 mod common;
 use common::{built, declarations};

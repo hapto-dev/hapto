@@ -18,7 +18,7 @@
     )
 )]
 
-use seam_ump::{ChannelVoice, Event, Voice};
+use hapto_ump::{ChannelVoice, Event, Voice};
 
 use crate::scale;
 use crate::source::Control;
@@ -270,7 +270,7 @@ mod tests {
     use super::*;
 
     /// What the last of `history`, one channel's control changes in order,
-    /// means: MIDI 1.0's reading, except where Seam departs from it on
+    /// means: MIDI 1.0's reading, except where Hapto departs from it on
     /// purpose.
     ///
     /// The reading goes over the whole history again for each message instead
@@ -283,7 +283,7 @@ mod tests {
     /// recommends. A data entry high byte (6) sets the low byte to zero, and a
     /// low byte (38) refines the high byte held.
     ///
-    /// Seam's deviations, each the parser's documented choice:
+    /// Hapto's deviations, each the parser's documented choice:
     ///
     /// 1. A 99 that begins an address forgets the latched 98, which belonged
     ///    to an address already used ([`begins_an_address`]).

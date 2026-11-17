@@ -1,9 +1,9 @@
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-use seam_learn::{Config, Control, Learn, Learned, Mapping, Source, Takes};
-use seam_params::{Kind, ParamDecl, ParamId, ParamSet};
-use seam_ump::{ChannelVoice, Voice};
+use hapto_learn::{Config, Control, Learn, Learned, Mapping, Source, Takes};
+use hapto_params::{Kind, ParamDecl, ParamId, ParamSet};
+use hapto_ump::{ChannelVoice, Voice};
 
 use super::{Audio, pieces};
 use crate::{Block, Event, Layout, Processor, Status};

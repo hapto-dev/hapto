@@ -1,7 +1,7 @@
 //! A session locks, so a debug build refuses its calls on the audio thread.
 
-use seam_params::{ParamSetBuilder, audio_thread};
-use seam_session::Session;
+use hapto_params::{ParamSetBuilder, audio_thread};
+use hapto_session::Session;
 
 #[test]
 fn a_save_is_silent_off_the_audio_thread() {

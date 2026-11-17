@@ -4,8 +4,8 @@
 //! real limit is too slow to build in a debug test. And which takeover of a
 //! path is the shared path fault.
 
-use seam_learn::{Control, Curve, Mapping, Source, encode_mapping};
-use seam_params::{AnyParam, Declarer, Float, FloatDecl, ParamSet};
+use hapto_learn::{Control, Curve, Mapping, Source, encode_mapping};
+use hapto_params::{AnyParam, Declarer, Float, FloatDecl, ParamSet};
 use serde_json::{Value as Json, json};
 
 use super::{FRAME_BYTES, Loaded, RunTimeSaved, entry_bytes};

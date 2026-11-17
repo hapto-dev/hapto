@@ -3,7 +3,7 @@
 
 use std::error::Error;
 
-use seam_params::Params;
+use hapto_params::Params;
 use serde_json::{Map, Value as Json};
 
 use crate::audio::{Block, ProcessSetup, Status};
@@ -26,14 +26,14 @@ use crate::parts::Parts;
 ///   each call, and the drop, may come on a different thread. Two never run
 ///   at once, and each sees what the one before did. Such a plugin holds
 ///   nothing tied to a thread, such as a thread-local, a window handle or
-///   its [`Parts`]. `cabi::SeamPlugin` states the C contract. Through VST3
+///   its [`Parts`]. `cabi::HaptoPlugin` states the C contract. Through VST3
 ///   it has a main thread, as above.
 /// - **Audio thread:** only the [`Processor`]'s `process` and `reset`. The
 ///   processor is built by [`activate`](Self::activate) and handed back to
 ///   [`deactivate`](Self::deactivate), so it never drops on the audio
 ///   thread.
 /// - **Whatever thread they arrive on:** the host's save and load calls,
-///   which go through the saved state Seam built ([`Parts::saved`]) and
+///   which go through the saved state Hapto built ([`Parts::saved`]) and
 ///   never touch the plugin, a load's [`migrate`](Self::migrate), and the
 ///   parameter set's reads and writes.
 ///
@@ -44,12 +44,12 @@ use crate::parts::Parts;
 ///
 /// What the exporters do for every plugin, so none writes it:
 ///
-/// - **Parts.** Seam declares the plugin's [`Params`](Self::Params), builds
+/// - **Parts.** Hapto declares the plugin's [`Params`](Self::Params), builds
 ///   the parameter set, the session and the saved state over them, and hands
 ///   the parameters and the [`Parts`] to [`new`](Self::new). The host lists
 ///   that set, and saves and loads through that saved state. A declaration
 ///   refused fails the instance's creation, with the reason in the fault
-///   report. While the plugin keeps the parts, Seam ticks them before each
+///   report. While the plugin keeps the parts, Hapto ticks them before each
 ///   [`idle`](Self::idle).
 /// - **Learn.** When the plugin turned learn on
 ///   ([`Parts::midi_learn`]), each activation takes a fresh audio side of
@@ -57,9 +57,9 @@ use crate::parts::Parts;
 ///   processor's first call, so learned writes are in the parameters it
 ///   reads. The processor holds no part of learn.
 /// - **Bypass.** A parameter declared with
-///   [`as_bypass`](seam_params::BoolDecl::as_bypass) is the one the host
+///   [`as_bypass`](hapto_params::BoolDecl::as_bypass) is the one the host
 ///   drives as bypass, and the processor implements it. A plugin that
-///   declares none leaves bypass to the host. None of Seam's exporters adds a
+///   declares none leaves bypass to the host. None of Hapto's exporters adds a
 ///   hidden parameter, though JUCE's VST3 wrapper does when the JUCE adapter
 ///   hosts the plugin.
 /// - **Editor.** When the plugin hands out an [`Editor`] from
@@ -76,7 +76,7 @@ use crate::parts::Parts;
 /// - **Denormals.** An exporter flushes denormals to zero around every
 ///   [`Processor::process`] call and restores the host's setting after it.
 /// - **Host events.** The exporter takes the parameter set's
-///   [`take_host_event_drain`](seam_params::ParamSet::take_host_event_drain)
+///   [`take_host_event_drain`](hapto_params::ParamSet::take_host_event_drain)
 ///   drain and tells the host of every edit; a plugin never takes it.
 /// - **Panics.** A panic never unwinds into the host. An exporter catches
 ///   it at the entry point and answers the host with an error, and a
@@ -88,11 +88,11 @@ use crate::parts::Parts;
 /// A plugin with one parameter, a gain its processor applies:
 ///
 /// ```
-/// use seam_host::{
+/// use hapto_host::{
 ///     AuCodes, Block, Category, EventList, Layout, Parts, Plugin, PluginInfo, ProcessSetup,
 ///     Processor, Status,
 /// };
-/// use seam_params::{Declarer, Float, FloatDecl, Params};
+/// use hapto_params::{Declarer, Float, FloatDecl, Params};
 ///
 /// /// The parameters: declared here, and handed back to the plugin.
 /// #[derive(Clone)]
@@ -173,7 +173,7 @@ use crate::parts::Parts;
 /// let block = Block::new(&mut channels, 64, &events, &mut out);
 /// assert_eq!(processor.process(block), Status::Continue);
 /// assert_eq!(left[0], 0.5, "0 dB");
-/// # Ok::<(), seam_params::DeclError>(())
+/// # Ok::<(), hapto_params::DeclError>(())
 /// ```
 pub trait Plugin: 'static {
     /// The facts a host reads before it creates an instance.
@@ -188,7 +188,7 @@ pub trait Plugin: 'static {
     type Params: Params;
 
     /// The version of the plugin's own saved-state schema, which a saved
-    /// block carries apart from Seam's.
+    /// block carries apart from Hapto's.
     ///
     /// It stays 0, the default, until a block of the old shape would load
     /// wrong: a parameter renamed or rescaled, a section restructured. The
@@ -199,10 +199,10 @@ pub trait Plugin: 'static {
     /// The audio-thread half.
     type Processor: Processor;
 
-    /// Creates an instance from what Seam built for it: the parameters its
+    /// Creates an instance from what Hapto built for it: the parameters its
     /// [`Params`](Self::Params) declared, and its [`Parts`].
     ///
-    /// The plugin keeps what it uses. Seam ticks the parts for as long as
+    /// The plugin keeps what it uses. Hapto ticks the parts for as long as
     /// the plugin keeps them.
     ///
     /// Thread: main, or for a plugin that is `Send` the thread that calls
@@ -212,7 +212,7 @@ pub trait Plugin: 'static {
     /// Upgrades a block an older schema saved, in place, from its version
     /// `from`.
     ///
-    /// Seam calls it only while [`SCHEMA_VERSION`](Self::SCHEMA_VERSION) is
+    /// Hapto calls it only while [`SCHEMA_VERSION`](Self::SCHEMA_VERSION) is
     /// above 0, for a block of a lower version, with the block as a JSON
     /// object holding its `parameters` and `extra`. The rules a migration
     /// keeps, such as never overwriting a key the block holds, are on
@@ -275,8 +275,8 @@ pub trait Plugin: 'static {
     /// destruction, editor open or not, for the plugin's own work. By
     /// default it does nothing.
     ///
-    /// Seam's own work comes first, in the same tick: when the plugin keeps
-    /// its [`Parts`], Seam [ticks](crate::Driver::tick) them, which applies a
+    /// Hapto's own work comes first, in the same tick: when the plugin keeps
+    /// its [`Parts`], Hapto [ticks](crate::Driver::tick) them, which applies a
     /// session the host's load restored and runs undo and learn. So `idle`
     /// sees a restore applied and a learned mapping committed. Afterwards
     /// the exporter tells the host of the edits the plugin made. A tick that
@@ -284,7 +284,7 @@ pub trait Plugin: 'static {
     /// tick runs both.
     ///
     /// A surface the plugin draws itself polls its
-    /// [watches](seam_params::Watch) here. An open [`Editor`]'s own tick
+    /// [watches](hapto_params::Watch) here. An open [`Editor`]'s own tick
     /// comes after this one, in the same tick.
     ///
     /// Thread: main. The JUCE adapter ticks it on every platform it builds
@@ -293,7 +293,7 @@ pub trait Plugin: 'static {
     ///
     /// Keep a tick short. Through the C interface, a main-thread call that
     /// meets a tick on another thread waits for it only briefly (its
-    /// `SeamPlugin` says how long). An activation that meets a slow tick
+    /// `HaptoPlugin` says how long). An activation that meets a slow tick
     /// then fails.
     ///
     /// # Examples
@@ -303,12 +303,12 @@ pub trait Plugin: 'static {
     /// controller and saves its mapping, before the synth's idle sees it.
     ///
     /// ```
-    /// use seam_host::{Block, Driver, Parts, Plugin, ProcessSetup, Processor, Status};
-    /// use seam_learn::{Config, SESSION_KEY, Takes};
-    /// use seam_params::{Declarer, Float, FloatDecl, Params};
-    /// use seam_undo::{Bound, History};
-    /// # use seam_host::{AuCodes, Category, Layout, PluginInfo};
-    /// # use seam_ump::{ChannelVoice, EventList, Voice};
+    /// use hapto_host::{Block, Driver, Parts, Plugin, ProcessSetup, Processor, Status};
+    /// use hapto_learn::{Config, SESSION_KEY, Takes};
+    /// use hapto_params::{Declarer, Float, FloatDecl, Params};
+    /// use hapto_undo::{Bound, History};
+    /// # use hapto_host::{AuCodes, Category, Layout, PluginInfo};
+    /// # use hapto_ump::{ChannelVoice, EventList, Voice};
     ///
     /// struct SynthParams {
     ///     cutoff: Float,
@@ -376,7 +376,7 @@ pub trait Plugin: 'static {
     ///     }
     /// }
     ///
-    /// // Built and ticked with no host, as a test does: Seam's tick, then idle.
+    /// // Built and ticked with no host, as a test does: Hapto's tick, then idle.
     /// let (params, parts) = Parts::for_plugin::<Synth>()?;
     /// let driver = Driver::of(&parts);
     /// let mut synth = Synth::new(params, parts);
@@ -427,7 +427,7 @@ pub trait Plugin: 'static {
     /// `None`, the default, for a plugin the host shows with its own
     /// controls.
     ///
-    /// Seam calls it each time a host asks for a view, on Windows alone for
+    /// Hapto calls it each time a host asks for a view, on Windows alone for
     /// now. The editor keeps what it needs of the plugin, a clone of
     /// [`Parts::ui`] for its writes among them, since the exporter drives it
     /// apart from the plugin: [`Editor`] says how.
@@ -442,11 +442,11 @@ pub trait Plugin: 'static {
     /// ```
     /// use std::error::Error;
     ///
-    /// use seam_host::{Editor, ParentWindow, Parts, Plugin, Size};
-    /// # use seam_host::{
+    /// use hapto_host::{Editor, ParentWindow, Parts, Plugin, Size};
+    /// # use hapto_host::{
     /// #     AuCodes, Block, Category, Layout, PluginInfo, ProcessSetup, Processor, Status,
     /// # };
-    /// use seam_params::{Declarer, Float, FloatDecl, Params, UiParams};
+    /// use hapto_params::{Declarer, Float, FloatDecl, Params, UiParams};
     ///
     /// struct GainParams {
     ///     gain: Float,
@@ -546,7 +546,7 @@ pub trait Plugin: 'static {
 /// # Examples
 ///
 /// ```
-/// use seam_host::Tail;
+/// use hapto_host::Tail;
 ///
 /// /// How long a plugin that reports `tail` keeps sounding, in seconds.
 /// fn ring_seconds(tail: Tail, sample_rate: f64) -> Option<f64> {
@@ -576,7 +576,7 @@ pub enum Tail {
 /// # Examples
 ///
 /// ```
-/// use seam_host::{Block, EventList, Processor, Status};
+/// use hapto_host::{Block, EventList, Processor, Status};
 ///
 /// /// A one-pole low-pass: it carries one sample from block to block.
 /// struct OnePole {

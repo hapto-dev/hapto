@@ -33,7 +33,7 @@ thread_local! {
 /// # Examples
 ///
 /// ```
-/// use seam_params::audio_thread;
+/// use hapto_params::audio_thread;
 ///
 /// let outer = audio_thread::enter();
 /// let inner = audio_thread::enter();
@@ -58,7 +58,7 @@ pub struct AudioThreadGuard {
 /// # Examples
 ///
 /// ```
-/// use seam_params::audio_thread;
+/// use hapto_params::audio_thread;
 ///
 /// assert!(!audio_thread::is_here());
 /// {
@@ -88,7 +88,7 @@ impl Drop for AudioThreadGuard {
 /// # Examples
 ///
 /// ```
-/// use seam_params::audio_thread;
+/// use hapto_params::audio_thread;
 ///
 /// let _audio = audio_thread::enter();
 /// assert_eq!(audio_thread::is_here(), audio_thread::CHECKED);
@@ -118,7 +118,7 @@ pub fn is_here() -> bool {
 /// # Examples
 ///
 /// ```
-/// use seam_params::audio_thread;
+/// use hapto_params::audio_thread;
 ///
 /// // A call that locks starts with this line, and passes off the audio thread.
 /// audio_thread::assert_not_here("Session::save");

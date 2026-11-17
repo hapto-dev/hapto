@@ -1,10 +1,10 @@
 [package]
-name = "seam-fuzz"
-description = "cargo-fuzz targets for every input boundary of Seam"
+name = "hapto-fuzz"
+description = "cargo-fuzz targets for every input boundary of Hapto"
 version = "0.0.0"
 edition = "2024"
 license = "MIT"
-repository = "https://github.com/nicvlav/seam"
+repository = "https://github.com/hapto-dev/hapto"
 readme = "../README.md"
 keywords = ["fuzzing", "audio", "plugin", "midi"]
 categories = ["development-tools::testing"]
@@ -18,15 +18,15 @@ publish = false
 cargo-fuzz = true
 
 [lib]
-name = "seam_fuzz"
+name = "hapto_fuzz"
 
 [dependencies]
 libfuzzer-sys = "0.4"
-seam-ump = { path = "../crates/ump" }
-seam-bridge = { path = "../crates/bridge" }
-seam-host = { path = "../crates/host", features = ["cabi", "test-host"] }
-seam-params = { path = "../crates/params" }
-seam-session = { path = "../crates/session" }
+hapto-ump = { path = "../crates/ump" }
+hapto-bridge = { path = "../crates/bridge" }
+hapto-host = { path = "../crates/host", features = ["cabi", "test-host"] }
+hapto-params = { path = "../crates/params" }
+hapto-session = { path = "../crates/session" }
 serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
 
 [[bin]]

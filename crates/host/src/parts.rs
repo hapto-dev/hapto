@@ -1,4 +1,4 @@
-//! What Seam builds for each instance of a plugin and hands to its
+//! What Hapto builds for each instance of a plugin and hands to its
 //! [`Plugin::new`]: its parameters, and its [`Parts`]; and the [`Driver`]
 //! an engine runs the parts through.
 
@@ -7,10 +7,10 @@ use std::ops::DerefMut;
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
 
-use seam_learn::{Config, Learn, LearnAudio};
-use seam_params::{DeclError, Declaration, ParamSet, Params, UiParams, Value};
-use seam_session::{Session, SessionError, SessionUi};
-use seam_undo::{Bound, History};
+use hapto_learn::{Config, Learn, LearnAudio};
+use hapto_params::{DeclError, Declaration, ParamSet, Params, UiParams, Value};
+use hapto_session::{Session, SessionError, SessionUi};
+use hapto_undo::{Bound, History};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
@@ -26,7 +26,7 @@ use saved::{SavedValue, Synced};
 /// over it, the saved state the host saves and loads through, and undo and
 /// MIDI learn once the plugin turns them on.
 ///
-/// Seam builds them for each instance and hands them to [`Plugin::new`], with
+/// Hapto builds them for each instance and hands them to [`Plugin::new`], with
 /// the parameters the plugin's [`Params`](Plugin::Params) declared, and ticks
 /// them before each [`idle`](Plugin::idle) for as long as the plugin keeps
 /// them ([`Driver::tick`] says what the tick does). They hold the main
@@ -40,10 +40,10 @@ use saved::{SavedValue, Synced};
 /// ticks them, as the exporter's engine does.
 ///
 /// ```
-/// use seam_host::{Block, Driver, Parts, Plugin, ProcessSetup, Processor, Status};
-/// use seam_params::{Declarer, Float, FloatDecl, Params};
-/// use seam_undo::{Bound, History};
-/// # use seam_host::{AuCodes, Category, Layout, PluginInfo};
+/// use hapto_host::{Block, Driver, Parts, Plugin, ProcessSetup, Processor, Status};
+/// use hapto_params::{Declarer, Float, FloatDecl, Params};
+/// use hapto_undo::{Bound, History};
+/// # use hapto_host::{AuCodes, Category, Layout, PluginInfo};
 ///
 /// struct Level {
 ///     gain: Float,
@@ -262,7 +262,7 @@ impl Parts {
 
     /// Turns MIDI learn on, its mappings saved with the session.
     ///
-    /// Seam runs both of learn's sides: the poll at each
+    /// Hapto runs both of learn's sides: the poll at each
     /// [tick](Driver::tick), and the audio side over each block's MIDI
     /// before the processor runs, so learned writes are in the parameters
     /// when it reads them. The plugin turns learn on in
@@ -275,7 +275,7 @@ impl Parts {
     /// When the plugin declares no MIDI input
     /// ([`PluginInfo::midi_input`](crate::PluginInfo::midi_input)): no
     /// controller would ever reach learn. And when learn's section key,
-    /// [`SESSION_KEY`](seam_learn::SESSION_KEY), is taken: learn is on
+    /// [`SESSION_KEY`](hapto_learn::SESSION_KEY), is taken: learn is on
     /// already, or a participant the plugin registered holds it. In an
     /// exporter, the instance is then not built.
     ///
@@ -294,7 +294,7 @@ impl Parts {
         if let Err(error) = Learn::attach(&learn, &self.ticked.session) {
             panic!(
                 "MIDI learn's session key is taken ({error}): turn learn on once, \
-                 and register no participant under seam_learn::SESSION_KEY"
+                 and register no participant under hapto_learn::SESSION_KEY"
             );
         }
         // Empty: learn holds its key while it lives, so the attach above
@@ -304,7 +304,7 @@ impl Parts {
 
     /// Returns learn's main-thread side, to arm, map or clear.
     ///
-    /// Under an exporter, learn's audio side is Seam's. Calling
+    /// Under an exporter, learn's audio side is Hapto's. Calling
     /// [`replace_audio`](Learn::replace_audio) on this learn retires the one
     /// the running activation's blocks go through, which then keeps the
     /// mappings it last read and sees no later one.
@@ -363,7 +363,7 @@ impl Parts {
     ///
     /// ```
     #[doc = include_str!("../doc/gain.rs")]
-    /// use seam_host::Driver;
+    /// use hapto_host::Driver;
     ///
     /// let (_params, mut parts) = Parts::for_plugin::<Gain>()?;
     /// let driver = Driver::of(&parts);
@@ -402,8 +402,8 @@ impl Parts {
     }
 
     /// Makes `P`'s parameters while the plugin runs, under `scope`, and
-    /// hands them back: the same [`Float`](seam_params::Float),
-    /// [`Bool`](seam_params::Bool) and [`Choice`](seam_params::Choice) that
+    /// hands them back: the same [`Float`](hapto_params::Float),
+    /// [`Bool`](hapto_params::Bool) and [`Choice`](hapto_params::Choice) that
     /// the listed ones are, listed to no host.
     ///
     /// Which to use for state a plugin keeps: a number the DSP reads is a
@@ -448,7 +448,7 @@ impl Parts {
     ///
     /// On a mistake fixed in the plugin's source: a declaration refused, a
     /// bypass, a key the struct declares twice, or a plain table
-    /// ([`Declarer::extend`](seam_params::Declarer::extend)). A struct the
+    /// ([`Declarer::extend`](hapto_params::Declarer::extend)). A struct the
     /// derive wrote was checked while compiling, so it never panics here.
     /// And while learn is on and borrowed, as [`learn`](Self::learn) says.
     ///
@@ -523,7 +523,7 @@ impl Parts {
 /// What an exporter's engine holds to run a plugin's [`Parts`]: a link to
 /// them that does not keep them alive.
 ///
-/// Seam makes one for each instance before [`Plugin::new`] takes the parts.
+/// Hapto makes one for each instance before [`Plugin::new`] takes the parts.
 /// Through it the engine [ticks](Self::tick) the parts before each
 /// [`idle`](Plugin::idle), and takes learn's [audio side](Self::learn_audio)
 /// at each activation, which it runs over each block's MIDI before the
@@ -540,7 +540,7 @@ impl Parts {
 ///
 /// ```
 #[doc = include_str!("../doc/gain.rs")]
-/// use seam_host::Driver;
+/// use hapto_host::Driver;
 ///
 /// let (params, mut parts) = Parts::for_plugin::<Gain>()?;
 /// let label = parts.saved_value("label", String::from("Untitled"))?;

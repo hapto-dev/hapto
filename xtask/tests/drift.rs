@@ -11,6 +11,6 @@ fn every_generated_file_is_current() {
         "xtask generates no file, so this gate would check nothing"
     );
     for file in files {
-        seam_testkit::drift::check_generated(&root.join(file.path), &file.contents);
+        hapto_testkit::drift::check_generated(&root.join(file.path), &file.contents);
     }
 }

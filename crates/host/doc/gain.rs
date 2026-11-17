@@ -1,10 +1,10 @@
 # use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 #
-# use seam_host::{
+# use hapto_host::{
 #     AuCodes, Block, Category, EventList, Layout, Parts, Plugin, PluginInfo, ProcessSetup,
 #     Processor, Status, Tail,
 # };
-# use seam_params::{Declarer, Float, FloatDecl, Params};
+# use hapto_params::{Declarer, Float, FloatDecl, Params};
 #
 # /// Main-thread ticks the plugin has had.
 # static TICKS: AtomicU32 = AtomicU32::new(0);

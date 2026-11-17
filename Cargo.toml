@@ -8,34 +8,34 @@ edition = "2024"
 rust-version = "1.99"
 authors = ["Christopher N Vlavianos"]
 license = "MIT"
-repository = "https://github.com/nicvlav/seam"
+repository = "https://github.com/hapto-dev/hapto"
 readme = "README.md"
 publish = false
 
 # ARCHITECTURE.md's three tiers (core, projections, shells), as the eight layers
 # scripts/check-core-deps.py keeps, each crate depending only on lower ones:
-#   0  seam-testkit (test tools), seam-macros (the parameters' derives and
+#   0  hapto-testkit (test tools), hapto-macros (the parameters' derives and
 #      `manifest_info!`)
-#   1  seam-params, seam-ump
-#   2  seam-undo, seam-session
-#   3  seam-learn (the core's top), seam-bridge (the page)
-#   4  seam-host (plugin formats)
-#   5  seam-webview (the page in a plugin's window, a shell)
-#   6  seam-example-eq and seam-example-gain, plugins; 7 xtask
+#   1  hapto-params, hapto-ump
+#   2  hapto-undo, hapto-session
+#   3  hapto-learn (the core's top), hapto-bridge (the page)
+#   4  hapto-host (plugin formats)
+#   5  hapto-webview (the page in a plugin's window, a shell)
+#   6  hapto-example-eq and hapto-example-gain, plugins; 7 xtask
 # The core (layers 1 to 3) builds with no window, WebView or host dependency;
 # that script enforces both in CI.
 [workspace.dependencies]
-seam-params = { path = "crates/params" }
-seam-undo = { path = "crates/undo" }
-seam-session = { path = "crates/session" }
-seam-learn = { path = "crates/learn" }
-seam-ump = { path = "crates/ump" }
-seam-host = { path = "crates/host" }
-seam-bridge = { path = "crates/bridge" }
-seam-macros = { path = "crates/macros" }
-seam-webview = { path = "crates/webview" }
+hapto-params = { path = "crates/params" }
+hapto-undo = { path = "crates/undo" }
+hapto-session = { path = "crates/session" }
+hapto-learn = { path = "crates/learn" }
+hapto-ump = { path = "crates/ump" }
+hapto-host = { path = "crates/host" }
+hapto-bridge = { path = "crates/bridge" }
+hapto-macros = { path = "crates/macros" }
+hapto-webview = { path = "crates/webview" }
 # Tests only.
-seam-testkit = { path = "crates/testkit" }
+hapto-testkit = { path = "crates/testkit" }
 
 serde = { version = "1.0.229", features = ["derive"] }
 # `float_roundtrip` parses every f64 to the nearest value, so a save, a load
@@ -50,12 +50,12 @@ vst3 = "0.3.0"
 # the lockfile through other crates.
 windows-sys = "0.61.2"
 # The host's window as a toolkit takes it: the editor's parent window in
-# seam-host.
+# hapto-host.
 raw-window-handle = "0.6.2"
-# The page's WebView in a plugin's window (seam-webview), on Windows. Pinned
+# The page's WebView in a plugin's window (hapto-webview), on Windows. Pinned
 # exactly: the editor's handling of the message loop its start-up runs was
 # read from this version's WebView2 source. No default features: those are
-# its Linux backend's (GTK and WebKitGTK), which Seam does not build.
+# its Linux backend's (GTK and WebKitGTK), which Hapto does not build.
 wry = { version = "=0.57.2", default-features = false }
 # Learn's dispatch snapshot: the audio thread takes the newest table
 # without waiting, and a replaced one drops on the UI thread. MPL-2.0, used
@@ -63,12 +63,12 @@ wry = { version = "=0.57.2", default-features = false }
 # Pinned exactly: the snapshot's soundness rests on this version's source,
 # as crates/learn/src/snapshot.rs checks it.
 triple_buffer = "=9.0.0"
-# The parameters' derives (seam-macros). The versions xtask already locks, so
+# The parameters' derives (hapto-macros). The versions xtask already locks, so
 # no third syn joins the build.
 proc-macro2 = "1.0.107"
 quote = "1.0.47"
 syn = { version = "2.0.119", features = ["full"] }
-# The manifest reader behind seam-host's `manifest_info!` (seam-macros): the
+# The manifest reader behind hapto-host's `manifest_info!` (hapto-macros): the
 # parser only, which keeps each value's place in the file, and no serde.
 toml = { version = "1.2.1", default-features = false, features = ["std", "parse"] }
 # Tests only: property tests. CI raises the case count on a run started by
@@ -87,7 +87,7 @@ loom = "0.7.2"
 assert_no_alloc = { version = "1.1.2", default-features = false, features = ["warn_debug", "warn_release"] }
 
 [workspace.lints.rust]
-# Only the boundary code may use unsafe: seam-host's format exporters (VST3
+# Only the boundary code may use unsafe: hapto-host's format exporters (VST3
 # COM and the C ABI) and the modules they share (the boundary, the engine and
 # the fault reports), each allowing it on its own module.
 unsafe_code = "deny"
@@ -99,9 +99,9 @@ rust_2018_idioms = { level = "warn", priority = -1 }
 # A `pub` item nothing outside its crate can reach is `pub(crate)`.
 unreachable_pub = "warn"
 # `loom` is the model checker's cfg: RUSTFLAGS="--cfg loom" swaps the atomics
-# of the hand-offs it models. `seam_rtsan` marks the audio entry points for
+# of the hand-offs it models. `hapto_rtsan` marks the audio entry points for
 # the nightly real-time sanitizer lane.
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)', 'cfg(seam_rtsan)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)', 'cfg(hapto_rtsan)'] }
 
 [workspace.lints.clippy]
 dbg_macro = "warn"

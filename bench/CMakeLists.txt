@@ -1,5 +1,5 @@
 # The comparison's C++ side: the example EQ written straight in JUCE, as a
-# VST3 (A); the Rust EQ through Seam's C interface and the generic JUCE
+# VST3 (A); the Rust EQ through Hapto's C interface and the generic JUCE
 # adapter, as a VST3 (C); and bench-parity, which answers parity.py's cases.
 # See README.md.
 cmake_minimum_required(VERSION 3.25)
@@ -8,7 +8,7 @@ cmake_minimum_required(VERSION 3.25)
 # the Rust EQ calls: the dynamic one.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 
-project(seam_bench VERSION 0.1.0 LANGUAGES C CXX)
+project(hapto_bench VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -16,10 +16,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(FetchContent)
 
 # JUCE 9.0.0. A local checkout of it can stand in for the network.
-set(SEAM_BENCH_JUCE_GIT "https://github.com/juce-framework/JUCE.git"
+set(HAPTO_BENCH_JUCE_GIT "https://github.com/juce-framework/JUCE.git"
     CACHE STRING "Where to clone JUCE 9.0.0 from: its URL, or a local checkout that has the commit")
 FetchContent_Declare(juce
-    GIT_REPOSITORY ${SEAM_BENCH_JUCE_GIT}
+    GIT_REPOSITORY ${HAPTO_BENCH_JUCE_GIT}
     GIT_TAG f8f8864172464b9adf9eba6101e1f784838d1597)
 FetchContent_MakeAvailable(juce)
 
@@ -31,8 +31,8 @@ if(MSVC)
 endif()
 
 juce_add_plugin(BenchJuceEq
-    COMPANY_NAME "Seam"
-    PLUGIN_MANUFACTURER_CODE Seam
+    COMPANY_NAME "Hapto"
+    PLUGIN_MANUFACTURER_CODE Hapt
     PLUGIN_CODE BjEq
     FORMATS VST3
     PRODUCT_NAME "Bench JUCE EQ"
@@ -54,11 +54,11 @@ target_link_libraries(BenchJuceEq
         juce::juce_recommended_warning_flags)
 
 # A with JUCE's own ranges: the same EQ as a JUCE developer would declare its
-# parameters, for timing only. It stores values a little apart from Seam's,
+# parameters, for timing only. It stores values a little apart from Hapto's,
 # so it is outside the bit-for-bit check (README, "A with JUCE's ranges").
 juce_add_plugin(BenchJuceEqNative
-    COMPANY_NAME "Seam"
-    PLUGIN_MANUFACTURER_CODE Seam
+    COMPANY_NAME "Hapto"
+    PLUGIN_MANUFACTURER_CODE Hapt
     PLUGIN_CODE BjEn
     FORMATS VST3
     PRODUCT_NAME "Bench JUCE EQ native"
@@ -91,8 +91,8 @@ else()
     set(bench_port_code BjEp)
 endif()
 juce_add_plugin(BenchJuceEqPort
-    COMPANY_NAME "Seam"
-    PLUGIN_MANUFACTURER_CODE Seam
+    COMPANY_NAME "Hapto"
+    PLUGIN_MANUFACTURER_CODE Hapt
     PLUGIN_CODE ${bench_port_code}
     FORMATS VST3
     PRODUCT_NAME "${bench_port_name}"
@@ -116,12 +116,12 @@ target_link_libraries(BenchJuceEqPort
         juce::juce_recommended_warning_flags)
 
 # C: the Rust EQ as JUCE builds it through the adapter, under a name of its
-# own so a host lists it apart from Seam's native VST3 (B).
-include(../adapters/juce/SeamJuce.cmake)
-seam_add_juce_plugin(BenchSeamJuceEq
-    PACKAGE seam-example-eq
-    SETTINGS "${CMAKE_CURRENT_LIST_DIR}/../examples/eq/seam-juce.cmake"
-    PRODUCT_NAME "Seam Example EQ JUCE"
+# own so a host lists it apart from Hapto's native VST3 (B).
+include(../adapters/juce/HaptoJuce.cmake)
+hapto_add_juce_plugin(BenchHaptoJuceEq
+    PACKAGE hapto-example-eq
+    SETTINGS "${CMAKE_CURRENT_LIST_DIR}/../examples/eq/hapto-juce.cmake"
+    PRODUCT_NAME "Hapto Example EQ JUCE"
     FORMATS VST3)
 
 # bench-hosted, the console host: loads one .vst3 through JUCE's VST3
@@ -147,7 +147,7 @@ target_link_libraries(BenchParity
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags)
 
-# bench-parity on A-port's filters with Seam's ranges, so parity.py checks
+# bench-parity on A-port's filters with Hapto's ranges, so parity.py checks
 # that the port computes what the Rust EQ does.
 juce_add_console_app(BenchParityPort PRODUCT_NAME "bench-parity-port")
 target_sources(BenchParityPort PRIVATE parity/parity.cpp juce-eq/PluginProcessor.cpp)

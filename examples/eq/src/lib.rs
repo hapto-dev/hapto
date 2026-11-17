@@ -1,9 +1,9 @@
 //! The example EQ: six biquad bands (a high-pass, a low shelf, three peaks
-//! and a high shelf) and an output gain, on Seam.
+//! and a high shelf) and an output gain, on Hapto.
 //!
 //! It has parameters and saved state only, with no editor, undo or MIDI
 //! learn, so it can be measured against the same EQ written straight in
-//! JUCE. Its `cdylib` is a VST3 module through Seam's exporter (the `vst3`
+//! JUCE. Its `cdylib` is a VST3 module through Hapto's exporter (the `vst3`
 //! feature, on by default); with only `cabi` on, it exports the C interface
 //! instead, for the JUCE adapter.
 //!
@@ -16,12 +16,12 @@ pub mod dsp;
 pub mod params;
 
 #[cfg(feature = "vst3")]
-seam_host::export_vst3!(ExampleEq);
+hapto_host::export_vst3!(ExampleEq);
 #[cfg(feature = "cabi")]
-seam_host::export_cabi!(ExampleEq);
+hapto_host::export_cabi!(ExampleEq);
 
-use seam_host::{Block, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status};
-use seam_params::{Bool, Changes, Float};
+use hapto_host::{Block, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status};
+use hapto_params::{Bool, Changes, Float};
 
 use crate::dsp::{Biquad, coefficients, decibels_to_gain};
 use crate::params::{BandParams, EqParams};
@@ -42,7 +42,7 @@ const _: () = {
 };
 
 impl Plugin for ExampleEq {
-    const INFO: PluginInfo = seam_host::manifest_info! {
+    const INFO: PluginInfo = hapto_host::manifest_info! {
         layouts: &[Layout::STEREO, Layout::MONO],
         midi_input: false,
         midi_output: false,

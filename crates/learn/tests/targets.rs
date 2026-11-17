@@ -4,13 +4,13 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::Arc;
 
-use seam_learn::{
+use hapto_learn::{
     Config, Control, CustomId, Learn, LearnAudio, LearnError, Learned, Mapping, SESSION_KEY,
     Source, Takes, Target, TargetId,
 };
-use seam_params::{Declarer, Float, FloatDecl, Kind, ParamDecl, ParamSet, ParamSetBuilder};
-use seam_session::Session;
-use seam_ump::{ChannelVoice, EventList, Voice};
+use hapto_params::{Declarer, Float, FloatDecl, Kind, ParamDecl, ParamSet, ParamSetBuilder};
+use hapto_session::Session;
+use hapto_ump::{ChannelVoice, EventList, Voice};
 
 fn set() -> Arc<ParamSet> {
     let mut builder = ParamSetBuilder::new();

@@ -5,8 +5,8 @@ use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 
-use seam_params::{Origin, Value};
-use seam_session::{ApplyError, Participant, Registration, Section, SessionError, SessionUi};
+use hapto_params::{Origin, Value};
+use hapto_session::{ApplyError, Participant, Registration, Section, SessionError, SessionUi};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 

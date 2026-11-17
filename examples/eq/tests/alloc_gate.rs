@@ -2,13 +2,13 @@
 //! after activation on, retuning included, driven directly, through the
 //! VST3 exporter and through the C interface.
 
-seam_testkit::install_alloc_gate!();
+hapto_testkit::install_alloc_gate!();
 
-use seam_example_eq::ExampleEq;
-use seam_host::vst3::TestHost;
-use seam_host::{Block, EventList, Layout, Plugin, ProcessSetup, Processor};
-use seam_params::host_id;
-use seam_testkit::alloc::assert_no_allocations;
+use hapto_example_eq::ExampleEq;
+use hapto_host::vst3::TestHost;
+use hapto_host::{Block, EventList, Layout, Plugin, ProcessSetup, Processor};
+use hapto_params::host_id;
+use hapto_testkit::alloc::assert_no_allocations;
 
 mod common;
 use common::built;
@@ -98,7 +98,7 @@ fn the_first_block_through_the_vst3_exporter_allocates_nothing() {
 
 #[test]
 fn the_first_block_through_the_c_interface_allocates_nothing() {
-    let host = seam_host::cabi::TestHost::<ExampleEq>::new();
+    let host = hapto_host::cabi::TestHost::<ExampleEq>::new();
     assert_eq!(host.activate(48_000.0, 256, Layout::STEREO), Ok(()));
     let index = |key: &str| {
         (0..host.parameter_count() as u32)

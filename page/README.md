@@ -1,6 +1,6 @@
-# seam-page
+# @hapto/page
 
-The page side of a Seam plugin UI: a client for the native protocol and React
+The page side of a Hapto plugin UI: a client for the native protocol and React
 hooks (`useParam`, `useValue`, `useEvent`, `useCommand`) typed against the
 page's own parameter, value, event and command maps. Rust owns the parameters
 and the values; the page only mirrors and edits them.
@@ -11,10 +11,10 @@ The package talks to the native side through `Transport` (`send` a
 `PageMessage`, `listen` for `NativeMessage`s), which keeps the order of messages
 both ways, and imports nothing else. `memoryTransport()` is for tests; no
 browser mock of the native side is built. `webviewTransport()` is for a page in
-a plugin's window, whose native side is the `seam-webview` crate: it posts
-through `window.ipc` and installs `window.__seam` for the native side to
+a plugin's window, whose native side is the `hapto-webview` crate: it posts
+through `window.ipc` and installs `window.__hapto` for the native side to
 deliver through. A transport for a standalone app is planned. The native side
-is `Dispatcher`, in the `seam-bridge` crate. The message types in
+is `Dispatcher`, in the `hapto-bridge` crate. The message types in
 `src/generated/protocol.ts` are generated from Rust; do not edit them.
 
 ## Recipe
@@ -27,7 +27,7 @@ an interface keyed by id, whose values are payload types. `Commands` maps each
 name to `{ args, returns }`: `args: void` for none, and `returns: null` for a
 command with no result, which resolves `null` because the native side always
 sends a value. `Values` maps the key of each value the plugin binds for its
-page (`Values::value` in `seam-bridge`, `Page::value` in `seam-webview`) to
+page (`Values::value` in `hapto-bridge`, `Page::value` in `hapto-webview`) to
 the type serde writes for it. Components call `useParam("gain")`,
 `useValue("label")`, `useEvent("clipWarning", handler)` and
 `useCommand("getOrder")`; an id that is not in its map is a compile error.
@@ -54,6 +54,6 @@ Each needs a protocol message the Rust side does not have today.
   writable ones.
 - `useMeter` (streamed meter batches): a `meter` native message with a sequence
   number and a batch of values, and a subscribe/unsubscribe page message.
-- `useMenu` and `SeamContextMenu` (native context menus): a page `menuGather` or
-  `menuShow` message naming the target, and a native reply listing the entries
-  and a `menuInvoke` page message for the pick.
+- `useMenu` and `HaptoContextMenu` (native context menus): a page `menuGather`
+  or `menuShow` message naming the target, and a native reply listing the
+  entries and a `menuInvoke` page message for the pick.

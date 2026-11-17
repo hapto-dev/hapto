@@ -14,7 +14,7 @@ use std::sync::Arc;
 /// # Examples
 ///
 /// ```
-/// use seam_undo::UndoSize;
+/// use hapto_undo::UndoSize;
 ///
 /// // A type that owns heap memory reports it, so the bound counts a 1 MB
 /// // sample as 1 MB.

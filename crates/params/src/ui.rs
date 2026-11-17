@@ -339,7 +339,7 @@ impl UiState {
 /// many writes it holds.
 ///
 /// ```
-/// use seam_params::{HostEvent, Kind, ParamDecl, ParamSet};
+/// use hapto_params::{HostEvent, Kind, ParamDecl, ParamSet};
 ///
 /// const GAIN: ParamDecl =
 ///     ParamDecl::new("gain", "Gain", Kind::continuous(-60.0, 12.0, 0.1, None), 0.0)
@@ -360,7 +360,7 @@ impl UiState {
 /// drain.drain(|event| heard.push(event));
 /// assert_eq!(heard.len(), 3); // begin, the latest value, end
 /// assert_eq!(heard[0], HostEvent::Begin(gain));
-/// # Ok::<(), seam_params::DeclError>(())
+/// # Ok::<(), hapto_params::DeclError>(())
 /// ```
 #[derive(Debug, Clone)]
 pub struct UiParams {
@@ -427,7 +427,7 @@ impl UiParams {
     /// # Examples
     ///
     /// ```
-    /// # use seam_params as sp;
+    /// # use hapto_params as sp;
     /// # let set = sp::ParamSet::from_decls([
     /// #     sp::ParamDecl::new("gain", "Gain", sp::Kind::continuous(-60.0, 12.0, 0.1, None), 0.0),
     /// # ])?;
@@ -444,7 +444,7 @@ impl UiParams {
     ///
     /// drop(drag);
     /// assert_eq!(ui.shown(gain), None);
-    /// # Ok::<(), seam_params::DeclError>(())
+    /// # Ok::<(), hapto_params::DeclError>(())
     /// ```
     pub fn shown<P: Writable>(&self, param: P) -> Option<P::Value> {
         let which = self.state.find(param.named(Token(())).0)?;
@@ -458,7 +458,7 @@ impl UiParams {
     /// # Examples
     ///
     /// ```
-    /// # use seam_params as sp;
+    /// # use hapto_params as sp;
     /// # let set = sp::ParamSet::from_decls([
     /// #     sp::ParamDecl::new("gain", "Gain", sp::Kind::continuous(-60.0, 12.0, 0.1, None), 0.0),
     /// # ])?;
@@ -474,7 +474,7 @@ impl UiParams {
     /// edit.write(gain, -3.0);
     /// assert!(ui.is_open(gain)); // a gesture, but not a user's
     /// assert!(!ui.user_gesture_open());
-    /// # Ok::<(), seam_params::DeclError>(())
+    /// # Ok::<(), hapto_params::DeclError>(())
     /// ```
     pub fn user_gesture_open(&self) -> bool {
         self.state.user_tokens.get() > 0
@@ -494,7 +494,7 @@ impl UiParams {
     /// # Examples
     ///
     /// ```
-    /// # use seam_params as sp;
+    /// # use hapto_params as sp;
     /// # let set = sp::ParamSet::from_decls([
     /// #     sp::ParamDecl::new("gain", "Gain", sp::Kind::continuous(-60.0, 12.0, 0.1, None), 0.0),
     /// # ])?;
@@ -504,7 +504,7 @@ impl UiParams {
     /// assert!(ui.would_change(gain, -6.0));
     /// assert!(!ui.would_change(gain, 0.04)); // snaps to the 0 it already holds
     /// assert!(!ui.would_change(gain, f32::NAN)); // refused
-    /// # Ok::<(), seam_params::DeclError>(())
+    /// # Ok::<(), hapto_params::DeclError>(())
     /// ```
     pub fn would_change<P: Writable>(&self, param: P, value: P::Value) -> bool {
         let Some(which) = self.state.find(param.named(Token(())).0) else {
@@ -562,7 +562,7 @@ impl UiParams {
     /// # Examples
     ///
     /// ```
-    /// # use seam_params as sp;
+    /// # use hapto_params as sp;
     /// # let set = sp::ParamSet::from_decls([
     /// #     sp::ParamDecl::new("gain", "Gain", sp::Kind::continuous(-60.0, 12.0, 0.1, None), 0.0),
     /// # ])?;
@@ -573,7 +573,7 @@ impl UiParams {
     /// assert_eq!(ui.value(gain), -6.0);
     /// assert!(!ui.write(gain, -6.0)); // no change, so no gesture
     /// assert!(!ui.write(gain, f32::NAN)); // refused
-    /// # Ok::<(), seam_params::DeclError>(())
+    /// # Ok::<(), hapto_params::DeclError>(())
     /// ```
     pub fn write<P: Writable>(&self, param: P, value: P::Value) -> bool {
         let Some(which) = self.state.find(param.named(Token(())).0) else {
@@ -599,19 +599,19 @@ impl UiParams {
     /// # Examples
     ///
     /// ```
-    /// # use seam_params as sp;
+    /// # use hapto_params as sp;
     /// # let set = sp::ParamSet::from_decls([
     /// #     sp::ParamDecl::new("gain", "Gain", sp::Kind::continuous(-60.0, 12.0, 0.1, None), 0.0),
     /// # ])?;
     /// # let gain = set.id("gain").expect("declared");
     /// # let ui = set.take_ui().expect("the first UI handle");
     ///
-    /// use seam_params::Origin;
+    /// use hapto_params::Origin;
     ///
     /// assert!(ui.replay(gain, -6.0));
     /// assert_eq!(set.read(gain).origin, Origin::Replay);
     /// assert!(!ui.replay(gain, -6.0)); // already there: no gesture
-    /// # Ok::<(), seam_params::DeclError>(())
+    /// # Ok::<(), hapto_params::DeclError>(())
     /// ```
     pub fn replay(&self, id: ParamId, value: f32) -> bool {
         self.gesture_write(Which::Listed(id), value, Writer::Replay)
@@ -702,7 +702,7 @@ impl Drop for GestureRecords {
 /// # Examples
 ///
 /// ```
-/// # use seam_params as sp;
+/// # use hapto_params as sp;
 /// # let set = sp::ParamSet::from_decls([
 /// #     sp::ParamDecl::new("gain", "Gain", sp::Kind::continuous(-60.0, 12.0, 0.1, None), 0.0),
 /// # ])?;
@@ -716,7 +716,7 @@ impl Drop for GestureRecords {
 /// assert!(ui.is_open(gain));
 /// drop(outer);
 /// assert!(!ui.is_open(gain));
-/// # Ok::<(), seam_params::DeclError>(())
+/// # Ok::<(), hapto_params::DeclError>(())
 /// ```
 #[derive(Debug)]
 #[must_use = "a gesture closes as soon as it drops, so its writes would land outside it"]
@@ -748,7 +748,7 @@ impl Gesture {
     /// # Examples
     ///
     /// ```
-    /// # use seam_params as sp;
+    /// # use hapto_params as sp;
     /// # let set = sp::ParamSet::from_decls([
     /// #     sp::ParamDecl::new("gain", "Gain", sp::Kind::continuous(-60.0, 12.0, 0.1, None), 0.0),
     /// # ])?;
@@ -764,7 +764,7 @@ impl Gesture {
     /// set.audio().host_write(gain, 57.0 / 72.0);
     /// assert_eq!(set.value(gain), -3.0);
     /// assert!(drag.write(-3.0));
-    /// # Ok::<(), seam_params::DeclError>(())
+    /// # Ok::<(), hapto_params::DeclError>(())
     /// ```
     pub fn write(&self, value: f32) -> bool {
         let Some(which) = &self.which else {
@@ -796,7 +796,7 @@ impl Drop for Gesture {
 /// # Examples
 ///
 /// ```
-/// # use seam_params as sp;
+/// # use hapto_params as sp;
 /// # let set = sp::ParamSet::from_decls([
 /// #     sp::ParamDecl::new("low", "Low", sp::Kind::continuous(-12.0, 12.0, 0.1, None), 0.0),
 /// #     sp::ParamDecl::new("high", "High", sp::Kind::continuous(-12.0, 12.0, 0.1, None), 0.0),
@@ -809,7 +809,7 @@ impl Drop for Gesture {
 /// assert!(ui.is_open(low)); // open until the edit drops
 /// drop(edit);
 /// assert!(!ui.is_open(low));
-/// # Ok::<(), seam_params::DeclError>(())
+/// # Ok::<(), hapto_params::DeclError>(())
 /// ```
 #[derive(Debug)]
 #[must_use = "an edit's gestures close as soon as it drops"]

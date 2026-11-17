@@ -148,7 +148,7 @@ impl Root {
     /// long only in `long`.
     fn rust(long: &str) -> Root {
         let root =
-            std::env::temp_dir().join(format!("seam-wrap-rust-{long}-{}", std::process::id()));
+            std::env::temp_dir().join(format!("hapto-wrap-rust-{long}-{}", std::process::id()));
         for dir in xtask::wrap::RUST_DIRS {
             let words = if dir == long {
                 "long words, long words"
@@ -183,7 +183,7 @@ struct Docs(std::path::PathBuf);
 
 impl Docs {
     fn new(name: &str, index: &str, other: &str) -> Docs {
-        let root = std::env::temp_dir().join(format!("seam-wrap-{name}-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("hapto-wrap-{name}-{}", std::process::id()));
         std::fs::create_dir_all(root.join("docs")).expect("a temporary directory");
         for file in xtask::wrap::MARKDOWN_FILES {
             let path = root.join(file);

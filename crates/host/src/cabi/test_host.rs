@@ -6,8 +6,10 @@ use std::ffi::c_void;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
-use super::abi::{SeamHost, SeamInstance, SeamLayout, SeamParamInfo, SeamPlugin, SeamProcess};
-use super::{CChar, SeamStr, plugin, plugin_moving};
+use super::abi::{
+    HaptoHost, HaptoInstance, HaptoLayout, HaptoParamInfo, HaptoPlugin, HaptoProcess,
+};
+use super::{CChar, HaptoStr, plugin, plugin_moving};
 use crate::{Layout, Plugin};
 
 /// What the plugin told the host through its callbacks.
@@ -16,7 +18,7 @@ use crate::{Layout, Plugin};
 ///
 /// ```
 #[doc = include_str!("../../doc/gain.rs")]
-/// use seam_host::cabi::{HostCall, TestHost};
+/// use hapto_host::cabi::{HostCall, TestHost};
 ///
 /// let host = TestHost::<Gain>::new();
 ///
@@ -48,7 +50,7 @@ pub enum HostCall {
 ///
 /// ```
 #[doc = include_str!("../../doc/gain.rs")]
-/// use seam_host::cabi::{Refused, TestHost};
+/// use hapto_host::cabi::{Refused, TestHost};
 ///
 /// let host = TestHost::<Gain>::new();
 /// // The plugin declares stereo only.
@@ -79,7 +81,7 @@ impl std::error::Error for Refused {}
 ///
 /// ```
 #[doc = include_str!("../../doc/gain.rs")]
-/// use seam_host::cabi::{KIND_CONTINUOUS, TestHost};
+/// use hapto_host::cabi::{KIND_CONTINUOUS, TestHost};
 ///
 /// let host = TestHost::<Gain>::new();
 /// let info = host.parameter(0).expect("listed");
@@ -87,7 +89,7 @@ impl std::error::Error for Refused {}
 /// assert_eq!(names, ("gain", "Gain", "dB"));
 /// assert_eq!((info.kind, info.steps), (KIND_CONTINUOUS, 0));
 /// assert_eq!(info.default_normalized, 0.5, "0 dB, halfway through -24..24");
-/// assert_eq!(info.host_id, seam_params::host_id("gain"));
+/// assert_eq!(info.host_id, hapto_params::host_id("gain"));
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParamInfo {
@@ -99,7 +101,7 @@ pub struct ParamInfo {
     pub unit: String,
     /// Its group path.
     pub group: String,
-    /// The id Seam's own exporters give hosts.
+    /// The id Hapto's own exporters give hosts.
     pub host_id: u32,
     /// A `KIND_` constant.
     pub kind: u32,
@@ -128,7 +130,7 @@ pub struct ParamInfo {
 ///
 /// ```
 #[doc = include_str!("../../doc/gain.rs")]
-/// use seam_host::cabi::TestHost;
+/// use hapto_host::cabi::TestHost;
 ///
 /// let host = TestHost::<Gain>::new();
 /// host.activate(48_000.0, 4, Layout::STEREO)?;
@@ -136,13 +138,13 @@ pub struct ParamInfo {
 /// host.set(0, 0.0); // the host writes -24 dB
 /// let (mut left, mut right) = ([1.0_f32; 4], [1.0_f32; 4]);
 /// let status = host.process_in_place(&mut [&mut left[..], &mut right[..]], 4);
-/// assert_eq!(status, seam_host::cabi::STATUS_CONTINUE);
+/// assert_eq!(status, hapto_host::cabi::STATUS_CONTINUE);
 /// assert!((left[0] - 0.0631).abs() < 1e-4);
-/// # Ok::<(), seam_host::cabi::Refused>(())
+/// # Ok::<(), hapto_host::cabi::Refused>(())
 /// ```
 pub struct TestHost<P: Plugin> {
-    table: &'static SeamPlugin,
-    instance: *mut SeamInstance,
+    table: &'static HaptoPlugin,
+    instance: *mut HaptoInstance,
     /// What the callbacks recorded; the host's context points here. An
     /// `Rc`, so moving the host moves no claim on the recorder that would
     /// invalidate the instance's pointer to it, as moving a `Box` would.
@@ -181,9 +183,9 @@ impl<P: Plugin> TestHost<P> {
 
     /// Creates the instance from `table`, on another thread when
     /// `elsewhere`.
-    pub(super) fn create(table: &'static SeamPlugin, elsewhere: bool) -> Self {
+    pub(super) fn create(table: &'static HaptoPlugin, elsewhere: bool) -> Self {
         let calls = Rc::new(RefCell::new(Vec::new()));
-        let host = SeamHost {
+        let host = HaptoHost {
             context: Rc::as_ptr(&calls).cast_mut().cast::<c_void>(),
             begin_edit: Some(begin_edit),
             perform_edit: Some(perform_edit),
@@ -218,12 +220,12 @@ impl<P: Plugin> TestHost<P> {
     }
 
     /// Returns the table, for a test that calls it directly.
-    pub fn table(&self) -> &'static SeamPlugin {
+    pub fn table(&self) -> &'static HaptoPlugin {
         self.table
     }
 
     /// Returns the instance, for a test that calls the table directly.
-    pub fn instance(&self) -> *mut SeamInstance {
+    pub fn instance(&self) -> *mut HaptoInstance {
         self.instance
     }
 
@@ -256,11 +258,11 @@ impl<P: Plugin> TestHost<P> {
         let count = unsafe { (self.table.layout_count)() };
         (0..count)
             .filter_map(|index| {
-                let mut layout = SeamLayout {
+                let mut layout = HaptoLayout {
                     inputs: 0,
                     outputs: 0,
                 };
-                // SAFETY: `layout` is valid for writing one `SeamLayout`
+                // SAFETY: `layout` is valid for writing one `HaptoLayout`
                 // during the call.
                 unsafe { (self.table.layout)(index, &mut layout) }
                     .then(|| Layout::new(layout.inputs as usize, layout.outputs as usize))
@@ -277,11 +279,11 @@ impl<P: Plugin> TestHost<P> {
 
     /// Returns the parameter at `index`.
     pub fn parameter(&self, index: u32) -> Option<ParamInfo> {
-        let empty = SeamStr {
+        let empty = HaptoStr {
             data: std::ptr::null(),
             length: 0,
         };
-        let mut info = SeamParamInfo {
+        let mut info = HaptoParamInfo {
             key: empty,
             name: empty,
             unit: empty,
@@ -294,7 +296,7 @@ impl<P: Plugin> TestHost<P> {
         };
         // SAFETY: `self.instance` is the live instance `new` made (only
         // `release`, which takes the host by `&mut`, frees it), and `info` is
-        // valid for writing one `SeamParamInfo` during the call.
+        // valid for writing one `HaptoParamInfo` during the call.
         if !unsafe { (self.table.param_info)(self.instance, index, &mut info) } {
             return None;
         }
@@ -356,7 +358,7 @@ impl<P: Plugin> TestHost<P> {
     /// Returns the 0..1 value `text` means, or `None` when it means none.
     pub fn parse(&self, index: u32, text: &str) -> Option<f64> {
         let mut normalized = f64::NAN;
-        let text = SeamStr {
+        let text = HaptoStr {
             data: text.as_ptr().cast(),
             length: text.len(),
         };
@@ -381,7 +383,7 @@ impl<P: Plugin> TestHost<P> {
         layout: Layout,
     ) -> Result<(), Refused> {
         let channels = |count: usize| u32::try_from(count).unwrap_or(u32::MAX);
-        let layout = SeamLayout {
+        let layout = HaptoLayout {
             inputs: channels(layout.inputs),
             outputs: channels(layout.outputs),
         };
@@ -556,7 +558,7 @@ impl<P: Plugin> std::fmt::Debug for TestHost<P> {
 ///
 /// ```
 #[doc = include_str!("../../doc/gain.rs")]
-/// use seam_host::cabi::TestHost;
+/// use hapto_host::cabi::TestHost;
 ///
 /// let host = TestHost::<Gain>::new();
 /// host.activate(48_000.0, 4, Layout::STEREO)?;
@@ -571,11 +573,11 @@ impl<P: Plugin> std::fmt::Debug for TestHost<P> {
 ///         assert!(left[0] < 0.1);
 ///     });
 /// });
-/// # Ok::<(), seam_host::cabi::Refused>(())
+/// # Ok::<(), hapto_host::cabi::Refused>(())
 /// ```
 pub struct AudioSide<'a> {
-    table: &'static SeamPlugin,
-    instance: *mut SeamInstance,
+    table: &'static HaptoPlugin,
+    instance: *mut HaptoInstance,
     host: PhantomData<&'a ()>,
 }
 
@@ -649,7 +651,7 @@ impl AudioSide<'_> {
         output_count: usize,
         frames: usize,
     ) -> u32 {
-        let block = SeamProcess {
+        let block = HaptoProcess {
             inputs,
             outputs,
             input_count: input_count as u32,
@@ -672,11 +674,11 @@ impl std::fmt::Debug for AudioSide<'_> {
     }
 }
 
-fn text_of(text: SeamStr) -> String {
+fn text_of(text: HaptoStr) -> String {
     if text.length == 0 {
         return String::new();
     }
-    // SAFETY: a `SeamStr` the plugin answers points into its declarations:
+    // SAFETY: a `HaptoStr` the plugin answers points into its declarations:
     // `length` bytes, readable while the library is loaded (the header's
     // contract), and `length` is not 0 here.
     let bytes = unsafe { std::slice::from_raw_parts(text.data.cast::<u8>(), text.length) };
@@ -687,7 +689,7 @@ fn text_of(text: SeamStr) -> String {
 /// instance, and the instance on its way back.
 struct Carried<T>(T);
 
-// SAFETY: only `SeamHost` and an instance pointer are carried, and both
+// SAFETY: only `HaptoHost` and an instance pointer are carried, and both
 // cross unread. The instance calls the callbacks only inside an `idle` or a
 // `destroy`, on the thread making that call. The instance is `Sync`, its
 // table refusing a main-thread call from a thread that may not make it.

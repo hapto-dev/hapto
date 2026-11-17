@@ -1,7 +1,7 @@
 #pragma once
 
 // JUCE parameters made from the spec table, each float one snapping and
-// mapping 0..1 exactly as Seam does (SeamRange.h), so a host's 0..1, a state
+// mapping 0..1 exactly as Hapto does (HaptoRange.h), so a host's 0..1, a state
 // restore or the plugin's own write lands on the same f32 as in the Rust EQ.
 
 #include <memory>
@@ -10,12 +10,12 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "EqParams.h"
-#include "SeamRange.h"
+#include "HaptoRange.h"
 
 namespace bench
 {
 
-inline SeamRange seamRangeOf (const ParamSpec& spec) noexcept
+inline HaptoRange haptoRangeOf (const ParamSpec& spec) noexcept
 {
     return { spec.start,
              spec.end,
@@ -28,7 +28,7 @@ inline SeamRange seamRangeOf (const ParamSpec& spec) noexcept
 
     With BENCH_JUCE_NATIVE_RANGES, JUCE's own range instead, as a JUCE EQ
     would declare it: the comparison's timing-only build (README, "A with
-    JUCE's ranges"), which stores values a little apart from Seam's. */
+    JUCE's ranges"), which stores values a little apart from Hapto's. */
 inline juce::NormalisableRange<float> juceRangeOf (const ParamSpec& spec)
 {
 #if BENCH_JUCE_NATIVE_RANGES
@@ -37,12 +37,12 @@ inline juce::NormalisableRange<float> juceRangeOf (const ParamSpec& spec)
         range.setSkewForCentre (spec.skewCentre);
     return range;
 #else
-    const auto seam = seamRangeOf (spec);
+    const auto hapto = haptoRangeOf (spec);
     return { spec.start,
              spec.end,
-             [seam] (float, float, float proportion) { return seam.denormalize (static_cast<double> (proportion)); },
-             [seam] (float, float, float value) { return static_cast<float> (seam.normalize (value)); },
-             [seam] (float, float, float value) { return seam.snap (value); } };
+             [hapto] (float, float, float proportion) { return hapto.denormalize (static_cast<double> (proportion)); },
+             [hapto] (float, float, float value) { return static_cast<float> (hapto.normalize (value)); },
+             [hapto] (float, float, float value) { return hapto.snap (value); } };
 #endif
 }
 

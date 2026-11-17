@@ -1,4 +1,4 @@
-//! The derive behind `seam_params::Choices`, which writes an enum's labels
+//! The derive behind `hapto_params::Choices`, which writes an enum's labels
 //! and its two mappings from the enum's own order.
 
 use proc_macro2::{Literal, TokenStream as Tokens};
@@ -44,7 +44,7 @@ pub(crate) fn choices(input: &DeriveInput) -> syn::Result<Tokens> {
             let ident = &variant.ident;
             let position = Literal::usize_unsuffixed(position);
             checks.push(quote_spanned! { discriminant.span() =>
-                const _: () = ::seam_params::discriminant_is_position(
+                const _: () = ::hapto_params::discriminant_is_position(
                     #name::#ident as usize,
                     #position,
                 );
@@ -64,12 +64,12 @@ pub(crate) fn choices(input: &DeriveInput) -> syn::Result<Tokens> {
     let labels_checked = labels.iter().enumerate().map(|(at, label)| {
         let earlier = labels.get(..at).unwrap_or_default();
         quote_spanned! { label.span() =>
-            const _: () = ::seam_params::label_is_valid(#label, &[#(#earlier),*]);
+            const _: () = ::hapto_params::label_is_valid(#label, &[#(#earlier),*]);
         }
     });
     Ok(quote! {
         #[automatically_derived]
-        impl ::seam_params::Choices for #name {
+        impl ::hapto_params::Choices for #name {
             const LABELS: &'static [&'static str] = &[#(#labels),*];
 
             fn from_index(index: usize) -> Self {

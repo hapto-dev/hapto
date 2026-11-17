@@ -16,7 +16,7 @@
 
 use std::sync::Arc;
 
-use seam_params::{ParamId, ParamRef};
+use hapto_params::{ParamId, ParamRef};
 
 use crate::parse::Message;
 use crate::source::key;
@@ -110,9 +110,9 @@ impl Table {
 mod tests {
     use std::sync::Arc;
 
+    use hapto_params::{Kind, ParamDecl, ParamSet, ParamSetBuilder};
     use proptest::prelude::*;
     use proptest::test_runner::FileFailurePersistence;
-    use seam_params::{Kind, ParamDecl, ParamSet, ParamSetBuilder};
 
     use super::*;
     use crate::parse::Value;

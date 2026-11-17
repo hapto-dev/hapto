@@ -10,7 +10,7 @@
 //!   included. Every fault counts for the process ([`boundary_faults`]),
 //!   and an instance's for the instance too.
 //! - **Reporting** writes a line: to an attached debugger on Windows, to
-//!   stderr elsewhere. Writing is a system call, so Seam never writes on the
+//!   stderr elsewhere. Writing is a system call, so Hapto never writes on the
 //!   audio thread.
 //! - **An instance's fault** is only recorded where it happens. The first
 //!   of each kind is reported from the instance's next tick, on the main
@@ -33,13 +33,13 @@
 //!   it: no instance exists to report it once.
 //! - **An editor that failed to open** is a fault of its instance, and the
 //!   first of an instance writes its line at once, with the editor's reason
-//!   or Seam's, on the main thread that tried to open it. Later ones are
+//!   or Hapto's, on the main thread that tried to open it. Later ones are
 //!   counted.
 //!
 //! The panic itself is another matter. A processor that panics does so on
 //! the audio thread. There the panic allocates its payload, and std's
 //! default panic hook writes the message to stderr under its lock. A debug
-//! build's failed assertion is a panic too. Seam installs no hook to stop
+//! build's failed assertion is a panic too. Hapto installs no hook to stop
 //! that: the hook is the whole process's, and belongs to the host.
 
 use std::error::Error;
@@ -72,8 +72,8 @@ static REPORTED: AtomicU16 = AtomicU16::new(0);
 /// // features.
 /// # #[cfg(all(feature = "cabi", feature = "test-host"))]
 /// # {
-/// use seam_host::boundary_faults;
-/// use seam_host::cabi::TestHost;
+/// use hapto_host::boundary_faults;
+/// use hapto_host::cabi::TestHost;
 ///
 /// // `Gain` is a plugin with one parameter, whose `idle` panics while the
 /// // static `BREAK` is set.
@@ -217,7 +217,7 @@ fn count() {
 pub(crate) fn record_fault(fault: Fault) {
     count();
     if REPORTED.fetch_or(fault.bit(), Ordering::Relaxed) & fault.bit() == 0 {
-        write_line(&format!("seam: {}.", fault.what()));
+        write_line(&format!("hapto: {}.", fault.what()));
     }
 }
 
@@ -227,7 +227,7 @@ pub(crate) fn record_fault(fault: Fault) {
 /// audio thread.
 pub(crate) fn report_refused_declarations(plugin: &str, error: &dyn Error) {
     write_line(&format!(
-        "seam: {plugin}: no instance was built, since a declaration was refused: {error}."
+        "hapto: {plugin}: no instance was built, since a declaration was refused: {error}."
     ));
 }
 
@@ -269,7 +269,7 @@ impl Faults {
         self.count.fetch_add(1, Ordering::Relaxed);
         if self.reported.fetch_or(fault.bit(), Ordering::Relaxed) & fault.bit() == 0 {
             write_line(&format!(
-                "seam: {}: {}: {reason}. Later faults of this kind in this instance are \
+                "hapto: {}: {}: {reason}. Later faults of this kind in this instance are \
                  counted, not reported.",
                 who(),
                 fault.what()
@@ -309,7 +309,7 @@ impl Faults {
             .filter(|fault| new & fault.bit() != 0)
         {
             write_line(&format!(
-                "seam: {who}: {}. Later faults of this kind in this instance are counted, \
+                "hapto: {who}: {}. Later faults of this kind in this instance are counted, \
                  not reported.",
                 fault.what()
             ));
@@ -332,13 +332,13 @@ impl Faults {
             source = cause.source();
         }
         write_line(&format!(
-            "seam: {}: the host's saved state was refused: {reason}.",
+            "hapto: {}: the host's saved state was refused: {reason}.",
             who()
         ));
     }
 }
 
-/// Writes one line where the fault lines go, for Seam's shell crates, which
+/// Writes one line where the fault lines go, for Hapto's shell crates, which
 /// report what happens outside any call of an instance's: a page's start-up
 /// time, say. Not for the audio thread.
 #[doc(hidden)]

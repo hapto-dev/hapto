@@ -1,6 +1,6 @@
 [package]
-name = "seam-ump"
-description = "Universal MIDI Packets: the event list every Seam crate passes MIDI in, and the channel voice messages read from it"
+name = "hapto-ump"
+description = "Universal MIDI Packets: the event list every Hapto crate passes MIDI in, and the channel voice messages read from it"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -14,7 +14,7 @@ publish.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
-seam-testkit.workspace = true
+hapto-testkit.workspace = true
 iai-callgrind.workspace = true
 
 [lints]

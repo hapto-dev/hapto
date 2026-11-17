@@ -39,14 +39,14 @@
 //!   and moves the count under the session's lock, where a pass reads it, so
 //!   a pass that covers a count began after every restore stored up to it.
 //!
-//! [glossary-held]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#held
+//! [glossary-held]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#held
 
 use std::cell::{Cell, RefCell};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
 
-use seam_params::ParamSet;
+use hapto_params::ParamSet;
 
 use crate::session::{Id, Kept, Refused, Saved, Shared, Stamp, accept};
 use crate::{Participant, Section, SessionError};
@@ -602,8 +602,8 @@ impl Registration {
     /// use std::cell::RefCell;
     /// use std::rc::Rc;
     ///
-    /// use seam_params::ParamSetBuilder;
-    /// use seam_session::{ApplyError, MAX_SECTION_DEPTH, Participant, Section, Session};
+    /// use hapto_params::ParamSetBuilder;
+    /// use hapto_session::{ApplyError, MAX_SECTION_DEPTH, Participant, Section, Session};
     /// use serde_json::json;
     ///
     /// struct Tree(usize);

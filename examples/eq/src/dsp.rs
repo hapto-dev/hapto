@@ -5,7 +5,7 @@
 //! The same EQ written in JUCE matches this one sample for sample when it
 //! runs on x86-64 (`JUCE_SNAP_TO_ZERO` does nothing elsewhere), with the
 //! same C runtime for `powf`, `sinf`, `cosf` and `tanf`, on the same
-//! parameter values (its ranges must snap as Seam's do), and clamping
+//! parameter values (its ranges must snap as Hapto's do), and clamping
 //! each frequency to the Nyquist frequency as [`coefficients`] does, which
 //! JUCE's `make*` functions only assert.
 

@@ -4,7 +4,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use seam_fuzz::Fuzzed;
+use hapto_fuzz::Fuzzed;
 
 fuzz_target!(|data: &[u8]| {
     let (plugin, driver) = Fuzzed::built();

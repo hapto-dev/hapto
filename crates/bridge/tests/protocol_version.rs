@@ -9,8 +9,8 @@
 
 use std::path::Path;
 
-use seam_bridge::PROTOCOL_VERSION;
-use seam_bridge::typescript::shape_hash;
+use hapto_bridge::PROTOCOL_VERSION;
+use hapto_bridge::typescript::shape_hash;
 
 const FILE: &str = "protocol-shape.txt";
 

@@ -2,10 +2,10 @@
 
 use std::sync::Arc;
 
+use hapto_params::{Kind, ParamDecl, ParamId, ParamSet, ParamSetBuilder, UiParams, Value};
+use hapto_undo::{Bound, History};
 use proptest::prelude::*;
 use proptest::test_runner::FileFailurePersistence;
-use seam_params::{Kind, ParamDecl, ParamId, ParamSet, ParamSetBuilder, UiParams, Value};
-use seam_undo::{Bound, History};
 
 struct Rig {
     set: Arc<ParamSet>,

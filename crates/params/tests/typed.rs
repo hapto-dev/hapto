@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use seam_params::{
+use hapto_params::{
     BindError, Bool, Changes, Choice, Choices, Float, Kind, ParamDecl, ParamId, ParamSet,
     audio_thread,
 };
@@ -223,7 +223,7 @@ fn debug_names_the_parameter_and_not_its_value() {
 #[cfg(debug_assertions)]
 #[test]
 fn a_write_through_another_sets_ui_is_a_contract_panic_and_changes_nothing() {
-    use seam_testkit::contract::expect_contract_panic;
+    use hapto_testkit::contract::expect_contract_panic;
 
     let ours = set();
     let theirs = set();
@@ -329,7 +329,7 @@ fn reads_and_the_group_check_run_under_the_audio_thread_mark() {
 #[cfg(debug_assertions)]
 #[test]
 fn dropping_a_typed_parameter_under_the_audio_thread_mark_is_a_contract_panic() {
-    use seam_testkit::contract::expect_contract_panic;
+    use hapto_testkit::contract::expect_contract_panic;
 
     let set = set();
     let params = bind(&set);

@@ -2,7 +2,7 @@
 //!
 //! A declaration feeds every projection. The host formats read its name,
 //! unit, range and step count. The page's TypeScript parameter map is
-//! generated from it (`seam_bridge::typescript::param_map`). The saved state
+//! generated from it (`hapto_bridge::typescript::param_map`). The saved state
 //! keys its value by [`ParamDecl::key`].
 
 // Audio-path code: a panic here ends a host, so indexing, unwrap, expect,
@@ -31,7 +31,7 @@
 /// # Examples
 ///
 /// ```
-/// use seam_params::{Kind, ParamDecl, ParamSet};
+/// use hapto_params::{Kind, ParamDecl, ParamSet};
 ///
 /// const GAIN: ParamDecl =
 ///     ParamDecl::new("gain", "Gain", Kind::continuous(-24.0, 24.0, 0.1, None), 0.0)
@@ -75,7 +75,7 @@ impl ParamId {
 /// # Examples
 ///
 /// ```
-/// use seam_params::Kind;
+/// use hapto_params::Kind;
 ///
 /// const ENABLED: Kind = Kind::Bool;
 /// const MODE: Kind = Kind::Choice(&["Peak", "Shelf", "Notch"]);
@@ -108,7 +108,7 @@ impl Kind {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::Kind;
+    /// use hapto_params::Kind;
     ///
     /// // A gain from -24 dB to 24 dB in steps of 0.1 dB.
     /// const GAIN: Kind = Kind::continuous(-24.0, 24.0, 0.1, None);
@@ -155,7 +155,7 @@ impl Kind {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::Kind;
+    /// use hapto_params::Kind;
     ///
     /// let gain = Kind::continuous(-24.0, 24.0, 0.1, None);
     /// assert_eq!(gain.snap(100.0), Some(24.0)); // clamped to the range
@@ -188,7 +188,7 @@ impl Kind {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::Kind;
+    /// use hapto_params::Kind;
     ///
     /// // Skewed so 1 kHz sits at the middle of the knob.
     /// let cutoff = Kind::continuous(20.0, 20_000.0, 1.0, Some(1_000.0));
@@ -213,7 +213,7 @@ impl Kind {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::Kind;
+    /// use hapto_params::Kind;
     ///
     /// let gain = Kind::continuous(-24.0, 24.0, 0.1, None);
     /// assert_eq!(gain.denormalize(0.5), 0.0);
@@ -264,7 +264,7 @@ fn choice_span(labels: &[&str]) -> f64 {
 /// # Examples
 ///
 /// ```
-/// use seam_params::Range;
+/// use hapto_params::Range;
 ///
 /// // A frequency from 20 Hz to 20 kHz in steps of 1 Hz, with 1 kHz at the
 /// // middle of the knob.
@@ -272,7 +272,7 @@ fn choice_span(labels: &[&str]) -> f64 {
 /// assert_eq!(hertz.end(), 20_000.0);
 ///
 /// assert!(Range::new(5.0, 5.0, 0.0, None).is_err());
-/// # Ok::<(), seam_params::RangeError>(())
+/// # Ok::<(), hapto_params::RangeError>(())
 /// ```
 #[derive(Clone, Copy, PartialEq)]
 pub struct Range {
@@ -303,7 +303,7 @@ impl std::fmt::Debug for Range {
 /// # Examples
 ///
 /// ```
-/// use seam_params::{Range, RangeError};
+/// use hapto_params::{Range, RangeError};
 ///
 /// assert_eq!(Range::new(5.0, 1.0, 0.0, None), Err(RangeError::StartNotBelowEnd));
 /// ```
@@ -580,7 +580,7 @@ impl Range {
 /// # Examples
 ///
 /// ```
-/// use seam_params::{Kind, ParamDecl};
+/// use hapto_params::{Kind, ParamDecl};
 ///
 /// const GAIN: ParamDecl = ParamDecl::new(
 ///     "low.gain",
@@ -677,7 +677,7 @@ impl ParamDecl {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::{Kind, ParamDecl};
+    /// use hapto_params::{Kind, ParamDecl};
     ///
     /// let kind = Kind::continuous(-1.0, 1.0, 0.5, None);
     ///
@@ -697,7 +697,7 @@ impl ParamDecl {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::{Kind, ParamDecl};
+    /// use hapto_params::{Kind, ParamDecl};
     ///
     /// const GAIN: ParamDecl =
     ///     ParamDecl::new("gain", "Gain", Kind::continuous(-24.0, 24.0, 0.1, None), 6.0);
@@ -722,7 +722,7 @@ impl ParamDecl {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::{Kind, ParamDecl};
+    /// use hapto_params::{Kind, ParamDecl};
     ///
     /// const GAIN: ParamDecl =
     ///     ParamDecl::new("gain", "Gain", Kind::continuous(-24.0, 24.0, 0.1, None), 6.0);
@@ -743,7 +743,7 @@ impl ParamDecl {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::{Kind, ParamDecl};
+    /// use hapto_params::{Kind, ParamDecl};
     ///
     /// const GAIN: ParamDecl =
     ///     ParamDecl::new("gain", "Gain", Kind::continuous(-24.0, 24.0, 0.1, None), 6.0);
@@ -766,7 +766,7 @@ impl ParamDecl {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::{Kind, ParamDecl};
+    /// use hapto_params::{Kind, ParamDecl};
     ///
     /// const GAIN: ParamDecl =
     ///     ParamDecl::new("gain", "Gain", Kind::continuous(-24.0, 24.0, 0.1, None), 6.0);

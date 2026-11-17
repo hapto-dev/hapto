@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use seam_params::{Kind, ParamDecl, ParamSet, ParamSetBuilder};
+use hapto_params::{Kind, ParamDecl, ParamSet, ParamSetBuilder};
 
 /// One generated file.
 #[derive(Debug)]
@@ -19,22 +19,22 @@ pub fn generated() -> Vec<Generated> {
     vec![
         Generated {
             path: "page/src/generated/protocol.ts",
-            contents: seam_bridge::typescript::protocol(),
+            contents: hapto_bridge::typescript::protocol(),
         },
         Generated {
             path: "page/test/generated/params.ts",
-            contents: seam_bridge::typescript::param_map(
+            contents: hapto_bridge::typescript::param_map(
                 &page_test_params(),
                 "xtask/src/generate.rs (page_test_params)",
             ),
         },
         Generated {
-            path: "crates/host/include/seam.h",
-            contents: seam_host::cabi::header(),
+            path: "crates/host/include/hapto.h",
+            contents: hapto_host::cabi::header(),
         },
         Generated {
-            path: "examples/eq/seam-juce.cmake",
-            contents: seam_host::cabi::juce_settings::<seam_example_eq::ExampleEq>(
+            path: "examples/eq/hapto-juce.cmake",
+            contents: hapto_host::cabi::juce_settings::<hapto_example_eq::ExampleEq>(
                 "examples/eq/Cargo.toml and src/lib.rs (ExampleEq::INFO)",
             ),
         },

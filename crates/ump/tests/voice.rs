@@ -1,8 +1,8 @@
 //! Reading and writing channel voice packets.
 
+use hapto_ump::{ChannelVoice, Event, Voice};
 use proptest::prelude::*;
 use proptest::test_runner::FileFailurePersistence;
-use seam_ump::{ChannelVoice, Event, Voice};
 
 #[test]
 fn known_packets_read_as_their_messages() {
@@ -259,7 +259,7 @@ proptest! {
         ..ProptestConfig::default()
     })]
 
-    /// Every message Seam reads survives writing and reading back.
+    /// Every message Hapto reads survives writing and reading back.
     #[test]
     fn a_written_message_reads_back(group in 0_u8..16, channel in 0_u8..16, voice in voice()) {
         let message = ChannelVoice { group, channel, voice };

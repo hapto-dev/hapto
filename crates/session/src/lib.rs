@@ -31,8 +31,8 @@
 //! use std::cell::RefCell;
 //! use std::rc::Rc;
 //!
-//! use seam_params::ParamSetBuilder;
-//! use seam_session::{ApplyError, Participant, Section, Session};
+//! use hapto_params::ParamSetBuilder;
+//! use hapto_session::{ApplyError, Participant, Section, Session};
 //! use serde_json::json;
 //!
 //! struct Zoom(f64);
@@ -66,12 +66,12 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 //!
-//! [glossary-participant]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#participant
-//! [glossary-section]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#section
-//! [glossary-restore]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#restore
-//! [glossary-pass]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#pass
-//! [glossary-tick]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#tick
-//! [glossary-capture]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#capture
+//! [glossary-participant]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#participant
+//! [glossary-section]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#section
+//! [glossary-restore]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#restore
+//! [glossary-pass]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#pass
+//! [glossary-tick]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#tick
+//! [glossary-capture]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#capture
 
 mod session;
 mod ui;
@@ -85,7 +85,7 @@ pub use ui::{Registration, SessionUi};
 /// # Examples
 ///
 /// ```
-/// use seam_session::Section;
+/// use hapto_session::Section;
 /// use serde_json::json;
 ///
 /// let layout: Section = json!({ "zoom": 2.0, "panel": "mixer" });
@@ -106,8 +106,8 @@ pub type Section = serde_json::Value;
 /// use std::cell::RefCell;
 /// use std::rc::Rc;
 ///
-/// use seam_params::ParamSetBuilder;
-/// use seam_session::{ApplyError, Participant, Section, Session};
+/// use hapto_params::ParamSetBuilder;
+/// use hapto_session::{ApplyError, Participant, Section, Session};
 /// use serde_json::json;
 ///
 /// /// An editor's panel width, saved with the plugin.
@@ -190,7 +190,7 @@ pub trait Participant {
 /// # Examples
 ///
 /// ```
-/// use seam_session::ApplyError;
+/// use hapto_session::ApplyError;
 ///
 /// let error = ApplyError::new("zoom is not a number");
 /// assert_eq!(error.message, "zoom is not a number");
@@ -226,7 +226,7 @@ impl std::error::Error for ApplyError {}
 ///
 /// ```
 #[doc = include_str!("../doc/setup.rs")]
-/// use seam_session::SessionError;
+/// use hapto_session::SessionError;
 ///
 /// let session = Session::new(&ParamSetBuilder::new().build());
 /// let ui = session.take_ui().ok_or("the first UI handle")?;

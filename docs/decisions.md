@@ -1,6 +1,6 @@
 # The decision record
 
-Every decision Seam has taken and every rule its code keeps, each with its
+Every decision Hapto has taken and every rule its code keeps, each with its
 reason. It began as the transfer from the C++/JUCE Seam (`nicvlav/seam-cpp`,
 v0.7.0, commit `149005a`): what that library guaranteed, stated as invariants
 with the reason each exists, in the order the Rust crates need them. No code
@@ -18,7 +18,7 @@ entry point a write used and observed through listeners. In Rust nothing
 listens, so each write states its origin and the side effects follow from it.
 
 **How to read it.** The decisions are numbered D1 onward. The table below gives
-each one in a line: the question, what the Rust Seam does, and a status. Under
+each one in a line: the question, what the Rust Hapto does, and a status. Under
 the table, one section per decision gives its full text: the question, what the
 C++ Seam did, what Rust does, and what else was considered. How a decision was
 reached and changed, up to the first commit on `main`, is in
@@ -45,24 +45,24 @@ comments never cite an id: they state the reason in words, and
 | D6 | [A participant that registers after a restore that had no section for it. (S10)](#d6-a-participant-that-registers-after-a-restore) | Reset it to its defaults, once per key per restore, so a restore is a complete assignment for every key it lacked. A second participant that registers the same key keeps its state. A change from C++. | decided |
 | D7 | [Restore neutrality for undo: a time window, or an origin on each write? (S12, U16)](#d7-restore-neutrality-for-undo) | Parameters restore with `Origin::Restore`, and undo reads the `RestoreClock`'s counts on every operation and clears when either has moved. Every history is neutral to restores; there is no opt-in. | decided |
 | D8 | [History bound default. (U19)](#d8-the-history-bound) | Same unit, defined: the bytes a step's stored values keep alive plus a fixed overhead of 32 units, booked once, when it is recorded. 30,000 units and a floor of 30 entries. | decided |
-| D9 | [How the learn dispatch table gets sequential consistency. (L4)](#d9-sequential-consistency-of-the-learn-dispatch-table) | A `triple_buffer` holds the published table: the audio thread takes the newest without waiting, locking or freeing, so Seam writes no `unsafe` there. | decided |
+| D9 | [How the learn dispatch table gets sequential consistency. (L4)](#d9-sequential-consistency-of-the-learn-dispatch-table) | A `triple_buffer` holds the published table: the audio thread takes the newest without waiting, locking or freeing, so Hapto writes no `unsafe` there. | decided |
 | D10 | [Learn over MIDI 2.0. (L2, L6)](#d10-learn-over-midi-20) | The UMP group and channel join the source. MIDI 1.0 values normalise centre-anchored and MIDI 2.0 values linear; native MIDI 2.0 assignable controllers are learnable, and the four-controller parser stays for MIDI 1.0 input. | decided |
 | D11 | [At a gesture's close, does the drag's value overwrite a restore or host write that landed during the drag? (U1, U11, U15, U16, H3)](#d11-a-drags-close-and-a-restore-that-landed-during-it) | The restored or host value stands. The close records its step and writes nothing, so enrollment never changes how a value behaves. | decided |
 | D12 | [Host step metadata for a stepped continuous range. (P17)](#d12-host-step-metadata-for-a-stepped-range) | Continuous to every host: VST3's step count and CLAP's stepped flag are set for bool and choice only. The JUCE adapter reports the range as not discrete with its real count. Not built yet: the C interface passes no step count for a continuous range, so through the adapter a stepped range has JUCE's default count. | decided |
 | D13 | [When does a session restore apply to participants? (S5)](#d13-when-a-session-restore-applies) | Always on a later UI tick, whatever thread the restore came from. A change from C++. | decided |
 | D14 | [What does a participant whose apply fails keep? (S7)](#d14-a-participant-whose-apply-fails) | Any failed apply keeps the participant's state and saves its raw section back unchanged. A change from C++. | decided |
 | D15 | [Does the page get a parameter's state back after its own write? (B2)](#d15-the-pages-state-after-its-own-write) | Yes. The native side answers every `set` and `gestureEnd` with a `Param`, changed or not, so the page always ends on the store. | decided |
-| D16 | [Where do wry's IPC handler, the custom-scheme asset server and "open the page in this window" live?](#d16-where-the-webview-pieces-live) | In `seam-webview`, a shell-tier crate. `seam-bridge` has no window or WebView dependency under any features. | decided |
+| D16 | [Where do wry's IPC handler, the custom-scheme asset server and "open the page in this window" live?](#d16-where-the-webview-pieces-live) | In `hapto-webview`, a shell-tier crate. `hapto-bridge` has no window or WebView dependency under any features. | decided |
 | D17 | [Does learn take notes? (L2)](#d17-learning-notes) | Keep `Source::Note` for instruments that learn keys to parameters. A note-on writes its velocity, scaled as D10 scales a controller; a note-off writes nothing. | decided |
-| D18 | [May earlier in-house code come into this repository, and in what form?](#d18-earlier-in-house-code) | An EQ and a VST3 shell from earlier in-house Rust work may seed the example plugin and the VST3 exporter, as generic Seam code under Seam's own names. Nothing else comes over. | decided |
-| D19 | [Where do the restore counter and the applying-a-restore mark live? (U16, S6, S12)](#d19-the-restore-counter-and-the-applying-mark) | In a `RestoreClock` in `seam-params`: a count of restores stored and a count completed. The applying mark is the applying thread's own, so only that thread's writes record nothing. | decided |
+| D18 | [May earlier in-house code come into this repository, and in what form?](#d18-earlier-in-house-code) | An EQ and a VST3 shell from earlier in-house Rust work may seed the example plugin and the VST3 exporter, as generic Hapto code under Hapto's own names. Nothing else comes over. | decided |
+| D19 | [Where do the restore counter and the applying-a-restore mark live? (U16, S6, S12)](#d19-the-restore-counter-and-the-applying-mark) | In a `RestoreClock` in `hapto-params`: a count of restores stored and a count completed. The applying mark is the applying thread's own, so only that thread's writes record nothing. | decided |
 | D20 | [What closes the window D13 opens between a restore's store and its apply? (U16, S5)](#d20-the-window-between-a-restores-store-and-its-apply) | Undo clears its history when either count has moved: at its first operation after a restore is stored, and again when that restore's apply completes. | decided |
 | D21 | [What does a learn binding record of where its MIDI came from? (L2, L9)](#d21-what-a-learn-binding-records-of-its-midi-source) | The UMP group and the channel, each with −1 meaning any, in the source and in every saved `midiLearn` entry from schema 1. | decided |
 | D22 | [How do controllers reach learn in VST3, which delivers them only as parameter changes? (L2, L3)](#d22-controllers-reaching-learn-in-vst3) | The VST3 exporter owns hidden proxy parameters in a reserved id range: a 16 × 130 grid listed through both `IMidiMapping` and `IMidiMapping2`, and a fixed pool for MIDI 2.0 assignable controllers. Checked in Cubase; still to build. | decided |
 | D23 | [How does the processor send MIDI?](#d23-how-the-processor-sends-midi) | `Processor::process` takes one `Block`: the channels in place, the frame count, the events in, and an events-out list whose capacity `ProcessSetup::max_out_events` fixes at activation. | decided |
-| D24 | [Who answers MIDI-CI when a plugin must answer for itself?](#d24-answering-midi-ci) | A VST3 host speaks MIDI-CI for the plugin, so the VST3 exporter projects declarations onto VST3's interfaces. Everywhere else a core-tier crate, `seam-ci`, answers, later. | decided |
+| D24 | [Who answers MIDI-CI when a plugin must answer for itself?](#d24-answering-midi-ci) | A VST3 host speaks MIDI-CI for the plugin, so the VST3 exporter projects declarations onto VST3's interfaces. Everywhere else a core-tier crate, `hapto-ci`, answers, later. | decided |
 | D25 | [Who owns the SysEx manufacturer ID that a MIDI-CI identity needs? (D24)](#d25-the-sysex-manufacturer-id) | None: a business answer. The working group's helper uses `0x7D`, which is reserved for non-commercial use. | held |
-| D26 | [How does a debug build load the page from a dev server? (B5)](#d26-loading-the-page-from-a-dev-server) | `SEAM_PAGE_DEV_URL`, read in debug builds only: set, `seam-webview` loads that URL, so Vite's hot reload works; unset, it serves the bundled page. | decided |
+| D26 | [How does a debug build load the page from a dev server? (B5)](#d26-loading-the-page-from-a-dev-server) | `HAPTO_PAGE_DEV_URL`, read in debug builds only: set, `hapto-webview` loads that URL, so Vite's hot reload works; unset, it serves the bundled page. | decided |
 | D27 | [What runs the generator? (B3)](#d27-what-runs-the-generator) | An xtask: `cargo xtask gen` writes every generated file, and `cargo xtask bundle` is to run the generator, the page build and the plugin build in that order. Not built yet: `bundle`. | decided |
 | D28 | [Which threads may make a program write? (P6, P11)](#d28-threads-that-may-make-a-program-write) | An edit runs on the UI thread only and joins the parameter's gesture count. A sync runs on any thread but audio. | decided |
 | D29 | [Do plain values have gestures? (U3, U4, U5, U16, L7)](#d29-gestures-on-plain-values) | Yes. A plain value has its own gesture count and token, so one drag on any control is one undo step. | decided |
@@ -84,7 +84,7 @@ comments never cite an id: they state the reason in words, and
 | D45 | [What happens to registrations when the `SessionUi` they were made through drops? (S2)](#d45-registrations-when-a-sessionui-drops) | They end, as if each `Registration` had dropped: their sections stay in every save, their keys are free for a later handle, and `connected` turns false. | decided |
 | D46 | [What does a derived write do to a plain value's open gesture? (D43, U15, U16)](#d46-a-derived-write-and-a-plain-values-open-gesture) | By its origin. A restore or a replay rebases the gesture; a write derived from a user's or the plugin's own change joins it; one derived from a host or learned change leaves it alone. | decided |
 | D47 | [When does a lone NRPN high byte settle as coarse? (L3, D30)](#d47-when-a-lone-nrpn-high-byte-settles-as-coarse) | When a learn poll finds the same unsettled capture an earlier poll found, and a whole audio block after the one that staged it has ended. A second high byte with no low byte between still settles it at once on the audio thread. | decided |
-| D48 | [How does a plain `Value` serve as a learn `Target`? (L7, D29, D33)](#d48-a-plain-value-as-a-learn-target) | As a parameter does: learn writes it with `Origin::Learn` and opens no gesture, so a learned value is never an undo step, any gesture open on the value is the user's, and `Target::held` is `Value::gesture_open`. Seam has no ready-made target for one, since no plugin learns into one yet. | decided |
+| D48 | [How does a plain `Value` serve as a learn `Target`? (L7, D29, D33)](#d48-a-plain-value-as-a-learn-target) | As a parameter does: learn writes it with `Origin::Learn` and opens no gesture, so a learned value is never an undo step, any gesture open on the value is the user's, and `Target::held` is `Value::gesture_open`. Hapto has no ready-made target for one, since no plugin learns into one yet. | decided |
 | D49 | [May a session participant write a parameter through the UI handle while it applies? (U16, P6)](#d49-a-participant-writing-a-parameter-during-apply) | No: it writes through `ProgramParams::sync`, which records nothing and tells the host no gesture. A user or edit write through `UiParams` while the applying mark is up fails a debug assertion. | decided |
 | D50 | [How does each activation get learn's audio side? (L5)](#d50-learns-audio-side-per-activation) | `Learn::replace_audio()` makes a fresh one that reads the current mappings; the one handed out before keeps its last table and sees no later edit. Under an exporter the engine takes it (D91). | decided |
 | D51 | [Must a plugin be `Send`? (U5, S6, L7, H1)](#d51-whether-a-plugin-must-be-send) | No. The exporter calls the plugin and drops it on its main thread only. Only a plugin that is `Send` may leave that thread: the C interface binds it to no thread. | decided |
@@ -98,12 +98,12 @@ comments never cite an id: they state the reason in words, and
 | D59 | [What shape does the VST3 exporter give a plugin? (D51, D53, P7, C2)](#d59-the-shape-of-the-vst3-exporter) | One object that is both the audio processor and its own edit controller, a thin shell over an exporter core it shares with the C interface. The plugin is built at `initialize`, on the thread that calls it. No MIDI events are delivered yet. | decided |
 | D60 | [What happens when plugin code panics inside a host's call? (P9)](#d60-a-panic-inside-a-hosts-call) | It is caught at every entry point that can panic and never unwinds into the host. A panic in the processor silences the instance's output until the next activation. | decided |
 | D61 | [Who flushes denormals to zero? (the comparison's fairness row)](#d61-who-flushes-denormals) | Every exporter, around every `process` call: FTZ and DAZ on x86, FZ on AArch64, restoring the host's setting after, so no plugin has to. | decided |
-| D62 | [What shape is the C interface the JUCE adapter is driven by? (H5, D51, D60)](#d62-the-c-interface-for-the-juce-adapter) | One exported symbol, `seam_plugin`, answering a table of function pointers, as CLAP's entry point does: the plugin's layouts and every call into an instance, each with the thread it may run on. No MIDI passes yet; it arrives as UMP both ways with the exporters' MIDI input. | decided |
-| D63 | [How is the C header kept true to the Rust side? (D27)](#d63-keeping-the-c-header-true) | Seam's own generator writes `crates/host/include/seam.h` from the Rust declarations, and the header asserts every struct's size and every field's offset as Rust laid them out. | decided |
-| D64 | [How does the JUCE adapter build a plugin? (H5, D18)](#d64-how-the-juce-adapter-builds-a-plugin) | It links the plugin crate as a static library built with only its `cabi` feature. `cargo xtask gen` writes a `seam-juce.cmake` per plugin, and `seam_add_juce_plugin` runs cargo and adds the adapter's one processor class. | decided |
+| D62 | [What shape is the C interface the JUCE adapter is driven by? (H5, D51, D60)](#d62-the-c-interface-for-the-juce-adapter) | One exported symbol, `hapto_plugin`, answering a table of function pointers, as CLAP's entry point does: the plugin's layouts and every call into an instance, each with the thread it may run on. No MIDI passes yet; it arrives as UMP both ways with the exporters' MIDI input. | decided |
+| D63 | [How is the C header kept true to the Rust side? (D27)](#d63-keeping-the-c-header-true) | Hapto's own generator writes `crates/host/include/hapto.h` from the Rust declarations, and the header asserts every struct's size and every field's offset as Rust laid them out. | decided |
+| D64 | [How does the JUCE adapter build a plugin? (H5, D18)](#d64-how-the-juce-adapter-builds-a-plugin) | It links the plugin crate as a static library built with only its `cabi` feature. `cargo xtask gen` writes a `hapto-juce.cmake` per plugin, and `hapto_add_juce_plugin` runs cargo and adds the adapter's one processor class. | decided |
 | D65 | [What does a host see of a plugin through JUCE? (D31, D53, D58, C4)](#d65-what-a-host-sees-through-juce) | What JUCE 9 makes of it, as of the JUCE EQ; checked with VST3 on Windows. Parameter ids are JUCE's hash of the key, not D31's, and the one program has the plugin's name. | decided |
 | D66 | [What does a load do with bytes after the block, and is the host told that a load failed? (H2)](#d66-bytes-after-the-block-and-a-failed-load) | Trailing NUL bytes are trimmed and the block loads, and JSON whitespace around the object loads too; any other byte after the object makes the block unrecognised. A load that fails is answered as failed, except through JUCE, whose `setStateInformation` answers nothing, so the adapter cannot tell its host. | decided |
-| D67 | [How are the rules checked that keep locking types off the audio thread? (P6, D39)](#d67-checking-the-audio-thread-locking-rule) | By a debug-build mark, `seam_params::audio_thread`: a per-thread depth an exporter raises around everything its `process` call runs, and every call that locks asserts the mark is absent. | decided |
+| D67 | [How are the rules checked that keep locking types off the audio thread? (P6, D39)](#d67-checking-the-audio-thread-locking-rule) | By a debug-build mark, `hapto_params::audio_thread`: a per-thread depth an exporter raises around everything its `process` call runs, and every call that locks asserts the mark is absent. | decided |
 | D68 | [Which of the 2026-11-05 audits' items wait until their code exists?](#d68-audit-items-that-wait-for-their-code) | Those whose code has not started: the CLAP exporter, automation smoothing and splitting, and semver checks. | decided |
 | D69 | [Where is a continuous range checked, and how does a declaration that is a constant build one? (P2, P10, D57)](#d69-where-a-continuous-range-is-checked) | When it is made. `Range::new`, a `const fn`, returns a `RangeError` for an invalid range, and `Kind::continuous`, a public `const fn`, panics on what it refuses. A typed declaration's range is checked by `Range::new` too: by `FloatDecl::checked` while compiling, and when it is added. | decided |
 | D70 | [How does learn read MIDI 1.0's paired controllers and parameter numbers where MIDI 1.0 leaves room? (L2, L3, D30)](#d70-learns-reading-of-midi-10-pairs) | Per group and channel, the two NRPN address bytes pair in either order, 127 with 127 selects nothing, and data increment and decrement are never learned. A controller 32 to 63 right after the controller 32 below it learns that one as a 7-bit controller. A learned pair plays at 7 bits: 14-bit controller playback is open, to be built when an exporter delivers MIDI. | decided |
@@ -113,27 +113,27 @@ comments never cite an id: they state the reason in words, and
 | D74 | [Which plugins and platforms does `export_vst3!` refuse to build? (D53, D58)](#d74-what-export_vst3-refuses-to-build) | A main bus wider than stereo, any platform but Windows and macOS, a plugin that declares no layout, and a crate built with `panic = "abort"`. | decided |
 | D75 | [How does a fault the exporters catch become visible outside a test? (D60)](#d75-making-a-caught-fault-visible) | It is counted, and its kind reported once. Each instance counts its faults from every thread, wait-free, and the first fault of each kind in an instance is written as one line. | decided |
 | D76 | [What does a panic leave queued while the exporter tells the host of edits? (P9, P11)](#d76-a-panic-while-edits-are-told-to-the-host) | Everything not yet told: the parameter keeps the flags whose events it had not handed out and the queue is marked to be scanned again, so the host still hears a balanced bracket. | decided |
-| D77 | [How deep may a session section nest? (S1, S4, H2)](#d77-how-deep-a-session-section-may-nest) | 125 levels (`seam_session::MAX_SECTION_DEPTH`). A deeper capture is refused as it is taken, so a save never writes a block the same build cannot load. A capture that would grow the block past `MAX_STATE_BYTES` is refused too, against a budget the saved state sets whenever it is made, and a load whose block would save back past it is refused whole. | decided |
+| D77 | [How deep may a session section nest? (S1, S4, H2)](#d77-how-deep-a-session-section-may-nest) | 125 levels (`hapto_session::MAX_SECTION_DEPTH`). A deeper capture is refused as it is taken, so a save never writes a block the same build cannot load. A capture that would grow the block past `MAX_STATE_BYTES` is refused too, against a budget the saved state sets whenever it is made, and a load whose block would save back past it is refused whole. | decided |
 | D78 | [How do a page and a native side of different protocol versions find out? (B1, B4)](#d78-protocol-versions) | The native side answers every `ready`: with a snapshot when it speaks the page's version, and otherwise with a `reject` carrying its own version and a reason, which fails the page. | decided |
 | D79 | [What does the page client do while the native side has not answered, and when a hook's command changes? (B1, B5)](#d79-the-page-client-before-the-native-side-answers) | The client sends `ready` again every second until a snapshot or a reject arrives, it fails, or it is disposed. `useCommand` keys its pending count and its last result and error by the command's name. The page holds its writes until it is answered, so each `ready` may start a new page session. | decided |
-| D80 | [How does a plugin upgrade a block an older version of it saved? (H1, H2)](#d80-upgrading-an-older-saved-block) | It declares `Plugin::SCHEMA_VERSION` and `Plugin::migrate`, which Seam attaches to the saved state it builds: a block of an older plugin version (D84) is handed to `migrate` whole, as a JSON object, to rewrite in place before it loads, or to refuse with its reason (D85). A save keeps the unknown parameter and top-level keys the older build does not read. | decided |
+| D80 | [How does a plugin upgrade a block an older version of it saved? (H1, H2)](#d80-upgrading-an-older-saved-block) | It declares `Plugin::SCHEMA_VERSION` and `Plugin::migrate`, which Hapto attaches to the saved state it builds: a block of an older plugin version (D84) is handed to `migrate` whole, as a JSON object, to rewrite in place before it loads, or to refuse with its reason (D85). A save keeps the unknown parameter and top-level keys the older build does not read. | decided |
 | D81 | [Does a late apply made while a panic unwinds leave the session owing a pass? (S6, S10, D55)](#d81-a-registration-made-while-a-panic-unwinds) | No. Only a panic that began inside a pass or a late apply leaves the pass owed, for the next tick to run again; a registration made from a destructor during another panic owes none, so it clears no undo history. | decided |
 | D82 | [When do a restore and an unmap run a learn target's own code? (L8, L9, D54, D71)](#d82-when-learn-runs-a-targets-own-code) | Last: after learn has settled its table, published it and told the session, so a target whose `end` panics leaves no earlier mapping routing, in learn or on the audio side, and learn usable. | decided |
 | D83 | [Do a page control's `onDrag` and `setValue` differ? (B2)](#d83-a-controls-drag-and-one-shot-set) | Only in the gesture `onDragStart` and `onDragEnd` put around a drag: they are one function, so a `setValue` during a drag joins it. | decided |
-| D84 | [Whose version does the saved block carry? (H1, H2, D80)](#d84-the-saved-blocks-two-versions) | Two, each its own: `seamStateVersion` is Seam's frame, at 1, and `pluginStateVersion` the plugin's schema, 0 with no migration and when absent. A save writes both, each the higher of the block's and the build's. | decided |
+| D84 | [Whose version does the saved block carry? (H1, H2, D80)](#d84-the-saved-blocks-two-versions) | Two, each its own: `seamStateVersion` is Hapto's frame, at 1, and `pluginStateVersion` the plugin's schema, 0 with no migration and when absent. A save writes both, each the higher of the block's and the build's. | decided |
 | D85 | [How does a migration say it cannot upgrade a block? (D80)](#d85-a-migration-that-cannot-upgrade-a-block) | It returns a `Result` whose error is a boxed `Error`, so it can use `?`, and `LoadError::MigrationFailed` carries the reason. | decided |
 | D86 | [How does `PluginInfo` hold the AU codes? (D64)](#d86-the-au-codes) | As one `AuCodes` with named `subtype` and `manufacturer` fields, so the two cannot be swapped unseen. | decided |
 | D87 | [How does `ProcessSetup` give the main bus? (D58)](#d87-the-main-bus-in-processsetup) | As one `layout: Layout`, the one of the plugin's layouts the host chose. | decided |
 | D88 | [What does a test host answer for a call the plugin refused? (D60)](#d88-a-call-a-test-host-was-refused) | `Err(Refused)`: the VST3 host's carries the `tresult` it was answered, the C interface's stands for its `false`. | decided |
 | D89 | [How does plugin code name a parameter and read its value? (P1, P10)](#d89-how-plugin-code-names-a-parameter) | As a typed parameter, `Float`, `Bool` or `Choice<E>`, that carries its store and is read with `get`, as an `f32`, a `bool` or the plugin's enum, on any thread. `ParamSet::bind` makes one by key, once, and checks the declaration. `Changes` holds a stamp and asks once per block whether any of the parameters it is given moved. | decided |
 | D90 | [How does a plugin declare its parameters? (P1, P10, D89)](#d90-how-a-plugin-declares-its-parameters) | In one function that returns them: `Params::declare` adds each through a `Declarer`, and a typed declaration, `FloatDecl`, `BoolDecl` or `ChoiceDecl<E>`, hands back its kind of parameter. A mistake is a compile error where it can be, through `checked`, and otherwise one `DeclError` when `ParamSet::declare` builds the set. | decided |
-| D91 | [Who builds a plugin's parameter set, session and saved state? (D51, D52, D53, D90)](#d91-who-builds-a-plugins-parts) | Seam, once per instance: `Parts::for_plugin` declares the plugin's `Params` and builds the set, the session and the saved state over it, and `Plugin::new` takes the parameters and the `Parts`. The plugin owns its parts, and Seam ticks them before each `idle` through a `Driver`, a link that does not keep them alive, and runs learn's audio side before each block, taken through it at each activation; a plugin never ticks them or runs learn, and a test with no host does both through a `Driver`. | decided |
+| D91 | [Who builds a plugin's parameter set, session and saved state? (D51, D52, D53, D90)](#d91-who-builds-a-plugins-parts) | Hapto, once per instance: `Parts::for_plugin` declares the plugin's `Params` and builds the set, the session and the saved state over it, and `Plugin::new` takes the parameters and the `Parts`. The plugin owns its parts, and Hapto ticks them before each `idle` through a `Driver`, a link that does not keep them alive, and runs learn's audio side before each block, taken through it at each activation; a plugin never ticks them or runs learn, and a test with no host does both through a `Driver`. | decided |
 | D92 | [When does a plain value saved through `Parts::saved_value` reach the session? (D44, D91)](#d92-when-a-saved-plain-value-is-captured) | At the tick: `Driver::tick` ends with `Parts::sync`, which captures each saved value whose change count moved, and skips one whose newest write was its own apply's, which the session's apply pass captured already. A save between a change and the next tick holds the value from before the change. | decided |
-| D93 | [How does a plugin declare a struct of parameters without writing `declare`? (D90)](#d93-a-derive-that-writes-declare) | `#[derive(Params)]`, under `seam-params`'s `derive` feature: a `#[param(...)]` mark on each field holds the declaration's arguments, then `name = value` options and lone-word flags, and the field's type names the kind through `Declared`. Each declaration is a named constant ending in `checked`, so `cargo check` refuses a mistake on the mark, two fields with one key included. | decided |
+| D93 | [How does a plugin declare a struct of parameters without writing `declare`? (D90)](#d93-a-derive-that-writes-declare) | `#[derive(Params)]`, under `hapto-params`'s `derive` feature: a `#[param(...)]` mark on each field holds the declaration's arguments, then `name = value` options and lone-word flags, and the field's type names the kind through `Declared`. Each declaration is a named constant ending in `checked`, so `cargo check` refuses a mistake on the mark, two fields with one key included. | decided |
 | D94 | [How does a plugin name a choice's values without writing `Choices`? (D89, D93)](#d94-a-derive-that-writes-choices) | `#[derive(Choices)]`, under the same `derive` feature: the labels and both mappings in the order of the variants, a label being the variant's name unless a `#[choice("...")]` mark gives one. A written discriminant must be the variant's position, and a bad label is refused on itself: `cargo check` evaluates both checks. | decided |
 | D95 | [When does a call at the plugin boundary panic, and when does it return a `Result`? (D90, D91)](#d95-mistakes-panic-failures-return-a-result) | A mistake fixed in the plugin's source, such as a call made twice or a switch turned on without what it needs, panics with what to change; a failure that can depend on data at run time returns a `Result`. So `Parts::undo` and `Parts::midi_learn` return no `Result`, and `Parts::saved_value` keeps one. | decided |
 | D96 | [How does a plugin make parameters while it runs, and how are they saved, undone and learned? (D89, D90, D91)](#d96-parameters-made-at-run-time) | `Parts::declare` and `Parts::add` make the same typed parameters from the same declarations, in no set and listed to no host. Writes, undo and learn reach them as they reach listed ones. A save writes each under its path with its learned mapping; a load writes none on the host's thread, and holds its entries for the declares its pass makes. | to confirm |
-| D97 | [Where does a plugin write who it is? (D58, D86)](#d97-a-plugins-identity-in-its-manifest) | In its manifest: `manifest_info!`, under `seam-host`'s `manifest` feature, writes `PluginInfo` from `[package.metadata.seam]` and the package's own version and description, checked while compiling. The layouts and MIDI flags stay in Rust, as the macro's fields. A `PluginInfo` written by hand still works. | to confirm |
+| D97 | [Where does a plugin write who it is? (D58, D86)](#d97-a-plugins-identity-in-its-manifest) | In its manifest: `manifest_info!`, under `hapto-host`'s `manifest` feature, writes `PluginInfo` from `[package.metadata.hapto]` and the package's own version and description, checked while compiling. The layouts and MIDI flags stay in Rust, as the macro's fields. A `PluginInfo` written by hand still works. | to confirm |
 | D98 | [What does the native side do with a page's write that names a key the plugin does not list? (B2)](#d98-a-page-write-naming-an-unknown-key) | It drops it unanswered and counts it in `Refusals`: no parameter has a state to answer with. | to confirm |
 | D99 | [What becomes of a page's call still running when a new page session starts? (B5)](#d99-a-call-across-page-sessions) | None can be: a command runs to its end inside the call, so its reply always goes to the session that asked. | to confirm |
 | D100 | [How does a plugin hand out an editor, and what ticks it? (D53)](#d100-a-plugins-editor-and-its-tick) | `Plugin::editor` returns an `Editor`, `None` by default; the trait knows no toolkit. The exporter drives it, and the plugin's one main-thread timer ticks an open editor after `Plugin::idle`. | to confirm |
@@ -144,7 +144,7 @@ comments never cite an id: they state the reason in words, and
 | D105 | [What keeps valid what an editor leaves with the host, when the host unloads the module? (D59, D101)](#d105-the-module-stays-loaded-once-an-editor-has-opened) | Once any editor has opened, the module stays loaded until the process ends: one call at every open, before the editor is told its size or opened, for every editor of every plugin. The plugin's file then stays in use until the host exits. | to confirm |
 | D106 | [How does a page show and write plugin state that is not a parameter? (B1, B2, D99)](#d106-page-bound-values) | As a value the plugin binds by key (`Values::value`, `Page::value`): the snapshot carries it, a `value` message brings each change at the tick whatever made it, and a `setValue` is the user's write through `Value::set`, stored when it decodes to the value's type and answered either way. | to confirm |
 
-**Open.** D25 is held until `seam-ci` needs it. It keeps its recommendation
+**Open.** D25 is held until `hapto-ci` needs it. It keeps its recommendation
 until decided, and no rule depends on it.
 
 The rest default without asking: host and learn writes become visible to every
@@ -262,7 +262,7 @@ heap was excluded.
 
 **Rust.** Same unit, defined: the bytes a step's stored values keep alive plus a
 fixed overhead of 32 units, booked once, when it is recorded. What a value keeps
-alive is its `UndoSize`, a trait of `seam-undo` apart from `UndoEq` that every
+alive is its `UndoSize`, a trait of `hapto-undo` apart from `UndoEq` that every
 enrolled value and list element implements: `size_of_val` by default, and for
 the standard strings, vectors, boxes, shared pointers and collections their heap
 too, a vector by its capacity, so a 64 KiB `Vec<u8>` books its 64 KiB.
@@ -286,7 +286,7 @@ consistency. (L4) Acquire/release, which is not enough.
 
 **Rust.** A `triple_buffer` holds the published table: the audio thread takes
 the newest without waiting, locking or freeing, and a replaced table drops on
-the UI thread at a later publish, so Seam writes no `unsafe` there.
+the UI thread at a later publish, so Hapto writes no `unsafe` there.
 
 **Alternatives.** Had that failed, the hand-written form: SeqCst fences on both
 sides, the form `loom` can check (L4), with the loom models in the table's first
@@ -375,8 +375,8 @@ own write.
 **Question and C++ Seam.** Where do wry's IPC handler, the custom-scheme asset
 server and "open the page in this window" live? Not applicable.
 
-**Rust.** In `seam-webview`, a shell-tier crate on `seam-bridge`, `seam-host`
-and wry, built for Windows. `seam-bridge` has no window or WebView dependency
+**Rust.** In `hapto-webview`, a shell-tier crate on `hapto-bridge`, `hapto-host`
+and wry, built for Windows. `hapto-bridge` has no window or WebView dependency
 under any features.
 
 [History](decision-history.md#d16-where-the-webview-pieces-live)
@@ -394,7 +394,7 @@ does. A MIDI 1.0 note-on at velocity 0 is a note-off; a MIDI 2.0 one is a
 note-on. An arm states whether it takes a note, so a key played while learning a
 controller does not take the arm.
 
-A glide to the new value is the plugin's, not Seam's.
+A glide to the new value is the plugin's, not Hapto's.
 
 ### D18. Earlier in-house code
 
@@ -402,8 +402,8 @@ A glide to the new value is the plugin's, not Seam's.
 and in what form? Not applicable.
 
 **Rust.** An EQ and a VST3 shell from earlier in-house Rust work may seed the
-example plugin and the VST3 exporter. What lands is generic Seam code under
-Seam's own names: no product names, branding, presets or product-specific
+example plugin and the VST3 exporter. What lands is generic Hapto code under
+Hapto's own names: no product names, branding, presets or product-specific
 controls, and no references back to the projects it came from. Nothing else
 comes over. The example plugin is a generic EQ.
 
@@ -415,8 +415,8 @@ comes over. The example plugin is a generic EQ.
 applying-a-restore mark live? (U16, S6, S12) A window signal the session emitted
 and recorders watched.
 
-**Rust.** In a `RestoreClock` in `seam-params`: a count of restores stored and a
-count of restores completed. The applying mark is the applying thread's own: a
+**Rust.** In a `RestoreClock` in `hapto-params`: a count of restores stored and
+a count of restores completed. The applying mark is the applying thread's own: a
 thread-local list of the clocks that thread is applying a restore for, each with
 its guards' depth. Only the thread that took the mark records nothing, so a
 worker thread's write while the UI thread applies records as the worker's.
@@ -474,7 +474,7 @@ thread, from that proxy's next change.
 The exporter turns each proxy change into a UMP at its offset, so learn has one
 input path, and a proxy is never a target, so a learned write never reaches the
 host as an edit. A product's own controller block (a fixed NRPN range, say) is
-pre-mapped by that plugin, not built into Seam. Still to build: it comes with
+pre-mapped by that plugin, not built into Hapto. Still to build: it comes with
 the VST3 exporter's MIDI input.
 
 A probe plugin checked the route in Cubase 16 on 2026-11-06. Cubase read both
@@ -513,14 +513,14 @@ itself? Not applicable.
 
 **Rust.** A VST3 host speaks MIDI-CI for the plugin, so the VST3 exporter
 projects declarations onto VST3's interfaces. Everywhere else a core-tier crate,
-`seam-ci`, answers, later: UMP in, UMP out through `Block`, with the C ABI and
+`hapto-ci`, answers, later: UMP in, UMP out through `Block`, with the C ABI and
 CLAP carrying UMP both ways, SysEx7 included.
 
 Each instance takes a random MUID and handles Invalidate MUID (the helper's
 fixed MUIDs 64 and 65 are unused constants, and two instances in one host would
 collide on them); it drops messages carrying its own MUID, which a loopback
 transport echoes back; the audio thread queues SysEx7 to the main thread over a
-fixed ring, and replies leave over the next blocks. The parser is Seam's own:
+fixed ring, and replies leave over the next blocks. The parser is Hapto's own:
 `midi2` 0.11's `ci` module is marked work in progress and holds a Discovery
 query only.
 
@@ -530,7 +530,7 @@ query only.
 identity needs? (D24) Not applicable.
 
 **Recommendation.** None: a business answer. The working group's helper uses
-`0x7D`, which is reserved for non-commercial use. Needed before `seam-ci` ships
+`0x7D`, which is reserved for non-commercial use. Needed before `hapto-ci` ships
 an identity.
 
 ### D26. Loading the page from a dev server
@@ -541,8 +541,8 @@ server? (B5) Dev builds read the built page from disk
 rebuild needed no C++ recompile but a manual reload; the plugin had no hot
 reload (README, "Dev loop").
 
-**Rust.** `SEAM_PAGE_DEV_URL`, read in debug builds only and compiled out of
-release builds: set, `seam-webview` loads that URL, so Vite's hot reload works
+**Rust.** `HAPTO_PAGE_DEV_URL`, read in debug builds only and compiled out of
+release builds: set, `hapto-webview` loads that URL, so Vite's hot reload works
 in the plugin window; unset, it serves the bundled page.
 
 ### D27. What runs the generator
@@ -615,7 +615,7 @@ hosts list parameters in, and nothing else.
 The key was already permanent, since saved state stores values by key. AAX keys
 by the key itself. No per-parameter id override for now; one can be added for a
 plugin that must match a product already shipped with other ids. The hash and
-its refusals live in `seam-params` (D56); each exporter hands the id to its
+its refusals live in `hapto-params` (D56); each exporter hands the id to its
 host.
 
 ### D32. When the host hears a gesture begin
@@ -877,7 +877,7 @@ as it follows a host's write. So a learned value is never an undo step, and a
 gesture open on the value is always the user's: the target's `Target::held` is
 `Value::gesture_open`, and learn holds its values back while the user drags.
 A user's gesture open while learn writes keeps its own before and after, and
-an undo refused under D33 waits only for the user. Seam has no ready-made
+an undo refused under D33 waits only for the user. Hapto has no ready-made
 target for a plain value, since no plugin learns into one yet.
 
 **Alternatives.** Learn's burst was a gesture on the value, as `Target`'s
@@ -938,7 +938,7 @@ lends the plugin to one main-thread call at a time, on whichever thread the call
 arrives. A call that meets another waits its turn, up to a bound, and a tick
 that meets one skips. The plugin drops on the thread that destroys it.
 
-Seam builds the plugin's `Arc<SavedState>`, which is `Send + Sync`, with its
+Hapto builds the plugin's `Arc<SavedState>`, which is `Send + Sync`, with its
 parts, and the exporter keeps it (D91). The host's save and load calls, on
 whatever thread they arrive, go through it and never touch the plugin, and the
 set the host is shown is the one it saves (`SavedState::set`, D52). A plugin
@@ -962,12 +962,12 @@ can. `ParamSet::take_ui`, `ProgramParams::load`, `Value::new`, `List::new` and
 `Session::new` take it from the set, undo's `History::new` from the `UiParams`,
 and `SavedState::new` and `Learn::attach` panic when the session was made from
 another set, so every history, value, list, session and load of one plugin
-shares one clock by construction. Seam builds a plugin's set, session and
+shares one clock by construction. Hapto builds a plugin's set, session and
 saved state together (D91). Two sessions on one set are not caught: the saved
 block saves only the one it was given.
 
 **Alternatives.** The alternatives were a check the plugin calls, or a builder
-in `seam-host` that wires the pieces.
+in `hapto-host` that wires the pieces.
 
 [History](decision-history.md#d52-who-makes-the-restoreclock)
 
@@ -1141,7 +1141,7 @@ JUCE's hosting finds the controller on the component
 local tree, so that half is unchecked.
 
 The component is a thin shell over an exporter core it shares with the C
-interface (`seam_host`'s engine), so each rule of the plugin's life below is
+interface (`hapto_host`'s engine), so each rule of the plugin's life below is
 written once.
 
 The plugin is built at `initialize`, on the thread that calls it, which becomes
@@ -1215,7 +1215,7 @@ automation walk say, silences that block alone.
 
 Any other call answers the host with an error, or a neutral value where the call
 returns one. Each is counted for its instance, on whatever thread it happens,
-and for the process (`seam_host::boundary_faults`), with a call refused for its
+and for the process (`hapto_host::boundary_faults`), with a call refused for its
 thread, and reported as D75 says; each test host checks its instance's count
 unchanged when it is dropped, less the faults a test provokes and declares.
 Needs `panic = "unwind"`, which `export_vst3!` and `export_cabi!` check at build
@@ -1251,7 +1251,7 @@ which in Rust would put inline assembly in every plugin.
 **Question and C++ Seam.** What shape is the C interface the JUCE adapter is
 driven by? (H5, D51, D60) Not applicable: the C++ Seam was a JUCE module.
 
-**Rust.** One exported symbol, `seam_plugin`, answering a table of function
+**Rust.** One exported symbol, `hapto_plugin`, answering a table of function
 pointers, as CLAP's entry point does: the plugin's layouts and every call into
 an instance, each with the thread it may run on. Text is UTF-8 with a length,
 lent from the declarations; a text call with no room for the text answers its
@@ -1343,8 +1343,8 @@ table filled in by the adapter. For the main thread, they were:
 **Question and C++ Seam.** How is the C header kept true to the Rust side? (D27)
 Not applicable.
 
-**Rust.** Seam's own generator writes `crates/host/include/seam.h` from the Rust
-declarations. Each type spells itself in C, so every field's C declaration
+**Rust.** Hapto's own generator writes `crates/host/include/hapto.h` from the
+Rust declarations. Each type spells itself in C, so every field's C declaration
 follows its Rust type and a change of type changes the header, which the drift
 gate catches; only parameter names are written by hand, and their count is
 checked against each function's. The header then asserts every struct's size and
@@ -1374,19 +1374,19 @@ Not applicable.
 plugin crate exports with `export_vst3!` behind a default `vst3` feature and
 `export_cabi!` behind `cabi`.
 
-JUCE's build-time facts come from a `seam-juce.cmake` that `cargo xtask gen`
+JUCE's build-time facts come from a `hapto-juce.cmake` that `cargo xtask gen`
 writes per plugin from `PluginInfo`: names, the AU codes (D86; from which JUCE
 also derives its VST3 class id, so the adapter's build is a different plugin
-from Seam's native one), the VST3 categories, MIDI. Writing it refuses keys
+from Hapto's native one), the VST3 categories, MIDI. Writing it refuses keys
 whose JUCE ids collide, with each other or with JUCE's own bypass and program
 parameters.
 
-`seam_add_juce_plugin` in `adapters/juce/SeamJuce.cmake` reads them, runs cargo
-on the plugin's manifest (Seam's workspace by default, or a product's own) and
-adds the adapter's one processor class, which holds no product code. The plugin
-builds against the seam-host the adapter comes with, whose committed `seam.h` it
-uses. The Rust side is built with cargo's release profile and takes the C
-runtime the JUCE target links, so Debug and Release builds both work.
+`hapto_add_juce_plugin` in `adapters/juce/HaptoJuce.cmake` reads them, runs
+cargo on the plugin's manifest (Hapto's workspace by default, or a product's
+own) and adds the adapter's one processor class, which holds no product code.
+The plugin builds against the hapto-host the adapter comes with, whose committed
+`hapto.h` it uses. The Rust side is built with cargo's release profile and takes
+the C runtime the JUCE target links, so Debug and Release builds both work.
 
 On macOS and iOS it is built once per architecture in `CMAKE_OSX_ARCHITECTURES`
 (the host's own when that is empty), each with `cargo --target` and the
@@ -1406,7 +1406,7 @@ D53, D58, C4) What JUCE makes of any plugin.
 
 **Rust.** What JUCE 9 makes of it, as of the JUCE EQ; checked with VST3 on
 Windows. Parameter ids are JUCE's hash of the key (its Studio One-compatible
-form, `seam_host::cabi::juce_param_id`), the ids the JUCE EQ has, not D31's:
+form, `hapto_host::cabi::juce_param_id`), the ids the JUCE EQ has, not D31's:
 JUCE offers no way to set them, and its legacy ids are indices. JUCE's VST3
 wrapper adds its own bypass parameter when the plugin declares none, so the EQ
 lists 26 there, as A does. For a plugin that takes MIDI input it also adds an
@@ -1419,9 +1419,9 @@ line cleared as each bypass starts, where JUCE's own passes it through undelayed
 and a host that compensates for the latency plays it early; a latency that grows
 later is delayed by at most the reported one until the next `prepareToPlay`.
 
-JUCE hands the host's 0..1 values over as `float`, so a host write reaches Seam
-rounded to `f32` where Seam's own exporters pass the host's `double`, and its
-wrapper drops one equal to the current value before it reaches Seam. A
+JUCE hands the host's 0..1 values over as `float`, so a host write reaches Hapto
+rounded to `f32` where Hapto's own exporters pass the host's `double`, and its
+wrapper drops one equal to the current value before it reaches Hapto. A
 controller write lands as JUCE's wrapper applies it: at once, unless the
 transport plays (D59).
 
@@ -1433,8 +1433,8 @@ reaches the host as a value notification for each parameter that moved, which
 JUCE sends on as an edit outside any gesture; a host in latch mode may record
 those, to check with AU in Logic and Pro Tools (C4).
 
-The host's state is Seam's block followed by JUCE's own trailer, so a state
-saved through JUCE does not load into Seam's native build (H2). A text that
+The host's state is Hapto's block followed by JUCE's own trailer, so a state
+saved through JUCE does not load into Hapto's native build (H2). A text that
 means no value answers the current one, since JUCE has no way to say none. A
 host's text reaches the plugin's parser as the UTF-8 JUCE holds, read in place
 up to its first NUL. The one program a plugin declares (H5) has the plugin's
@@ -1480,9 +1480,9 @@ first value, or to refuse any, NUL padding included.
 **Question and C++ Seam.** How are the rules checked that keep locking types off
 the audio thread? (P6, D39) Not checked against C++.
 
-**Rust.** By a debug-build mark, `seam_params::audio_thread`: a per-thread depth
-an exporter raises around everything its `process` call runs, and around the
-other calls a host may make on the audio thread (the C interface's `set` and
+**Rust.** By a debug-build mark, `hapto_params::audio_thread`: a per-thread
+depth an exporter raises around everything its `process` call runs, and around
+the other calls a host may make on the audio thread (the C interface's `set` and
 `reset`, VST3's `setProcessing`). Every call that locks asserts the mark is
 absent: `Value` and `List` calls, `Session` calls, `Load::restore` and the load
 hold an undo replay takes; so do the drops of `AudioParams`, `LearnAudio`,
@@ -1506,7 +1506,7 @@ rules compile-time.
 their code exists? Not applicable.
 
 **Rust.** Those whose code has not started: the CLAP exporter, automation
-smoothing and splitting, and semver checks. `seam-webview` (D16) and the
+smoothing and splitting, and semver checks. `hapto-webview` (D16) and the
 native side of the page protocol (B1) were on this list until they were
 built. Findings that
 rest on them stay open until then. The core already keeps each automation
@@ -1620,7 +1620,7 @@ D62) Not checked against C++.
 
 **Rust.** Fixed limits, so no claim of a host's can exhaust memory or hold the
 audio thread. A processor is built for at most 65,536 frames a block
-(`MAX_FRAMES`, `SEAM_MAX_FRAMES` in the header; about 1.4 seconds at 48 kHz),
+(`MAX_FRAMES`, `HAPTO_MAX_FRAMES` in the header; about 1.4 seconds at 48 kHz),
 since its buffers are allocated up front. A setup that promises more is built
 for that many in both exporters, and a longer block plays in pieces. A saved
 block is at most 64 MiB (`MAX_STATE_BYTES`): a longer one is refused as
@@ -1706,7 +1706,7 @@ outside a test? (D60) Not applicable: C++ caught nothing at the boundary (D60).
 
 **Rust.** It is counted, and its kind reported once. Each instance counts its
 faults from every thread, wait-free, the audio thread included, and
-`seam_host::boundary_faults` counts the process's. The first fault of each kind
+`hapto_host::boundary_faults` counts the process's. The first fault of each kind
 in an instance is written as one line naming the plugin and the instance, to an
 attached debugger on Windows and to stderr elsewhere, at the times and on the
 threads `crates/host/src/faults.rs` states, never on the audio thread; later
@@ -1720,7 +1720,7 @@ thread that waited too long for another thread's call or a release that met one
 host, and a timer that did not start.
 
 A panic's own message comes from std's panic hook, on the thread that panicked,
-the audio thread included: the hook is the process's, so Seam leaves it to the
+the audio thread included: the hook is the process's, so Hapto leaves it to the
 host.
 
 **Alternatives.** The alternatives were a throttled line per instance and kind,
@@ -1752,7 +1752,7 @@ require the call not to panic, by documentation alone.
 **Question and C++ Seam.** How deep may a session section nest? (S1, S4, H2) Not
 checked against C++.
 
-**Rust.** 125 levels (`seam_session::MAX_SECTION_DEPTH`; a scalar is level 0,
+**Rust.** 125 levels (`hapto_session::MAX_SECTION_DEPTH`; a scalar is level 0,
 each array or object adds one), since `serde_json` reads 127 and the saved block
 wraps 2 around a section. A deeper capture is refused as it is taken, so a save
 never writes a block the same build cannot load: the participant's previous
@@ -1760,7 +1760,7 @@ section stays the saved one, the participant sees no error, and
 `Registration::refused`, which is public, says so until a capture is accepted
 again. A restored section whose re-capture is too deep stays as restored.
 
-A capture that would grow the saved block past `seam_host::MAX_STATE_BYTES`
+A capture that would grow the saved block past `hapto_host::MAX_STATE_BYTES`
 (64 MiB), the longest a load reads, is refused the same way, so a save never
 writes a block longer than the same build loads. The saved state gives the
 session a budget for its `extra` object: the limit, less the block's frame at
@@ -1792,7 +1792,7 @@ session measures it. A block from elsewhere can grow as it is written again
 full). A block this build saved loads again, since the load counts what the
 capture budget counted.
 
-Seam writes no log of its own.
+Hapto writes no log of its own.
 
 **Alternatives.** The alternatives were to refuse the whole save, to raise
 `serde_json`'s limit, or to tell the participant through an error from its
@@ -1818,7 +1818,7 @@ The protocol is version 2, and a test fails whenever the generated message
 declarations change and the version does not: `crates/bridge/protocol-shape.txt`
 holds one line per version, each with the hash of its declarations, and only
 grows. One fixture of messages is read by the Rust tests and the page's, so both
-ends agree on the text. `Dispatcher` in `seam-bridge` is the native side.
+ends agree on the text. `Dispatcher` in `hapto-bridge` is the native side.
 
 **Alternatives.** The alternatives were an empty snapshot behind a tolerant
 `ready`, or `ready`'s shape frozen for good.
@@ -1856,9 +1856,9 @@ the page, and a result kept across a change of name.
 it saved? (H1, H2) Not checked against C++.
 
 **Rust.** A plugin declares its migration on its trait: `Plugin::SCHEMA_VERSION`
-and `Plugin::migrate`, which Seam attaches to the saved state it builds (D91)
+and `Plugin::migrate`, which Hapto attaches to the saved state it builds (D91)
 through `SavedState::with_migration(version, migrate)`. `version` is the
-plugin's own schema version, `pluginStateVersion`, apart from Seam's frame
+plugin's own schema version, `pluginStateVersion`, apart from Hapto's frame
 (D84), and a plugin with no migration is at 0. A save writes it, or the version
 of the block it last loaded when that is higher, so a newer build's block that
 an older build loads and saves back keeps its version, and the newer build does
@@ -1946,8 +1946,8 @@ drift apart.
 **Question and C++ Seam.** Whose version does the saved block carry? (H1, H2,
 D80) The C++ Seam wrote one, `seamStateVersion` (H1).
 
-**Rust.** Two, each its own. `seamStateVersion` is the version of Seam's frame,
-the shape Seam gives `parameters`, `extra` and the keys a load keeps:
+**Rust.** Two, each its own. `seamStateVersion` is the version of Hapto's frame,
+the shape Hapto gives `parameters`, `extra` and the keys a load keeps:
 `STATE_VERSION`, at 1. `pluginStateVersion` is the plugin's own schema, the
 version `with_migration` names (D80). A plugin with no migration is at 0, and a
 block without the key reads as 0. A save always writes both, the plugin's at 0
@@ -1959,12 +1959,12 @@ A block from a newer build loads what this build reads. Each version saves back
 as the higher of the block's and this build's, on its own, so neither lifts the
 other, and the keys a load keeps are kept as before (D80). A frame version that
 is missing, not a whole number or below 1 makes the block unrecognised, and so
-does a plugin version that is there but not a whole number from 0 (H2). Seam
+does a plugin version that is there but not a whole number from 0 (H2). Hapto
 would migrate its own frame first, and the plugin's migration after it; the
 frame has had one shape, so only the plugin's runs, when the block's plugin
 version is below the plugin's.
 
-**Alternatives.** The alternatives were one number for both, which Seam could
+**Alternatives.** The alternatives were one number for both, which Hapto could
 never raise for its own frame, and a plugin version left out at 0, which a
 reader would have to know means 0.
 
@@ -2014,7 +2014,7 @@ from the processor's buses.
 
 **Rust.** As one `layout: Layout`, the one of `PluginInfo::layouts` the host
 chose, which every exporter checks before it activates. The C interface's
-`SeamLayout` and `seam.h` are unchanged: only the Rust type is.
+`HaptoLayout` and `hapto.h` are unchanged: only the Rust type is.
 
 **Alternatives.** The alternative was the two counts, `inputs` and `outputs`, it
 had, which a processor put back together by hand.
@@ -2027,8 +2027,8 @@ had, which a processor put back together by hand.
 refused? (D60) Not applicable.
 
 **Rust.** `Result<(), Refused>`, for every call the plugin can refuse.
-`seam_host::vst3::Refused` carries the `tresult` the plugin answered and names
-it when shown; `seam_host::cabi::Refused` stands for the C interface's `false`,
+`hapto_host::vst3::Refused` carries the `tresult` the plugin answered and names
+it when shown; `hapto_host::cabi::Refused` stands for the C interface's `false`,
 which carries nothing more. A test then pins the exact answer, or uses `?`.
 `save` answers `Result<Vec<u8>, Refused>` too, so the VST3 host's carries the
 `tresult` `getState` answered. A lookup (`parameter`, `text`, `parse`) answers
@@ -2133,7 +2133,7 @@ The table path stays: `ParamDecl`, `Kind`, `ParamSetBuilder` and
 `ParamSet::from_decls` keep their signatures and the rules they apply, and
 `Declarer::extend` declares a table, for a test plugin or one whose
 parameters come from data. A plugin names its struct as `Plugin::Params`,
-and Seam declares it when it builds an instance (D91). Since
+and Hapto declares it when it builds an instance (D91). Since
 the builder shares the typed declarations' rules, it applies the ones a row
 breaks on its own before the ones only the rows before it show, so a row
 that breaks two rules is refused for the one of its own: a repeated key
@@ -2158,7 +2158,7 @@ saved state, and how does the plugin get them? (D51, D52, D53, D90) Not
 applicable: the C++ Seam's plugins built them in their own constructors, as a
 JUCE `AudioProcessor` does.
 
-**Rust.** Seam does, once per instance, and moves them into the plugin.
+**Rust.** Hapto does, once per instance, and moves them into the plugin.
 `Plugin::Params` names the struct that declares the parameters a host is shown
 (D90). An exporter calls `Parts::for_plugin::<P>()`, which declares the set
 with `ParamSet::declare`, makes the session and the saved state over it,
@@ -2180,7 +2180,7 @@ no MIDI input, since no controller would reach learn, and for learn turned on
 twice; `undo` panics while a history the plugin made itself is alive. Neither
 returns a `Result` (D95).
 
-Seam ticks the parts, just before each `Plugin::idle`, so a plugin never
+Hapto ticks the parts, just before each `Plugin::idle`, so a plugin never
 does, and `idle` holds only the plugin's own work. The engine makes a `Driver`
 from the parts before `Plugin::new` takes them: a weak link to what the tick
 needs, so a plugin that dropped its parts is not ticked. `Driver::tick` runs in
@@ -2197,7 +2197,7 @@ The driver is not `Send`, so the engine keeps one, beside the timer, only for
 a plugin bound to its thread; a plugin that is `Send` holds no parts. A test
 with no host makes a `Driver` from the parts and ticks through it.
 
-Seam runs learn's audio side too, so a plugin's processor never does. At each
+Hapto runs learn's audio side too, so a plugin's processor never does. At each
 activation, after `Plugin::activate` returns and inside the plugin's borrow,
 the engine takes a fresh one through `Driver::learn_audio` (D50) and keeps it
 beside the processor: it goes to the audio thread with the processor and
@@ -2221,7 +2221,7 @@ the same construction in every plugin and tied nothing to the table the trait
 named; and the engine owning the parts and ticking them, lending them to each
 call. Through the C interface a `Send` plugin's calls may arrive on different
 threads, and a clone of a handle the plugin kept on the first would then be
-used on another, so that is unsound. Seam's tick leaves ownership alone: the
+used on another, so that is unsound. Hapto's tick leaves ownership alone: the
 plugin keeps its parts, and the engine reaches them only on the plugin's own
 thread.
 
@@ -2248,14 +2248,14 @@ block, and learn would have counted pieces as blocks.
 ### D92. When a saved plain value is captured
 
 **Question and C++ Seam.** When does a plain value saved through
-`Parts::saved_value` reach the session, and how does Seam know it moved? (D44,
+`Parts::saved_value` reach the session, and how does Hapto know it moved? (D44,
 D91)
 The C++ Seam had no such call: each owner of saved state was a participant
 that told the registry of each change itself, as a participant a plugin writes
 by hand still does (D44).
 
 **Rust.** At the tick. `Parts::saved_value` makes the value, starting at the
-default it is given, and registers a participant Seam owns for it: it captures
+default it is given, and registers a participant Hapto owns for it: it captures
 the value as JSON through serde, and applies a restored section, or the same
 default for a project without the key, so a new instance and an older project
 start alike.
@@ -2323,8 +2323,8 @@ share is refused when the set is built, as by hand.
 An enum, a union, a tuple or unit struct and a generic struct are refused.
 Arrays, optional parameters and pools are written by hand: the example gain
 derives its parameters, and the example EQ writes `declare` itself, since its
-bands come from a table. The derive lives in `seam-macros`, a proc-macro crate,
-and `seam-params` re-exports it under its `derive` feature, off by default, so
+bands come from a table. The derive lives in `hapto-macros`, a proc-macro crate,
+and `hapto-params` re-exports it under its `derive` feature, off by default, so
 the core still builds with no dependency.
 
 **Alternatives.** The alternatives were a `params!` table macro, whose body
@@ -2369,7 +2369,7 @@ The derive cannot keep a saved project right when the order changes: the
 order of the variants is the save format. Its doc and the guide say so. A
 variant added at the end keeps saved projects right but moves every host
 position; a variant moved or inserted needs a higher `SCHEMA_VERSION` and a
-`migrate`. It lives in `seam-macros` beside `Params`' derive and is
+`migrate`. It lives in `hapto-macros` beside `Params`' derive and is
 re-exported under the same feature. The `Choices` trait's own example stays
 hand-written, where the contract is shown, and builds without the feature.
 
@@ -2550,9 +2550,9 @@ declared after it.
 Not applicable: a JUCE plugin gives these facts to JUCE's build, as
 `juce_add_plugin`'s arguments.
 
-**Rust.** In the plugin crate's manifest. `seam_host::manifest_info!`, under
+**Rust.** In the plugin crate's manifest. `hapto_host::manifest_info!`, under
 the `manifest` feature, writes `PluginInfo` from the manifest of the crate it
-is used in. `[package.metadata.seam]` gives the facts a host's list, browser
+is used in. `[package.metadata.hapto]` gives the facts a host's list, browser
 and saved sessions know the plugin by: the `name`, the `vendor`, the vendor's
 `url` and `email`, the `id`, the `vst3-class-id` written as a UUID, the
 `au-codes` as a table of `subtype` and `manufacturer`, the `category` and the
@@ -2569,7 +2569,7 @@ or form (a UUID, four printable ASCII characters, a known category or
 feature) and a feature listed twice, every mistake at once and each with its
 line in the manifest. The macro includes the manifest's text, so a change to
 it builds the crate again. A `PluginInfo` written by hand still works, as the
-rest of `seam-host`'s doc examples write theirs.
+rest of `hapto-host`'s doc examples write theirs.
 
 Open: `cargo xtask gen` still compiles the plugin to write the JUCE adapter's
 settings. With the identity in the manifest, a tool can read most of them
@@ -2630,7 +2630,7 @@ JUCE `AudioProcessorEditor` with its own timer.
 
 **Rust.** `Plugin::editor(&mut self) -> Option<Box<dyn Editor>>`, `None` by
 default, so a plugin with no editor writes nothing and the host shows its own
-controls. Seam calls it each time a host asks for a view where one can
+controls. Hapto calls it each time a host asks for a view where one can
 attach: on Windows, for now (D101). `Editor` knows no
 toolkit: `size`, read once; `open` with the host's window as a
 `ParentWindow`, which implements `raw-window-handle`'s `HasWindowHandle` and
@@ -2649,7 +2649,7 @@ interface shows no editor.
 
 **Alternatives.** The alternatives were an editor ticked by its own timer,
 which D53 refused; a hook that names a toolkit, which would make a WebView
-part of `seam-host`; and an `Editor` that is `Send`, which no toolkit's
+part of `hapto-host`; and an `Editor` that is `Send`, which no toolkit's
 window is.
 
 [History](decision-history.md#d100-a-plugins-editor-and-its-tick)
@@ -2716,10 +2716,10 @@ what does a build without them do? (D26) The C++ Seam embedded the built page
 through CMake (`SEAM_WEB_EMBED_PAGES`).
 
 **Rust.** A plugin builds its page's files in, as `Asset`s, its path and its
-`include_bytes!` each, and `seam-webview` serves them over a scheme of the
-editor's own (`seam://localhost/`, which WebView2 reaches as
-`http://seam.localhost/`) with their content types, and 404 for any other
-path. A debug build loads `SEAM_PAGE_DEV_URL` instead when it is set (D26),
+`include_bytes!` each, and `hapto-webview` serves them over a scheme of the
+editor's own (`hapto://localhost/`, which WebView2 reaches as
+`http://hapto.localhost/`) with their content types, and 404 for any other
+path. A debug build loads `HAPTO_PAGE_DEV_URL` instead when it is set (D26),
 with or without the files built in, so a page is worked on before its first
 build; a page with no files and no dev server makes no editor. The example
 gain's page builds with Vite to fixed names, and the gain's `build.rs`
@@ -2753,7 +2753,7 @@ WebView2 needs instances that share a folder to share its options, and the
 editor gives each the same.
 
 **Alternatives.** The alternatives were a folder per instance, which starts a
-browser per instance, and one folder for every Seam plugin, which ties their
+browser per instance, and one folder for every Hapto plugin, which ties their
 browser options together.
 
 [History](decision-history.md#d103-the-webviews-data-folder)
@@ -2770,7 +2770,7 @@ dispatcher as it arrives. A command may run a message loop of its own, such
 as a file dialog's: a message that arrives inside it is held and handed over
 once the call returns, before any later one, and a close that arrives inside
 it ends the page's session then. The dispatcher's messages reach the page,
-in order, as a script that calls `window.__seam.receive`, which the page's
+in order, as a script that calls `window.__hapto.receive`, which the page's
 `webviewTransport` installs. A panic inside a WebView callback, the IPC
 handler's or the scheme's, is caught, since it would unwind into WebView2:
 the message is dropped, and the file answered 500.
@@ -2788,7 +2788,7 @@ browser's context menu and its shortcuts, such as a reload; a debug build
 keeps both, and its developer tools.
 
 **Alternatives.** The alternative for the way back was WebView2's own message
-channel, which needs a call `seam-webview` could make only with `unsafe`.
+channel, which needs a call `hapto-webview` could make only with `unsafe`.
 
 [History](decision-history.md#d104-the-webviews-messages-and-what-it-takes)
 
@@ -2816,7 +2816,7 @@ The leaked timer's pin (D59) is the same call. No editor opens on macOS yet,
 since the exporter offers a view on Windows only (D101).
 
 After `ExitDll` the host's next load gets the same mapping, and `InitDll`
-runs again with every static as it was left. No static in Seam assumes a
+runs again with every static as it was left. No static in Hapto assumes a
 fresh mapping: its counters only need to keep counting, the fault counts are
 per process, the thread-locals are valid while the module is mapped, and the
 timer's class is unregistered at `ExitDll` and registered again by the next
@@ -2833,9 +2833,9 @@ binary is never unloaded.
 **Alternatives.** The alternatives were pinning at load, which keeps the file
 in use even for a host that only scans the plugin, and gives up the clean
 unload of a plugin whose editor never opens; pinning only for one toolkit's
-editor, which needs an entry point into `seam-host` for a crate that denies
+editor, which needs an entry point into `hapto-host` for a crate that denies
 `unsafe`, and leaves every other editor uncovered; and cleaning up what a
-toolkit registered, which Seam cannot know.
+toolkit registered, which Hapto cannot know.
 
 [History](decision-history.md#d105-the-module-stays-loaded-once-an-editor-has-opened)
 
@@ -2846,7 +2846,7 @@ is not a parameter, such as a name or a path, and hear when something else
 changes it? (B1, B2, D99) Not checked against C++.
 
 **Rust.** A plugin binds a `Value<T>` for its page under a key, with
-`Values::value` in `seam-bridge` or `Page::value` in `seam-webview`, for any
+`Values::value` in `hapto-bridge` or `Page::value` in `hapto-webview`, for any
 `T` serde writes and reads. The page reads it with `useValue(key)`, typed by a
 `Values` map written by hand, and the value crosses whole, as the JSON serde
 writes for `T`. A value's key is its own: it never names a parameter.
@@ -2915,7 +2915,7 @@ Terms:
 
 ---
 
-## 1. Parameters (seam-params)
+## 1. Parameters (hapto-params)
 
 ### P1. One store per parameter
 
@@ -3371,7 +3371,7 @@ helper; build it when a consumer needs one.
 
 ---
 
-## 2. Undo (seam-undo)
+## 2. Undo (hapto-undo)
 
 The promise: host automation never pollutes undo, and one user action is one
 step.
@@ -3759,7 +3759,7 @@ the documented numbers, so a booking that drifts fails it.
 
 ---
 
-## 3. Session (seam-session)
+## 3. Session (hapto-session)
 
 ### S1. One section per owner
 
@@ -3993,7 +3993,7 @@ alone is untested in C++; Rust pins it (`crates/host/tests/state.rs`).
 
 ---
 
-## 4. MIDI learn (seam-learn)
+## 4. MIDI learn (hapto-learn)
 
 A user arms a target, moves a controller, and from then on that controller
 drives the target. The C++ learn engine had no MIDI 2.0, pitch bend, aftertouch,
@@ -4130,7 +4130,7 @@ A reclaim can run in the same UI tick as the publish that retired the table (a
 learn commit, or an edit from a listener the poll ran), not a tick later.
 
 **Rust.** D9: a `triple_buffer` holds the published table, which meets this
-invariant with no `unsafe` in Seam: the audio thread takes the newest table
+invariant with no `unsafe` in Hapto: the audio thread takes the newest table
 without waiting, and a replaced table drops on the UI thread at a later publish.
 Both hold in `triple_buffer` 9.0.0's source: the reader's `read` is a relaxed
 load and, when a table is waiting, one `swap(AcqRel)`, and the writer's `write`
@@ -4330,14 +4330,14 @@ MIDI, and `acceptsMidi` has followed the build's MIDI-input flag only since
 "acceptsMidi follows the target's NEEDS_MIDI_INPUT; outside juce_add_plugin it
 is false" and `accepts_midi_input_test`.
 
-**Rust.** `seam-host` will refuse a plugin that enables learn with `midi_input:
+**Rust.** `hapto-host` will refuse a plugin that enables learn with `midi_input:
 false`, which is new in Rust. The exporters do not check it yet.
 
 [History](decision-history.md#l11-a-learning-plugin-declares-midi-input)
 
 ---
 
-## 5. The saved block and the host boundary (seam-host)
+## 5. The saved block and the host boundary (hapto-host)
 
 ### H1. The saved block
 
@@ -4362,11 +4362,11 @@ by the C++ Seam, and the JUCE wrappers around them in each format, need not load
 (D5). The writer fixes the key order itself, since `serde_json`'s default map
 sorts keys, and the unknown ids a load kept follow the declared parameters (D4)
 and the unknown top-level keys follow `extra` (D80).
-`seam_host::SavedState` holds the parameter set, whose clock its load marks
+`hapto_host::SavedState` holds the parameter set, whose clock its load marks
 (D52), and the session, and saves and loads from any thread but audio. The
 discrete parameters are bool and choice (P17), so a choice writes its index as
 an integer and a stepped continuous range writes a double, 2.0 say.
-`seamStateVersion` is Seam's frame, at 1, and `pluginStateVersion` the plugin's
+`seamStateVersion` is Hapto's frame, at 1, and `pluginStateVersion` the plugin's
 own schema, 0 unless the plugin raises it with a migration, which upgrades a
 block of an older plugin version before it loads (D80, D84). `serde_json`'s
 `float_roundtrip` reads every double back to the bits it was written from, so
@@ -4469,7 +4469,7 @@ container. It does not matter, since Rust does not load C++ blocks (D5).
 
 ---
 
-## 6. The page (seam-bridge, page)
+## 6. The page (hapto-bridge, page)
 
 ### B1. The page seeds after subscribing
 
@@ -4481,7 +4481,7 @@ protocol version stops: it drops writes and rejects calls rather than
 misreading messages. The native side answers a `ready` of a version it
 cannot serve with a `reject` carrying its own version, which is what stops the
 page, and a `ready` decodes whatever a newer page adds to it, so the reject
-always reaches it (D78). The native side is `Dispatcher` in `seam-bridge`; the
+always reaches it (D78). The native side is `Dispatcher` in `hapto-bridge`; the
 page's half is `page/`.
 
 **Why.** P14, at the page boundary. The single seed of every parameter and the

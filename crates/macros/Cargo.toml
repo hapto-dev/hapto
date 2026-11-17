@@ -1,6 +1,6 @@
 [package]
-name = "seam-macros"
-description = "The derives behind seam-params' Params and Choices, and seam-host's manifest_info!, which reads a plugin's identity from its manifest"
+name = "hapto-macros"
+description = "The derives behind hapto-params' Params and Choices, and hapto-host's manifest_info!, which reads a plugin's identity from its manifest"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -16,7 +16,7 @@ publish.workspace = true
 proc-macro = true
 
 [features]
-# `manifest_info!`, behind seam-host's `manifest` feature, so the derives
+# `manifest_info!`, behind hapto-host's `manifest` feature, so the derives
 # alone build no TOML parser.
 manifest = ["dep:toml"]
 

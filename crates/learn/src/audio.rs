@@ -14,8 +14,8 @@
     )
 )]
 
-use seam_params::{AudioParams, audio_thread};
-use seam_ump::EventList;
+use hapto_params::{AudioParams, audio_thread};
+use hapto_ump::EventList;
 
 use crate::capture::Stager;
 use crate::parse::Parser;
@@ -36,10 +36,10 @@ use crate::table::Route;
 /// # Examples
 ///
 /// ```
-/// use seam_learn::{Control, Mapping, Source};
+/// use hapto_learn::{Control, Mapping, Source};
 #[doc = include_str!("../doc/setup.rs")]
-/// # use seam_learn::Config;
-/// # use seam_learn::Learn;
+/// # use hapto_learn::Config;
+/// # use hapto_learn::Learn;
 /// # let (mut learn, mut audio) = Learn::new(&set, Config::default());
 /// learn.map(gain, Mapping::new(Source::any(Control::Cc(7))))?;
 ///
@@ -86,7 +86,7 @@ impl LearnAudio {
     /// packet as the host sent it. The [`LearnAudio`] example shows a block.
     ///
     /// Thread: audio.
-    #[cfg_attr(seam_rtsan, sanitize(realtime = "nonblocking"))]
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn process(&mut self, events: &EventList) {
         let table = self.reader.read();
         self.stager.block(|offers| {

@@ -258,9 +258,9 @@ def raw_string_at(text: str, start: int) -> int | None:
 
 
 def xtask_command(task: str) -> list[str]:
-    """The command that runs an xtask task: the binary `SEAM_XTASK` names, or
+    """The command that runs an xtask task: the binary `HAPTO_XTASK` names, or
     cargo building it without the generators' dependencies."""
-    binary = os.environ.get("SEAM_XTASK")
+    binary = os.environ.get("HAPTO_XTASK")
     if binary:
         return [binary, task]
     return ["cargo", "run", "--locked", "-q", "-p", "xtask", "--no-default-features", "--", task]

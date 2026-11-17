@@ -1,28 +1,28 @@
-#include "SeamPluginProcessor.h"
+#include "HaptoPluginProcessor.h"
 
 #include <array>
 #include <cstring>
 #include <limits>
 #include <memory>
 
-namespace seam
+namespace hapto
 {
 
 namespace
 {
 
 // The plugin's table, checked against the header this adapter was built with.
-const SeamPlugin& table() noexcept
+const HaptoPlugin& table() noexcept
 {
-    return *seam_plugin();
+    return *hapto_plugin();
 }
 
-bool isCurrent (const SeamPlugin& plugin) noexcept
+bool isCurrent (const HaptoPlugin& plugin) noexcept
 {
-    return plugin.abi_version == SEAM_ABI_VERSION;
+    return plugin.abi_version == HAPTO_ABI_VERSION;
 }
 
-juce::String textOf (SeamStr text)
+juce::String textOf (HaptoStr text)
 {
     return juce::String::fromUTF8 (text.data, static_cast<int> (text.length));
 }
@@ -37,13 +37,13 @@ void writeBlock (void* context, const std::uint8_t* data, std::size_t length) no
 } // namespace
 
 //==============================================================================
-// A Seam parameter, as JUCE sees it: named by its key, with every value read
+// A Hapto parameter, as JUCE sees it: named by its key, with every value read
 // from and written to the plugin's store, so there is no second copy to keep
 // in step.
 class PluginProcessor::Parameter final : public juce::HostedAudioProcessorParameter
 {
 public:
-    Parameter (const SeamPlugin& plugin, SeamInstance* instance, std::uint32_t index, const SeamParamInfo& info)
+    Parameter (const HaptoPlugin& plugin, HaptoInstance* instance, std::uint32_t index, const HaptoParamInfo& info)
         : juce::HostedAudioProcessorParameter (1),
           plugin_ (plugin),
           instance_ (instance),
@@ -78,7 +78,7 @@ public:
     // continuous.
     int getNumSteps() const override { return steps_ > 0 ? steps_ : AudioProcessor::getDefaultNumParameterSteps(); }
     bool isDiscrete() const override { return steps_ > 0; }
-    bool isBoolean() const override { return kind_ == SEAM_KIND_BOOL; }
+    bool isBoolean() const override { return kind_ == HAPTO_KIND_BOOL; }
 
     // Message thread, or any but audio.
     juce::String getText (float normalized, int maximumStringLength) const override
@@ -96,7 +96,7 @@ public:
         // which can run past the buffer of a string holding invalid UTF-8.
         const auto* utf8 = text.toRawUTF8();
         double normalized = 0.0;
-        if (plugin_.parse (instance_, index_, SeamStr { utf8, std::strlen (utf8) }, &normalized))
+        if (plugin_.parse (instance_, index_, HaptoStr { utf8, std::strlen (utf8) }, &normalized))
             return static_cast<float> (normalized);
         return getValue();
     }
@@ -123,8 +123,8 @@ public:
     void forgetTold() { told_.store (getValue()); }
 
 private:
-    const SeamPlugin& plugin_;
-    SeamInstance* const instance_;
+    const HaptoPlugin& plugin_;
+    HaptoInstance* const instance_;
     const std::uint32_t index_;
     const juce::String key_, name_, unit_;
     const std::uint32_t kind_;
@@ -136,9 +136,9 @@ private:
 };
 
 //==============================================================================
-PluginProcessor::BusesProperties PluginProcessor::busesOf (const SeamPlugin& plugin)
+PluginProcessor::BusesProperties PluginProcessor::busesOf (const HaptoPlugin& plugin)
 {
-    SeamLayout layout { 0, 2 };
+    HaptoLayout layout { 0, 2 };
     if (isCurrent (plugin))
         plugin.layout (0, &layout);
 
@@ -152,12 +152,12 @@ PluginProcessor::PluginProcessor()
     : juce::AudioProcessor (busesOf (table())),
       plugin_ (table())
 {
-    // A plugin built against another seam.h would be misread: refuse it.
+    // A plugin built against another hapto.h would be misread: refuse it.
     jassert (isCurrent (plugin_));
     if (! isCurrent (plugin_))
         return;
 
-    const SeamHost host { this, &onBeginEdit, &onPerformEdit, &onEndEdit, &onRestart };
+    const HaptoHost host { this, &onBeginEdit, &onPerformEdit, &onEndEdit, &onRestart };
     instance_ = plugin_.create (&host);
     if (instance_ == nullptr)
         return;
@@ -168,12 +168,12 @@ PluginProcessor::PluginProcessor()
     {
         // parameters_ is indexed as the plugin's list is, so a gap would
         // misname every later one: stop at the first that cannot be read.
-        SeamParamInfo info {};
+        HaptoParamInfo info {};
         if (! plugin_.param_info (instance_, index, &info))
             break;
         auto parameter = std::make_unique<Parameter> (plugin_, instance_, index, info);
         parameters_.push_back (parameter.get());
-        if ((info.flags & SEAM_PARAM_BYPASS) != 0)
+        if ((info.flags & HAPTO_PARAM_BYPASS) != 0)
             bypass_ = parameter.get();
         addParameter (parameter.release());
     }
@@ -196,10 +196,10 @@ void PluginProcessor::prepareToPlay (double sampleRate, int maximumExpectedSampl
     if (instance_ == nullptr)
         return;
 
-    const SeamLayout layout { static_cast<std::uint32_t> (getMainBusNumInputChannels()),
+    const HaptoLayout layout { static_cast<std::uint32_t> (getMainBusNumInputChannels()),
                               static_cast<std::uint32_t> (getMainBusNumOutputChannels()) };
     const auto frames = static_cast<std::uint32_t> (juce::jmax (1, maximumExpectedSamplesPerBlock));
-    // Refused where seam.h's SeamPlugin says, or for a layout the plugin does
+    // Refused where hapto.h's HaptoPlugin says, or for a layout the plugin does
     // not run with. A plugin that cannot move refuses it when JUCE's AAX
     // wrapper prepares again on the render thread for a longer block. After a
     // refusal, the processor already built plays on, and so does the bypassed
@@ -239,7 +239,7 @@ bool PluginProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
     const auto count = plugin_.layout_count();
     for (std::uint32_t index = 0; index < count; ++index)
     {
-        SeamLayout layout {};
+        HaptoLayout layout {};
         if (plugin_.layout (index, &layout) && layout.inputs == inputs && layout.outputs == outputs)
             return true;
     }
@@ -262,7 +262,7 @@ void PluginProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     // In place: JUCE's buffer holds the input in its first channels and
     // takes the output in the same ones.
     const auto channels = buffer.getNumChannels();
-    const SeamProcess block { buffer.getArrayOfReadPointers(),
+    const HaptoProcess block { buffer.getArrayOfReadPointers(),
                               buffer.getArrayOfWritePointers(),
                               static_cast<std::uint32_t> (juce::jmin (getMainBusNumInputChannels(), channels)),
                               static_cast<std::uint32_t> (juce::jmin (getMainBusNumOutputChannels(), channels)),
@@ -318,14 +318,14 @@ double PluginProcessor::getTailLengthSeconds() const
         return 0.0;
 
     const auto tail = plugin_.tail (instance_);
-    if (tail == SEAM_TAIL_INFINITE)
+    if (tail == HAPTO_TAIL_INFINITE)
         return std::numeric_limits<double>::infinity();
 
     // The rate JUCE's wrapper set at initialisation or setup, as it reads it
     // back to turn these seconds into frames, so a host may ask before the
     // first activation.
     const auto sampleRate = getSampleRate();
-    return (tail == SEAM_TAIL_NONE || sampleRate <= 0.0) ? 0.0 : tail / sampleRate;
+    return (tail == HAPTO_TAIL_NONE || sampleRate <= 0.0) ? 0.0 : tail / sampleRate;
 }
 
 void PluginProcessor::getStateInformation (juce::MemoryBlock& destination)
@@ -393,7 +393,7 @@ void PluginProcessor::onEndEdit (void* context, std::uint32_t index) noexcept
 void PluginProcessor::onRestart (void* context, std::uint32_t flags) noexcept
 {
     auto& self = *static_cast<PluginProcessor*> (context);
-    if ((flags & SEAM_RESTART_LATENCY) != 0)
+    if ((flags & HAPTO_RESTART_LATENCY) != 0)
         self.reportLatency();
 
     // JUCE offers no "re-read every value" for a plugin with one program:
@@ -402,15 +402,15 @@ void PluginProcessor::onRestart (void* context, std::uint32_t flags) noexcept
     // may record those; a sync is rare, and a stale value in the host
     // would be worse. Open: whether Logic and Pro Tools record them through
     // AU is not checked yet.
-    if ((flags & SEAM_RESTART_VALUES) != 0)
+    if ((flags & HAPTO_RESTART_VALUES) != 0)
         for (auto* parameter : self.parameters_)
             parameter->tellIfMoved();
 }
 
-} // namespace seam
+} // namespace hapto
 
 //==============================================================================
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
-    return new seam::PluginProcessor();
+    return new hapto::PluginProcessor();
 }

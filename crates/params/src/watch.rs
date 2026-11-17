@@ -25,7 +25,7 @@ use crate::{ParamId, UiParams};
 /// # Examples
 ///
 /// ```
-/// # use seam_params as sp;
+/// # use hapto_params as sp;
 /// # let set = sp::ParamSet::from_decls([
 /// #     sp::ParamDecl::new("gain", "Gain", sp::Kind::continuous(-60.0, 12.0, 0.1, None), 0.0),
 /// # ])?;
@@ -45,7 +45,7 @@ use crate::{ParamId, UiParams};
 /// assert_eq!(watch.poll(), Some(-6.0));
 /// drop(drag);
 /// assert_eq!(watch.poll(), Some(set.value(gain)));
-/// # Ok::<(), seam_params::DeclError>(())
+/// # Ok::<(), hapto_params::DeclError>(())
 /// ```
 #[derive(Debug)]
 pub struct Watch {

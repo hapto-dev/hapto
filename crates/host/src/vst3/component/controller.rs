@@ -12,7 +12,7 @@ use ::vst3::Steinberg::{
     FIDString, IBStream, IPlugView, int32, kInternalError, kInvalidArgument, kNotInitialized,
     kResultFalse, kResultOk, tresult,
 };
-use seam_params::Kind;
+use hapto_params::Kind;
 
 use super::{Component, view};
 use crate::Plugin;

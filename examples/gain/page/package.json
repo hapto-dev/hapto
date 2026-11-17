@@ -1,5 +1,5 @@
 {
-  "name": "seam-example-gain-page",
+  "name": "hapto-example-gain-page",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
   "dependencies": {
     "react": "19.3.1",
     "react-dom": "19.3.1",
-    "seam-page": "file:../../../page"
+    "@hapto/page": "file:../../../page"
   },
   "devDependencies": {
     "@types/react": "19.3.0",

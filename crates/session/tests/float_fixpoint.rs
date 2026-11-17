@@ -4,8 +4,8 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use seam_params::ParamSetBuilder;
-use seam_session::{ApplyError, Participant, Section, Session};
+use hapto_params::ParamSetBuilder;
+use hapto_session::{ApplyError, Participant, Section, Session};
 use serde_json::json;
 
 /// A participant that keeps whatever section it is given.

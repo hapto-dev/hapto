@@ -6,8 +6,8 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::Arc;
 
-use seam_params::{ParamRef, ParamSet};
-use seam_session::{Registration, Section};
+use hapto_params::{ParamRef, ParamSet};
+use hapto_session::{Registration, Section};
 
 use crate::capture::{Arm, Learned, Policy, Slots, Stager, Takes};
 use crate::saved::{decode, encode};
@@ -30,7 +30,7 @@ pub const DEFAULT_MAX_MAPPINGS: usize = 4096;
 /// # Examples
 ///
 /// ```
-/// use seam_learn::{Control, Curve, Mapping, Source};
+/// use hapto_learn::{Control, Curve, Mapping, Source};
 ///
 /// // Controller 7 drives the target backwards, over the upper half.
 /// let source = Source::any(Control::Cc(7));
@@ -80,7 +80,7 @@ impl Mapping {
     /// # Examples
     ///
     /// ```
-    /// use seam_learn::{Control, Mapping, Source};
+    /// use hapto_learn::{Control, Mapping, Source};
     ///
     /// // A sender that never sends the low byte still reaches the top.
     /// let mapping = Mapping::new(Source::any(Control::Nrpn(300)));
@@ -103,7 +103,7 @@ impl Mapping {
 /// # Examples
 ///
 /// ```
-/// use seam_learn::{Config, Learn};
+/// use hapto_learn::{Config, Learn};
 #[doc = include_str!("../doc/setup.rs")]
 /// // A small instrument: at most 64 mappings, and the panic button stays
 /// // learnable.
@@ -147,7 +147,7 @@ impl Default for Config {
 /// # Examples
 ///
 /// ```
-/// use seam_learn::{Config, Control, Learn, LearnError, Mapping, Source};
+/// use hapto_learn::{Config, Control, Learn, LearnError, Mapping, Source};
 #[doc = include_str!("../doc/setup.rs")]
 /// let (mut learn, _audio) = Learn::new(&set, Config::default());
 ///
@@ -169,7 +169,7 @@ pub enum LearnError {
     /// target not registered here.
     ///
     /// Only a parameter's index is checked: a
-    /// [`ParamId`](seam_params::ParamId) carries no set identity, so one from
+    /// [`ParamId`](hapto_params::ParamId) carries no set identity, so one from
     /// another set with an index in range names this set's parameter there.
     UnknownTarget(TargetId),
     /// A number in the source is out of range for its kind.
@@ -282,9 +282,9 @@ impl Custom {
 /// Arm a parameter, play a controller, and let the next UI tick commit it:
 ///
 /// ```
-/// use seam_learn::{Config, Learn, Learned, Takes};
-/// use seam_params::{Kind, ParamDecl, ParamSetBuilder, Range};
-/// use seam_ump::{ChannelVoice, EventList, Voice};
+/// use hapto_learn::{Config, Learn, Learned, Takes};
+/// use hapto_params::{Kind, ParamDecl, ParamSetBuilder, Range};
+/// use hapto_ump::{ChannelVoice, EventList, Voice};
 ///
 /// let mut builder = ParamSetBuilder::new();
 /// builder.add(ParamDecl::new("gain", "Gain", Kind::continuous(0.0, 1.0, 0.0, None), 0.0))?;
@@ -384,10 +384,10 @@ impl Learn {
     /// # Examples
     ///
     /// ```
-    /// use seam_learn::{Control, Mapping, Source};
+    /// use hapto_learn::{Control, Mapping, Source};
     #[doc = include_str!("../doc/setup.rs")]
-    /// # use seam_learn::Config;
-    /// # use seam_learn::Learn;
+    /// # use hapto_learn::Config;
+    /// # use hapto_learn::Learn;
     /// # let (mut learn, mut audio) = Learn::new(&set, Config::default());
     /// learn.map(gain, Mapping::new(Source::any(Control::Cc(7))))?;
     ///
@@ -462,7 +462,7 @@ impl Learn {
     /// # Examples
     ///
     /// ```
-    /// use seam_learn::{Config, Control, Learn, Mapping, Source};
+    /// use hapto_learn::{Config, Control, Learn, Mapping, Source};
     #[doc = include_str!("../doc/setup.rs")]
     /// let (mut learn, _audio) = Learn::new(&set, Config::default());
     /// let fader = learn.register("fader", Box::new(Fader))?;
@@ -512,7 +512,7 @@ impl Learn {
     /// # Examples
     ///
     /// ```
-    /// use seam_learn::{Config, Learn, Takes};
+    /// use hapto_learn::{Config, Learn, Takes};
     #[doc = include_str!("../doc/setup.rs")]
     /// let (mut learn, _audio) = Learn::new(&set, Config::default());
     /// let fader = learn.register("fader", Box::new(Fader))?;
@@ -592,7 +592,7 @@ impl Learn {
     /// Half of a pair waits:
     ///
     /// ```
-    /// use seam_learn::{Config, Control, Learn, Learned, Takes};
+    /// use hapto_learn::{Config, Control, Learn, Learned, Takes};
     #[doc = include_str!("../doc/setup.rs")]
     /// let (mut learn, mut audio) = Learn::new(&set, Config::default());
     /// learn.arm(gain, Takes::CONTROLLER)?;
@@ -690,10 +690,10 @@ impl Learn {
     /// # Examples
     ///
     /// ```
-    /// use seam_learn::{Control, Mapping, Source};
+    /// use hapto_learn::{Control, Mapping, Source};
     #[doc = include_str!("../doc/setup.rs")]
-    /// # use seam_learn::Config;
-    /// # use seam_learn::Learn;
+    /// # use hapto_learn::Config;
+    /// # use hapto_learn::Learn;
     /// # let (mut learn, mut audio) = Learn::new(&set, Config::default());
     /// let source = Source::any(Control::Cc(7));
     /// assert_eq!(learn.map(gain, Mapping::new(source))?, None);
@@ -737,7 +737,7 @@ impl Learn {
     /// # Examples
     ///
     /// ```
-    /// use seam_learn::{Config, Control, Learn, Mapping, Source};
+    /// use hapto_learn::{Config, Control, Learn, Mapping, Source};
     #[doc = include_str!("../doc/setup.rs")]
     /// let (mut learn, _audio) = Learn::new(&set, Config::default());
     /// let mapping = Mapping::new(Source::any(Control::Cc(7)));

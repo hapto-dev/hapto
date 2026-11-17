@@ -1,6 +1,6 @@
 //! The mistakes in Rust that `manifest_info!` refuses while compiling, as doc
 //! tests. Those in the manifest are tested where the macro reads it, in
-//! `seam-macros`, since a crate has one manifest.
+//! `hapto-macros`, since a crate has one manifest.
 //!
 //! Each `compile_fail` example sits beside a twin with the mistake fixed,
 //! which compiles: a `compile_fail` example passes on any error at all, so
@@ -12,9 +12,9 @@
 /// A field the manifest gives, written in Rust as well.
 ///
 /// ```compile_fail
-/// use seam_host::{Layout, PluginInfo};
+/// use hapto_host::{Layout, PluginInfo};
 ///
-/// const INFO: PluginInfo = seam_host::manifest_info! {
+/// const INFO: PluginInfo = hapto_host::manifest_info! {
 ///     name: "Tone",
 ///     layouts: &[Layout::STEREO],
 ///     midi_input: false,
@@ -23,9 +23,9 @@
 /// ```
 ///
 /// ```
-/// use seam_host::{Layout, PluginInfo};
+/// use hapto_host::{Layout, PluginInfo};
 ///
-/// const INFO: PluginInfo = seam_host::manifest_info! {
+/// const INFO: PluginInfo = hapto_host::manifest_info! {
 ///     layouts: &[Layout::STEREO],
 ///     midi_input: false,
 ///     midi_output: false,
@@ -36,18 +36,18 @@ struct FieldTheManifestGives;
 /// A field written in neither place.
 ///
 /// ```compile_fail,E0063
-/// use seam_host::{Layout, PluginInfo};
+/// use hapto_host::{Layout, PluginInfo};
 ///
-/// const INFO: PluginInfo = seam_host::manifest_info! {
+/// const INFO: PluginInfo = hapto_host::manifest_info! {
 ///     layouts: &[Layout::STEREO],
 ///     midi_input: false,
 /// };
 /// ```
 ///
 /// ```
-/// use seam_host::{Layout, PluginInfo};
+/// use hapto_host::{Layout, PluginInfo};
 ///
-/// const INFO: PluginInfo = seam_host::manifest_info! {
+/// const INFO: PluginInfo = hapto_host::manifest_info! {
 ///     layouts: &[Layout::STEREO],
 ///     midi_input: false,
 ///     midi_output: false,

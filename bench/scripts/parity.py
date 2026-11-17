@@ -22,7 +22,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 def rust(mode, lines=None):
     run = subprocess.run(
-        ["cargo", "run", "-q", "--release", "--locked", "-p", "seam-example-eq", "--example", "parity", "--", mode],
+        ["cargo", "run", "-q", "--release", "--locked", "-p", "hapto-example-eq", "--example", "parity", "--", mode],
         cwd=ROOT, input=None if lines is None else "\n".join(lines) + "\n",
         capture_output=True, text=True, check=True)
     return run.stdout.splitlines()

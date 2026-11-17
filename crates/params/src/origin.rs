@@ -19,14 +19,14 @@
 /// # Examples
 ///
 /// ```
-/// # use seam_params as sp;
+/// # use hapto_params as sp;
 /// # let set = sp::ParamSet::from_decls([
 /// #     sp::ParamDecl::new("gain", "Gain", sp::Kind::continuous(-60.0, 12.0, 0.1, None), 0.0),
 /// # ])?;
 /// # let gain = set.id("gain").expect("declared");
 /// # let ui = set.take_ui().expect("the first UI handle");
 ///
-/// use seam_params::Origin;
+/// use hapto_params::Origin;
 ///
 /// // Every write names its origin, and the store keeps the newest.
 /// set.audio().host_write(gain, 0.5);
@@ -34,7 +34,7 @@
 ///
 /// ui.write(gain, -6.0);
 /// assert_eq!(set.read(gain).origin, Origin::User);
-/// # Ok::<(), seam_params::DeclError>(())
+/// # Ok::<(), hapto_params::DeclError>(())
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]
@@ -70,7 +70,7 @@ pub enum Origin {
 /// # Examples
 ///
 /// ```
-/// use seam_params::{Origin, UnknownOrigin};
+/// use hapto_params::{Origin, UnknownOrigin};
 ///
 /// let error: UnknownOrigin = Origin::try_from(200_u8).unwrap_err();
 /// assert_eq!(error.0, 200);
@@ -150,13 +150,13 @@ impl TryFrom<u8> for Origin {
 /// # Examples
 ///
 /// ```
-/// # use seam_params as sp;
+/// # use hapto_params as sp;
 /// # let set = sp::ParamSet::from_decls([
 /// #     sp::ParamDecl::new("gain", "Gain", sp::Kind::continuous(-60.0, 12.0, 0.1, None), 0.0),
 /// # ])?;
 /// # let gain = set.id("gain").expect("declared");
 ///
-/// use seam_params::{Origin, Reading, Value};
+/// use hapto_params::{Origin, Reading, Value};
 ///
 /// // A meter's scale follows the gain, and passes on who moved it.
 /// let scale = Value::new(1.0_f32, &set);
@@ -166,7 +166,7 @@ impl TryFrom<u8> for Origin {
 /// scale.set_from(10.0_f32.powf(value / 20.0), origin);
 /// assert_eq!((changes, value, origin), (1, 12.0, Origin::Host));
 /// assert_eq!(scale.read().origin, Origin::Host);
-/// # Ok::<(), seam_params::DeclError>(())
+/// # Ok::<(), hapto_params::DeclError>(())
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]

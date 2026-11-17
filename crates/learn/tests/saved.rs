@@ -4,12 +4,12 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use seam_learn::{
+use hapto_learn::{
     Config, Control, Curve, Learn, LearnAudio, Mapping, NrpnReservation, SESSION_KEY, Source,
     Target, TargetId,
 };
-use seam_params::{Kind, ParamDecl, ParamId, ParamSet, ParamSetBuilder};
-use seam_session::Session;
+use hapto_params::{Kind, ParamDecl, ParamId, ParamSet, ParamSetBuilder};
+use hapto_session::Session;
 use serde_json::json;
 
 fn set() -> Arc<ParamSet> {
@@ -329,11 +329,11 @@ fn a_restore_ends_the_arm_drops_old_held_entries_and_closes_bursts() {
     learn
         .map(zoom, Mapping::new(Source::any(Control::Cc(7))))
         .expect("legal");
-    let mut events = seam_ump::EventList::with_capacity(1);
-    let cc = |value| seam_ump::ChannelVoice {
+    let mut events = hapto_ump::EventList::with_capacity(1);
+    let cc = |value| hapto_ump::ChannelVoice {
         group: 0,
         channel: 0,
-        voice: seam_ump::Voice::Midi1ControlChange {
+        voice: hapto_ump::Voice::Midi1ControlChange {
             controller: 7,
             value,
         },
@@ -345,7 +345,7 @@ fn a_restore_ends_the_arm_drops_old_held_entries_and_closes_bursts() {
     // A value staged before the restore, which no poll after it applies.
     audio.process(&events);
     learn
-        .arm(id(&set, "gain"), seam_learn::Takes::CONTROLLER)
+        .arm(id(&set, "gain"), hapto_learn::Takes::CONTROLLER)
         .expect("known");
 
     let held = json!({"schema": 1, "mappings": [
@@ -433,7 +433,7 @@ fn attaching_to_a_session_made_from_another_set_is_refused() {
     let ui = session.take_ui().expect("the first UI handle");
     let (learn, _audio) = Learn::new(&set(), Config::default());
     let learn = Rc::new(RefCell::new(learn));
-    seam_testkit::contract::expect_contract_panic("made from another ParamSet", || {
+    hapto_testkit::contract::expect_contract_panic("made from another ParamSet", || {
         let _ = Learn::attach(&learn, &ui);
     });
     assert!(session.save().is_none(), "nothing registered");

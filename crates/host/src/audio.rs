@@ -1,6 +1,6 @@
 //! What the audio thread is handed each block.
 
-pub use seam_ump::{Event, EventList};
+pub use hapto_ump::{Event, EventList};
 
 use crate::Layout;
 
@@ -19,7 +19,7 @@ pub const MAX_FRAMES: usize = 65_536;
 /// # Examples
 ///
 /// ```
-/// use seam_host::{Layout, ProcessSetup};
+/// use hapto_host::{Layout, ProcessSetup};
 ///
 /// // A host's activation for a stereo effect: a processor sizes everything
 /// // it needs from this, once, and the audio thread never allocates again.
@@ -60,7 +60,7 @@ pub struct ProcessSetup {
 /// # Examples
 ///
 /// ```
-/// use seam_host::{Block, Processor, Status};
+/// use hapto_host::{Block, Processor, Status};
 ///
 /// /// Halves the level, in place, in every channel.
 /// struct Half;
@@ -75,7 +75,7 @@ pub struct ProcessSetup {
 ///         Status::Continue
 ///     }
 /// }
-/// # use seam_host::EventList;
+/// # use hapto_host::EventList;
 /// # let (events, mut out) = (EventList::with_capacity(0), EventList::with_capacity(0));
 /// # let mut left = [1.0_f32; 4];
 /// # let mut channels = [&mut left[..]];
@@ -121,7 +121,7 @@ pub struct Block<'a, 'b> {
 /// # Examples
 ///
 /// ```
-/// use seam_host::Status;
+/// use hapto_host::Status;
 ///
 /// // A processor that has nothing left to do tells a host that may stop it.
 /// fn after(block_was_silent: bool) -> Status {

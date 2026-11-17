@@ -3,8 +3,8 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use seam_params::{ParamSetBuilder, RestoreReader};
-use seam_session::{ApplyError, Participant, Section, Session, SessionError, SessionUi};
+use hapto_params::{ParamSetBuilder, RestoreReader};
+use hapto_session::{ApplyError, Participant, Section, Session, SessionError, SessionUi};
 use serde_json::json;
 
 /// A participant whose state is one string; empty saves nothing.
@@ -786,7 +786,7 @@ fn a_section_is_claimed_by_its_exact_key_only() {
 /// does from an event handler.
 struct Zoom {
     level: u32,
-    registration: Option<seam_session::Registration>,
+    registration: Option<hapto_session::Registration>,
 }
 
 impl Zoom {

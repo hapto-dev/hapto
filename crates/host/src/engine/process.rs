@@ -22,8 +22,8 @@ use std::panic::{self, AssertUnwindSafe};
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 
-use seam_learn::LearnAudio;
-use seam_params::audio_thread;
+use hapto_learn::LearnAudio;
+use hapto_params::audio_thread;
 
 use super::{Engine, HostLink, Points, Setup};
 use crate::boundary::{AudioSlot, Channels, FlushDenormals};
@@ -217,7 +217,7 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
     /// returns, and nothing else reads or writes them meanwhile. Any two of
     /// them are one buffer or share no float: an output may be the same
     /// buffer as an input, as a host processing in place hands it.
-    #[cfg_attr(seam_rtsan, sanitize(realtime = "nonblocking"))]
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub(crate) unsafe fn process(
         &self,
         frames: usize,
@@ -239,7 +239,7 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
     /// # Safety
     ///
     /// As [`process`](Self::process).
-    #[cfg_attr(seam_rtsan, sanitize(realtime = "nonblocking"))]
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     unsafe fn play(
         &self,
         frames: usize,

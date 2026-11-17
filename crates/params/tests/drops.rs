@@ -7,8 +7,8 @@ use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use seam_params::{Float, Kind, List, Origin, ParamDecl, ParamSet, Value};
-use seam_testkit::sync::PATIENCE;
+use hapto_params::{Float, Kind, List, Origin, ParamDecl, ParamSet, Value};
+use hapto_testkit::sync::PATIENCE;
 
 /// What an element's `Drop` calls.
 type Call = Arc<dyn Fn() + Send + Sync>;

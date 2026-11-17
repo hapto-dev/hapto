@@ -1,8 +1,8 @@
 //! Packet sizes and splitting a stream of words.
 
+use hapto_ump::{Packets, Truncated, packet_words};
 use proptest::prelude::*;
 use proptest::test_runner::FileFailurePersistence;
-use seam_ump::{Packets, Truncated, packet_words};
 
 /// The UMP 1.1 table of message types: the type and the packet's size in
 /// bits. Types 0x6 to 0xE are reserved or, for 0xD, flex data; a reserved

@@ -2,10 +2,10 @@
 //! parameter list, its saved state, and audio that matches the processor
 //! driven directly, sample for sample.
 
-use seam_example_eq::ExampleEq;
-use seam_host::cabi::{KIND_BOOL, KIND_CONTINUOUS, TestHost};
-use seam_host::{Block, EventList, Layout, Plugin, ProcessSetup, Processor};
-use seam_params::{Kind, host_id};
+use hapto_example_eq::ExampleEq;
+use hapto_host::cabi::{KIND_BOOL, KIND_CONTINUOUS, TestHost};
+use hapto_host::{Block, EventList, Layout, Plugin, ProcessSetup, Processor};
+use hapto_params::{Kind, host_id};
 
 mod common;
 use common::{Noise, bits, built, declarations};
@@ -110,7 +110,7 @@ fn a_saved_block_through_the_c_interface_loads_through_vst3() {
         .expect("declared");
     adapter.set(index, 0.75);
     let saved = adapter.save().expect("a block");
-    let native = seam_host::vst3::TestHost::<ExampleEq>::new();
+    let native = hapto_host::vst3::TestHost::<ExampleEq>::new();
     assert_eq!(native.load(&saved), Ok(()));
     assert_eq!(native.normalized(host_id("mid.gain")), adapter.get(index));
 }

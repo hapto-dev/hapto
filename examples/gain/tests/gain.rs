@@ -4,14 +4,14 @@
 
 use std::sync::Arc;
 
-use seam_example_gain::Gain;
-use seam_host::vst3::TestHost;
-use seam_host::{
+use hapto_example_gain::Gain;
+use hapto_host::vst3::TestHost;
+use hapto_host::{
     AuCodes, Block, Category, Driver, EventList, Layout, Parts, Plugin, PluginInfo, ProcessSetup,
     Processor, SavedState,
 };
-use seam_params::host_id;
-use seam_ump::{ChannelVoice, Voice};
+use hapto_params::host_id;
+use hapto_ump::{ChannelVoice, Voice};
 
 const GAIN: &str = "gain";
 const MODE: &str = "mode";
@@ -40,17 +40,17 @@ fn the_manifest_gives_the_identity_hosts_know_the_gain_by() {
     // A host takes a plugin whose ids change for another plugin, and its
     // sessions lose this one.
     let expected = PluginInfo {
-        name: "Seam Example Gain",
-        vendor: "Seam",
+        name: "Hapto Example Gain",
+        vendor: "Hapto",
         url: "",
         email: "",
         description: "A gain with three modes, a label and MIDI learn",
         version: env!("CARGO_PKG_VERSION"),
-        id: "dev.seam.example-gain",
+        id: "dev.hapto.example-gain",
         vst3_class_id: 0x5b0a_d271_3e96_4c18_a37f_e024_8db5_6a19_u128.to_be_bytes(),
         au_codes: AuCodes {
             subtype: *b"SmGn",
-            manufacturer: *b"Seam",
+            manufacturer: *b"Hapt",
         },
         category: Category::Effect,
         features: &[],

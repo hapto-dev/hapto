@@ -204,7 +204,7 @@ class DecisionIndex(unittest.TestCase):
             return index.found_in(str(path), source, name)
 
     def test_a_use_list_does_not_define_a_field_or_variant(self):
-        source = "use seam::{\n    Commit, ParamId,\n};\nfn f() {}\n"
+        source = "use hapto::{\n    Commit, ParamId,\n};\nfn f() {}\n"
         self.assertFalse(self.defined(source, "ParamId"))
         self.assertTrue(self.defined(source, "f"))
 
@@ -247,23 +247,23 @@ class CoreDeps(unittest.TestCase):
 
     def test_a_new_plugin_under_examples_takes_the_plugin_layer(self):
         packages = [
-            self.package("seam-host", "crates/host"),
-            self.package("seam-example-reverb", "examples/reverb", ["seam-host"]),
+            self.package("hapto-host", "crates/host"),
+            self.package("hapto-example-reverb", "examples/reverb", ["hapto-host"]),
         ]
         problems = deps.layering_problems(
-            [p for p in packages] + [self.package(n, f"crates/{n}") for n in deps.LAYERS if n != "seam-host"],
+            [p for p in packages] + [self.package(n, f"crates/{n}") for n in deps.LAYERS if n != "hapto-host"],
             Path("/repo"),
         )
         self.assertEqual([p for p in problems if "reverb" in p], [])
 
     def test_a_crate_outside_examples_still_needs_a_layer(self):
-        packages = [self.package("seam-new", "crates/new")]
+        packages = [self.package("hapto-new", "crates/new")]
         problems = deps.layering_problems(packages, Path("/repo"))
-        self.assertIn("seam-new has no layer in LAYERS", problems)
+        self.assertIn("hapto-new has no layer in LAYERS", problems)
 
     def test_a_table_entry_that_is_no_crate_fails(self):
         problems = deps.layering_problems([], Path("/repo"))
-        self.assertIn("seam-host is in LAYERS but is not a workspace crate", problems)
+        self.assertIn("hapto-host is in LAYERS but is not a workspace crate", problems)
 
     def test_common_ui_stacks_are_forbidden(self):
         for name in ["egui", "eframe", "iced", "iced_wgpu", "slint", "sdl2", "glfw", "x11", "x11rb",
@@ -275,7 +275,7 @@ class CoreDeps(unittest.TestCase):
 class ExampleCoverage(unittest.TestCase):
     def test_a_crate_with_no_reachable_item_fails(self):
         with self.assertRaises(coverage.CheckError):
-            coverage.missing_of("seam-x", [])
+            coverage.missing_of("hapto-x", [])
 
     def test_a_check_that_cannot_run_fails_with_its_reason(self):
         was, coverage.library_crates = coverage.library_crates, lambda: {}
@@ -288,14 +288,14 @@ class ExampleCoverage(unittest.TestCase):
         self.assertIn("no library crate found", err.getvalue())
 
     def test_missing_names_are_listed(self):
-        self.assertEqual(coverage.missing_of("seam-x", [("a", True), ("b", False)]), ["b"])
+        self.assertEqual(coverage.missing_of("hapto-x", [("a", True), ("b", False)]), ["b"])
 
     def test_an_unknown_format_version_fails(self):
         with self.assertRaises(coverage.CheckError):
-            coverage.check_format({"format_version": coverage.FORMAT_VERSION + 1}, "seam-x")
+            coverage.check_format({"format_version": coverage.FORMAT_VERSION + 1}, "hapto-x")
         with self.assertRaises(coverage.CheckError):
-            coverage.check_format({}, "seam-x")
-        coverage.check_format({"format_version": coverage.FORMAT_VERSION}, "seam-x")
+            coverage.check_format({}, "hapto-x")
+        coverage.check_format({"format_version": coverage.FORMAT_VERSION}, "hapto-x")
 
     def test_methods_are_counted_per_owner_and_hidden_ones_skipped(self):
         def fn(name, docs="", visibility="public", attrs=()):
@@ -319,8 +319,8 @@ class ExampleCoverage(unittest.TestCase):
         self.assertEqual(coverage.method_ids(index, "trait", trait), ["8"])
 
     def test_the_method_report_lists_the_bare_ones_and_never_fails(self):
-        lines = coverage.method_report("seam-x", [("A::a", True), ("A::b", False), ("B::c", False)])
-        self.assertEqual(lines, ["seam-x: 1 of 3 public methods have an example", "  A::b", "  B::c"])
+        lines = coverage.method_report("hapto-x", [("A::a", True), ("A::b", False), ("B::c", False)])
+        self.assertEqual(lines, ["hapto-x: 1 of 3 public methods have an example", "  A::b", "  B::c"])
 
     def test_a_type_alias_is_counted_and_another_crates_item_is_not(self):
         example = "```" + chr(10) + "let a = 1;" + chr(10) + "```"
@@ -329,7 +329,7 @@ class ExampleCoverage(unittest.TestCase):
             return {"name": name, "visibility": "public", "attrs": [], "docs": docs, "inner": inner}
 
         data = {"root": 0, "index": {
-            "0": item("seam_x", {"module": {"items": [1, 2, 3]}}),
+            "0": item("hapto_x", {"module": {"items": [1, 2, 3]}}),
             "1": item("Section", {"type_alias": {}}, example),
             "2": item("WriteFn", {"type_alias": {}}),
             # A `pub use` of another crate's item, which this crate's JSON lacks.
@@ -345,9 +345,9 @@ class ExampleCoverage(unittest.TestCase):
 
 class RunLoom(unittest.TestCase):
     OUTPUT = (
-        "     Running unittests src/lib.rs (target/release/deps/seam_a-0123abcd.exe)\n"
+        "     Running unittests src/lib.rs (target/release/deps/hapto_a-0123abcd.exe)\n"
         "test queue::tests::loom_x ... ok\n"
-        "     Running unittests src\\lib.rs (target\\release\\deps\\seam_b-0123abcd.exe)\n"
+        "     Running unittests src\\lib.rs (target\\release\\deps\\hapto_b-0123abcd.exe)\n"
         "test queue::tests::loom_x ... FAILED\n"
         "test slot::loom_y ... ok\n"
     )
@@ -355,15 +355,15 @@ class RunLoom(unittest.TestCase):
     def test_a_pass_belongs_to_the_crate_that_ran_it(self):
         self.assertEqual(
             loom.passed_models(self.OUTPUT),
-            {("seam_a", ("queue", "tests"), "loom_x"), ("seam_b", ("slot",), "loom_y")},
+            {("hapto_a", ("queue", "tests"), "loom_x"), ("hapto_b", ("slot",), "loom_y")},
         )
 
     def test_coloured_output_is_read_like_plain_output(self):
         coloured = (
-            "\x1b[1m\x1b[92m     Running\x1b[0m unittests src/lib.rs (target/release/deps/seam_a-0123abcd)\n"
+            "\x1b[1m\x1b[92m     Running\x1b[0m unittests src/lib.rs (target/release/deps/hapto_a-0123abcd)\n"
             "test queue::loom_x ... \x1b[32mok\x1b[0m\n"
         )
-        self.assertEqual(loom.passed_models(coloured), {("seam_a", ("queue",), "loom_x")})
+        self.assertEqual(loom.passed_models(coloured), {("hapto_a", ("queue",), "loom_x")})
 
     def test_a_source_with_no_model_fails(self):
         was, loom.models_in_source = loom.models_in_source, lambda: (set(), [])
@@ -382,7 +382,7 @@ class RunLoom(unittest.TestCase):
             for crate in loom.LANE:
                 (root / "crates" / crate).mkdir(parents=True)
                 (root / "crates" / crate / "Cargo.toml").write_text(
-                    f'[package]\nname = "seam-{crate}"\n', encoding="utf-8"
+                    f'[package]\nname = "hapto-{crate}"\n', encoding="utf-8"
                 )
             for name, text in files.items():
                 path = root / name
@@ -394,7 +394,7 @@ class RunLoom(unittest.TestCase):
 
     def test_a_model_in_a_lane_crates_source_is_found(self):
         models, stray = self.tree({"crates/params/src/queue.rs": self.MODEL})
-        self.assertEqual(models, {("seam_params", ("queue",), "loom_a")})
+        self.assertEqual(models, {("hapto_params", ("queue",), "loom_a")})
         self.assertEqual(stray, [])
 
     def test_a_model_the_lane_does_not_build_is_stray(self):
@@ -433,10 +433,10 @@ class RunLoom(unittest.TestCase):
         self.assertEqual(stray, [])
 
     def test_same_named_models_in_two_crates_are_two(self):
-        ran = ("seam_a", ("queue", "tests"), "loom_x")
-        self.assertTrue(loom.matches(("seam_a", ("queue",), "loom_x"), ran))
-        self.assertFalse(loom.matches(("seam_b", ("queue",), "loom_x"), ran))
-        self.assertFalse(loom.matches(("seam_a", ("slot",), "loom_x"), ran))
+        ran = ("hapto_a", ("queue", "tests"), "loom_x")
+        self.assertTrue(loom.matches(("hapto_a", ("queue",), "loom_x"), ran))
+        self.assertFalse(loom.matches(("hapto_b", ("queue",), "loom_x"), ran))
+        self.assertFalse(loom.matches(("hapto_a", ("slot",), "loom_x"), ran))
 
 
 class ShapeAppendOnly(unittest.TestCase):

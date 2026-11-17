@@ -2,7 +2,7 @@
 //! that is saved and undoable, and a gain that a MIDI controller can be
 //! learned to.
 //!
-//! It shows a plugin that uses the parts Seam builds for it: parameters,
+//! It shows a plugin that uses the parts Hapto builds for it: parameters,
 //! saved state, undo, the session, learn and the VST3 export. The guide
 //! `docs/first-plugin.md` walks through it.
 //!
@@ -10,18 +10,18 @@
 //! that runs learn's audio side itself.
 
 #[cfg(feature = "vst3")]
-seam_host::export_vst3!(Gain);
+hapto_host::export_vst3!(Gain);
 
 mod page;
 
 pub use page::PAGE;
 
-use seam_host::{
+use hapto_host::{
     Block, Editor, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
 };
-use seam_learn::{Config, LearnError, Takes};
-use seam_params::{Bool, Changes, Choice, Choices, Float, Params, UiParams, Value};
-use seam_undo::{Bound, History};
+use hapto_learn::{Config, LearnError, Takes};
+use hapto_params::{Bool, Changes, Choice, Choices, Float, Params, UiParams, Value};
+use hapto_undo::{Bound, History};
 
 const LABEL_KEY: &str = "label";
 const DEFAULT_LABEL: &str = "Untitled";
@@ -88,7 +88,7 @@ impl Gain {
     ///
     /// # Errors
     ///
-    /// As [`Learn::arm`](seam_learn::Learn::arm).
+    /// As [`Learn::arm`](hapto_learn::Learn::arm).
     pub fn learn_gain(&mut self) -> Result<(), LearnError> {
         let gain = self.params.gain.id();
         self.parts.learn().arm(gain, Takes::CONTROLLER)
@@ -101,7 +101,7 @@ impl Gain {
 }
 
 impl Plugin for Gain {
-    const INFO: PluginInfo = seam_host::manifest_info! {
+    const INFO: PluginInfo = hapto_host::manifest_info! {
         layouts: &[Layout::STEREO],
         midi_input: true,
         midi_output: false,

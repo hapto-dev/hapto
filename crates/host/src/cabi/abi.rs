@@ -227,37 +227,37 @@ c_consts! {
     /// The interface's version: the adapter refuses a plugin built against
     /// another. The header and the plugin are built from one commit, so it
     /// moves only when the interface does.
-    pub const ABI_VERSION = 1 => "SEAM_ABI_VERSION";
+    pub const ABI_VERSION = 1 => "HAPTO_ABI_VERSION";
     /// A parameter whose value is a number in a range, continuous or
     /// stepped; a stepped range stays continuous to the host.
-    pub const KIND_CONTINUOUS = 0 => "SEAM_KIND_CONTINUOUS";
+    pub const KIND_CONTINUOUS = 0 => "HAPTO_KIND_CONTINUOUS";
     /// A parameter that is off or on.
-    pub const KIND_BOOL = 1 => "SEAM_KIND_BOOL";
+    pub const KIND_BOOL = 1 => "HAPTO_KIND_BOOL";
     /// A parameter that is one of a list of labels.
-    pub const KIND_CHOICE = 2 => "SEAM_KIND_CHOICE";
+    pub const KIND_CHOICE = 2 => "HAPTO_KIND_CHOICE";
     /// The parameter is the plugin's bypass, for the host to drive as such.
-    pub const PARAM_BYPASS = 1 => "SEAM_PARAM_BYPASS";
+    pub const PARAM_BYPASS = 1 => "HAPTO_PARAM_BYPASS";
     /// The host should re-read every parameter's value: a sync changed
     /// values without a gesture.
-    pub const RESTART_VALUES = 1 => "SEAM_RESTART_VALUES";
+    pub const RESTART_VALUES = 1 => "HAPTO_RESTART_VALUES";
     /// The latency changed; read it again with `latency`.
-    pub const RESTART_LATENCY = 2 => "SEAM_RESTART_LATENCY";
+    pub const RESTART_LATENCY = 2 => "HAPTO_RESTART_LATENCY";
     /// Keep processing, whatever the input.
-    pub const STATUS_CONTINUE = 0 => "SEAM_STATUS_CONTINUE";
+    pub const STATUS_CONTINUE = 0 => "HAPTO_STATUS_CONTINUE";
     /// Keep processing while the input or the output is not silent.
-    pub const STATUS_CONTINUE_IF_NOT_QUIET = 1 => "SEAM_STATUS_CONTINUE_IF_NOT_QUIET";
+    pub const STATUS_CONTINUE_IF_NOT_QUIET = 1 => "HAPTO_STATUS_CONTINUE_IF_NOT_QUIET";
     /// Keep processing for the tail once the input is silent.
-    pub const STATUS_TAIL = 2 => "SEAM_STATUS_TAIL";
+    pub const STATUS_TAIL = 2 => "HAPTO_STATUS_TAIL";
     /// Nothing to do until input or events arrive again.
-    pub const STATUS_SLEEP = 3 => "SEAM_STATUS_SLEEP";
+    pub const STATUS_SLEEP = 3 => "HAPTO_STATUS_SLEEP";
     /// The most frames `activate` builds for. A larger block size builds for
     /// this many, and one of 0 for 1,024 frames; a longer block plays in
     /// pieces.
-    pub const MAX_FRAMES = crate::MAX_FRAMES as u32 => "SEAM_MAX_FRAMES";
+    pub const MAX_FRAMES = crate::MAX_FRAMES as u32 => "HAPTO_MAX_FRAMES";
     /// `tail` answers this when the output falls silent with the input.
-    pub const TAIL_NONE = 0 => "SEAM_TAIL_NONE";
+    pub const TAIL_NONE = 0 => "HAPTO_TAIL_NONE";
     /// `tail` answers this when the output may never fall silent.
-    pub const TAIL_INFINITE = u32::MAX => "SEAM_TAIL_INFINITE";
+    pub const TAIL_INFINITE = u32::MAX => "HAPTO_TAIL_INFINITE";
 }
 
 /// A C `char`, whichever of `i8` and `u8` it is on the target, so its C
@@ -267,13 +267,13 @@ c_consts! {
 ///
 /// ```
 #[doc = include_str!("../../doc/gain.rs")]
-/// use seam_host::cabi::{CChar, plugin};
+/// use hapto_host::cabi::{CChar, plugin};
 ///
 /// let table = plugin::<Gain>();
 /// // SAFETY: a host's calls, all on this thread, with a buffer valid for
 /// // the call.
 /// unsafe {
-///     let instance = (table.create)(&seam_host::cabi::SeamHost::NONE);
+///     let instance = (table.create)(&hapto_host::cabi::HaptoHost::NONE);
 ///     // The plugin writes the parameter's text into a buffer of `CChar`.
 ///     let mut buffer = [CChar(0); 16];
 ///     let whole = (table.text)(instance, 0, 0.0, buffer.as_mut_ptr(), buffer.len());
@@ -292,13 +292,13 @@ pub struct CChar(pub c_char);
 ///
 /// ```
 #[doc = include_str!("../../doc/gain.rs")]
-/// use seam_host::cabi::{SeamHost, SeamInstance, plugin};
+/// use hapto_host::cabi::{HaptoHost, HaptoInstance, plugin};
 ///
 /// let table = plugin::<Gain>();
 /// // SAFETY: a host's calls, all on this thread; the instance lives until
 /// // `destroy`.
 /// unsafe {
-///     let instance: *mut SeamInstance = (table.create)(&SeamHost::NONE);
+///     let instance: *mut HaptoInstance = (table.create)(&HaptoHost::NONE);
 ///     assert!(!instance.is_null());
 ///     assert_eq!((table.param_count)(instance), 1);
 ///     (table.destroy)(instance);
@@ -306,7 +306,7 @@ pub struct CChar(pub c_char);
 /// ```
 #[repr(C)]
 #[derive(Debug)]
-pub struct SeamInstance {
+pub struct HaptoInstance {
     _opaque: [u8; 0],
     /// Not `Send`, `Sync` or `Unpin`, as the Rustonomicon spells an opaque C
     /// type: which threads may use an instance is the header's rule, and an
@@ -314,9 +314,9 @@ pub struct SeamInstance {
     _marker: PhantomData<(*mut u8, PhantomPinned)>,
 }
 
-impl CType for SeamInstance {
+impl CType for HaptoInstance {
     fn declare(name: &str, _: &[&str]) -> String {
-        named("SeamInstance", name)
+        named("HaptoInstance", name)
     }
 }
 
@@ -328,7 +328,7 @@ impl CType for SeamInstance {
 #[doc = include_str!("../../doc/gain.rs")]
 /// use std::ffi::c_void;
 ///
-/// use seam_host::cabi::{SeamHost, WriteFn, plugin};
+/// use hapto_host::cabi::{HaptoHost, WriteFn, plugin};
 ///
 /// /// The host's side of a save: keeps a copy of the block, which lives only
 /// /// for the call.
@@ -351,7 +351,7 @@ impl CType for SeamInstance {
 /// // SAFETY: a host's calls, all on this thread; the writer and its context
 /// // are valid for the call.
 /// unsafe {
-///     let instance = (table.create)(&SeamHost::NONE);
+///     let instance = (table.create)(&HaptoHost::NONE);
 ///     assert!((table.save)(instance, (&raw mut saved).cast(), Some(write)));
 ///     (table.destroy)(instance);
 /// }
@@ -368,21 +368,21 @@ c_structs! {
     ///
     /// ```
     #[doc = include_str!("../../doc/gain.rs")]
-    /// use seam_host::cabi::{SeamHost, SeamStr, plugin};
+    /// use hapto_host::cabi::{HaptoHost, HaptoStr, plugin};
     ///
     /// let table = plugin::<Gain>();
     /// // SAFETY: a host's calls, all on this thread; `normalized` is valid
     /// // for the call.
     /// unsafe {
-    ///     let instance = (table.create)(&SeamHost::NONE);
+    ///     let instance = (table.create)(&HaptoHost::NONE);
     ///     let mut normalized = 0.0;
     ///     // A user types 6 into the host's field.
-    ///     assert!((table.parse)(instance, 0, SeamStr::new("6"), &mut normalized));
+    ///     assert!((table.parse)(instance, 0, HaptoStr::new("6"), &mut normalized));
     ///     assert_eq!(normalized, 0.625);
     ///     (table.destroy)(instance);
     /// }
     /// ```
-    pub struct SeamStr {
+    pub struct HaptoStr {
         /// The first byte; any value when `length` is 0.
         pub data: *const CChar,
         /// How many bytes.
@@ -395,11 +395,11 @@ c_structs! {
     ///
     /// ```
     #[doc = include_str!("../../doc/gain.rs")]
-    /// use seam_host::cabi::{SeamHost, SeamParamInfo, SeamStr, plugin};
+    /// use hapto_host::cabi::{HaptoHost, HaptoParamInfo, HaptoStr, plugin};
     ///
     /// let table = plugin::<Gain>();
-    /// let empty = SeamStr::new("");
-    /// let mut info = SeamParamInfo {
+    /// let empty = HaptoStr::new("");
+    /// let mut info = HaptoParamInfo {
     ///     key: empty,
     ///     name: empty,
     ///     unit: empty,
@@ -413,7 +413,7 @@ c_structs! {
     /// // SAFETY: a host's calls, all on this thread; `info` is valid for the
     /// // call, and the plugin's text lives while the library is loaded.
     /// unsafe {
-    ///     let instance = (table.create)(&SeamHost::NONE);
+    ///     let instance = (table.create)(&HaptoHost::NONE);
     ///     assert!((table.param_info)(instance, 0, &mut info));
     ///     let key = std::slice::from_raw_parts(info.key.data.cast::<u8>(), info.key.length);
     ///     assert_eq!(key, b"gain");
@@ -421,23 +421,23 @@ c_structs! {
     ///     (table.destroy)(instance);
     /// }
     /// ```
-    pub struct SeamParamInfo {
+    pub struct HaptoParamInfo {
         /// Its key: the identity saved states and the page use. The JUCE
         /// adapter names the parameter to JUCE by it.
-        pub key: SeamStr,
+        pub key: HaptoStr,
         /// The name a host shows.
-        pub name: SeamStr,
+        pub name: HaptoStr,
         /// The unit shown after the value; empty for none.
-        pub unit: SeamStr,
+        pub unit: HaptoStr,
         /// The group path, `/`-separated; empty for the top level.
-        pub group: SeamStr,
-        /// The id Seam's own exporters give hosts, a hash of the key.
+        pub group: HaptoStr,
+        /// The id Hapto's own exporters give hosts, a hash of the key.
         pub host_id: u32,
-        /// `SEAM_KIND_CONTINUOUS`, `SEAM_KIND_BOOL` or `SEAM_KIND_CHOICE`.
+        /// `HAPTO_KIND_CONTINUOUS`, `HAPTO_KIND_BOOL` or `HAPTO_KIND_CHOICE`.
         pub kind: u32,
         /// How many values a bool or choice has; 0 for a continuous one.
         pub steps: u32,
-        /// `SEAM_PARAM_BYPASS`, or 0.
+        /// `HAPTO_PARAM_BYPASS`, or 0.
         pub flags: u32,
         /// The default, as the host's 0..1.
         pub default_normalized: f64,
@@ -449,10 +449,10 @@ c_structs! {
     ///
     /// ```
     #[doc = include_str!("../../doc/gain.rs")]
-    /// use seam_host::cabi::{SeamLayout, plugin};
+    /// use hapto_host::cabi::{HaptoLayout, plugin};
     ///
     /// let table = plugin::<Gain>();
-    /// let mut layout = SeamLayout { inputs: 0, outputs: 0 };
+    /// let mut layout = HaptoLayout { inputs: 0, outputs: 0 };
     /// // SAFETY: `layout` is valid for the call, which takes no instance.
     /// unsafe {
     ///     assert_eq!((table.layout_count)(), 1);
@@ -460,7 +460,7 @@ c_structs! {
     /// }
     /// assert_eq!((layout.inputs, layout.outputs), (2, 2));
     /// ```
-    pub struct SeamLayout {
+    pub struct HaptoLayout {
         /// Input channels; 0 for an instrument.
         pub inputs: u32,
         /// Output channels.
@@ -474,8 +474,8 @@ c_structs! {
     ///
     /// ```
     #[doc = include_str!("../../doc/gain.rs")]
-    /// use seam_host::cabi::{
-    ///     STATUS_CONTINUE, SeamHost, SeamLayout, SeamProcess, plugin,
+    /// use hapto_host::cabi::{
+    ///     STATUS_CONTINUE, HaptoHost, HaptoLayout, HaptoProcess, plugin,
     /// };
     ///
     /// let table = plugin::<Gain>();
@@ -483,7 +483,7 @@ c_structs! {
     /// let (mut left, mut right) = ([0.0_f32; 4], [0.0_f32; 4]);
     /// let inputs = [input[0].as_ptr(), input[1].as_ptr()];
     /// let outputs = [left.as_mut_ptr(), right.as_mut_ptr()];
-    /// let block = SeamProcess {
+    /// let block = HaptoProcess {
     ///     inputs: inputs.as_ptr(),
     ///     outputs: outputs.as_ptr(),
     ///     input_count: 2,
@@ -493,14 +493,14 @@ c_structs! {
     /// // SAFETY: a host's calls, all on this thread; both lists hold two
     /// // channels of four frames that nothing else touches during the call.
     /// unsafe {
-    ///     let instance = (table.create)(&SeamHost::NONE);
-    ///     assert!((table.activate)(instance, 48_000.0, 4, SeamLayout { inputs: 2, outputs: 2 }));
+    ///     let instance = (table.create)(&HaptoHost::NONE);
+    ///     assert!((table.activate)(instance, 48_000.0, 4, HaptoLayout { inputs: 2, outputs: 2 }));
     ///     assert_eq!((table.process)(instance, &block), STATUS_CONTINUE);
     ///     (table.destroy)(instance);
     /// }
     /// assert_eq!(left, [1.0; 4], "0 dB leaves the level alone");
     /// ```
-    pub struct SeamProcess {
+    pub struct HaptoProcess {
         /// `input_count` channels, each `frames` long; any may be null.
         pub inputs: *const *const f32,
         /// `output_count` channels, each `frames` long; any may be null.
@@ -525,7 +525,7 @@ c_structs! {
     #[doc = include_str!("../../doc/gain.rs")]
     /// use std::ffi::c_void;
     ///
-    /// use seam_host::cabi::{SeamHost, plugin};
+    /// use hapto_host::cabi::{HaptoHost, plugin};
     ///
     /// /// The host's side of an edit: records the parameter index and 0..1
     /// /// value.
@@ -539,10 +539,10 @@ c_structs! {
     /// }
     ///
     /// let mut edits: Vec<(u32, f64)> = Vec::new();
-    /// let host = SeamHost {
+    /// let host = HaptoHost {
     ///     context: (&raw mut edits).cast(),
     ///     perform_edit: Some(perform_edit),
-    ///     ..SeamHost::NONE // the other callbacks are null: the host ignores them
+    ///     ..HaptoHost::NONE // the other callbacks are null: the host ignores them
     /// };
     ///
     /// let table = plugin::<Gain>();
@@ -557,7 +557,7 @@ c_structs! {
     /// }
     /// assert_eq!(edits, [(0, 0.625)]);
     /// ```
-    pub struct SeamHost {
+    pub struct HaptoHost {
         /// Handed back to every callback.
         pub context: *mut c_void,
         /// The user started changing the parameter at `index`.
@@ -570,12 +570,12 @@ c_structs! {
         /// The user finished changing the parameter at `index`.
         #[args(context, index)]
         pub end_edit: Option<unsafe extern "C" fn(*mut c_void, u32)>,
-        /// `SEAM_RESTART_VALUES` and `SEAM_RESTART_LATENCY`, or'd together.
+        /// `HAPTO_RESTART_VALUES` and `HAPTO_RESTART_LATENCY`, or'd together.
         #[args(context, flags)]
         pub restart: Option<unsafe extern "C" fn(*mut c_void, u32)>,
     }
 
-    /// The plugin, as `seam_plugin` returns it: its facts and every call
+    /// The plugin, as `hapto_plugin` returns it: its facts and every call
     /// into it, each with the threads it may run on.
     ///
     /// A call marked "main thread" runs where the plugin's type says:
@@ -608,8 +608,8 @@ c_structs! {
     ///
     /// ```
     #[doc = include_str!("../../doc/gain.rs")]
-    /// use seam_host::cabi::{
-    ///     STATUS_CONTINUE, SeamHost, SeamLayout, SeamProcess, plugin,
+    /// use hapto_host::cabi::{
+    ///     STATUS_CONTINUE, HaptoHost, HaptoLayout, HaptoProcess, plugin,
     /// };
     ///
     /// // A host's whole life with the plugin: create, activate, write a value,
@@ -617,7 +617,7 @@ c_structs! {
     /// let table = plugin::<Gain>();
     /// let (mut left, mut right) = ([1.0_f32; 4], [1.0_f32; 4]);
     /// let channels = [left.as_mut_ptr(), right.as_mut_ptr()];
-    /// let block = SeamProcess {
+    /// let block = HaptoProcess {
     ///     inputs: channels.as_ptr().cast(), // in place: the same buffers in both lists
     ///     outputs: channels.as_ptr(),
     ///     input_count: 2,
@@ -627,27 +627,27 @@ c_structs! {
     /// // SAFETY: all calls on this thread; the lists hold two channels of four
     /// // frames that nothing else touches during the call.
     /// unsafe {
-    ///     let instance = (table.create)(&SeamHost::NONE);
-    ///     assert!((table.activate)(instance, 48_000.0, 4, SeamLayout { inputs: 2, outputs: 2 }));
+    ///     let instance = (table.create)(&HaptoHost::NONE);
+    ///     assert!((table.activate)(instance, 48_000.0, 4, HaptoLayout { inputs: 2, outputs: 2 }));
     ///     (table.set)(instance, 0, 0.0); // -24 dB
     ///     assert_eq!((table.process)(instance, &block), STATUS_CONTINUE);
     ///     (table.destroy)(instance);
     /// }
     /// assert!(left[0] < 0.1);
     /// ```
-    pub struct SeamPlugin {
-        /// `SEAM_ABI_VERSION` as the plugin was built.
+    pub struct HaptoPlugin {
+        /// `HAPTO_ABI_VERSION` as the plugin was built.
         pub abi_version: u32,
         /// How many main bus layouts it runs with; at least one. Any thread.
         pub layout_count: unsafe extern "C" fn() -> u32,
         /// The layout at `index`, the first the default. Any thread.
         #[args(index, layout)]
-        pub layout: unsafe extern "C" fn(u32, *mut SeamLayout) -> bool,
+        pub layout: unsafe extern "C" fn(u32, *mut HaptoLayout) -> bool,
         /// A new instance, or null. `host` is copied, and may be null. Any
         /// thread, which becomes the main thread of a plugin that cannot
         /// move between threads.
         #[args(host)]
-        pub create: unsafe extern "C" fn(*const SeamHost) -> *mut SeamInstance,
+        pub create: unsafe extern "C" fn(*const HaptoHost) -> *mut HaptoInstance,
         /// Deactivates and frees the instance, ending every gesture the host
         /// still has open.
         ///
@@ -660,23 +660,23 @@ c_structs! {
         /// it does not wait for. That call goes on using the instance until it
         /// returns, and may make a callback after `destroy` does.
         #[args(instance)]
-        pub destroy: unsafe extern "C" fn(*mut SeamInstance),
+        pub destroy: unsafe extern "C" fn(*mut HaptoInstance),
         /// How many parameters it has. Any thread.
         #[args(instance)]
-        pub param_count: unsafe extern "C" fn(*mut SeamInstance) -> u32,
+        pub param_count: unsafe extern "C" fn(*mut HaptoInstance) -> u32,
         /// The parameter at `index`, in the order hosts list them: depth
         /// first through the groups, each in declaration order. Any
         /// thread.
         #[args(instance, index, info)]
-        pub param_info: unsafe extern "C" fn(*mut SeamInstance, u32, *mut SeamParamInfo) -> bool,
+        pub param_info: unsafe extern "C" fn(*mut HaptoInstance, u32, *mut HaptoParamInfo) -> bool,
         /// The parameter's value, as 0..1. Any thread, the audio thread
         /// included.
         #[args(instance, index)]
-        pub get: unsafe extern "C" fn(*mut SeamInstance, u32) -> f64,
+        pub get: unsafe extern "C" fn(*mut HaptoInstance, u32) -> f64,
         /// A host write of 0..1: the host's automation or a control.
         /// Any thread, the audio thread included.
         #[args(instance, index, normalized)]
-        pub set: unsafe extern "C" fn(*mut SeamInstance, u32, f64),
+        pub set: unsafe extern "C" fn(*mut HaptoInstance, u32, f64),
         /// The text for `normalized`, written to `text` with a terminator, cut
         /// at a character to fit `capacity`.
         ///
@@ -685,77 +685,77 @@ c_structs! {
         /// and answers the length, so a caller can size a buffer. Any thread
         /// but audio.
         #[args(instance, index, normalized, text, capacity)]
-        pub text: unsafe extern "C" fn(*mut SeamInstance, u32, f64, *mut CChar, usize) -> usize,
+        pub text: unsafe extern "C" fn(*mut HaptoInstance, u32, f64, *mut CChar, usize) -> usize,
         /// The 0..1 value `text` means, into `normalized`; false when it
         /// means none. Any thread but audio.
         #[args(instance, index, text, normalized)]
-        pub parse: unsafe extern "C" fn(*mut SeamInstance, u32, SeamStr, *mut f64) -> bool,
+        pub parse: unsafe extern "C" fn(*mut HaptoInstance, u32, HaptoStr, *mut f64) -> bool,
         /// Builds the processor for a sample rate, a block size and one of the
         /// layouts, replacing any earlier one.
         ///
-        /// A block size past `SEAM_MAX_FRAMES` builds for that many. `latency`
+        /// A block size past `HAPTO_MAX_FRAMES` builds for that many. `latency`
         /// and `tail` answer for it on return. Main thread.
         #[args(instance, sample_rate, max_frames, layout)]
-        pub activate: unsafe extern "C" fn(*mut SeamInstance, f64, u32, SeamLayout) -> bool,
+        pub activate: unsafe extern "C" fn(*mut HaptoInstance, f64, u32, HaptoLayout) -> bool,
         /// Takes the processor back. Main thread.
         #[args(instance)]
-        pub deactivate: unsafe extern "C" fn(*mut SeamInstance),
+        pub deactivate: unsafe extern "C" fn(*mut HaptoInstance),
         /// The main thread's tick, about 60 times a second from `create` to
         /// `destroy`. The host callbacks run inside it; a tick called
         /// from inside one of them does nothing. Main thread.
         #[args(instance)]
-        pub idle: unsafe extern "C" fn(*mut SeamInstance),
+        pub idle: unsafe extern "C" fn(*mut HaptoInstance),
         /// The processing delay in frames, as last read. Any thread.
         #[args(instance)]
-        pub latency: unsafe extern "C" fn(*mut SeamInstance) -> u32,
-        /// The tail in frames, `SEAM_TAIL_NONE` or `SEAM_TAIL_INFINITE`, as
+        pub latency: unsafe extern "C" fn(*mut HaptoInstance) -> u32,
+        /// The tail in frames, `HAPTO_TAIL_NONE` or `HAPTO_TAIL_INFINITE`, as
         /// last read. Any thread.
         #[args(instance)]
-        pub tail: unsafe extern "C" fn(*mut SeamInstance) -> u32,
+        pub tail: unsafe extern "C" fn(*mut HaptoInstance) -> u32,
         /// Hands the saved block to `write`, once. Any thread but audio.
         #[args(instance, context, write)]
-        pub save: unsafe extern "C" fn(*mut SeamInstance, *mut c_void, Option<WriteFn>) -> bool,
+        pub save: unsafe extern "C" fn(*mut HaptoInstance, *mut c_void, Option<WriteFn>) -> bool,
         /// Loads a saved block; false when it is not one, which changes
         /// nothing, as a block longer than 64 MiB is not. Any thread but
         /// audio.
         #[args(instance, data, length)]
-        pub load: unsafe extern "C" fn(*mut SeamInstance, *const u8, usize) -> bool,
+        pub load: unsafe extern "C" fn(*mut HaptoInstance, *const u8, usize) -> bool,
         /// Clears what the processor carries between blocks, before the
         /// next one. Any thread.
         #[args(instance)]
-        pub reset: unsafe extern "C" fn(*mut SeamInstance),
-        /// Processes one block; answers a `SEAM_STATUS_` value. Audio
+        pub reset: unsafe extern "C" fn(*mut HaptoInstance),
+        /// Processes one block; answers a `HAPTO_STATUS_` value. Audio
         /// thread: never allocates, locks or waits.
         #[args(instance, block)]
-        pub process: unsafe extern "C" fn(*mut SeamInstance, *const SeamProcess) -> u32,
+        pub process: unsafe extern "C" fn(*mut HaptoInstance, *const HaptoProcess) -> u32,
     }
 }
 
-impl SeamStr {
+impl HaptoStr {
     /// Lends `text` to the C interface as a string view.
     ///
     /// # Examples
     ///
     /// ```
-    /// use seam_host::cabi::SeamStr;
+    /// use hapto_host::cabi::HaptoStr;
     ///
-    /// let key = SeamStr::new("gain");
+    /// let key = HaptoStr::new("gain");
     /// assert_eq!(key.length, 4);
     /// // SAFETY: the view points into the `'static` text it was made from.
     /// let bytes = unsafe { std::slice::from_raw_parts(key.data.cast::<u8>(), key.length) };
     /// assert_eq!(bytes, b"gain");
     /// ```
     pub fn new(text: &'static str) -> Self {
-        SeamStr {
+        HaptoStr {
             data: text.as_ptr().cast(),
             length: text.len(),
         }
     }
 }
 
-impl SeamHost {
+impl HaptoHost {
     /// No callbacks: a host that listens to nothing.
-    pub const NONE: SeamHost = SeamHost {
+    pub const NONE: HaptoHost = HaptoHost {
         context: std::ptr::null_mut(),
         begin_edit: None,
         perform_edit: None,

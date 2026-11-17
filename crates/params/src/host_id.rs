@@ -19,7 +19,7 @@ pub const RESERVED_HOST_IDS: RangeInclusive<u32> = 0x7FFF_0000..=0x7FFF_FFFF;
 /// # Examples
 ///
 /// ```
-/// use seam_params::{RESERVED_HOST_IDS, host_id};
+/// use hapto_params::{RESERVED_HOST_IDS, host_id};
 ///
 /// assert_eq!(host_id(""), 0x011C_9DC5);
 /// assert_eq!(host_id("gain"), host_id("gain"));

@@ -1,4 +1,4 @@
-//! Test tools shared by the Seam crates.
+//! Test tools shared by the Hapto crates.
 //!
 //! A dev-dependency only: nothing a plugin ships links it. Each module is one
 //! rule of `docs/testing.md`:
@@ -13,7 +13,7 @@
 //! - [`drift`]: a generated file in the repository matches what the code
 //!   generates now.
 //!
-//! [block]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#block
+//! [block]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#block
 //!
 //! # Examples
 //!
@@ -21,10 +21,10 @@
 //! code allocates nothing after a worker thread meets it at a latch:
 //!
 //! ```
-//! use seam_testkit::alloc::assert_no_allocations;
-//! use seam_testkit::sync::Latch;
+//! use hapto_testkit::alloc::assert_no_allocations;
+//! use hapto_testkit::sync::Latch;
 //!
-//! seam_testkit::install_alloc_gate!();
+//! hapto_testkit::install_alloc_gate!();
 //!
 //! fn main() {
 //!     let started = Latch::new(1);

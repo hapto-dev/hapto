@@ -1,5 +1,5 @@
 [package]
-name = "seam-example-gain"
+name = "hapto-example-gain"
 description = "A gain with three modes, a label and MIDI learn"
 version.workspace = true
 edition.workspace = true
@@ -16,14 +16,14 @@ publish.workspace = true
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
-# Who the plugin is, to every host: `seam_host::manifest_info!` reads it,
+# Who the plugin is, to every host: `hapto_host::manifest_info!` reads it,
 # with the version and description above.
-[package.metadata.seam]
-name = "Seam Example Gain"
-vendor = "Seam"
-id = "dev.seam.example-gain"
+[package.metadata.hapto]
+name = "Hapto Example Gain"
+vendor = "Hapto"
+id = "dev.hapto.example-gain"
 vst3-class-id = "5b0ad271-3e96-4c18-a37f-e0248db56a19"
-au-codes = { subtype = "SmGn", manufacturer = "Seam" }
+au-codes = { subtype = "SmGn", manufacturer = "Hapt" }
 category = "effect"
 
 [lib]
@@ -32,23 +32,23 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 default = ["vst3"]
-# The VST3 module's entry points, through Seam's exporter.
-vst3 = ["seam-host/vst3"]
+# The VST3 module's entry points, through Hapto's exporter.
+vst3 = ["hapto-host/vst3"]
 
 [dependencies]
-seam-host = { workspace = true, features = ["manifest"] }
-seam-learn.workspace = true
-seam-params = { workspace = true, features = ["derive"] }
-seam-undo.workspace = true
-seam-webview.workspace = true
+hapto-host = { workspace = true, features = ["manifest"] }
+hapto-learn.workspace = true
+hapto-params = { workspace = true, features = ["derive"] }
+hapto-undo.workspace = true
+hapto-webview.workspace = true
 
 [dev-dependencies]
-seam-host = { workspace = true, features = ["vst3", "test-host"] }
-seam-ump.workspace = true
-seam-testkit.workspace = true
+hapto-host = { workspace = true, features = ["vst3", "test-host"] }
+hapto-ump.workspace = true
+hapto-testkit.workspace = true
 # The page's parameter map, generated from the gain's declarations, and its
 # drift gate (`tests/page_params.rs`).
-seam-bridge = { workspace = true, features = ["typescript"] }
+hapto-bridge = { workspace = true, features = ["typescript"] }
 
 [lints]
 workspace = true

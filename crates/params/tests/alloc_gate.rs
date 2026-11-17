@@ -1,13 +1,13 @@
-//! The audio-thread path of seam-params does not allocate: the host write,
+//! The audio-thread path of hapto-params does not allocate: the host write,
 //! the learned write, the reads around them and the group check.
 
-seam_testkit::install_alloc_gate!();
+hapto_testkit::install_alloc_gate!();
 
-use seam_params::{
+use hapto_params::{
     Bool, Changes, Choice, Choices, Float, HostEvent, Kind, ParamDecl, ParamSet, ParamSetBuilder,
     Range,
 };
-use seam_testkit::alloc::assert_no_allocations;
+use hapto_testkit::alloc::assert_no_allocations;
 
 const LABELS: [&str; 4] = ["a", "b", "c", "d"];
 

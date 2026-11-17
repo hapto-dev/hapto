@@ -2,7 +2,7 @@
 //! together, as a value derived from a parameter, a plain value or a list
 //! reads its source.
 
-use seam_params::{Kind, List, Origin, ParamDecl, ParamSet, Value};
+use hapto_params::{Kind, List, Origin, ParamDecl, ParamSet, Value};
 
 #[test]
 fn a_plain_value_reads_its_count_its_value_and_that_values_origin_together() {

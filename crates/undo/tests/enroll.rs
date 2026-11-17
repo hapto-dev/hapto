@@ -4,13 +4,13 @@
 use std::cell::RefCell;
 use std::sync::Arc;
 
-use proptest::prelude::*;
-use proptest::test_runner::FileFailurePersistence;
-use seam_params::{
+use hapto_params::{
     Kind, List, Origin, ParamDecl, ParamId, ParamSet, ParamSetBuilder, RestoreWriter, UiParams,
     Value,
 };
-use seam_undo::{Bound, History, HistoryError};
+use hapto_undo::{Bound, History, HistoryError};
+use proptest::prelude::*;
+use proptest::test_runner::FileFailurePersistence;
 
 fn param(key: &'static str) -> ParamDecl {
     ParamDecl::new(key, key, Kind::continuous(0.0, 10.0, 1.0, None), 5.0)
@@ -334,9 +334,9 @@ impl Counted {
     }
 }
 
-impl seam_undo::UndoSize for Counted {}
+impl hapto_undo::UndoSize for Counted {}
 
-impl seam_undo::UndoEq for Counted {
+impl hapto_undo::UndoEq for Counted {
     fn undo_eq(&self, other: &Self) -> bool {
         self.n == other.n
     }
@@ -579,9 +579,9 @@ fn during_the_tick(f: impl FnOnce() + 'static) {
 #[derive(Debug, Clone)]
 struct Hooked(u8);
 
-impl seam_undo::UndoSize for Hooked {}
+impl hapto_undo::UndoSize for Hooked {}
 
-impl seam_undo::UndoEq for Hooked {
+impl hapto_undo::UndoEq for Hooked {
     fn undo_eq(&self, other: &Self) -> bool {
         if let Some(f) = HOOK.with(|hook| hook.borrow_mut().take()) {
             f();
@@ -739,9 +739,9 @@ thread_local! {
 #[derive(Clone)]
 struct Enrols;
 
-impl seam_undo::UndoSize for Enrols {}
+impl hapto_undo::UndoSize for Enrols {}
 
-impl seam_undo::UndoEq for Enrols {
+impl hapto_undo::UndoEq for Enrols {
     fn undo_eq(&self, _: &Self) -> bool {
         true
     }
@@ -966,7 +966,7 @@ proptest! {
         rig.history.enroll_params();
         let audio = rig.set.audio();
         let program = rig.set.program();
-        let mut tokens: Vec<(usize, seam_params::Gesture)> = Vec::new();
+        let mut tokens: Vec<(usize, hapto_params::Gesture)> = Vec::new();
         let mut open = [Open::default(); 2];
         // (param, before, after) for every gesture that closed changed.
         let mut expected: Vec<(usize, f32, f32)> = Vec::new();

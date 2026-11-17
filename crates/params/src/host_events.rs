@@ -125,7 +125,7 @@ impl HostQueue {
 /// # Examples
 ///
 /// ```
-/// use seam_params::{HostEvent, Kind, ParamDecl, ParamSet};
+/// use hapto_params::{HostEvent, Kind, ParamDecl, ParamSet};
 ///
 /// let set = ParamSet::from_decls([
 ///     ParamDecl::new("gain", "Gain", Kind::continuous(-60.0, 12.0, 0.1, None), 0.0),
@@ -146,7 +146,7 @@ impl HostQueue {
 /// drain.finish(|event| heard.push(event));
 /// assert_eq!(heard.last(), Some(&HostEvent::End(gain)));
 /// drop(drag);
-/// # Ok::<(), seam_params::DeclError>(())
+/// # Ok::<(), hapto_params::DeclError>(())
 /// ```
 #[derive(Debug)]
 pub struct HostEventDrain {
@@ -182,7 +182,7 @@ impl HostEventDrain {
     /// If `emit` panics, the events it has not yet returned from stay
     /// queued: the next drain hands them out, so the host still hears a
     /// balanced bracket. [`HostEventDrain`] shows it called.
-    #[cfg_attr(seam_rtsan, sanitize(realtime = "nonblocking"))]
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn drain(&mut self, mut emit: impl FnMut(HostEvent)) {
         let queue = self.set.host();
         if !queue.dirty.swap(false, Ordering::Acquire) {

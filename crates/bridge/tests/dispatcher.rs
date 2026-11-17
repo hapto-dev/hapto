@@ -4,14 +4,14 @@
 
 use std::sync::Arc;
 
-use seam_bridge::{
+use hapto_bridge::{
     CallResult, Commands, Dispatcher, NativeMessage, PROTOCOL_VERSION, ParamState, Refusals,
     ValueState, Values,
 };
-use seam_params::{
+use hapto_params::{
     HostEvent, HostEventDrain, Kind, Origin, ParamDecl, ParamId, ParamSet, UiParams, host_id,
 };
-use seam_undo::{Bound, History};
+use hapto_undo::{Bound, History};
 use serde_json::{Value, json};
 
 const MODES: [&str; 3] = ["Clean", "Warm", "Hot"];
@@ -25,9 +25,9 @@ struct Plugin {
     host: HostEventDrain,
     history: History,
     /// Bound for the page second, and enrolled in undo.
-    label: seam_params::Value<String>,
+    label: hapto_params::Value<String>,
     /// Bound for the page first, and not enrolled.
-    zoom: seam_params::Value<f64>,
+    zoom: hapto_params::Value<f64>,
     native: Dispatcher<Vec<String>>,
 }
 
@@ -54,9 +54,9 @@ impl Plugin {
         for id in set.ids() {
             history.enroll_param(id).expect("a listed parameter");
         }
-        let label = seam_params::Value::new(String::from("Untitled"), &set);
+        let label = hapto_params::Value::new(String::from("Untitled"), &set);
         history.enroll(&label, "Rename").expect("a new value");
-        let zoom = seam_params::Value::new(1.0, &set);
+        let zoom = hapto_params::Value::new(1.0, &set);
         let values = Values::new().value("zoom", &zoom).value("label", &label);
         let native = Dispatcher::new(ui.clone(), commands, values, Vec::new());
         Plugin {
@@ -530,7 +530,7 @@ fn a_second_ready_answers_with_the_values_as_they_are_then() {
 #[should_panic(expected = "is bound twice")]
 fn a_value_bound_twice_panics() {
     let set = ParamSet::from_decls([]).expect("no declarations");
-    let label = seam_params::Value::new(String::new(), &set);
+    let label = hapto_params::Value::new(String::new(), &set);
     let _ = Values::new().value("label", &label).value("label", &label);
 }
 

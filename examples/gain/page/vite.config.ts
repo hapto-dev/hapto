@@ -7,7 +7,7 @@ import { defineConfig } from "vite";
 export default defineConfig({
   // Relative URLs, so the page loads from the plugin's own scheme.
   base: "./",
-  // One React for the page and for `seam-page`, which is linked from the
+  // One React for the page and for `@hapto/page`, which is linked from the
   // repository and has a React of its own for its tests.
   resolve: { dedupe: ["react", "react-dom"] },
   oxc: { jsx: { runtime: "automatic" } },

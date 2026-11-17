@@ -2,10 +2,10 @@
 
 use std::sync::Arc;
 
-use seam_params::{
+use hapto_params::{
     DeclError, Kind, ParamDecl, ParamSet, ParamSetBuilder, Range, RangeError, Reading,
 };
-use seam_testkit::sync::Latch;
+use hapto_testkit::sync::Latch;
 
 const LABELS: [&str; 3] = ["low", "mid", "high"];
 
@@ -335,15 +335,15 @@ fn a_reader_that_takes_the_count_first_never_sees_an_older_value() {
 fn a_host_id_is_a_fixed_hash_of_the_key() {
     // Hosts save automation against these numbers, so they never
     // change. 32-bit FNV-1a over the key's bytes, the top bit cleared.
-    assert_eq!(seam_params::host_id(""), 0x011C_9DC5);
-    assert_eq!(seam_params::host_id("a"), 0x640C_292C);
-    assert_eq!(seam_params::host_id("gain"), 0x1B54_26FE);
-    assert_eq!(seam_params::host_id("hp.freq"), 0x7741_4BE3);
-    assert_eq!(seam_params::host_id("out.gain"), 0x492F_4B1C);
+    assert_eq!(hapto_params::host_id(""), 0x011C_9DC5);
+    assert_eq!(hapto_params::host_id("a"), 0x640C_292C);
+    assert_eq!(hapto_params::host_id("gain"), 0x1B54_26FE);
+    assert_eq!(hapto_params::host_id("hp.freq"), 0x7741_4BE3);
+    assert_eq!(hapto_params::host_id("out.gain"), 0x492F_4B1C);
     let set = build(&[param("gain", ""), param("hp.freq", "Bands")]);
     for id in set.ids() {
         let host = set.host_id(id);
-        assert_eq!(host, seam_params::host_id(set.decl(id).key));
+        assert_eq!(host, hapto_params::host_id(set.decl(id).key));
         assert!(host <= 0x7FFF_FFFF, "VST3 ids are 31 bits");
         assert_eq!(set.by_host_id(host), Some(id));
     }
@@ -354,7 +354,7 @@ fn a_host_id_is_a_fixed_hash_of_the_key() {
 fn a_key_whose_host_id_is_reserved_or_taken_is_refused() {
     // "phgz" hashes into the VST3 exporter's proxy range, and
     // "kmtzx" and "k31cd" share one id.
-    assert!(seam_params::RESERVED_HOST_IDS.contains(&seam_params::host_id("phgz")));
+    assert!(hapto_params::RESERVED_HOST_IDS.contains(&hapto_params::host_id("phgz")));
     let mut builder = ParamSetBuilder::new();
     assert_eq!(
         builder.add(param("phgz", "")).err(),
@@ -377,14 +377,14 @@ fn a_key_whose_host_id_is_reserved_or_taken_is_refused() {
 fn the_reserved_range_is_pinned_at_both_edges() {
     // Keys hashing just inside each edge are refused, and one just
     // below the range is accepted.
-    assert_eq!(seam_params::RESERVED_HOST_IDS, 0x7FFF_0000..=0x7FFF_FFFF);
+    assert_eq!(hapto_params::RESERVED_HOST_IDS, 0x7FFF_0000..=0x7FFF_FFFF);
     for (key, id) in [("ata7n", 0x7FFF_002E), ("ctdnh", 0x7FFF_FF84)] {
-        assert_eq!(seam_params::host_id(key), id);
+        assert_eq!(hapto_params::host_id(key), id);
         assert_eq!(
             ParamSetBuilder::new().add(param(key, "")).err(),
             Some(DeclError::ReservedHostId(key))
         );
     }
-    assert_eq!(seam_params::host_id("b8rld"), 0x7FFE_FF07);
+    assert_eq!(hapto_params::host_id("b8rld"), 0x7FFE_FF07);
     assert!(ParamSetBuilder::new().add(param("b8rld", "")).is_ok());
 }

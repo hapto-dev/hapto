@@ -13,8 +13,8 @@ use std::path::Path;
 /// The environment variable that rewrites committed files instead of checking
 /// them.
 ///
-/// Empty or `0` counts as unset, so `SEAM_BLESS=0` checks as a plain run does.
-pub const BLESS_VAR: &str = "SEAM_BLESS";
+/// Empty or `0` counts as unset, so `HAPTO_BLESS=0` checks as a plain run does.
+pub const BLESS_VAR: &str = "HAPTO_BLESS";
 
 /// The environment variable CI services set.
 ///
@@ -36,11 +36,11 @@ pub const CI_VAR: &str = "CI";
 /// # Examples
 ///
 /// ```
-/// use seam_testkit::drift::check_generated;
+/// use hapto_testkit::drift::check_generated;
 ///
 /// # fn main() -> std::io::Result<()> {
 /// // The committed file, as a checkout on Windows may hold it.
-/// let path = std::env::temp_dir().join("seam-testkit-drift-example.txt");
+/// let path = std::env::temp_dir().join("hapto-testkit-drift-example.txt");
 /// std::fs::write(&path, "export const VERSION = 1;\r\n")?;
 ///
 /// // Line endings compare as LF; a real gate generates the text from the code.

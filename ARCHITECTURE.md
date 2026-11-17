@@ -1,6 +1,6 @@
 # Architecture
 
-Seam is a Rust framework for audio plugins. A plugin declares each parameter
+Hapto is a Rust framework for audio plugins. A plugin declares each parameter
 once, and gets automation, undo, MIDI learn, saved state and a typed React page
 from that one declaration. Hosts see the plugin through an
 [exporter](docs/glossary.md#exporter): VST3 natively, and AU, AUv3, AAX and
@@ -14,9 +14,9 @@ is `params`, `undo`, `session`, `learn` and `ump`. The projections are `bridge`
 adapter) sit on top and may depend on both. Each rule below links the entry of
 [the decision record](docs/decisions.md) that says why it exists,
 where the record has one, and [docs/decision-index.md](docs/decision-index.md)
-leads from each decision to its code. A word Seam coins links to [the
+leads from each decision to its code. A word Hapto coins links to [the
 glossary](docs/glossary.md) where it first appears. To write a plugin before
-reading how Seam works inside, start with
+reading how Hapto works inside, start with
 [docs/first-plugin.md](docs/first-plugin.md).
 
 ## Codemap
@@ -41,13 +41,13 @@ reading how Seam works inside, start with
   reserves are in `reservation.rs`, and the section it saves is
   `mappings/session.rs`.
 - `crates/ump`: Universal MIDI Packets, the event list MIDI travels in.
-- `crates/host`: the `Plugin` trait, the [parts](docs/glossary.md#parts) Seam
+- `crates/host`: the `Plugin` trait, the [parts](docs/glossary.md#parts) Hapto
   builds for each instance (`parts.rs`, with the parameters a plugin makes at
   run time in `parts/run_time.rs`), the saved block (`SavedState`), which
   keeps those parameters by [path](docs/glossary.md#path)
   (`state/run_time.rs`), and
   the exporters behind features: `vst3`, and `cabi` (the C interface and
-  generated `include/seam.h`). The exporters are thin shells over one core,
+  generated `include/hapto.h`). The exporters are thin shells over one core,
   `engine`, which holds the plugin's life and builds with no feature. CLAP is
   planned, not built. A plugin's editor is an `Editor` (`editor.rs`), which
   knows no toolkit; `engine/editor.rs` drives one for each view a host asks
@@ -73,8 +73,8 @@ reading how Seam works inside, start with
   client holds writes made before the native side answers in `src/held.ts`,
   and limits a position to 0 to 1, which the bridge's decoding refuses
   outside.
-- `adapters/juce`: the generic JUCE adapter: any Seam plugin, through `seam.h`,
-  as a JUCE plugin.
+- `adapters/juce`: the generic JUCE adapter: any Hapto plugin, through
+  `hapto.h`, as a JUCE plugin.
 - `xtask`: `cargo xtask gen` writes every generated file; each has a drift gate.
   `cargo xtask bundle` builds a plugin crate's page and module and lays out its
   VST3 bundle.
@@ -85,7 +85,7 @@ reading how Seam works inside, start with
 Read these in order to change what happens to a block.
 
 1. A plugin implements `Plugin` (`crates/host/src/plugin.rs`): its `INFO`, its
-   `Params`, `new`, which takes the parameters and the `Parts` Seam built from
+   `Params`, `new`, which takes the parameters and the `Parts` Hapto built from
    them (`parts.rs`), and `activate`, which builds the `Processor`.
    `examples/eq/src/lib.rs` is a whole one, `examples/eq/src/params.rs` its
    parameters; `examples/gain/src/lib.rs` adds undo, a saved value and learn.
@@ -166,7 +166,7 @@ which audio-path modules deny the lints that refuse indexing, `unwrap` and
 unchecked arithmetic.
 
 The engine's items are `pub(crate)`, so `cargo doc` hides them. Read their docs
-with `cargo doc -p seam-host --features vst3,cabi,test-host
+with `cargo doc -p hapto-host --features vst3,cabi,test-host
 --document-private-items --open`.
 
 ## Invariants
@@ -198,7 +198,7 @@ with `cargo doc -p seam-host --features vst3,cabi,test-host
   each sees and what is left to review ([checking the audio-thread
   rule][mark]).
 - A saved block names two versions, each its own: `seamStateVersion` for the
-  frame Seam gives it, and `pluginStateVersion` for the plugin's schema. A save
+  frame Hapto gives it, and `pluginStateVersion` for the plugin's schema. A save
   writes the higher of the block's and the build's for each, and keeps the keys
   it does not read, so a block a newer build wrote reaches it again whole
   ([the saved block's two versions][versions], [upgrading an older
@@ -212,11 +212,11 @@ with `cargo doc -p seam-host --features vst3,cabi,test-host
 - The audio thread never lets a store go. A typed parameter's drop asserts it
   is off the audio thread in a debug build, and a learn table that routes to
   a store drops on the UI thread.
-- Generated files (the page's protocol types, its test parameter map, `seam.h`,
+- Generated files (the page's protocol types, its test parameter map, `hapto.h`,
   the example EQ's JUCE settings) are committed and compared byte for byte in
   CI ([what runs the generator][generator], [keeping the header true][header]).
 - A page in a plugin's window exists on Windows only: elsewhere
-  `seam-webview` offers no editor, and a host shows its own controls ([where
+  `hapto-webview` offers no editor, and a host shows its own controls ([where
   the WebView pieces live][webview]). Absent: no exporter delivers MIDI events
   yet ([the VST3 exporter's shape][vst3]).
 
@@ -255,8 +255,8 @@ with `cargo doc -p seam-host --features vst3,cabi,test-host
   bound to one thread or lent call by call. Lent state holds nothing that is
   not `Send`: such a plugin keeps no parts, and the engine keeps no driver and
   no timer for it. The rule in full is on `Engine`
-  (`engine/mod.rs`) for Seam's code, on `Plugin` (`plugin.rs`) for plugin
-  authors, and on `SeamPlugin` in `seam.h` for C users ([whether a plugin must
+  (`engine/mod.rs`) for Hapto's code, on `Plugin` (`plugin.rs`) for plugin
+  authors, and on `HaptoPlugin` in `hapto.h` for C users ([whether a plugin must
   be Send][send], [the VST3 exporter's shape][vst3], [the C interface][cabi]).
 
 ## Decided, not built
@@ -266,7 +266,7 @@ with `cargo doc -p seam-host --features vst3,cabi,test-host
   standalone app. Open: that macOS WebKit inside a host process loads plain
   `http://127.0.0.1` is not verified.
 - MIDI-CI: a VST3 host speaks it for the plugin, which states what it supports
-  through VST3's interfaces. Everywhere else a core crate, `seam-ci`, answers
+  through VST3's interfaces. Everywhere else a core crate, `hapto-ci`, answers
   with UMP in and out, SysEx7 included, through the C interface and CLAP. Open:
   the SysEx manufacturer ID its identity needs.
 - Learn in VST3: hidden proxy parameters in a reserved id range carry
@@ -279,7 +279,7 @@ with `cargo doc -p seam-host --features vst3,cabi,test-host
   exporter must define its own.
 - Learn into a plain value: its target writes with `Origin::Learn` and opens
   no gesture, so a learned value is never an undo step and the target's
-  `held` is `Value::gesture_open`. Seam has no ready-made target for one.
+  `held` is `Value::gesture_open`. Hapto has no ready-made target for one.
 - Handing the audio half of an owner of parameters made at run time to the
   processor and back. It keys an owner by its stores, not the plugin's id, and
   follows the plugin's list, so undo, redo and a load reach the audio side. A

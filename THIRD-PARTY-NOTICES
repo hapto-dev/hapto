@@ -1,6 +1,6 @@
 Third-party notices
 
-A plugin built with Seam carries code from the works below. Each notice is
+A plugin built with Hapto carries code from the works below. Each notice is
 quoted from the work as it is used here.
 
 -------------------------------------------------------------------------------
@@ -52,7 +52,7 @@ licence its `LICENSE` file carries:
 webview2-com and webview2-com-sys (Bill Avery), version 0.39.1
 -------------------------------------------------------------------------------
 
-A plugin whose editor is a page (`seam-webview`, through wry) carries these
+A plugin whose editor is a page (`hapto-webview`, through wry) carries these
 crates' WebView2 bindings on Windows. Their notice, as the project's
 `LICENSE` gives it:
 

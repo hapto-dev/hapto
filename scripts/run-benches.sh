@@ -19,7 +19,7 @@ TOLERANCE="${TOLERANCE:-2%}"
 # Every workspace crate with a bench target named iai runs it. The example EQ
 # is built without its VST3 module, which does not build on Linux.
 bench() {
-    cargo bench --locked --workspace --no-default-features --features seam-example-eq/cabi --bench iai -- "$@"
+    cargo bench --locked --workspace --no-default-features --features hapto-example-eq/cabi --bench iai -- "$@"
 }
 
 base="${1:-}"

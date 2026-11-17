@@ -21,7 +21,7 @@ use crate::field::Field;
 /// # Examples
 ///
 /// ```
-/// use seam_learn::{Control, Source};
+/// use hapto_learn::{Control, Source};
 ///
 /// // The kinds a binding can listen to.
 /// let knob = Control::Cc(74);
@@ -110,7 +110,7 @@ impl Control {
 /// # Examples
 ///
 /// ```
-/// use seam_learn::{Control, Source};
+/// use hapto_learn::{Control, Source};
 ///
 /// // Controller 7 on the second channel of the first group only.
 /// let source = Source { control: Control::Cc(7), group: Some(0), channel: Some(1) };
@@ -134,7 +134,7 @@ impl Source {
     /// # Examples
     ///
     /// ```
-    /// use seam_learn::{Control, Source};
+    /// use hapto_learn::{Control, Source};
     ///
     /// let source = Source::any(Control::Cc(7));
     /// assert_eq!((source.group, source.channel), (None, None));
@@ -153,7 +153,7 @@ impl Source {
     /// # Examples
     ///
     /// ```
-    /// use seam_learn::{Control, Source};
+    /// use hapto_learn::{Control, Source};
     ///
     /// // A hand-edited number is checked before it becomes a mapping.
     /// let source = Source { control: Control::Cc(7), group: None, channel: Some(16) };

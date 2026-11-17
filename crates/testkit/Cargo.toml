@@ -1,6 +1,6 @@
 [package]
-name = "seam-testkit"
-description = "Test tools shared by the Seam crates: the allocation gate, latches, expected contract assertions and the drift check"
+name = "hapto-testkit"
+description = "Test tools shared by the Hapto crates: the allocation gate, latches, expected contract assertions and the drift check"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

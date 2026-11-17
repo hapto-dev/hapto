@@ -15,7 +15,7 @@ use crate::Event;
 /// # Examples
 ///
 /// ```
-/// use seam_ump::packet_words;
+/// use hapto_ump::packet_words;
 ///
 /// assert_eq!(packet_words(0x2), Some(1)); // MIDI 1.0 channel voice
 /// assert_eq!(packet_words(0x4), Some(2)); // MIDI 2.0 channel voice
@@ -38,7 +38,7 @@ pub const fn packet_words(message_type: u8) -> Option<usize> {
 /// # Examples
 ///
 /// ```
-/// use seam_ump::Packets;
+/// use hapto_ump::Packets;
 ///
 /// // A MIDI 2.0 note-on is two words; the stream has only its first.
 /// let mut packets = Packets::new(&[0x4090_3C00], 0);
@@ -78,7 +78,7 @@ impl std::error::Error for Truncated {}
 /// # Examples
 ///
 /// ```
-/// use seam_ump::Packets;
+/// use hapto_ump::Packets;
 ///
 /// // A MIDI 1.0 note-on, then a MIDI 2.0 note-on cut after its first word.
 /// let stream = [0x2090_3C7F, 0x4090_3C00];
@@ -104,7 +104,7 @@ impl<'a> Packets<'a> {
 impl Iterator for Packets<'_> {
     type Item = Result<Event, Truncated>;
 
-    #[cfg_attr(seam_rtsan, sanitize(realtime = "nonblocking"))]
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     fn next(&mut self) -> Option<Self::Item> {
         let first = *self.words.first()?;
         let message_type = (first >> 28) as u8;

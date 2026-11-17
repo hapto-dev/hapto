@@ -57,18 +57,18 @@ fn metadata(packages: &serde_json::Value) -> serde_json::Value {
     serde_json::json!({ "target_directory": "/w/target", "packages": packages })
 }
 
-fn package(kinds: &[&str], seam: Option<&str>) -> serde_json::Value {
+fn package(kinds: &[&str], hapto: Option<&str>) -> serde_json::Value {
     let mut package = serde_json::json!({
-        "name": "seam-example-gain",
+        "name": "hapto-example-gain",
         "manifest_path": "/w/examples/gain/Cargo.toml",
         "targets": [
             { "name": "guide", "kind": ["test"] },
-            { "name": "seam_example_gain", "kind": kinds },
+            { "name": "hapto_example_gain", "kind": kinds },
         ],
         "metadata": null,
     });
-    if let Some(name) = seam {
-        package["metadata"] = serde_json::json!({ "seam": { "name": name } });
+    if let Some(name) = hapto {
+        package["metadata"] = serde_json::json!({ "hapto": { "name": name } });
     }
     package
 }
@@ -77,14 +77,14 @@ fn package(kinds: &[&str], seam: Option<&str>) -> serde_json::Value {
 fn a_plugin_crate_is_found_in_the_metadata() {
     let data = metadata(&serde_json::json!([package(
         &["cdylib", "rlib"],
-        Some("Seam Example Gain")
+        Some("Hapto Example Gain")
     )]));
-    let (found, target) = plugin(&data, "seam-example-gain").expect("a plugin");
+    let (found, target) = plugin(&data, "hapto-example-gain").expect("a plugin");
     assert_eq!(
         found,
         Plugin {
-            name: "Seam Example Gain".into(),
-            lib: "seam_example_gain".into(),
+            name: "Hapto Example Gain".into(),
+            lib: "hapto_example_gain".into(),
             dir: PathBuf::from("/w/examples/gain"),
         }
     );
@@ -93,20 +93,20 @@ fn a_plugin_crate_is_found_in_the_metadata() {
 
 #[test]
 fn a_crate_that_is_no_plugin_is_refused() {
-    let gain = package(&["cdylib", "rlib"], Some("Seam Example Gain"));
+    let gain = package(&["cdylib", "rlib"], Some("Hapto Example Gain"));
     let data = metadata(&serde_json::json!([gain]));
     assert!(
-        plugin(&data, "seam-example-eq").is_err(),
+        plugin(&data, "hapto-example-eq").is_err(),
         "not in the workspace"
     );
     let no_cdylib = metadata(&serde_json::json!([package(&["rlib"], Some("Gain"))]));
     assert!(
-        plugin(&no_cdylib, "seam-example-gain").is_err(),
+        plugin(&no_cdylib, "hapto-example-gain").is_err(),
         "no module"
     );
     let no_name = metadata(&serde_json::json!([package(&["cdylib"], None)]));
-    assert!(plugin(&no_name, "seam-example-gain").is_err(), "no name");
-    assert!(plugin(&serde_json::json!({}), "seam-example-gain").is_err());
+    assert!(plugin(&no_name, "hapto-example-gain").is_err(), "no name");
+    assert!(plugin(&serde_json::json!({}), "hapto-example-gain").is_err());
 }
 
 #[test]
