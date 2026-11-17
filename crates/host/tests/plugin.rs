@@ -95,7 +95,7 @@ fn a_plugin_owning_main_thread_state_saves_and_loads_from_another_thread() {
         Arc::ptr_eq(saved.set(), plugin.parts.set()),
         "one set: the host's, the saved block's and the plugin's"
     );
-    let block = json!({"seamStateVersion": 1, "parameters": {"on": false}}).to_string();
+    let block = json!({"haptoStateVersion": 1, "parameters": {"on": false}}).to_string();
     let bytes = std::thread::scope(|scope| {
         scope
             .spawn(|| {
@@ -222,7 +222,7 @@ fn one_tick_applies_a_restore_saves_a_learned_mapping_and_records_a_gesture() {
 
     // A host's load: the session applies at the next tick.
     let block = json!({
-        "seamStateVersion": 1,
+        "haptoStateVersion": 1,
         "parameters": {},
         "extra": {"zoom": 2.0},
     })

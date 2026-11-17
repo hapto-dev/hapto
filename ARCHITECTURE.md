@@ -225,7 +225,7 @@ with `cargo doc -p hapto-host --features vst3,cabi,test-host
   [testing.md](docs/testing.md#2-the-audio-path-does-not-allocate) says what
   each sees and what is left to review ([checking the audio-thread
   rule][mark]).
-- A saved block names two versions, each its own: `seamStateVersion` for the
+- A saved block names two versions, each its own: `haptoStateVersion` for the
   frame Hapto gives it, and `pluginStateVersion` for the plugin's schema. A save
   writes the higher of the block's and the build's for each, and keeps the keys
   it does not read, so a block a newer build wrote reaches it again whole

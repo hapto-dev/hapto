@@ -93,7 +93,7 @@ fn a_block_is_version_parameters_extra_in_that_order_with_each_value_typed_by_ki
     assert_eq!(
         text,
         format!(
-            "{{\"seamStateVersion\":1,\"pluginStateVersion\":0,\"parameters\":{{\"gain\":{gain},\
+            "{{\"haptoStateVersion\":1,\"pluginStateVersion\":0,\"parameters\":{{\"gain\":{gain},\
              \"on\":false,\"steps\":2.0,\"freq\":1000.0,\"mode\":2}}}}"
         )
     );
@@ -136,22 +136,22 @@ fn a_block_that_is_not_recognised_changes_nothing_at_all() {
     let rig = rig();
     rig.session.restore(Some(&json!({"kept": "x"})));
     let before = (rig.changes(), rig.clock.stamp(), rig.session.save());
-    let bom = b"\xef\xbb\xbf{\"seamStateVersion\":1,\"parameters\":{}}".to_vec();
-    let trailing = b"{\"seamStateVersion\":1,\"parameters\":{}} x".to_vec();
+    let bom = b"\xef\xbb\xbf{\"haptoStateVersion\":1,\"parameters\":{}}".to_vec();
+    let trailing = b"{\"haptoStateVersion\":1,\"parameters\":{}} x".to_vec();
     for block in [
         b"".to_vec(),
         vec![0, 159, 146, 150],
         b"not json".to_vec(),
         b"[1, 2]".to_vec(),
         br#"{"parameters": {}}"#.to_vec(),
-        br#"{"seamStateVersion": "1", "parameters": {}}"#.to_vec(),
-        br#"{"seamStateVersion": 0, "parameters": {}}"#.to_vec(),
-        br#"{"seamStateVersion": 1.5, "parameters": {}}"#.to_vec(),
-        br#"{"seamStateVersion": 1, "parameters": []}"#.to_vec(),
-        br#"{"seamStateVersion": 1, "pluginStateVersion": "1", "parameters": {}}"#.to_vec(),
-        br#"{"seamStateVersion": 1, "pluginStateVersion": -1, "parameters": {}}"#.to_vec(),
-        br#"{"seamStateVersion": 1, "pluginStateVersion": 0.5, "parameters": {}}"#.to_vec(),
-        br#"{"seamStateVersion": 1, "pluginStateVersion": null, "parameters": {}}"#.to_vec(),
+        br#"{"haptoStateVersion": "1", "parameters": {}}"#.to_vec(),
+        br#"{"haptoStateVersion": 0, "parameters": {}}"#.to_vec(),
+        br#"{"haptoStateVersion": 1.5, "parameters": {}}"#.to_vec(),
+        br#"{"haptoStateVersion": 1, "parameters": []}"#.to_vec(),
+        br#"{"haptoStateVersion": 1, "pluginStateVersion": "1", "parameters": {}}"#.to_vec(),
+        br#"{"haptoStateVersion": 1, "pluginStateVersion": -1, "parameters": {}}"#.to_vec(),
+        br#"{"haptoStateVersion": 1, "pluginStateVersion": 0.5, "parameters": {}}"#.to_vec(),
+        br#"{"haptoStateVersion": 1, "pluginStateVersion": null, "parameters": {}}"#.to_vec(),
         bom,
         trailing,
     ] {
@@ -170,7 +170,7 @@ fn a_recognised_block_assigns_every_parameter_whatever_was_there_before() {
     // anything else snaps; a newer version loads best-effort.
     let rig = rig();
     rig.write("gain", 12.0);
-    let block = json!({"seamStateVersion": 7, "newerRoot": true, "parameters": {
+    let block = json!({"haptoStateVersion": 7, "newerRoot": true, "parameters": {
         "freq": "loud",
         "on": false,
         "mode": 1.6,
@@ -190,11 +190,11 @@ fn a_recognised_block_assigns_every_parameter_whatever_was_there_before() {
 fn unknown_keys_are_kept_saved_after_the_declared_and_replaced_by_the_next_load() {
     // A newer build's keys survive a load and a save.
     let rig = rig();
-    let block = json!({"seamStateVersion": 1, "parameters": {"newer": 3.5, "gain": 1.0}});
+    let block = json!({"haptoStateVersion": 1, "parameters": {"newer": 3.5, "gain": 1.0}});
     assert!(rig.state.load(block.to_string().as_bytes()).is_ok());
     let text = String::from_utf8(rig.state.save()).expect("UTF-8");
     assert!(text.contains(",\"mode\":1,\"newer\":3.5}"), "{text}");
-    let block = json!({"seamStateVersion": 1, "parameters": {"other": false}});
+    let block = json!({"haptoStateVersion": 1, "parameters": {"other": false}});
     assert!(rig.state.load(block.to_string().as_bytes()).is_ok());
     let saved = rig.saved();
     assert_eq!(saved["parameters"].get("newer"), None);
@@ -205,13 +205,13 @@ fn unknown_keys_are_kept_saved_after_the_declared_and_replaced_by_the_next_load(
 fn unknown_top_level_keys_are_kept_saved_after_extra_in_key_order_and_replaced_by_the_next_load() {
     // A newer build's top-level content survives the version a save keeps.
     let rig = rig();
-    let block = br#"{"seamStateVersion":2,"parameters":{"gain":3},"future":{"x":1},
+    let block = br#"{"haptoStateVersion":2,"parameters":{"gain":3},"future":{"x":1},
         "extra":{"notes":"n"},"another":[true]}"#;
     assert!(rig.state.load(block).is_ok());
     let text = String::from_utf8(rig.state.save()).expect("UTF-8");
     assert!(
         text.starts_with(
-            r#"{"seamStateVersion":2,"pluginStateVersion":0,"parameters":{"gain":3.0,"#
+            r#"{"haptoStateVersion":2,"pluginStateVersion":0,"parameters":{"gain":3.0,"#
         ),
         "{text}"
     );
@@ -226,14 +226,18 @@ fn unknown_top_level_keys_are_kept_saved_after_extra_in_key_order_and_replaced_b
     assert_eq!(other.state.save(), text.as_bytes());
 
     // The next load replaces what was kept, here with nothing.
-    let block = json!({"seamStateVersion": 1, "parameters": {}});
+    let block = json!({"haptoStateVersion": 1, "parameters": {}});
     assert!(rig.state.load(block.to_string().as_bytes()).is_ok());
     let saved = rig.saved();
     assert_eq!(
         saved
             .as_object()
             .map(|root| root.keys().map(String::as_str).collect::<Vec<_>>()),
-        Some(vec!["parameters", "pluginStateVersion", "seamStateVersion"])
+        Some(vec![
+            "haptoStateVersion",
+            "parameters",
+            "pluginStateVersion"
+        ])
     );
 }
 
@@ -277,7 +281,7 @@ fn parameters_are_assigned_before_the_session_applies_extra() {
         saw: Cell::new(None),
     }));
     let _reads = ui.register("reads", &reads).expect("free");
-    let block = json!({"seamStateVersion": 1, "parameters": {"gain": -6.0},
+    let block = json!({"haptoStateVersion": 1, "parameters": {"gain": -6.0},
                        "extra": {"reads": "x"}});
     assert!(state.load(block.to_string().as_bytes()).is_ok());
     assert!(history.is_empty(), "the load cleared undo");
@@ -294,10 +298,10 @@ fn a_save_racing_loads_writes_one_block_or_the_other_never_a_mix() {
     // both versions and in the keys a save keeps too, so a save that paired
     // one load's versions with another's keys would show.
     let rig = rig();
-    let a = json!({"seamStateVersion": 1, "parameters": {"gain": -6.0, "zzA": 1},
+    let a = json!({"haptoStateVersion": 1, "parameters": {"gain": -6.0, "zzA": 1},
                    "extra": {"tag": 1}, "olderA": 1})
     .to_string();
-    let b = json!({"seamStateVersion": 3, "pluginStateVersion": 5,
+    let b = json!({"haptoStateVersion": 3, "pluginStateVersion": 5,
                    "parameters": {"gain": 6.0, "zzB": 2},
                    "extra": {"tag": 2}, "olderB": 2})
     .to_string();
@@ -365,7 +369,7 @@ fn parameters_land_before_a_participant_applies_while_the_ui_thread_ticks() {
         let value = (round % 2 * 50 + 25) as f32;
         let parameters: serde_json::Map<String, serde_json::Value> =
             keys.iter().map(|&key| (key.into(), json!(value))).collect();
-        let block = json!({"seamStateVersion": 1, "parameters": parameters,
+        let block = json!({"haptoStateVersion": 1, "parameters": parameters,
                            "extra": {"sees": round}})
         .to_string();
         std::thread::scope(|scope| {
@@ -392,9 +396,9 @@ fn parameters_land_before_a_participant_applies_while_the_ui_thread_ticks() {
 fn a_load_with_no_unknown_keys_empties_the_kept_set() {
     // A load replaces the kept set.
     let rig = rig();
-    let block = json!({"seamStateVersion": 1, "parameters": {"newer": 1}});
+    let block = json!({"haptoStateVersion": 1, "parameters": {"newer": 1}});
     assert!(rig.state.load(block.to_string().as_bytes()).is_ok());
-    let block = json!({"seamStateVersion": 1, "parameters": {"gain": 1}});
+    let block = json!({"haptoStateVersion": 1, "parameters": {"gain": 1}});
     assert!(rig.state.load(block.to_string().as_bytes()).is_ok());
     assert_eq!(rig.saved()["parameters"].get("newer"), None);
 }
@@ -418,7 +422,7 @@ fn a_load_marks_the_clock_every_history_of_the_set_reads() {
     let rig = rig();
     assert!(rig.session.uses(&rig.set));
     let before = rig.clock.stamp().stored();
-    let block = json!({"seamStateVersion": 1, "parameters": {"gain": 1}});
+    let block = json!({"haptoStateVersion": 1, "parameters": {"gain": 1}});
     assert!(rig.state.load(block.to_string().as_bytes()).is_ok());
     let writes = rig.set.len() as u64;
     assert_eq!(
@@ -439,7 +443,7 @@ fn a_refused_block_says_which_check_it_failed() {
     );
     assert!(matches!(load(b"[1, 2]"), Err(LoadError::NotAnObject)));
     assert!(matches!(
-        load(br#"{"seamStateVersion": 0, "parameters": {}}"#),
+        load(br#"{"haptoStateVersion": 0, "parameters": {}}"#),
         Err(LoadError::BadVersion)
     ));
     assert!(matches!(
@@ -447,15 +451,15 @@ fn a_refused_block_says_which_check_it_failed() {
         Err(LoadError::BadVersion)
     ));
     assert!(matches!(
-        load(br#"{"seamStateVersion": 1, "pluginStateVersion": "1", "parameters": {}}"#),
+        load(br#"{"haptoStateVersion": 1, "pluginStateVersion": "1", "parameters": {}}"#),
         Err(LoadError::BadPluginVersion)
     ));
     assert!(matches!(
-        load(br#"{"seamStateVersion": 1, "parameters": []}"#),
+        load(br#"{"haptoStateVersion": 1, "parameters": []}"#),
         Err(LoadError::BadParameters)
     ));
     assert!(matches!(
-        load(br#"{"seamStateVersion": 1}"#),
+        load(br#"{"haptoStateVersion": 1}"#),
         Err(LoadError::BadParameters)
     ));
 }
@@ -463,7 +467,7 @@ fn a_refused_block_says_which_check_it_failed() {
 #[test]
 fn a_block_past_the_limit_is_refused_unread() {
     let rig = rig();
-    let mut block = br#"{"seamStateVersion": 1, "parameters": {"gain": 6}}"#.to_vec();
+    let mut block = br#"{"haptoStateVersion": 1, "parameters": {"gain": 6}}"#.to_vec();
     assert!(rig.state.load(&block).is_ok());
     block.resize(MAX_STATE_BYTES + 1, b' ');
     rig.write("gain", 1.0);
@@ -478,7 +482,7 @@ fn a_block_past_the_limit_is_refused_unread() {
 fn a_number_past_f64s_range_is_refused_alone_and_the_rest_loads() {
     // The JSON parser refuses a whole text for one such number.
     let rig = rig();
-    let block = br#"{"seamStateVersion": 1, "parameters": {"gain": 1e400, "freq": 500,
+    let block = br#"{"haptoStateVersion": 1, "parameters": {"gain": 1e400, "freq": 500,
         "steps": -2e999}, "extra": {"kept": {"big": 1e400, "text": "1e400", "small": 1e-400}}}"#;
     assert!(rig.state.load(block).is_ok());
     let value = |key| rig.set.value(rig.id(key));
@@ -499,7 +503,7 @@ fn a_number_json_does_not_allow_is_refused_even_past_f64s_range() {
     let rig = rig();
     rig.write("gain", 1.0);
     for number in ["01e400", "1.e400", "-01e400", "1e400.5", ".5e400"] {
-        let block = format!(r#"{{"seamStateVersion": 1, "parameters": {{"gain": {number}}}}}"#);
+        let block = format!(r#"{{"haptoStateVersion": 1, "parameters": {{"gain": {number}}}}}"#);
         assert!(
             matches!(rig.state.load(block.as_bytes()), Err(LoadError::NotJson)),
             "{number}"
@@ -512,23 +516,23 @@ fn a_number_json_does_not_allow_is_refused_even_past_f64s_range() {
 fn a_version_past_u64s_range_or_written_as_a_float_still_loads() {
     let rig = rig();
     for version in ["18446744073709551616", "1.0", "1e3", "2"] {
-        let block = format!(r#"{{"seamStateVersion": {version}, "parameters": {{"freq": 500}}}}"#);
+        let block = format!(r#"{{"haptoStateVersion": {version}, "parameters": {{"freq": 500}}}}"#);
         assert!(rig.state.load(block.as_bytes()).is_ok(), "{version}");
     }
     for version in ["0.5", "1.5", "-1", "1e400"] {
-        let block = format!(r#"{{"seamStateVersion": {version}, "parameters": {{}}}}"#);
+        let block = format!(r#"{{"haptoStateVersion": {version}, "parameters": {{}}}}"#);
         assert!(rig.state.load(block.as_bytes()).is_err(), "{version}");
     }
     // The plugin's version is read the same way, from 0.
     for version in ["18446744073709551616", "0", "0.0", "-0.0", "1e3"] {
         let block = format!(
-            r#"{{"seamStateVersion": 1, "pluginStateVersion": {version}, "parameters": {{}}}}"#
+            r#"{{"haptoStateVersion": 1, "pluginStateVersion": {version}, "parameters": {{}}}}"#
         );
         assert!(rig.state.load(block.as_bytes()).is_ok(), "{version}");
     }
     for version in ["0.5", "-1", "1e400", "true", "[0]"] {
         let block = format!(
-            r#"{{"seamStateVersion": 1, "pluginStateVersion": {version}, "parameters": {{}}}}"#
+            r#"{{"haptoStateVersion": 1, "pluginStateVersion": {version}, "parameters": {{}}}}"#
         );
         assert!(
             matches!(
@@ -609,7 +613,7 @@ fn save_load_save_is_a_fixpoint_for_any_double_in_a_section_or_a_kept_key() {
             .enumerate()
             .map(|(index, &value)| (format!("newer{index}"), json!(value)))
             .collect();
-        let block = json!({"seamStateVersion": 1, "parameters": kept}).to_string();
+        let block = json!({"haptoStateVersion": 1, "parameters": kept}).to_string();
         assert!(first.rig.state.load(block.as_bytes()).is_ok());
         first.ui.tick();
         first.holds.borrow_mut().0 = json!(doubles);
@@ -718,7 +722,7 @@ fn the_largest_capture_saves_a_block_at_the_limit_that_loads_and_one_byte_more_i
         .collect();
     parameters.insert("new\"er\\".into(), json!("\u{e9}\u{1}"));
     parameters.insert("\u{1}x".into(), json!([1, "\""]));
-    let block = json!({"seamStateVersion": u64::MAX, "pluginStateVersion": u64::MAX,
+    let block = json!({"haptoStateVersion": u64::MAX, "pluginStateVersion": u64::MAX,
                        "parameters": parameters,
                        "fut\"ure": ["\\", "\u{2}"], "\u{1f}other": {"k\"": 1}});
     assert!(state.load(block.to_string().as_bytes()).is_ok());
@@ -781,11 +785,11 @@ fn a_block_within_the_limit_that_would_save_back_past_it_is_refused_and_changes_
     // A block of the limit, its parameters left out: written in full, the
     // parameters of a set of 40 once took it to 67,109,343 bytes.
     let rig = rig_of(wide_set(40));
-    let kept = br#"{"seamStateVersion":1,"parameters":{"p3":0.5},"extra":{"a":1},"older":2}"#;
+    let kept = br#"{"haptoStateVersion":1,"parameters":{"p3":0.5},"extra":{"a":1},"older":2}"#;
     assert!(rig.state.load(kept).is_ok());
     let before = everything(&rig);
     let block = padded(
-        r#"{"seamStateVersion":1,"parameters":{},"extra":{"big":""#,
+        r#"{"haptoStateVersion":1,"parameters":{},"extra":{"big":""#,
         MAX_STATE_BYTES,
         r#""}}"#,
     );
@@ -796,7 +800,7 @@ fn a_block_within_the_limit_that_would_save_back_past_it_is_refused_and_changes_
     // A block of 20 MiB whose kept key's numbers lengthen as they are written
     // back, `1e15` as `1000000000000000.0`, once saved 79,691,833 bytes.
     let numbers = vec!["1e15"; 20 * 1024 * 1024 / 5].join(",");
-    let block = format!(r#"{{"seamStateVersion":1,"parameters":{{}},"future":[{numbers}]}}"#);
+    let block = format!(r#"{{"haptoStateVersion":1,"parameters":{{}},"future":[{numbers}]}}"#);
     assert!(block.len() < MAX_STATE_BYTES);
     assert!(matches!(
         rig.state.load(block.as_bytes()),
@@ -904,7 +908,7 @@ fn a_load_sets_its_budget_with_its_sections_so_an_apply_that_grows_is_refused_an
     let grows_registration = ui.register("grows", &grows).expect("free");
     let holds = Rc::new(RefCell::new(Holds(Section::Null)));
     let holds_registration = ui.register("holds", &holds).expect("free");
-    let block = json!({"seamStateVersion": 1, "parameters": {}, "future": text(20 << 20),
+    let block = json!({"haptoStateVersion": 1, "parameters": {}, "future": text(20 << 20),
                        "extra": {"grows": 0, "holds": text(16 << 20)}});
     assert!(rig.state.load(block.to_string().as_bytes()).is_ok());
     ui.tick();
@@ -923,7 +927,7 @@ fn a_load_sets_its_budget_with_its_sections_so_an_apply_that_grows_is_refused_an
 fn the_unknown_keys_a_load_kept_take_their_share_of_the_limit() {
     let first = holding(json!(""));
     let quarter = MAX_STATE_BYTES / 4;
-    let block = json!({"seamStateVersion": 1, "parameters": {"newer": "p".repeat(2 * quarter)},
+    let block = json!({"haptoStateVersion": 1, "parameters": {"newer": "p".repeat(2 * quarter)},
                        "future": "f".repeat(quarter)});
     assert!(first.rig.state.load(block.to_string().as_bytes()).is_ok());
     first.ui.tick();
@@ -937,7 +941,7 @@ fn the_unknown_keys_a_load_kept_take_their_share_of_the_limit() {
     assert!(holding(Section::Null).rig.state.load(&saved).is_ok());
 
     // A load without them gives their room back.
-    let block = json!({"seamStateVersion": 1, "parameters": {}});
+    let block = json!({"haptoStateVersion": 1, "parameters": {}});
     assert!(first.rig.state.load(block.to_string().as_bytes()).is_ok());
     first.ui.tick();
     capture(&first, json!("x".repeat(quarter)));
@@ -948,7 +952,7 @@ fn the_unknown_keys_a_load_kept_take_their_share_of_the_limit() {
 type Reason = Box<dyn std::error::Error + Send + Sync>;
 
 /// The keys of the frame's version and the plugin's.
-const HAPTO: &str = "seamStateVersion";
+const HAPTO: &str = "haptoStateVersion";
 const PLUGIN: &str = "pluginStateVersion";
 
 #[test]
@@ -977,7 +981,7 @@ fn an_older_block_is_migrated_before_it_loads_and_one_that_cannot_be_changes_not
     });
     let value = |key| set.value(set.id(key).expect("declared"));
 
-    let older = br#"{"seamStateVersion": 1, "pluginStateVersion": 1,
+    let older = br#"{"haptoStateVersion": 1, "pluginStateVersion": 1,
         "parameters": {"level": 6, "steps": 9}}"#;
     assert!(state.load(older).is_ok());
     assert_eq!(
@@ -985,7 +989,7 @@ fn an_older_block_is_migrated_before_it_loads_and_one_that_cannot_be_changes_not
         (6.0, 4.5),
         "both steps applied"
     );
-    let current = br#"{"seamStateVersion": 1, "pluginStateVersion": 3,
+    let current = br#"{"haptoStateVersion": 1, "pluginStateVersion": 3,
         "parameters": {"level": 6, "steps": 9}}"#;
     assert!(state.load(current).is_ok());
     assert_eq!(
@@ -1002,7 +1006,7 @@ fn an_older_block_is_migrated_before_it_loads_and_one_that_cannot_be_changes_not
 
     let before = state.save();
     let refused = state
-        .load(br#"{"seamStateVersion": 1, "pluginStateVersion": 2, "parameters": {"gain": 1}}"#);
+        .load(br#"{"haptoStateVersion": 1, "pluginStateVersion": 2, "parameters": {"gain": 1}}"#);
     assert!(
         matches!(refused, Err(LoadError::MigrationFailed(_))),
         "one the migration cannot upgrade is not recognised"
@@ -1043,52 +1047,52 @@ fn hostile_blocks_through_a_migration_keep_every_promise() {
     let kind = |error: &LoadError| std::mem::discriminant(error);
     for (block, refused) in [
         (
-            r#"{"seamStateVersion": 0, "parameters": {}}"#,
+            r#"{"haptoStateVersion": 0, "parameters": {}}"#,
             Some(LoadError::BadVersion),
         ),
         (
-            r#"{"seamStateVersion": 1e400, "parameters": {}}"#,
+            r#"{"haptoStateVersion": 1e400, "parameters": {}}"#,
             Some(LoadError::BadVersion),
         ),
         (
-            r#"{"seamStateVersion": 1, "pluginStateVersion": -1, "parameters": {}}"#,
+            r#"{"haptoStateVersion": 1, "pluginStateVersion": -1, "parameters": {}}"#,
             Some(LoadError::BadPluginVersion),
         ),
         (
-            r#"{"seamStateVersion": 1, "pluginStateVersion": 1e400, "parameters": {}}"#,
+            r#"{"haptoStateVersion": 1, "pluginStateVersion": 1e400, "parameters": {}}"#,
             Some(LoadError::BadPluginVersion),
         ),
         (
-            r#"{"seamStateVersion": 1, "pluginStateVersion": 1, "parameters": 5}"#,
+            r#"{"haptoStateVersion": 1, "pluginStateVersion": 1, "parameters": 5}"#,
             Some(LoadError::BadParameters),
         ),
         (
-            r#"{"seamStateVersion": 1, "pluginStateVersion": 1, "do": "drop", "parameters": {}}"#,
+            r#"{"haptoStateVersion": 1, "pluginStateVersion": 1, "do": "drop", "parameters": {}}"#,
             Some(LoadError::BadParameters),
         ),
         (
-            r#"{"seamStateVersion": 1, "pluginStateVersion": 1, "do": "break", "parameters": {}}"#,
+            r#"{"haptoStateVersion": 1, "pluginStateVersion": 1, "do": "break", "parameters": {}}"#,
             Some(LoadError::BadParameters),
         ),
         (
-            r#"{"seamStateVersion": 1, "pluginStateVersion": 1, "do": "refuse", "parameters": {}}"#,
+            r#"{"haptoStateVersion": 1, "pluginStateVersion": 1, "do": "refuse", "parameters": {}}"#,
             Some(LoadError::MigrationFailed(Reason::from("refused"))),
         ),
         (
-            r#"{"seamStateVersion": 1, "pluginStateVersion": 1, "do": 1e400,
+            r#"{"haptoStateVersion": 1, "pluginStateVersion": 1, "do": 1e400,
                 "parameters": {"gain": [[]]}, "extra": 4}"#,
             None,
         ),
         (
-            r#"{"seamStateVersion": 1, "pluginStateVersion": 1, "do": "versions", "parameters": {}}"#,
+            r#"{"haptoStateVersion": 1, "pluginStateVersion": 1, "do": "versions", "parameters": {}}"#,
             None,
         ),
         (
-            r#"{"seamStateVersion": 1, "pluginStateVersion": 3, "do": "refuse", "parameters": {}}"#,
+            r#"{"haptoStateVersion": 1, "pluginStateVersion": 3, "do": "refuse", "parameters": {}}"#,
             None,
         ),
         (
-            r#"{"seamStateVersion": 9, "do": "refuse", "parameters": {}}"#,
+            r#"{"haptoStateVersion": 9, "do": "refuse", "parameters": {}}"#,
             Some(LoadError::MigrationFailed(Reason::from("refused"))),
         ),
     ] {
@@ -1185,13 +1189,15 @@ fn a_fresh_state_and_one_that_loaded_an_older_block_save_their_own_version() {
     assert_eq!(version_of(&newer.save(), PLUGIN), 2, "fresh");
     assert!(
         newer
-            .load(br#"{"seamStateVersion": 1, "pluginStateVersion": 3, "parameters": {"gain": 1}}"#)
+            .load(
+                br#"{"haptoStateVersion": 1, "pluginStateVersion": 3, "parameters": {"gain": 1}}"#
+            )
             .is_ok()
     );
     assert_eq!(version_of(&newer.save(), PLUGIN), 3, "a newer block's");
     assert!(
         newer
-            .load(br#"{"seamStateVersion": 1, "parameters": {"level": 6}}"#)
+            .load(br#"{"haptoStateVersion": 1, "parameters": {"level": 6}}"#)
             .is_ok()
     );
     assert_eq!(
@@ -1207,7 +1213,7 @@ fn a_fresh_state_and_one_that_loaded_an_older_block_save_their_own_version() {
     let older = build("level", false);
     assert!(
         older
-            .load(br#"{"seamStateVersion": 1, "parameters": {"level": 6}}"#)
+            .load(br#"{"haptoStateVersion": 1, "parameters": {"level": 6}}"#)
             .is_ok()
     );
     assert_eq!(version_of(&older.save(), PLUGIN), 0);
@@ -1224,22 +1230,22 @@ fn each_version_saves_as_the_higher_of_the_blocks_and_this_builds_on_its_own() {
         (version_of(&saved, HAPTO), version_of(&saved, PLUGIN))
     };
     assert_eq!(
-        saved_after(r#"{"seamStateVersion": 7, "pluginStateVersion": 2, "parameters": {}}"#),
+        saved_after(r#"{"haptoStateVersion": 7, "pluginStateVersion": 2, "parameters": {}}"#),
         (json!(7), json!(2)),
         "a newer frame"
     );
     assert_eq!(
-        saved_after(r#"{"seamStateVersion": 1, "pluginStateVersion": 9, "parameters": {}}"#),
+        saved_after(r#"{"haptoStateVersion": 1, "pluginStateVersion": 9, "parameters": {}}"#),
         (json!(1), json!(9)),
         "a newer schema"
     );
     assert_eq!(
-        saved_after(r#"{"seamStateVersion": 7, "parameters": {}}"#),
+        saved_after(r#"{"haptoStateVersion": 7, "parameters": {}}"#),
         (json!(7), json!(2)),
         "a newer frame around an older schema, upgraded"
     );
     assert_eq!(
-        saved_after(r#"{"seamStateVersion": 1, "pluginStateVersion": 1, "parameters": {}}"#),
+        saved_after(r#"{"haptoStateVersion": 1, "pluginStateVersion": 1, "parameters": {}}"#),
         (json!(1), json!(2)),
         "older in both: this build's"
     );
@@ -1258,24 +1264,24 @@ fn the_migration_runs_only_for_a_block_of_an_older_plugin_version_and_gets_that_
     });
     for (block, migrated) in [
         (
-            r#"{"seamStateVersion": 1, "pluginStateVersion": 2, "parameters": {}}"#,
+            r#"{"haptoStateVersion": 1, "pluginStateVersion": 2, "parameters": {}}"#,
             Some(2),
         ),
         (
-            r#"{"seamStateVersion": 1, "pluginStateVersion": 3, "parameters": {}}"#,
+            r#"{"haptoStateVersion": 1, "pluginStateVersion": 3, "parameters": {}}"#,
             None,
         ),
         (
-            r#"{"seamStateVersion": 1, "pluginStateVersion": 4, "parameters": {}}"#,
+            r#"{"haptoStateVersion": 1, "pluginStateVersion": 4, "parameters": {}}"#,
             None,
         ),
         // The frame's version is Hapto's, and says nothing of the plugin's.
         (
-            r#"{"seamStateVersion": 5, "pluginStateVersion": 1, "parameters": {}}"#,
+            r#"{"haptoStateVersion": 5, "pluginStateVersion": 1, "parameters": {}}"#,
             Some(1),
         ),
         (
-            r#"{"seamStateVersion": 5, "pluginStateVersion": 3, "parameters": {}}"#,
+            r#"{"haptoStateVersion": 5, "pluginStateVersion": 3, "parameters": {}}"#,
             None,
         ),
     ] {
@@ -1300,12 +1306,12 @@ fn a_block_without_a_plugin_version_is_at_0() {
     });
     assert!(
         state
-            .load(br#"{"seamStateVersion": 1, "parameters": {}}"#)
+            .load(br#"{"haptoStateVersion": 1, "parameters": {}}"#)
             .is_ok()
     );
     assert!(
         state
-            .load(br#"{"seamStateVersion": 1, "pluginStateVersion": 0, "parameters": {}}"#)
+            .load(br#"{"haptoStateVersion": 1, "pluginStateVersion": 0, "parameters": {}}"#)
             .is_ok()
     );
     assert_eq!(*seen.lock().expect("unpoisoned"), [0, 0], "the same as 0");
@@ -1314,7 +1320,7 @@ fn a_block_without_a_plugin_version_is_at_0() {
     assert!(
         plain
             .state
-            .load(br#"{"seamStateVersion": 1, "parameters": {}}"#)
+            .load(br#"{"haptoStateVersion": 1, "parameters": {}}"#)
             .is_ok()
     );
     assert_eq!(version_of(&plain.state.save(), PLUGIN), 0);
@@ -1337,13 +1343,13 @@ fn a_migrations_error_fails_the_load_with_its_reason_and_changes_nothing() {
     set.program().load().restore(gain, 7.0);
     let before = (7.0, state.save(), set.clock().reader().stamp());
 
-    let result = state.load(br#"{"seamStateVersion": 1, "parameters": {"gain": 1}}"#);
+    let result = state.load(br#"{"haptoStateVersion": 1, "parameters": {"gain": 1}}"#);
     let Err(LoadError::MigrationFailed(reason)) = result else {
         panic!("{result:?}");
     };
     assert_eq!(reason.to_string(), "no whole steps");
 
-    let result = state.load(br#"{"seamStateVersion": 1, "parameters": {"steps": 300}}"#);
+    let result = state.load(br#"{"haptoStateVersion": 1, "parameters": {"steps": 300}}"#);
     let Err(error) = result else {
         panic!("loaded");
     };
@@ -1371,12 +1377,12 @@ fn a_save_writes_both_versions_first_whatever_order_the_block_held_them_in() {
     // nothing in the save.
     let rig = rig();
     let block = br#"{"zz": 1, "extra": {"notes": "n"}, "pluginStateVersion": 4,
-        "parameters": {"gain": 3}, "aa": [0], "seamStateVersion": 2}"#;
+        "parameters": {"gain": 3}, "aa": [0], "haptoStateVersion": 2}"#;
     assert!(rig.state.load(block).is_ok());
     let text = String::from_utf8(rig.state.save()).expect("UTF-8");
     assert!(
         text.starts_with(
-            r#"{"seamStateVersion":2,"pluginStateVersion":4,"parameters":{"gain":3.0,"#
+            r#"{"haptoStateVersion":2,"pluginStateVersion":4,"parameters":{"gain":3.0,"#
         ),
         "{text}"
     );

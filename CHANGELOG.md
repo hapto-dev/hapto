@@ -16,8 +16,9 @@ exporter.
 - The project was named Seam until this release, and is now Hapto: every
   crate, Rust path, C interface name, CMake function and variable, environment
   variable, the manifest's `[package.metadata.hapto]` table and the page
-  package, now `@hapto/page`. A saved block keeps its `seamStateVersion` key,
-  so blocks saved before the rename still load.
+  package, now `@hapto/page`. The saved block's frame key is now
+  `haptoStateVersion`, so a block saved before the rename is refused as one
+  with no version.
 - **Breaking.** A processor names its main bus's channels as a type,
   `Processor::Layout`: a `Bus<IN, OUT>` of up to 16 channels each way, with
   `Mono`, `Stereo`, `StereoOut`, `MonoToStereo` and `NoAudio` for the common

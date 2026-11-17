@@ -610,7 +610,7 @@ fn state_round_trips_through_streams_on_any_thread() {
 
     let (plugin, _, _) = host.interfaces();
     let plugin: ComPtr<IComponent> = plugin.clone();
-    let block = br#"{"seamStateVersion": 1, "parameters": {"gain": -6}}"#;
+    let block = br#"{"haptoStateVersion": 1, "parameters": {"gain": -6}}"#;
     std::thread::scope(|scope| {
         scope.spawn(|| {
             let faults = thread_faults();
@@ -1691,7 +1691,7 @@ impl Plugin for WithSession {
 fn the_timer_ticks_the_plugin_and_a_host_load_reaches_its_session() {
     let host = TestHost::<WithSession>::with_timer();
     assert!(host.pump_until(|| TICKS.with(Cell::get) >= 3), "ticked");
-    let block = br#"{"seamStateVersion": 1, "parameters": {}, "extra": {"kept": 42}}"#;
+    let block = br#"{"haptoStateVersion": 1, "parameters": {}, "extra": {"kept": 42}}"#;
     assert_eq!(host.load(block), Ok(()));
     assert!(
         host.pump_until(|| KEPT.with(|kept| *kept.borrow() == Some(serde_json::json!(42)))),
@@ -2030,7 +2030,7 @@ impl Plugin for Stuck {
 #[test]
 fn the_first_refused_load_writes_the_reason_and_is_no_fault_through_the_vst3_exporter() {
     let host = TestHost::<Stuck>::new();
-    let older = br#"{"seamStateVersion":1,"pluginStateVersion":0,"parameters":{}}"#;
+    let older = br#"{"haptoStateVersion":1,"pluginStateVersion":0,"parameters":{}}"#;
     let faults = thread_faults();
     written();
     assert_eq!(

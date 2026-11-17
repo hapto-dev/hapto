@@ -275,7 +275,7 @@ fn block(random: &mut Random) -> String {
         ),
         _ => format!(",\"pluginStateVersion\":{}", value(random, 1)),
     };
-    format!("{{\"seamStateVersion\":{version}{plugin},\"parameters\":{parameters}{extra}}}")
+    format!("{{\"haptoStateVersion\":{version}{plugin},\"parameters\":{parameters}{extra}}}")
 }
 
 /// How many cases each property runs.
