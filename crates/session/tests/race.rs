@@ -7,9 +7,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use seam_params::ParamSetBuilder;
-use seam_session::{ApplyError, Participant, Registration, Section, Session};
-use seam_testkit::sync::Latch;
+use hapto_params::ParamSetBuilder;
+use hapto_session::{ApplyError, Participant, Registration, Section, Session};
+use hapto_testkit::sync::Latch;
 use serde_json::json;
 
 const RESTORES: u64 = 300;

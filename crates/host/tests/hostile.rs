@@ -12,9 +12,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use seam_host::{LoadError, SavedState};
-use seam_params::{Kind, ParamDecl, ParamSet};
-use seam_session::{ApplyError, Participant, Registration, Section, Session, SessionUi};
+use hapto_host::{LoadError, SavedState};
+use hapto_params::{Kind, ParamDecl, ParamSet};
+use hapto_session::{ApplyError, Participant, Registration, Section, Session, SessionUi};
 use serde_json::json;
 
 const MODES: &[&str] = &["low", "band", "high"];

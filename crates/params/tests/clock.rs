@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
-use seam_params::{Commit, Origin, ParamSetBuilder, RestoreClock, RestoreStamp, Value};
-use seam_testkit::sync::Latch;
+use hapto_params::{Commit, Origin, ParamSetBuilder, RestoreClock, RestoreStamp, Value};
+use hapto_testkit::sync::Latch;
 
 /// A set's clock, which outlives the set.
 fn clock() -> Arc<RestoreClock> {

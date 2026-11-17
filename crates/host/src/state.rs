@@ -6,8 +6,8 @@ use std::error::Error;
 use std::fmt;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use seam_params::{Kind, ParamDecl, ParamSet};
-use seam_session::{Restored, Session};
+use hapto_params::{Kind, ParamDecl, ParamSet};
+use hapto_session::{Restored, Session};
 use serde_json::{Map, Value as Json};
 
 mod run_time;
@@ -15,13 +15,13 @@ mod run_time;
 pub(crate) use run_time::{Assigned, RunTimeSaved};
 use run_time::{KEY as RUN_TIME, Loaded};
 
-/// The version of the block's frame this build of Seam writes: the shape Seam
+/// The version of the block's frame this build of Hapto writes: the shape Hapto
 /// gives `parameters`, `extra` and the keys a load keeps. A plugin's own
 /// schema has a version of its own (see [`SavedState::with_migration`]).
 pub const STATE_VERSION: u64 = 1;
 
 /// The key of the frame's version, [`STATE_VERSION`].
-const SEAM_VERSION: &str = "seamStateVersion";
+const HAPTO_VERSION: &str = "seamStateVersion";
 /// The key of the plugin's own schema version.
 const PLUGIN_VERSION: &str = "pluginStateVersion";
 
@@ -34,23 +34,23 @@ type Migrate =
 ///
 /// A save never writes a longer one. A participant's capture that would grow
 /// the block past it is refused, the section saved before stays saved, and
-/// [`Registration::refused`](seam_session::Registration::refused) says so,
+/// [`Registration::refused`](hapto_session::Registration::refused) says so,
 /// whether the participant registered before the saved state was made or
 /// after. A load refuses a block that would save back past it, whole: a block
 /// from elsewhere can lengthen as it is written again, since `1e15` saves as
 /// `1000000000000000.0` and a parameter it lacks is written in full. The room
 /// a block leaves for its sections counts every declared parameter at its
 /// longest value and the unknown keys the last load kept.
-pub const MAX_STATE_BYTES: usize = seam_session::MAX_STATE_BYTES;
+pub const MAX_STATE_BYTES: usize = hapto_session::MAX_STATE_BYTES;
 
 /// Why a saved block was not loaded. A refused load changes nothing.
 ///
 /// # Examples
 ///
 /// ```
-/// use seam_host::{LoadError, SavedState};
-/// use seam_params::{Kind, ParamDecl, ParamSet};
-/// use seam_session::Session;
+/// use hapto_host::{LoadError, SavedState};
+/// use hapto_params::{Kind, ParamDecl, ParamSet};
+/// use hapto_session::Session;
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let gain = ParamDecl::new("gain", "Gain", Kind::continuous(0.0, 1.0, 0.0, None), 0.0);
@@ -127,9 +127,9 @@ impl Error for LoadError {
 /// ```
 /// use std::sync::Arc;
 ///
-/// use seam_host::SavedState;
-/// use seam_params::{Kind, ParamDecl, ParamSet};
-/// use seam_session::Session;
+/// use hapto_host::SavedState;
+/// use hapto_params::{Kind, ParamDecl, ParamSet};
+/// use hapto_session::Session;
 ///
 /// let gain = ParamDecl::new("gain", "Gain", Kind::continuous(-24.0, 24.0, 0.0, None), 0.0)
 ///     .with_unit("dB");
@@ -178,12 +178,12 @@ struct LastLoad {
     unknown: Unknown,
 }
 
-/// A block's two versions, each kept on its own: Seam's frame and the
+/// A block's two versions, each kept on its own: Hapto's frame and the
 /// plugin's schema.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 struct Versions {
     /// `seamStateVersion`, from 1.
-    seam: u64,
+    hapto: u64,
     /// `pluginStateVersion`, 0 when absent.
     plugin: u64,
 }
@@ -193,7 +193,7 @@ impl Versions {
     /// keeps each number it carries.
     fn newest(self, other: Versions) -> Versions {
         Versions {
-            seam: self.seam.max(other.seam),
+            hapto: self.hapto.max(other.hapto),
             plugin: self.plugin.max(other.plugin),
         }
     }
@@ -316,7 +316,7 @@ impl SavedState {
         );
         let longest = u64::MAX;
         let frame = format!(
-            "{{\"{SEAM_VERSION}\":{longest},\"{PLUGIN_VERSION}\":{longest},\
+            "{{\"{HAPTO_VERSION}\":{longest},\"{PLUGIN_VERSION}\":{longest},\
              \"parameters\":{{}},\"extra\":}}"
         );
         // Each parameter writes `"key":value` and a `,` or the `}` after it.
@@ -349,7 +349,7 @@ impl SavedState {
     /// `version`, and upgrading a block of any older one with `migrate`
     /// before it loads.
     ///
-    /// The plugin's version is its own, apart from Seam's frame
+    /// The plugin's version is its own, apart from Hapto's frame
     /// ([`STATE_VERSION`]). A block carries it as `pluginStateVersion`, and a
     /// plugin with no migration is at 0, as is a block without the key. A
     /// plugin raises it when a block of the old shape would load wrong: a
@@ -379,9 +379,9 @@ impl SavedState {
     /// Version 1 of a plugin's state renamed its `level` parameter `gain`:
     ///
     /// ```
-    /// use seam_host::{LoadError, SavedState};
-    /// use seam_params::{Kind, ParamDecl, ParamSet};
-    /// use seam_session::Session;
+    /// use hapto_host::{LoadError, SavedState};
+    /// use hapto_params::{Kind, ParamDecl, ParamSet};
+    /// use hapto_session::Session;
     /// use serde_json::Value;
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -439,10 +439,10 @@ impl SavedState {
         self
     }
 
-    /// The versions this build writes: Seam's frame, and the plugin's schema.
+    /// The versions this build writes: Hapto's frame, and the plugin's schema.
     fn versions(&self) -> Versions {
         Versions {
-            seam: STATE_VERSION,
+            hapto: STATE_VERSION,
             plugin: self
                 .migration
                 .as_ref()
@@ -497,9 +497,9 @@ impl SavedState {
     /// # Examples
     ///
     /// ```
-    /// use seam_host::SavedState;
-    /// use seam_params::{Kind, ParamDecl, ParamSet};
-    /// use seam_session::Session;
+    /// use hapto_host::SavedState;
+    /// use hapto_params::{Kind, ParamDecl, ParamSet};
+    /// use hapto_session::Session;
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let bypass = ParamDecl::new("bypass", "Bypass", Kind::Bool, 1.0).as_bypass();
@@ -526,9 +526,10 @@ impl SavedState {
         let parameters: Vec<String> = declared.chain(kept).collect();
 
         // Written by hand, since `serde_json`'s map would sort the keys.
-        let Versions { seam, plugin } = self.versions().newest(last.versions);
-        let mut block =
-            format!("{{\"{SEAM_VERSION}\":{seam},\"{PLUGIN_VERSION}\":{plugin},\"parameters\":{{");
+        let Versions { hapto, plugin } = self.versions().newest(last.versions);
+        let mut block = format!(
+            "{{\"{HAPTO_VERSION}\":{hapto},\"{PLUGIN_VERSION}\":{plugin},\"parameters\":{{"
+        );
         block.push_str(&parameters.join(","));
         block.push('}');
         let extra = self.session.save();
@@ -593,9 +594,9 @@ impl SavedState {
     /// # Examples
     ///
     /// ```
-    /// use seam_host::SavedState;
-    /// use seam_params::{Kind, ParamDecl, ParamSet};
-    /// use seam_session::Session;
+    /// use hapto_host::SavedState;
+    /// use hapto_params::{Kind, ParamDecl, ParamSet};
+    /// use hapto_session::Session;
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let set = ParamSet::from_decls([
@@ -630,7 +631,7 @@ impl SavedState {
             Err(_) => return Err(LoadError::NotJson),
         };
         let versions = versions(&root)?;
-        // Seam's frame has had one shape, so only the plugin's schema
+        // Hapto's frame has had one shape, so only the plugin's schema
         // migrates.
         if let Some(migration) = &self.migration
             && versions.plugin < migration.version
@@ -646,7 +647,7 @@ impl SavedState {
             .ids()
             .map(|id| parameters.remove(self.set.decl(id).key))
             .collect();
-        root.remove(SEAM_VERSION);
+        root.remove(HAPTO_VERSION);
         root.remove(PLUGIN_VERSION);
         let run_time = Loaded::read(root.remove(RUN_TIME));
         let extra = Restored::new(root.remove("extra"));
@@ -684,15 +685,15 @@ impl SavedState {
 /// A block's versions: the frame's a whole number from 1 up, and the
 /// plugin's one from 0 up, 0 when the block has none.
 fn versions(root: &Map<String, Json>) -> Result<Versions, LoadError> {
-    let seam = root
-        .get(SEAM_VERSION)
+    let hapto = root
+        .get(HAPTO_VERSION)
         .and_then(|value| whole(value, 1))
         .ok_or(LoadError::BadVersion)?;
     let plugin = match root.get(PLUGIN_VERSION) {
         None => 0,
         Some(value) => whole(value, 0).ok_or(LoadError::BadPluginVersion)?,
     };
-    Ok(Versions { seam, plugin })
+    Ok(Versions { hapto, plugin })
 }
 
 /// A whole number from `least` up, as an integer or a float, a float past

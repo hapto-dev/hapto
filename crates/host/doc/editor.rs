@@ -1,6 +1,6 @@
 # use std::error::Error;
 #
-# use seam_host::{
+# use hapto_host::{
 #     AuCodes, Block, Category, Editor, Layout, ParentWindow, Parts, Plugin, PluginInfo,
 #     ProcessSetup, Processor, Size, Status,
 # };

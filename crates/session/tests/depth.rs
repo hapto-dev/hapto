@@ -4,8 +4,8 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use seam_params::ParamSetBuilder;
-use seam_session::{ApplyError, MAX_SECTION_DEPTH, Participant, Section, Session};
+use hapto_params::ParamSetBuilder;
+use hapto_session::{ApplyError, MAX_SECTION_DEPTH, Participant, Section, Session};
 use serde_json::{Value, json};
 
 /// A section of `levels` nested arrays around one number: `levels` deep.

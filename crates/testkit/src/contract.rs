@@ -24,7 +24,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 /// # Examples
 ///
 /// ```
-/// use seam_testkit::contract::expect_contract_panic;
+/// use hapto_testkit::contract::expect_contract_panic;
 ///
 /// // A contract assertion in the library under test.
 /// fn set_gain(db: f32) {

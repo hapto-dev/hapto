@@ -1,5 +1,5 @@
 //! Builds the gain's page in when `page/dist` holds it, by setting the
-//! `seam_page` cfg `src/page.rs` reads, and warns when it does not: the
+//! `hapto_page` cfg `src/page.rs` reads, and warns when it does not: the
 //! plugin then offers no editor, unless a debug build loads the page from a
 //! dev server. Cargo never runs Node.
 
@@ -13,12 +13,12 @@ const BUILT: [&str; 3] = [
 ];
 
 fn main() {
-    println!("cargo::rustc-check-cfg=cfg(seam_page)");
+    println!("cargo::rustc-check-cfg=cfg(hapto_page)");
     if BUILT.iter().all(|file| Path::new(file).is_file()) {
         for file in BUILT {
             println!("cargo::rerun-if-changed={file}");
         }
-        println!("cargo::rustc-cfg=seam_page");
+        println!("cargo::rustc-cfg=hapto_page");
     } else {
         // A watched file that does not exist reruns this script, and
         // rebuilds the gain, on every command. Cargo looks through a watched

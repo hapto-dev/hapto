@@ -2,7 +2,7 @@
 //! The page's own test (`page/test/fixture.test.ts`) reads the same file, so
 //! the two sides cannot drift apart without one of them failing.
 
-use seam_bridge::{NativeMessage, PageMessage};
+use hapto_bridge::{NativeMessage, PageMessage};
 use serde_json::Value;
 
 fn fixture() -> Value {

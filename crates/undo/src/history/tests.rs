@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use seam_params::{Kind, ParamDecl, ParamSet, ParamSetBuilder, UiParams};
+use hapto_params::{Kind, ParamDecl, ParamSet, ParamSetBuilder, UiParams};
 
 use super::*;
 
@@ -312,7 +312,7 @@ fn a_step_books_its_values_plus_32_once_and_pruning_drops_whole_entries() {
 /// A step whose replay stores a restore, as a load on another thread
 /// might mid-walk.
 #[derive(Debug)]
-struct Loads(seam_params::RestoreWriter);
+struct Loads(hapto_params::RestoreWriter);
 
 impl Step for Loads {
     fn undo(&mut self) {
@@ -368,7 +368,7 @@ fn a_replay_stops_before_its_next_write_when_a_restore_is_stored() {
 /// hold, and notes whether that thread got it before the step ended.
 #[derive(Debug)]
 struct Loading {
-    clock: seam_params::RestoreReader,
+    clock: hapto_params::RestoreReader,
     parameters: bool,
     took: Rc<RefCell<Vec<bool>>>,
     threads: Rc<RefCell<Vec<std::thread::JoinHandle<()>>>>,

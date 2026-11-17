@@ -22,10 +22,10 @@ pub use assert_no_alloc::{AllocDisabler, permit_alloc};
 /// # Examples
 ///
 /// ```
-/// seam_testkit::install_alloc_gate!();
+/// hapto_testkit::install_alloc_gate!();
 ///
 /// fn main() {
-///     let (_, count) = seam_testkit::alloc::allocations_in(|| ());
+///     let (_, count) = hapto_testkit::alloc::allocations_in(|| ());
 ///     assert_eq!(count, 0);
 /// }
 /// ```
@@ -33,7 +33,7 @@ pub use assert_no_alloc::{AllocDisabler, permit_alloc};
 macro_rules! install_alloc_gate {
     () => {
         #[global_allocator]
-        static SEAM_ALLOC_GATE: $crate::alloc::AllocDisabler = $crate::alloc::AllocDisabler;
+        static HAPTO_ALLOC_GATE: $crate::alloc::AllocDisabler = $crate::alloc::AllocDisabler;
     };
 }
 
@@ -51,9 +51,9 @@ static ARMED: AtomicBool = AtomicBool::new(false);
 /// # Examples
 ///
 /// ```
-/// use seam_testkit::alloc::allocations_in;
+/// use hapto_testkit::alloc::allocations_in;
 ///
-/// seam_testkit::install_alloc_gate!();
+/// hapto_testkit::install_alloc_gate!();
 ///
 /// fn main() {
 ///     // Code the audio thread runs: nothing to allocate.
@@ -81,9 +81,9 @@ pub fn allocations_in<T>(f: impl FnOnce() -> T) -> (T, u32) {
 /// # Examples
 ///
 /// ```
-/// use seam_testkit::alloc::assert_no_allocations;
+/// use hapto_testkit::alloc::assert_no_allocations;
 ///
-/// seam_testkit::install_alloc_gate!();
+/// hapto_testkit::install_alloc_gate!();
 ///
 /// fn main() {
 ///     let mut block = [0.5_f32; 64];
@@ -113,7 +113,7 @@ fn assert_armed() {
     assert_no_alloc::assert_no_alloc(|| drop(std::hint::black_box(Box::new(0u64))));
     assert!(
         assert_no_alloc::violation_count() > before,
-        "the allocation gate is not installed: add `seam_testkit::install_alloc_gate!();` to this test file"
+        "the allocation gate is not installed: add `hapto_testkit::install_alloc_gate!();` to this test file"
     );
     ARMED.store(true, Ordering::Relaxed);
 }

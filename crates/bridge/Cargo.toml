@@ -1,5 +1,5 @@
 [package]
-name = "seam-bridge"
+name = "hapto-bridge"
 description = "The page bridge: the messages between a plugin and its web page, transport-agnostic, with TypeScript generated from the Rust types"
 version.workspace = true
 edition.workspace = true
@@ -17,7 +17,7 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
-seam-params.workspace = true
+hapto-params.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 ts-rs = { workspace = true, optional = true }
@@ -37,9 +37,9 @@ name = "protocol_version"
 required-features = ["typescript"]
 
 [dev-dependencies]
-seam-testkit.workspace = true
+hapto-testkit.workspace = true
 # The dispatcher's tests count the undo steps a page's drags record.
-seam-undo.workspace = true
+hapto-undo.workspace = true
 
 [lints]
 workspace = true

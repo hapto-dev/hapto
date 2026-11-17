@@ -3,7 +3,7 @@
 use std::any::Any;
 use std::fmt;
 
-use seam_params::{List, ListCommit, ListTracker, RestoreStamp, Stamped, TrackedList};
+use hapto_params::{List, ListCommit, ListTracker, RestoreStamp, Stamped, TrackedList};
 
 use crate::enroll::{Polled, Record};
 use crate::history::{Step, booked};
@@ -223,8 +223,8 @@ impl History {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::List;
-    /// use seam_undo::{Bound, History};
+    /// use hapto_params::List;
+    /// use hapto_undo::{Bound, History};
     #[doc = include_str!("../doc/setup.rs")]
     /// # let history = History::new(&ui, Bound::default())?;
     /// let layers = List::new(vec!["Pad".to_owned()], &set);
@@ -257,8 +257,8 @@ impl History {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::List;
-    /// use seam_undo::{Bound, History};
+    /// use hapto_params::List;
+    /// use hapto_undo::{Bound, History};
     #[doc = include_str!("../doc/setup.rs")]
     /// # let history = History::new(&ui, Bound::default())?;
     /// let layers = List::new(vec!["Pad".to_owned()], &set);
@@ -284,8 +284,8 @@ mod tests {
         list.with(<[char]>::to_vec)
     }
 
-    fn set() -> std::sync::Arc<seam_params::ParamSet> {
-        seam_params::ParamSetBuilder::new().build()
+    fn set() -> std::sync::Arc<hapto_params::ParamSet> {
+        hapto_params::ParamSetBuilder::new().build()
     }
 
     #[test]

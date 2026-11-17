@@ -56,8 +56,8 @@
 //! [`Outbox`], here a test's buffer:
 //!
 //! ```
-//! use seam_bridge::{Commands, Dispatcher, NativeMessage, ParamState, Position, Values};
-//! use seam_params::{Kind, ParamDecl, ParamSet};
+//! use hapto_bridge::{Commands, Dispatcher, NativeMessage, ParamState, Position, Values};
+//! use hapto_params::{Kind, ParamDecl, ParamSet};
 //!
 //! let set = ParamSet::from_decls([
 //!     ParamDecl::new("mix", "Mix", Kind::continuous(0.0, 100.0, 1.0, None), 100.0)
@@ -80,10 +80,10 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 //!
-//! [glossary-snapshot]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#snapshot
-//! [glossary-held]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#held
-//! [glossary-store]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#store
-//! [held]: https://github.com/nicvlav/seam/blob/main/page/src/held.ts
+//! [glossary-snapshot]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#snapshot
+//! [glossary-held]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#held
+//! [glossary-store]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#store
+//! [held]: https://github.com/hapto-dev/hapto/blob/main/page/src/held.ts
 
 // Shows the feature a gated item needs on docs.rs, which builds with all of
 // them and `--cfg docsrs` (`[package.metadata.docs.rs]`).
@@ -106,7 +106,7 @@ pub use protocol::{NativeMessage, PageMessage};
 /// # Examples
 ///
 /// ```
-/// use seam_bridge::{NativeMessage, Outbox, ParamState, Position};
+/// use hapto_bridge::{NativeMessage, Outbox, ParamState, Position};
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// // The buffer a test reads back what the page would have received from.

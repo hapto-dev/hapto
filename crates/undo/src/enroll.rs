@@ -4,7 +4,7 @@ use std::any::Any;
 use std::fmt;
 use std::rc::{Rc, Weak};
 
-use seam_params::{
+use hapto_params::{
     Commit, ParamId, ParamRef, RestoreStamp, Stamped, TrackedRef, Tracker, UiParams, Value,
     WeakParamRef,
 };
@@ -246,7 +246,7 @@ impl History {
     /// # Examples
     ///
     /// ```
-    /// use seam_undo::{Bound, History, HistoryError};
+    /// use hapto_undo::{Bound, History, HistoryError};
     #[doc = include_str!("../doc/setup.rs")]
     /// # let history = History::new(&ui, Bound::default())?;
     /// history.enroll_param(gain)?;
@@ -295,7 +295,7 @@ impl History {
     /// # Examples
     ///
     /// ```
-    /// use seam_undo::{Bound, History};
+    /// use hapto_undo::{Bound, History};
     #[doc = include_str!("../doc/setup.rs")]
     /// # let history = History::new(&ui, Bound::default())?;
     /// history.enroll_param(gain)?;
@@ -339,8 +339,8 @@ impl History {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::Value;
-    /// use seam_undo::{Bound, History};
+    /// use hapto_params::Value;
+    /// use hapto_undo::{Bound, History};
     #[doc = include_str!("../doc/setup.rs")]
     /// # let history = History::new(&ui, Bound::default())?;
     /// // A value the plugin owns besides its parameters, such as the tab.
@@ -374,8 +374,8 @@ impl History {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::Value;
-    /// use seam_undo::{Bound, History};
+    /// use hapto_params::Value;
+    /// use hapto_undo::{Bound, History};
     #[doc = include_str!("../doc/setup.rs")]
     /// # let history = History::new(&ui, Bound::default())?;
     /// let tab = Value::new(0_u8, &set);
@@ -423,7 +423,7 @@ impl History {
     /// # Examples
     ///
     /// ```
-    /// use seam_undo::{Bound, History};
+    /// use hapto_undo::{Bound, History};
     #[doc = include_str!("../doc/setup.rs")]
     /// # let history = History::new(&ui, Bound::default())?;
     /// history.enroll_param(gain)?;
@@ -503,7 +503,7 @@ impl History {
 
 #[cfg(test)]
 mod tests {
-    use seam_params::{Kind, ParamDecl, ParamSetBuilder};
+    use hapto_params::{Kind, ParamDecl, ParamSetBuilder};
 
     use super::*;
 

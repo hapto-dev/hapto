@@ -4,12 +4,12 @@
 use std::sync::{Arc, Barrier};
 use std::time::Duration;
 
-use seam_params::{
+use hapto_params::{
     Kind, List, Origin, ParamDecl, ParamId, ParamSet, ParamSetBuilder, RestoreReader,
     RestoreWriter, UiParams, Value,
 };
-use seam_testkit::sync::wait_until;
-use seam_undo::{Bound, History};
+use hapto_testkit::sync::wait_until;
+use hapto_undo::{Bound, History};
 
 struct Rig {
     set: Arc<ParamSet>,

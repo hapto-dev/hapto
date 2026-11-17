@@ -42,7 +42,7 @@ pub const MAX_KEY_LEN: usize = 31;
 /// # Examples
 ///
 /// ```
-/// use seam_params::{DeclError, Kind, ParamDecl, ParamSet};
+/// use hapto_params::{DeclError, Kind, ParamDecl, ParamSet};
 ///
 /// let error = ParamSet::from_decls([ParamDecl::new("a/b", "A", Kind::Bool, 0.0)]).unwrap_err();
 /// assert_eq!(error, DeclError::KeyHasSlash("a/b"));
@@ -207,7 +207,7 @@ impl std::error::Error for DeclError {}
 /// # Examples
 ///
 /// ```
-/// use seam_params::{Kind, ParamDecl, ParamSetBuilder};
+/// use hapto_params::{Kind, ParamDecl, ParamSetBuilder};
 ///
 /// let gain = ParamDecl::new("gain", "Gain", Kind::continuous(-60.0, 12.0, 0.0, None), 0.0)
 ///     .with_unit("dB");
@@ -217,7 +217,7 @@ impl std::error::Error for DeclError {}
 /// builder.add(gain)?.add(bypass)?;
 /// let set = builder.build();
 /// assert_eq!(set.len(), 2);
-/// # Ok::<(), seam_params::DeclError>(())
+/// # Ok::<(), hapto_params::DeclError>(())
 /// ```
 #[derive(Debug, Default)]
 pub struct ParamSetBuilder {
@@ -249,7 +249,7 @@ impl ParamSetBuilder {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::{DeclError, Kind, ParamDecl, ParamSetBuilder};
+    /// use hapto_params::{DeclError, Kind, ParamDecl, ParamSetBuilder};
     ///
     /// const GAIN: ParamDecl = ParamDecl::new(
     ///     "gain",
@@ -321,7 +321,7 @@ impl ParamSetBuilder {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::{Kind, ParamDecl, ParamSetBuilder};
+    /// use hapto_params::{Kind, ParamDecl, ParamSetBuilder};
     ///
     /// let mut builder = ParamSetBuilder::new();
     /// builder.add(ParamDecl::new("late", "Late", Kind::Bool, 0.0).with_group("Fx"))?;
@@ -331,7 +331,7 @@ impl ParamSetBuilder {
     /// let set = builder.build();
     /// let keys: Vec<_> = set.ids().map(|id| set.decl(id).key).collect();
     /// assert_eq!(keys, ["early", "late"]);
-    /// # Ok::<(), seam_params::DeclError>(())
+    /// # Ok::<(), hapto_params::DeclError>(())
     /// ```
     pub fn build(self) -> Arc<ParamSet> {
         let order = declaration_order(&self.cells);
@@ -451,7 +451,7 @@ fn declaration_order(cells: &[Arc<ParamCell>]) -> Vec<usize> {
 /// # Examples
 ///
 /// ```
-/// use seam_params::{Kind, ParamDecl, ParamSet};
+/// use hapto_params::{Kind, ParamDecl, ParamSet};
 ///
 /// let set = ParamSet::from_decls([
 ///     ParamDecl::new("bypass", "Bypass", Kind::Bool, 1.0).as_bypass(),
@@ -460,7 +460,7 @@ fn declaration_order(cells: &[Arc<ParamCell>]) -> Vec<usize> {
 /// let id = set.id("bypass").expect("declared above");
 /// assert_eq!(set.value(id), 1.0);
 /// assert_eq!(set.bypass(), Some(id));
-/// # Ok::<(), seam_params::DeclError>(())
+/// # Ok::<(), hapto_params::DeclError>(())
 /// ```
 #[derive(Debug)]
 pub struct ParamSet {
@@ -496,7 +496,7 @@ impl ParamSet {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::{DeclError, Kind, ParamDecl, ParamSet};
+    /// use hapto_params::{DeclError, Kind, ParamDecl, ParamSet};
     ///
     /// const PARAMS: &[ParamDecl] = &[
     ///     ParamDecl::new("on", "On", Kind::Bool, 1.0),
@@ -545,14 +545,14 @@ impl ParamSet {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::{Kind, ParamDecl, ParamSet};
+    /// use hapto_params::{Kind, ParamDecl, ParamSet};
     ///
     /// let set = ParamSet::from_decls([ParamDecl::new("gain", "Gain", Kind::Bool, 0.0)])?;
     ///
     /// assert!(set.id("gain").is_some());
     /// // Only the key finds it: the display name does not.
     /// assert!(set.id("Gain").is_none());
-    /// # Ok::<(), seam_params::DeclError>(())
+    /// # Ok::<(), hapto_params::DeclError>(())
     /// ```
     pub fn id(&self, key: &str) -> Option<ParamId> {
         self.by_key.get(key).copied()
@@ -571,7 +571,7 @@ impl ParamSet {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::{Kind, ParamDecl, ParamSet, host_id};
+    /// use hapto_params::{Kind, ParamDecl, ParamSet, host_id};
     ///
     /// let set = ParamSet::from_decls([ParamDecl::new("gain", "Gain", Kind::Bool, 0.0)])?;
     /// let gain = set.id("gain").ok_or("declared")?;
@@ -582,7 +582,7 @@ impl ParamSet {
     /// assert_eq!(set.by_host_id(host_id("other")), None);
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
-    #[cfg_attr(seam_rtsan, sanitize(realtime = "nonblocking"))]
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn by_host_id(&self, host_id: u32) -> Option<ParamId> {
         self.by_host_id.get(&host_id).copied()
     }
@@ -609,7 +609,7 @@ impl ParamSet {
     /// as its own type: [`Float::get`](crate::Float::get). A reader that
     /// keeps a count, as a [`Watch`](crate::Watch) does, reads both through
     /// [`read`](Self::read).
-    #[cfg_attr(seam_rtsan, sanitize(realtime = "nonblocking"))]
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn value(&self, id: ParamId) -> f32 {
         self.cell(id).value()
     }
@@ -620,7 +620,7 @@ impl ParamSet {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::{Kind, Origin, ParamDecl, ParamSet};
+    /// use hapto_params::{Kind, Origin, ParamDecl, ParamSet};
     ///
     /// let set = ParamSet::from_decls([
     ///     ParamDecl::new("gain", "Gain", Kind::continuous(-60.0, 12.0, 0.0, None), 0.0),
@@ -636,7 +636,7 @@ impl ParamSet {
     /// assert_eq!((second.changes, second.value, second.origin), (1, 12.0, Origin::Host));
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
-    #[cfg_attr(seam_rtsan, sanitize(realtime = "nonblocking"))]
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn read(&self, id: ParamId) -> Reading<f32> {
         self.cell(id).read()
     }
@@ -647,7 +647,7 @@ impl ParamSet {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::{Kind, ParamDecl, ParamSet};
+    /// use hapto_params::{Kind, ParamDecl, ParamSet};
     ///
     /// let set = ParamSet::from_decls([
     ///     ParamDecl::new("gain", "Gain", Kind::continuous(-60.0, 12.0, 0.0, None), -24.0),
@@ -658,7 +658,7 @@ impl ParamSet {
     /// assert_eq!(set.normalized(gain), 0.5); // the host's 0..1
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
-    #[cfg_attr(seam_rtsan, sanitize(realtime = "nonblocking"))]
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn normalized(&self, id: ParamId) -> f64 {
         self.decl(id).kind.normalize(self.value(id))
     }
@@ -666,7 +666,7 @@ impl ParamSet {
     /// Returns how many writes have reached this parameter, a repeated value
     /// included. Compare it with the count you last saw; the
     /// [crate overview](crate#examples) shows the pattern.
-    #[cfg_attr(seam_rtsan, sanitize(realtime = "nonblocking"))]
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn changes(&self, id: ParamId) -> u64 {
         self.cell(id).changes()
     }
@@ -682,7 +682,7 @@ impl ParamSet {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::{Kind, ParamDecl, ParamSet};
+    /// use hapto_params::{Kind, ParamDecl, ParamSet};
     ///
     /// let set = ParamSet::from_decls([
     ///     ParamDecl::new("gain", "Gain", Kind::continuous(-60.0, 12.0, 0.1, None), 0.0),
@@ -729,7 +729,7 @@ impl ParamSet {
     /// # Examples
     ///
     /// ```
-    /// # let set = seam_params::ParamSet::from_decls([])?;
+    /// # let set = hapto_params::ParamSet::from_decls([])?;
     /// let ui = set.take_ui().expect("the first UI handle");
     /// assert!(set.take_ui().is_none()); // one per set, clones included
     ///
@@ -738,7 +738,7 @@ impl ParamSet {
     /// assert!(set.take_ui().is_none()); // a clone is alive
     /// drop(also);
     /// assert!(set.take_ui().is_some());
-    /// # Ok::<(), seam_params::DeclError>(())
+    /// # Ok::<(), hapto_params::DeclError>(())
     /// ```
     pub fn take_ui(self: &Arc<Self>) -> Option<UiParams> {
         audio_thread::assert_not_here("ParamSet::take_ui");
@@ -824,7 +824,7 @@ impl ParamSet {
 /// # Examples
 ///
 /// ```
-/// use seam_params::{Kind, ParamDecl, ParamSet};
+/// use hapto_params::{Kind, ParamDecl, ParamSet};
 ///
 /// let set = ParamSet::from_decls([
 ///     ParamDecl::new("mix", "Mix", Kind::continuous(0.0, 100.0, 0.0, None), 100.0)
@@ -836,7 +836,7 @@ impl ParamSet {
 /// let audio = set.audio();
 /// audio.host_write(mix, 0.5);
 /// assert_eq!(audio.value(mix), 50.0);
-/// # Ok::<(), seam_params::DeclError>(())
+/// # Ok::<(), hapto_params::DeclError>(())
 /// ```
 ///
 /// # Panics
@@ -861,21 +861,21 @@ impl AudioParams {
     }
 
     /// Returns the current value, in real units, as [`ParamSet::value`] does.
-    #[cfg_attr(seam_rtsan, sanitize(realtime = "nonblocking"))]
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn value(&self, id: ParamId) -> f32 {
         self.set.value(id)
     }
 
     /// Returns the change count, as [`ParamSet::changes`] does. The
     /// [crate overview](crate#examples) shows a processor comparing it.
-    #[cfg_attr(seam_rtsan, sanitize(realtime = "nonblocking"))]
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn changes(&self, id: ParamId) -> u64 {
         self.set.changes(id)
     }
 
     /// Returns the change count, the value and its origin, as
     /// [`ParamSet::read`] does.
-    #[cfg_attr(seam_rtsan, sanitize(realtime = "nonblocking"))]
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn read(&self, id: ParamId) -> Reading<f32> {
         self.set.read(id)
     }
@@ -886,7 +886,7 @@ impl AudioParams {
     /// # Examples
     ///
     /// ```
-    /// # use seam_params as sp;
+    /// # use hapto_params as sp;
     /// # let set = sp::ParamSet::from_decls([
     /// #     sp::ParamDecl::new("gain", "Gain", sp::Kind::continuous(-60.0, 12.0, 0.1, None), 0.0),
     /// # ])?;
@@ -898,9 +898,9 @@ impl AudioParams {
     /// assert_eq!(audio.value(gain), -24.0);
     /// audio.host_write(gain, f64::NAN); // not finite: the range start
     /// assert_eq!(audio.value(gain), -60.0);
-    /// # Ok::<(), seam_params::DeclError>(())
+    /// # Ok::<(), hapto_params::DeclError>(())
     /// ```
-    #[cfg_attr(seam_rtsan, sanitize(realtime = "nonblocking"))]
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn host_write(&self, id: ParamId, normalized: f64) {
         // One cell, fetched once, for the declaration and the write.
         let cell = self.set.cell(id);
@@ -915,7 +915,7 @@ impl AudioParams {
     /// # Examples
     ///
     /// ```
-    /// # use seam_params as sp;
+    /// # use hapto_params as sp;
     /// # let set = sp::ParamSet::from_decls([
     /// #     sp::ParamDecl::new("gain", "Gain", sp::Kind::continuous(-60.0, 12.0, 0.1, None), 0.0),
     /// # ])?;
@@ -927,9 +927,9 @@ impl AudioParams {
     /// assert_eq!(audio.value(gain), 12.0);
     /// audio.learned_write(gain, f64::NAN); // writes nothing
     /// assert_eq!(audio.value(gain), 12.0);
-    /// # Ok::<(), seam_params::DeclError>(())
+    /// # Ok::<(), hapto_params::DeclError>(())
     /// ```
-    #[cfg_attr(seam_rtsan, sanitize(realtime = "nonblocking"))]
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn learned_write(&self, id: ParamId, normalized: f64) {
         self.set.cell(id).learned_write(normalized);
     }

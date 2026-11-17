@@ -5,10 +5,10 @@
 
 use std::sync::Arc;
 
-use seam_example_eq::ExampleEq;
-use seam_example_eq::params::EqParams;
-use seam_host::{Parts, Plugin, SavedState};
-use seam_params::{ParamDecl, ParamSet};
+use hapto_example_eq::ExampleEq;
+use hapto_example_eq::params::EqParams;
+use hapto_host::{Parts, Plugin, SavedState};
+use hapto_params::{ParamDecl, ParamSet};
 
 /// The EQ, built as an exporter builds it, and the saved state a host's save
 /// and load go through.

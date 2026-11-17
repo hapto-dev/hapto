@@ -24,7 +24,7 @@ use ::vst3::Steinberg::{
     kResultFalse, kResultOk, tresult,
 };
 use ::vst3::{Class, ComPtr, ComWrapper, Interface};
-use seam_params::{
+use hapto_params::{
     AudioParams, Declarer, Gesture, Kind, ParamDecl, ParamId, Params, ProgramParams, host_id,
 };
 use serde_json::{Map, Value as Json};
@@ -151,16 +151,16 @@ impl Drop for Probe {
 impl Plugin for Probe {
     const INFO: PluginInfo = PluginInfo {
         name: "Probe",
-        vendor: "Seam",
-        url: "https://seam.example",
-        email: "probe@seam.example",
+        vendor: "Hapto",
+        url: "https://hapto.example",
+        email: "probe@hapto.example",
         description: "",
         version: "1.2.3",
-        id: "dev.seam.probe",
+        id: "dev.hapto.probe",
         vst3_class_id: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
         au_codes: AuCodes {
             subtype: *b"prob",
-            manufacturer: *b"Seam",
+            manufacturer: *b"Hapt",
         },
         category: Category::Effect,
         features: &[Feature::Equalizer, Feature::Delay],
@@ -265,9 +265,9 @@ fn the_factory_lists_one_class_that_is_its_own_controller() {
     unsafe {
         let mut info: PFactoryInfo = std::mem::zeroed();
         assert_eq!(factory.getFactoryInfo(&mut info), kResultOk);
-        assert_eq!(text_of(&info.vendor), "Seam");
-        assert_eq!(text_of(&info.url), "https://seam.example");
-        assert_eq!(text_of(&info.email), "probe@seam.example");
+        assert_eq!(text_of(&info.vendor), "Hapto");
+        assert_eq!(text_of(&info.url), "https://hapto.example");
+        assert_eq!(text_of(&info.email), "probe@hapto.example");
         assert_eq!(info.flags, FactoryFlags_::kUnicode as int32);
         assert_eq!(factory.countClasses(), 1);
 
@@ -734,16 +734,16 @@ impl Processor for ShapedProcessor {
 impl<const INPUTS: usize, const OUTPUTS: usize> Plugin for Shaped<INPUTS, OUTPUTS> {
     const INFO: PluginInfo = PluginInfo {
         name: "Shaped",
-        vendor: "Seam",
+        vendor: "Hapto",
         url: "",
         email: "",
         description: "",
         version: "1.0.0",
-        id: "dev.seam.shaped",
+        id: "dev.hapto.shaped",
         vst3_class_id: [2; 16],
         au_codes: AuCodes {
             subtype: *b"shap",
-            manufacturer: *b"Seam",
+            manufacturer: *b"Hapt",
         },
         category: if INPUTS == 0 {
             Category::Instrument
@@ -1111,8 +1111,8 @@ fn a_block_moving_every_proxy_of_learn_s_grid_still_reaches_the_plugin_s_own_que
     // the id range no key's hash takes, all moved in one block and listed
     // before the plugin's own queue.
     let grid = 16 * 130;
-    let first = *seam_params::RESERVED_HOST_IDS.start();
-    assert!(seam_params::RESERVED_HOST_IDS.contains(&(first + grid - 1)));
+    let first = *hapto_params::RESERVED_HOST_IDS.start();
+    assert!(hapto_params::RESERVED_HOST_IDS.contains(&(first + grid - 1)));
     let point: &[(i32, f64)] = &[(0, 0.5)];
     let mut queues: Vec<(u32, &[(i32, f64)])> =
         (0..grid).map(|proxy| (first + proxy, point)).collect();
@@ -1618,15 +1618,15 @@ fn a_tick_nested_inside_a_tick_does_nothing() {
 /// A participant that keeps the section a restore hands it.
 struct Kept(Rc<RefCell<Option<serde_json::Value>>>);
 
-impl seam_session::Participant for Kept {
-    fn capture(&self) -> seam_session::Section {
+impl hapto_session::Participant for Kept {
+    fn capture(&self) -> hapto_session::Section {
         self.0.borrow().clone().unwrap_or(serde_json::Value::Null)
     }
 
     fn apply(
         &mut self,
-        section: Option<&seam_session::Section>,
-    ) -> Result<(), seam_session::ApplyError> {
+        section: Option<&hapto_session::Section>,
+    ) -> Result<(), hapto_session::ApplyError> {
         *self.0.borrow_mut() = section.cloned();
         Ok(())
     }
@@ -1639,11 +1639,11 @@ thread_local! {
     static TICKS: Cell<u32> = const { Cell::new(0) };
 }
 
-/// A plugin with one session participant, which Seam's tick applies.
+/// A plugin with one session participant, which Hapto's tick applies.
 struct WithSession {
     _parts: Parts,
     _participant: Rc<RefCell<Kept>>,
-    _registration: seam_session::Registration,
+    _registration: hapto_session::Registration,
 }
 
 impl Plugin for WithSession {
@@ -2035,7 +2035,7 @@ fn the_first_refused_load_writes_the_reason_and_is_no_fault_through_the_vst3_exp
     );
     let lines = written();
     assert_eq!(lines.len(), 1, "{lines:?}");
-    assert!(lines[0].starts_with("seam: Probe (instance "), "{lines:?}");
+    assert!(lines[0].starts_with("hapto: Probe (instance "), "{lines:?}");
     assert!(
         lines[0].contains("): the host's saved state was refused: "),
         "{lines:?}"
@@ -2092,7 +2092,7 @@ fn a_refused_declaration_builds_no_instance_and_says_why_through_the_vst3_export
     assert_eq!(initialized, kInternalError, "no instance");
     assert_eq!(thread_faults(), faults + 1, "the refusal counts as a fault");
     let lines = written();
-    let refusal = "seam: Probe: no instance was built, since a declaration was refused: \
+    let refusal = "hapto: Probe: no instance was built, since a declaration was refused: \
                    key \"gain\" is declared twice.";
     assert!(lines.iter().any(|line| line == refusal), "{lines:?}");
 }

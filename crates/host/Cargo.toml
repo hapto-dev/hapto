@@ -1,5 +1,5 @@
 [package]
-name = "seam-host"
+name = "hapto-host"
 description = "The format-agnostic plugin trait, and its VST3 and C ABI exporters behind features"
 version.workspace = true
 edition.workspace = true
@@ -19,7 +19,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 # The plugin `manifest_info!`'s doc example declares, since the macro reads
 # the manifest of the crate it is used in. No plugin ships from this crate,
 # which is no cdylib.
-[package.metadata.seam]
+[package.metadata.hapto]
 name = "Tone"
 vendor = "Example"
 url = "https://example.com"
@@ -42,16 +42,16 @@ cabi = []
 # shipping plugin carries none of it.
 test-host = []
 # `manifest_info!`, which writes a plugin's `PluginInfo` from its manifest's
-# `[package.metadata.seam]`, checked while compiling.
-manifest = ["dep:seam-macros", "seam-macros/manifest"]
+# `[package.metadata.hapto]`, checked while compiling.
+manifest = ["dep:hapto-macros", "hapto-macros/manifest"]
 
 [dependencies]
-seam-learn.workspace = true
-seam-macros = { workspace = true, optional = true }
-seam-params.workspace = true
-seam-session.workspace = true
-seam-ump.workspace = true
-seam-undo.workspace = true
+hapto-learn.workspace = true
+hapto-macros = { workspace = true, optional = true }
+hapto-params.workspace = true
+hapto-session.workspace = true
+hapto-ump.workspace = true
+hapto-undo.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 vst3 = { workspace = true, optional = true }
@@ -70,7 +70,7 @@ windows-sys = { workspace = true, optional = true, features = [
 loom.workspace = true
 
 [dev-dependencies]
-seam-testkit.workspace = true
+hapto-testkit.workspace = true
 
 [lints]
 workspace = true

@@ -86,7 +86,7 @@ impl<T> Shared<T> {
 /// # Examples
 ///
 /// ```
-/// use seam_params::{ParamSet, Value};
+/// use hapto_params::{ParamSet, Value};
 ///
 /// // A value belongs to a parameter set, so restores and undo see it.
 /// let set = ParamSet::from_decls([])?;
@@ -95,7 +95,7 @@ impl<T> Shared<T> {
 /// sample_path.set(String::from("snare.wav"));
 /// assert_eq!(sample_path.get(), "snare.wav");
 /// assert_eq!(sample_path.changes(), 1);
-/// # Ok::<(), seam_params::DeclError>(())
+/// # Ok::<(), hapto_params::DeclError>(())
 /// ```
 ///
 /// # Panics
@@ -151,7 +151,7 @@ impl<T: Clone> Value<T> {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::{Origin, ParamSet, Value};
+    /// use hapto_params::{Origin, ParamSet, Value};
     ///
     /// let set = ParamSet::from_decls([])?;
     /// let name = Value::new(String::from("Init"), &set);
@@ -163,7 +163,7 @@ impl<T: Clone> Value<T> {
     /// name.set(String::from("Lead"));
     /// let second = name.read();
     /// assert_eq!((second.changes, second.value.as_str(), second.origin), (1, "Lead", Origin::User));
-    /// # Ok::<(), seam_params::DeclError>(())
+    /// # Ok::<(), hapto_params::DeclError>(())
     /// ```
     pub fn read(&self) -> Reading<T> {
         let state = self.shared.lock();
@@ -200,7 +200,7 @@ impl<T: Clone> Value<T> {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::{Origin, ParamSet, Value};
+    /// use hapto_params::{Origin, ParamSet, Value};
     ///
     /// let set = ParamSet::from_decls([])?;
     /// let name = Value::new(String::from("Init"), &set);
@@ -209,7 +209,7 @@ impl<T: Clone> Value<T> {
     /// assert_eq!(name.read().origin, Origin::User);
     /// name.set_from(String::from("Pad"), Origin::Host);
     /// assert_eq!(name.read().origin, Origin::Host);
-    /// # Ok::<(), seam_params::DeclError>(())
+    /// # Ok::<(), hapto_params::DeclError>(())
     /// ```
     pub fn set_from(&self, value: T, origin: Origin) {
         self.write(value, Author::Derived(origin));
@@ -375,8 +375,8 @@ impl<T: Clone> Value<T> {
 /// # Examples
 ///
 /// ```
-/// use seam_params::Value;
-/// # let set = seam_params::ParamSet::from_decls([])?;
+/// use hapto_params::Value;
+/// # let set = hapto_params::ParamSet::from_decls([])?;
 /// let name = Value::new(String::from("Init"), &set);
 ///
 /// let drag = name.begin();
@@ -384,7 +384,7 @@ impl<T: Clone> Value<T> {
 /// assert!(name.gesture_open());
 /// drop(drag); // closing writes nothing
 /// assert_eq!(name.get(), "Lead");
-/// # Ok::<(), seam_params::DeclError>(())
+/// # Ok::<(), hapto_params::DeclError>(())
 /// ```
 #[derive(Debug)]
 #[must_use = "a gesture closes as soon as it drops, so its writes would land outside it"]

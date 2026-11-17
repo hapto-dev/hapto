@@ -1,4 +1,4 @@
-# Seam
+# Hapto
 
 Declare a plugin parameter once, in Rust, and it is automation-correct,
 undo-clean and persisted. VST3 sees it natively; AU, AAX and hosting see it
@@ -8,11 +8,11 @@ plugin in a host yet ([Status](#status)).
 
 ## Purpose
 
-Seam makes Rust's ecosystem and tooling usable for audio plugins, so plugin code
-is quicker to write well.
+Hapto makes Rust's ecosystem and tooling usable for audio plugins, so plugin
+code is quicker to write well.
 
 - **Performance.** A plugin's DSP runs comparably to the same DSP in C++.
-- **Evidence.** `bench/` compares Seam against plain JUCE. With the same
+- **Evidence.** `bench/` compares Hapto against plain JUCE. With the same
   filters, compiled by LLVM inside the same JUCE wrapper, the two are within 3%
   of each other in 16 of the 18 block sizes and scenarios measured, plain JUCE
   level or ahead. In the other two, at 512 frames with parameters moving, a
@@ -20,13 +20,13 @@ is quicker to write well.
   differ by 9% one way and 6.5% the other ([the ladder
   report](bench/reports/2026-11-05-ladder.md)).
 
-Seam succeeds the C++/JUCE Seam (`nicvlav/seam-cpp`, final release v0.7.0).
+Hapto succeeds the C++/JUCE Seam (`nicvlav/seam-cpp`, final release v0.7.0).
 None of its code came over; its contracts did, in
 [docs/decisions.md](docs/decisions.md).
 
 ## Status
 
-Pre-release: 0.1.0, unpublished. Seam follows [semantic
+Pre-release: 0.1.0, unpublished. Hapto follows [semantic
 versioning](https://semver.org/): before 1.0, a minor version may break the API.
 [CHANGELOG.md](CHANGELOG.md) says what each version holds.
 
@@ -36,7 +36,7 @@ versioning](https://semver.org/): before 1.0, a minor version may break the API.
   and the native side that answers the page, the example gain, the example EQ,
   and the comparison against plain JUCE.
 - **Not built:** the CLAP exporter; a page in a plugin window anywhere but
-  Windows, where `seam-webview` shows it; and MIDI delivered to a plugin
+  Windows, where `hapto-webview` shows it; and MIDI delivered to a plugin
   through an exporter. [ROADMAP.md](ROADMAP.md) says what comes next.
 
 ## Start here
@@ -61,7 +61,7 @@ against plain JUCE (`bench`). The codemap in
 thread model, and [docs/testing.md](docs/testing.md) the test rules and what
 each CI lane proves. The [style guide](docs/style.md) says how code and docs
 are written here and lists the other docs: the decision record, its index and
-history, and the [glossary](docs/glossary.md) of the words Seam coins.
+history, and the [glossary](docs/glossary.md) of the words Hapto coins.
 
 ## Develop
 
@@ -91,7 +91,7 @@ reaches `main`.
 
 ## Licence
 
-MIT ([LICENSE](LICENSE)). A plugin built with Seam also carries the VST3 SDK's
+MIT ([LICENSE](LICENSE)). A plugin built with Hapto also carries the VST3 SDK's
 MIT notice and `triple_buffer`'s MPL-2.0 notice, and one whose editor is a
 page those of wry's WebView2 bindings, Microsoft's WebView2 loader, `bytes`
 and `dpi`, all in [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES).

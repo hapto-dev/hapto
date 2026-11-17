@@ -20,7 +20,7 @@ use std::sync::Arc;
 /// # Examples
 ///
 /// ```
-/// use seam_undo::UndoEq;
+/// use hapto_undo::UndoEq;
 ///
 /// // Hand-written for a type the macros do not fit: a gain compared in whole
 /// // tenths of a decibel, so a drag that ends 0.01 dB away records no step.
@@ -200,7 +200,7 @@ tuple_undo_eq!(
 /// # Examples
 ///
 /// ```
-/// use seam_undo::{UndoEq, undo_by_eq};
+/// use hapto_undo::{UndoEq, undo_by_eq};
 ///
 /// #[derive(Clone, Copy, PartialEq, Eq)]
 /// enum Mode {
@@ -217,7 +217,7 @@ tuple_undo_eq!(
 /// reflexive for a NaN:
 ///
 /// ```compile_fail
-/// use seam_undo::undo_by_eq;
+/// use hapto_undo::undo_by_eq;
 ///
 /// #[derive(Clone, Copy, PartialEq)]
 /// struct Gain(f32);
@@ -228,7 +228,7 @@ tuple_undo_eq!(
 /// the history's bound would not count:
 ///
 /// ```compile_fail
-/// use seam_undo::undo_by_eq;
+/// use hapto_undo::undo_by_eq;
 ///
 /// #[derive(PartialEq, Eq)]
 /// struct Label(String);
@@ -265,7 +265,7 @@ macro_rules! undo_by_eq {
 /// # Examples
 ///
 /// ```
-/// use seam_undo::{UndoEq, undo_by_fields};
+/// use hapto_undo::{UndoEq, undo_by_fields};
 ///
 /// struct Band {
 ///     freq: f64,
@@ -281,7 +281,7 @@ macro_rules! undo_by_eq {
 /// A field left out does not compile:
 ///
 /// ```compile_fail
-/// use seam_undo::undo_by_fields;
+/// use hapto_undo::undo_by_fields;
 ///
 /// struct Band {
 ///     freq: f64,

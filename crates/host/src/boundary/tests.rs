@@ -1,6 +1,6 @@
 use super::*;
 use crate::faults::thread_faults;
-use seam_testkit::sync::{PATIENCE, wait_until};
+use hapto_testkit::sync::{PATIENCE, wait_until};
 use std::thread;
 
 /// A patience that counts the calls that began to wait, for a test that

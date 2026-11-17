@@ -219,77 +219,77 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e1cf6437eb19a8f4a6cc0f7dca544973b0b78843adbfeb3683d1a94a0024a294"
 
 [[package]]
-name = "seam-bridge"
+name = "hapto-bridge"
 version = "0.1.0"
 dependencies = [
- "seam-params",
+ "hapto-params",
  "serde",
  "serde_json",
 ]
 
 [[package]]
-name = "seam-fuzz"
+name = "hapto-fuzz"
 version = "0.0.0"
 dependencies = [
  "libfuzzer-sys",
- "seam-bridge",
- "seam-host",
- "seam-params",
- "seam-session",
- "seam-ump",
+ "hapto-bridge",
+ "hapto-host",
+ "hapto-params",
+ "hapto-session",
+ "hapto-ump",
  "serde_json",
 ]
 
 [[package]]
-name = "seam-host"
+name = "hapto-host"
 version = "0.1.0"
 dependencies = [
  "loom",
- "seam-learn",
- "seam-params",
- "seam-session",
- "seam-ump",
- "seam-undo",
+ "hapto-learn",
+ "hapto-params",
+ "hapto-session",
+ "hapto-ump",
+ "hapto-undo",
  "serde",
  "serde_json",
 ]
 
 [[package]]
-name = "seam-learn"
+name = "hapto-learn"
 version = "0.1.0"
 dependencies = [
  "loom",
- "seam-params",
- "seam-session",
- "seam-ump",
+ "hapto-params",
+ "hapto-session",
+ "hapto-ump",
  "serde_json",
  "triple_buffer",
 ]
 
 [[package]]
-name = "seam-params"
+name = "hapto-params"
 version = "0.1.0"
 dependencies = [
  "loom",
 ]
 
 [[package]]
-name = "seam-session"
+name = "hapto-session"
 version = "0.1.0"
 dependencies = [
- "seam-params",
+ "hapto-params",
  "serde_json",
 ]
 
 [[package]]
-name = "seam-ump"
+name = "hapto-ump"
 version = "0.1.0"
 
 [[package]]
-name = "seam-undo"
+name = "hapto-undo"
 version = "0.1.0"
 dependencies = [
- "seam-params",
+ "hapto-params",
 ]
 
 [[package]]

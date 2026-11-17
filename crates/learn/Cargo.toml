@@ -1,5 +1,5 @@
 [package]
-name = "seam-learn"
+name = "hapto-learn"
 description = "MIDI learn: capture a controller, bind it to a parameter, and dispatch on the audio thread through a published snapshot"
 version.workspace = true
 edition.workspace = true
@@ -13,15 +13,15 @@ categories = ["multimedia::audio", "concurrency"]
 publish.workspace = true
 
 [dependencies]
-seam-params.workspace = true
-seam-session.workspace = true
-seam-ump.workspace = true
+hapto-params.workspace = true
+hapto-session.workspace = true
+hapto-ump.workspace = true
 serde_json.workspace = true
 triple_buffer.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
-seam-testkit.workspace = true
+hapto-testkit.workspace = true
 iai-callgrind.workspace = true
 
 [target.'cfg(loom)'.dependencies]

@@ -5,9 +5,9 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::Arc;
 
-use seam_host::{LoadError, MAX_STATE_BYTES, SavedState};
-use seam_params::{Kind, ParamDecl, ParamId, ParamSet, ParamSetBuilder, RestoreReader};
-use seam_session::{ApplyError, Participant, Section, Session};
+use hapto_host::{LoadError, MAX_STATE_BYTES, SavedState};
+use hapto_params::{Kind, ParamDecl, ParamId, ParamSet, ParamSetBuilder, RestoreReader};
+use hapto_session::{ApplyError, Participant, Section, Session};
 use serde_json::json;
 
 const MODES: &[&str] = &["low", "band", "high"];
@@ -264,7 +264,7 @@ fn parameters_are_assigned_before_the_session_applies_extra() {
     let ui = session.take_ui().expect("the first UI handle");
     let state = SavedState::new(&set, &session);
     let params = set.take_ui().expect("the UI handle");
-    let history = seam_undo::History::new(&params, seam_undo::Bound::default()).expect("history");
+    let history = hapto_undo::History::new(&params, hapto_undo::Bound::default()).expect("history");
     history.enroll_params();
     let gain = set.id("gain").expect("declared");
     assert!(params.write(gain, 6.0));
@@ -373,7 +373,7 @@ fn parameters_land_before_a_participant_applies_while_the_ui_thread_ticks() {
             let start = std::time::Instant::now();
             while !loading.is_finished() {
                 assert!(
-                    start.elapsed() < seam_testkit::sync::PATIENCE,
+                    start.elapsed() < hapto_testkit::sync::PATIENCE,
                     "round {round}: stuck"
                 );
                 ui.tick();
@@ -405,7 +405,7 @@ fn a_saved_state_refuses_a_session_made_from_another_set() {
     // could write a pre-load value over a loaded one.
     let set = set();
     let session = Session::new(&ParamSetBuilder::new().build());
-    seam_testkit::contract::expect_contract_panic("made from another ParamSet", || {
+    hapto_testkit::contract::expect_contract_panic("made from another ParamSet", || {
         let _ = SavedState::new(&set, &session);
     });
 }
@@ -558,9 +558,9 @@ impl Participant for Holds {
 /// `section`.
 struct Holding {
     rig: Rig,
-    ui: seam_session::SessionUi,
+    ui: hapto_session::SessionUi,
     holds: Rc<RefCell<Holds>>,
-    registration: seam_session::Registration,
+    registration: hapto_session::Registration,
 }
 
 fn holding(section: Section) -> Holding {
@@ -639,7 +639,7 @@ fn nested(levels: usize) -> Section {
 
 #[test]
 fn the_deepest_section_a_capture_takes_saves_a_block_that_loads_and_a_deeper_one_is_refused() {
-    let deepest = seam_session::MAX_SECTION_DEPTH;
+    let deepest = hapto_session::MAX_SECTION_DEPTH;
     let first = holding(nested(deepest));
     assert!(!first.registration.refused());
     let saved = first.rig.state.save();
@@ -725,7 +725,7 @@ fn the_largest_capture_saves_a_block_at_the_limit_that_loads_and_one_byte_more_i
     first.ui.tick();
     assert!(set.ids().all(|id| set.value(id) == longest));
     let saved = state.save();
-    assert_eq!(version_of(&saved, SEAM), json!(u64::MAX));
+    assert_eq!(version_of(&saved, HAPTO), json!(u64::MAX));
     assert_eq!(version_of(&saved, PLUGIN), json!(u64::MAX));
 
     // Each character of the section adds one byte to the block, so `limit`
@@ -948,7 +948,7 @@ fn the_unknown_keys_a_load_kept_take_their_share_of_the_limit() {
 type Reason = Box<dyn std::error::Error + Send + Sync>;
 
 /// The keys of the frame's version and the plugin's.
-const SEAM: &str = "seamStateVersion";
+const HAPTO: &str = "seamStateVersion";
 const PLUGIN: &str = "pluginStateVersion";
 
 #[test]
@@ -995,7 +995,7 @@ fn an_older_block_is_migrated_before_it_loads_and_one_that_cannot_be_changes_not
     );
     let saved = state.save();
     assert_eq!(
-        (version_of(&saved, SEAM), version_of(&saved, PLUGIN)),
+        (version_of(&saved, HAPTO), version_of(&saved, PLUGIN)),
         (json!(1), json!(3)),
         "and the current versions are written"
     );
@@ -1027,7 +1027,7 @@ fn hostile_blocks_through_a_migration_keep_every_promise() {
                 Some("drop") => drop(block.remove("parameters")),
                 Some("break") => drop(block.insert("parameters".into(), json!([1]))),
                 Some("versions") => {
-                    block.insert(SEAM.into(), json!("x"));
+                    block.insert(HAPTO.into(), json!("x"));
                     block.insert(PLUGIN.into(), json!(99));
                 }
                 Some("refuse") => return Err(Reason::from("refused")),
@@ -1215,13 +1215,13 @@ fn a_fresh_state_and_one_that_loaded_an_older_block_save_their_own_version() {
 
 #[test]
 fn each_version_saves_as_the_higher_of_the_blocks_and_this_builds_on_its_own() {
-    // A newer Seam's frame and a newer plugin's schema each keep their
+    // A newer Hapto's frame and a newer plugin's schema each keep their
     // number through this build's save, and neither lifts the other.
     let state = build("gain", true);
     let saved_after = |block: &str| {
         assert!(state.load(block.as_bytes()).is_ok(), "{block}");
         let saved = state.save();
-        (version_of(&saved, SEAM), version_of(&saved, PLUGIN))
+        (version_of(&saved, HAPTO), version_of(&saved, PLUGIN))
     };
     assert_eq!(
         saved_after(r#"{"seamStateVersion": 7, "pluginStateVersion": 2, "parameters": {}}"#),
@@ -1269,7 +1269,7 @@ fn the_migration_runs_only_for_a_block_of_an_older_plugin_version_and_gets_that_
             r#"{"seamStateVersion": 1, "pluginStateVersion": 4, "parameters": {}}"#,
             None,
         ),
-        // The frame's version is Seam's, and says nothing of the plugin's.
+        // The frame's version is Hapto's, and says nothing of the plugin's.
         (
             r#"{"seamStateVersion": 5, "pluginStateVersion": 1, "parameters": {}}"#,
             Some(1),

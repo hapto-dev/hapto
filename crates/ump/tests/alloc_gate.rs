@@ -2,14 +2,14 @@
 //! list filled past its capacity, read, changed in place and cleared, words
 //! split into packets, and channel voice messages decoded and encoded.
 
-seam_testkit::install_alloc_gate!();
+hapto_testkit::install_alloc_gate!();
 
-use seam_testkit::alloc::assert_no_allocations;
-use seam_ump::{ChannelVoice, Event, EventList, Packets, Voice, packet_words};
+use hapto_testkit::alloc::assert_no_allocations;
+use hapto_ump::{ChannelVoice, Event, EventList, Packets, Voice, packet_words};
 
 const CAPACITY: usize = 256;
 
-/// Every channel voice message Seam reads, on two groups and two channels.
+/// Every channel voice message Hapto reads, on two groups and two channels.
 fn voices() -> Vec<ChannelVoice> {
     let messages = [
         Voice::Midi1NoteOff {
@@ -100,7 +100,7 @@ fn filling_reading_and_clearing_a_list_does_not_allocate() {
 
 #[test]
 fn splitting_words_and_decoding_and_encoding_voices_does_not_allocate() {
-    // Every voice as its packet's words, packets of the other sizes Seam
+    // Every voice as its packet's words, packets of the other sizes Hapto
     // skips, and a MIDI 2.0 note-on cut after its first word at the end.
     let mut words = Vec::new();
     for voice in voices() {

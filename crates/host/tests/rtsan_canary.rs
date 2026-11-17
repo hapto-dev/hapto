@@ -1,16 +1,16 @@
 //! The real-time sanitizer's canary: a processor that allocates, played
 //! through the C interface, whose `process` carries the nonblocking mark.
 //!
-//! It is built only for the nightly sanitizer lane (`--cfg seam_rtsan`),
+//! It is built only for the nightly sanitizer lane (`--cfg hapto_rtsan`),
 //! which expects the test to abort. A canary that passes shows the lane
 //! checks nothing: the marks are missing, or the sanitizer is not linked.
-#![cfg(all(seam_rtsan, feature = "cabi", feature = "test-host"))]
+#![cfg(all(hapto_rtsan, feature = "cabi", feature = "test-host"))]
 
-use seam_host::cabi::TestHost;
-use seam_host::{
+use hapto_host::cabi::TestHost;
+use hapto_host::{
     AuCodes, Block, Category, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
 };
-use seam_params::{Declarer, Float, FloatDecl, Params};
+use hapto_params::{Declarer, Float, FloatDecl, Params};
 
 /// Allocates in every block, as no processor may.
 struct Allocates;
@@ -42,16 +42,16 @@ struct Canary;
 impl Plugin for Canary {
     const INFO: PluginInfo = PluginInfo {
         name: "Canary",
-        vendor: "Seam",
+        vendor: "Hapto",
         url: "",
         email: "",
         description: "",
         version: "0.1.0",
-        id: "dev.seam.rtsan-canary",
+        id: "dev.hapto.rtsan-canary",
         vst3_class_id: [9; 16],
         au_codes: AuCodes {
             subtype: *b"cnry",
-            manufacturer: *b"Seam",
+            manufacturer: *b"Hapt",
         },
         category: Category::Effect,
         features: &[],

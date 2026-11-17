@@ -93,7 +93,7 @@ function useFailure(client: Client): Error | undefined {
 /**
  * Creates `useParam`, `useValue`, `useEvent` and `useCommand` for one page.
  * Call it once at module scope with the page's four maps. The parameter map is
- * generated from the Rust declarations (`seam_bridge::typescript::param_map`);
+ * generated from the Rust declarations (`hapto_bridge::typescript::param_map`);
  * the event, command and value maps are written by hand until Rust generates
  * them too. The value map gives each key the type serde writes for the value
  * bound under it:

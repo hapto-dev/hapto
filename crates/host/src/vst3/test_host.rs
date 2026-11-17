@@ -43,7 +43,7 @@ pub const RESTART_LATENCY: i32 = 8;
 ///
 /// ```
 #[doc = include_str!("../../doc/gain.rs")]
-/// use seam_host::vst3::{HostCall, TestHost};
+/// use hapto_host::vst3::{HostCall, TestHost};
 ///
 /// let host = TestHost::<Gain>::new();
 /// let id = host.parameter(0).expect("listed").id;
@@ -77,7 +77,7 @@ pub enum HostCall {
 ///
 /// ```
 #[doc = include_str!("../../doc/gain.rs")]
-/// use seam_host::vst3::{Refused, TestHost};
+/// use hapto_host::vst3::{Refused, TestHost};
 ///
 /// let host = TestHost::<Gain>::new();
 /// // A block that is not a saved one: the host is told the load failed.
@@ -126,7 +126,7 @@ impl std::error::Error for Refused {}
 ///
 /// ```
 #[doc = include_str!("../../doc/gain.rs")]
-/// use seam_host::vst3::TestHost;
+/// use hapto_host::vst3::TestHost;
 ///
 /// let host = TestHost::<Gain>::new();
 /// let info = host.parameter(0).expect("listed");
@@ -161,7 +161,7 @@ pub struct ParamInfo {
 ///
 /// ```
 #[doc = include_str!("../../doc/gain.rs")]
-/// use seam_host::vst3::{Options, TestHost};
+/// use hapto_host::vst3::{Options, TestHost};
 ///
 /// // A host that creates the instance on another thread, as some do.
 /// let host = TestHost::<Gain>::with(Options {
@@ -201,7 +201,7 @@ pub struct Options {
 ///
 /// ```
 #[doc = include_str!("../../doc/gain.rs")]
-/// use seam_host::vst3::TestHost;
+/// use hapto_host::vst3::TestHost;
 ///
 /// let mut host = TestHost::<Gain>::new();
 /// let id = host.parameter(0).expect("listed").id;
@@ -214,7 +214,7 @@ pub struct Options {
 /// let block = &mut [&mut left[..], &mut right[..]];
 /// host.process_in_place(block, 4, &[(id, 0.0)])?;
 /// assert!((left[0] - 0.0631).abs() < 1e-4);
-/// # Ok::<(), seam_host::vst3::Refused>(())
+/// # Ok::<(), hapto_host::vst3::Refused>(())
 /// ```
 pub struct TestHost<P: Plugin> {
     component: ComWrapper<Component<P>>,
@@ -625,7 +625,7 @@ impl<P: Plugin> TestHost<P> {
     ///
     /// ```
     #[doc = include_str!("../../doc/gain.rs")]
-    /// use seam_host::vst3::TestHost;
+    /// use hapto_host::vst3::TestHost;
     ///
     /// let mut host = TestHost::<Gain>::new();
     /// let id = host.parameter(0).expect("listed").id;
@@ -641,7 +641,7 @@ impl<P: Plugin> TestHost<P> {
     /// let first = left[0];
     /// assert!((first - 0.0631).abs() < 1e-4, "-24 dB from the first sample");
     /// assert_eq!(host.normalized(id), 0.0);
-    /// # Ok::<(), seam_host::vst3::Refused>(())
+    /// # Ok::<(), hapto_host::vst3::Refused>(())
     /// ```
     pub fn process_queues(
         &mut self,
@@ -914,7 +914,7 @@ impl Blocks {
 ///
 /// ```
 #[doc = include_str!("../../doc/gain.rs")]
-/// use seam_host::vst3::TestHost;
+/// use hapto_host::vst3::TestHost;
 ///
 /// let host = TestHost::<Gain>::new();
 /// let id = host.parameter(0).expect("listed").id;
@@ -932,7 +932,7 @@ impl Blocks {
 ///         assert!(left[0] < 0.1);
 ///     });
 /// });
-/// # Ok::<(), seam_host::vst3::Refused>(())
+/// # Ok::<(), hapto_host::vst3::Refused>(())
 /// ```
 pub struct AudioSide<'a> {
     blocks: Blocks,

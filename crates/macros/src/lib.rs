@@ -1,10 +1,10 @@
-//! The derives behind `seam_params::Params`, which writes a struct's
+//! The derives behind `hapto_params::Params`, which writes a struct's
 //! `declare` from a `#[param(...)]` mark on each field, and
-//! `seam_params::Choices`, which writes an enum's labels and mappings from
+//! `hapto_params::Choices`, which writes an enum's labels and mappings from
 //! its variants.
 //!
-//! Use them through `seam-params` with its `derive` feature, where they are
-//! documented with examples: the code they write names `::seam_params`, so
+//! Use them through `hapto-params` with its `derive` feature, where they are
+//! documented with examples: the code they write names `::hapto_params`, so
 //! they cannot be used without that crate.
 //!
 //! Each derive writes what a person would write by hand, and constants that
@@ -18,8 +18,8 @@
 //! position, on that discriminant.
 //!
 //! With the `manifest` feature, `manifest_info!` writes a plugin's
-//! `seam_host::PluginInfo` from the plugin crate's manifest. Use it through
-//! `seam-host` with its `manifest` feature, where it is documented with an
+//! `hapto_host::PluginInfo` from the plugin crate's manifest. Use it through
+//! `hapto-host` with its `manifest` feature, where it is documented with an
 //! example.
 
 mod choices;
@@ -40,9 +40,9 @@ const OPTIONS: &[&str] = &["step", "skew_centre", "unit", "group"];
 /// The flags a declaration takes, each its `as_` method.
 const FLAGS: &[&str] = &["bypass"];
 
-/// Writes `seam_params::Params` for a struct of parameters.
+/// Writes `hapto_params::Params` for a struct of parameters.
 ///
-/// Documented, with examples, as `seam_params::Params`.
+/// Documented, with examples, as `hapto_params::Params`.
 #[proc_macro_derive(Params, attributes(param))]
 pub fn derive_params(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -52,9 +52,9 @@ pub fn derive_params(input: TokenStream) -> TokenStream {
     }
 }
 
-/// Writes `seam_params::Choices` for a fieldless enum.
+/// Writes `hapto_params::Choices` for a fieldless enum.
 ///
-/// Documented, with examples, as `seam_params::Choices`.
+/// Documented, with examples, as `hapto_params::Choices`.
 #[proc_macro_derive(Choices, attributes(choice))]
 pub fn derive_choices(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -64,10 +64,10 @@ pub fn derive_choices(input: TokenStream) -> TokenStream {
     }
 }
 
-/// Writes a plugin's `seam_host::PluginInfo` from its manifest and the
+/// Writes a plugin's `hapto_host::PluginInfo` from its manifest and the
 /// fields it is given.
 ///
-/// Documented, with an example, as `seam_host::manifest_info`.
+/// Documented, with an example, as `hapto_host::manifest_info`.
 #[cfg(feature = "manifest")]
 #[proc_macro]
 pub fn manifest_info(input: TokenStream) -> TokenStream {
@@ -132,8 +132,8 @@ fn params(input: &DeriveInput) -> syn::Result<Tokens> {
     }
     Ok(quote! {
         #[automatically_derived]
-        impl ::seam_params::Params for #name {
-            fn declare(#p: &mut ::seam_params::Declarer) -> Self {
+        impl ::hapto_params::Params for #name {
+            fn declare(#p: &mut ::hapto_params::Declarer) -> Self {
                 #name { #(#rows),* }
             }
         }
@@ -152,7 +152,7 @@ fn row(field: &Field, p: &Ident, earlier: &[Expr]) -> syn::Result<(Tokens, Optio
     let Some(mark) = marks.next() else {
         // No mark: a struct of parameters, which declares itself.
         let row = quote_spanned! { ty.span() =>
-            #ident: <#ty as ::seam_params::Params>::declare(#p)
+            #ident: <#ty as ::hapto_params::Params>::declare(#p)
         };
         return Ok((row, None));
     };
@@ -186,13 +186,13 @@ fn row(field: &Field, p: &Ident, earlier: &[Expr]) -> syn::Result<(Tokens, Optio
     }
 
     // The field's type names the declaration, so a type alias works.
-    let decl = quote_spanned! { ty.span() => <#ty as ::seam_params::Declared>::Decl };
+    let decl = quote_spanned! { ty.span() => <#ty as ::hapto_params::Declared>::Decl };
     let checked = quote_spanned! { mark.span() => .checked() };
     let key = arguments.first().cloned();
     // A key an earlier field has is refused on this field's key.
     let fresh = key.as_ref().map(|key| {
         quote_spanned! { key.span() =>
-            const _: () = ::seam_params::key_is_new(#key, &[#(#earlier),*]);
+            const _: () = ::hapto_params::key_is_new(#key, &[#(#earlier),*]);
         }
     });
     let row = quote_spanned! { ty.span() =>
@@ -267,11 +267,11 @@ mod tests {
 
     use super::*;
 
-    /// The `with_` and `as_` methods of the declarations in `seam-params`,
+    /// The `with_` and `as_` methods of the declarations in `hapto-params`,
     /// without their prefixes.
     fn declared_methods() -> (BTreeSet<String>, BTreeSet<String>) {
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../params/src/declare.rs");
-        let source = std::fs::read_to_string(&path).expect("seam-params' declarations");
+        let source = std::fs::read_to_string(&path).expect("hapto-params' declarations");
         let file = syn::parse_file(&source).expect("declare.rs parses");
         let (mut options, mut flags) = (BTreeSet::new(), BTreeSet::new());
         let mut decls = BTreeSet::new();

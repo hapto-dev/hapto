@@ -4,16 +4,16 @@
 use std::path::{Path, PathBuf};
 
 /// The scheme the page is served from. WebView2 cannot register a scheme of
-/// its own, so on Windows `seam://localhost/` reaches the page as
-/// `http://seam.localhost/`.
-pub(crate) const SCHEME: &str = "seam";
+/// its own, so on Windows `hapto://localhost/` reaches the page as
+/// `http://hapto.localhost/`.
+pub(crate) const SCHEME: &str = "hapto";
 
 /// The URL of the page built into the plugin.
-const EMBEDDED: &str = "seam://localhost/index.html";
+const EMBEDDED: &str = "hapto://localhost/index.html";
 
 /// The origin the page built into the plugin is loaded from, as WebView2
 /// names it.
-const EMBEDDED_ORIGIN: &str = "http://seam.localhost";
+const EMBEDDED_ORIGIN: &str = "http://hapto.localhost";
 
 /// One file of a page built into the plugin: its path below the page's
 /// root, as the page's HTML names it, and its bytes, as `include_bytes!`
@@ -22,7 +22,7 @@ const EMBEDDED_ORIGIN: &str = "http://seam.localhost";
 /// # Examples
 ///
 /// ```
-/// use seam_webview::Asset;
+/// use hapto_webview::Asset;
 ///
 /// // A page of one file; a built page lists its script and styles too.
 /// const PAGE: &[Asset] = &[Asset {
@@ -109,16 +109,16 @@ fn origin(url: &str) -> Option<&str> {
     url.get(..scheme.len() + "://".len() + authority)
 }
 
-/// The dev server a debug build loads the page from: `SEAM_PAGE_DEV_URL`,
+/// The dev server a debug build loads the page from: `HAPTO_PAGE_DEV_URL`,
 /// when it is set and not empty.
 #[cfg(debug_assertions)]
 pub(crate) fn dev_url() -> Option<String> {
-    std::env::var("SEAM_PAGE_DEV_URL")
+    std::env::var("HAPTO_PAGE_DEV_URL")
         .ok()
         .filter(|url| !url.is_empty())
 }
 
-/// A release build never reads `SEAM_PAGE_DEV_URL`: it always loads the page
+/// A release build never reads `HAPTO_PAGE_DEV_URL`: it always loads the page
 /// built into the plugin.
 #[cfg(not(debug_assertions))]
 pub(crate) fn dev_url() -> Option<String> {
@@ -143,7 +143,7 @@ pub(crate) fn data_folder(base: &Path, id: &str) -> PathBuf {
         })
         .collect();
     let name = if name.trim_matches('.').is_empty() {
-        "seam-plugin".to_owned()
+        "hapto-plugin".to_owned()
     } else {
         name
     };
@@ -210,7 +210,7 @@ mod tests {
 
     #[test]
     fn the_embedded_page_unless_a_dev_server_is_given() {
-        assert_eq!(page_url(None), "seam://localhost/index.html");
+        assert_eq!(page_url(None), "hapto://localhost/index.html");
         assert_eq!(
             page_url(Some("http://localhost:5173/".into())),
             "http://localhost:5173/"
@@ -220,20 +220,20 @@ mod tests {
     #[test]
     fn only_the_page_is_the_page() {
         for url in [
-            "http://seam.localhost/index.html",
-            "http://seam.localhost/",
-            "http://seam.localhost",
-            "http://seam.localhost/assets/index.js?v=1",
+            "http://hapto.localhost/index.html",
+            "http://hapto.localhost/",
+            "http://hapto.localhost",
+            "http://hapto.localhost/assets/index.js?v=1",
         ] {
             assert!(is_page(url, None), "{url}");
         }
         for url in [
             "file:///C:/Users/me/kick.wav",
             "https://example.com/",
-            "http://seam.localhost.example.com/",
-            "http://seam.localhost@example.com/",
-            "http://seam.localhost:8080/",
-            "https://seam.localhost/",
+            "http://hapto.localhost.example.com/",
+            "http://hapto.localhost@example.com/",
+            "http://hapto.localhost:8080/",
+            "https://hapto.localhost/",
             "about:blank",
             "",
         ] {
@@ -253,7 +253,7 @@ mod tests {
         ));
         assert!(!is_page("http://localhost:51730/", dev));
         assert!(!is_page("http://localhost:5174/", dev));
-        assert!(is_page("http://seam.localhost/index.html", dev));
+        assert!(is_page("http://hapto.localhost/index.html", dev));
         assert!(!is_page("https://example.com/", Some("not a url")));
     }
 
@@ -267,8 +267,8 @@ mod tests {
     fn the_data_folder_is_the_plugins_own_below_the_base() {
         let base = Path::new("base");
         assert_eq!(
-            data_folder(base, "dev.seam.example-gain"),
-            base.join("dev.seam.example-gain").join("WebView2")
+            data_folder(base, "dev.hapto.example-gain"),
+            base.join("dev.hapto.example-gain").join("WebView2")
         );
         assert_eq!(
             data_folder(base, "a/b\\c:d"),
@@ -276,7 +276,7 @@ mod tests {
         );
         assert_eq!(
             data_folder(base, ".."),
-            base.join("seam-plugin").join("WebView2")
+            base.join("hapto-plugin").join("WebView2")
         );
     }
 }

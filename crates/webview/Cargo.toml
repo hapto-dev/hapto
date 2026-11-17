@@ -1,5 +1,5 @@
 [package]
-name = "seam-webview"
+name = "hapto-webview"
 description = "A plugin's page in the host's window: a WebView through wry, joined to the page protocol's native side"
 version.workspace = true
 edition.workspace = true
@@ -17,9 +17,9 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
-seam-bridge.workspace = true
-seam-host.workspace = true
-seam-params.workspace = true
+hapto-bridge.workspace = true
+hapto-host.workspace = true
+hapto-params.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
@@ -29,7 +29,7 @@ serde_json.workspace = true
 wry.workspace = true
 
 [dev-dependencies]
-seam-host = { workspace = true, features = ["vst3", "test-host"] }
+hapto-host = { workspace = true, features = ["vst3", "test-host"] }
 
 [lints]
 workspace = true

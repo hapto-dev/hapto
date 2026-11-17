@@ -3,8 +3,8 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use seam_params::{Kind, List, ParamDecl, ParamSet, ParamSetBuilder, RestoreWriter, UiParams};
-use seam_undo::{Bound, History, HistoryError};
+use hapto_params::{Kind, List, ParamDecl, ParamSet, ParamSetBuilder, RestoreWriter, UiParams};
+use hapto_undo::{Bound, History, HistoryError};
 
 /// A move-only element that counts its drops and knows its own address.
 #[derive(Debug)]
@@ -14,7 +14,7 @@ struct Sample {
     identity: Box<u8>,
 }
 
-impl seam_undo::UndoSize for Sample {}
+impl hapto_undo::UndoSize for Sample {}
 
 impl Sample {
     fn new(id: u32, drops: &Arc<AtomicUsize>) -> Self {
@@ -203,8 +203,8 @@ fn a_reset_records_nothing_and_makes_earlier_steps_replay_as_nothing() {
     let tracker = other.take_tracker().expect("untracked");
     assert!(other.clear());
     let (mut commits, target) = tracker.take();
-    let Some(seam_params::Stamped {
-        commit: seam_params::ListCommit::Clear { elements },
+    let Some(hapto_params::Stamped {
+        commit: hapto_params::ListCommit::Clear { elements },
         ..
     }) = commits.pop()
     else {

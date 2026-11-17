@@ -37,6 +37,6 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Soak
         shell: bash
-        run: cargo test -p seam-example-eq --no-default-features --features cabi --release --test matrix --locked -- --ignored soak --nocapture
+        run: cargo test -p hapto-example-eq --no-default-features --features cabi --release --test matrix --locked -- --ignored soak --nocapture
         env:
-          SEAM_SOAK_SECONDS: ${{ inputs.soak_seconds || '10800' }}
+          HAPTO_SOAK_SECONDS: ${{ inputs.soak_seconds || '10800' }}

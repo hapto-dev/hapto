@@ -406,6 +406,144 @@ dependencies = [
 ]
 
 [[package]]
+name = "hapto-bridge"
+version = "0.1.0"
+dependencies = [
+ "hapto-params",
+ "hapto-testkit",
+ "hapto-undo",
+ "serde",
+ "serde_json",
+ "ts-rs",
+]
+
+[[package]]
+name = "hapto-example-eq"
+version = "0.1.0"
+dependencies = [
+ "hapto-host",
+ "hapto-params",
+ "hapto-testkit",
+ "iai-callgrind",
+ "serde_json",
+]
+
+[[package]]
+name = "hapto-example-gain"
+version = "0.1.0"
+dependencies = [
+ "hapto-bridge",
+ "hapto-host",
+ "hapto-learn",
+ "hapto-params",
+ "hapto-testkit",
+ "hapto-ump",
+ "hapto-undo",
+ "hapto-webview",
+]
+
+[[package]]
+name = "hapto-host"
+version = "0.1.0"
+dependencies = [
+ "hapto-learn",
+ "hapto-macros",
+ "hapto-params",
+ "hapto-session",
+ "hapto-testkit",
+ "hapto-ump",
+ "hapto-undo",
+ "loom",
+ "raw-window-handle",
+ "serde",
+ "serde_json",
+ "vst3",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "hapto-learn"
+version = "0.1.0"
+dependencies = [
+ "hapto-params",
+ "hapto-session",
+ "hapto-testkit",
+ "hapto-ump",
+ "iai-callgrind",
+ "loom",
+ "proptest",
+ "serde_json",
+ "triple_buffer",
+]
+
+[[package]]
+name = "hapto-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+ "toml",
+]
+
+[[package]]
+name = "hapto-params"
+version = "0.1.0"
+dependencies = [
+ "hapto-macros",
+ "hapto-testkit",
+ "iai-callgrind",
+ "loom",
+ "proptest",
+]
+
+[[package]]
+name = "hapto-session"
+version = "0.1.0"
+dependencies = [
+ "hapto-params",
+ "hapto-testkit",
+ "serde_json",
+]
+
+[[package]]
+name = "hapto-testkit"
+version = "0.1.0"
+dependencies = [
+ "assert_no_alloc",
+]
+
+[[package]]
+name = "hapto-ump"
+version = "0.1.0"
+dependencies = [
+ "hapto-testkit",
+ "iai-callgrind",
+ "proptest",
+]
+
+[[package]]
+name = "hapto-undo"
+version = "0.1.0"
+dependencies = [
+ "hapto-params",
+ "hapto-testkit",
+ "proptest",
+]
+
+[[package]]
+name = "hapto-webview"
+version = "0.1.0"
+dependencies = [
+ "hapto-bridge",
+ "hapto-host",
+ "hapto-params",
+ "serde",
+ "serde_json",
+ "wry",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1175,144 +1313,6 @@ name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
-
-[[package]]
-name = "seam-bridge"
-version = "0.1.0"
-dependencies = [
- "seam-params",
- "seam-testkit",
- "seam-undo",
- "serde",
- "serde_json",
- "ts-rs",
-]
-
-[[package]]
-name = "seam-example-eq"
-version = "0.1.0"
-dependencies = [
- "iai-callgrind",
- "seam-host",
- "seam-params",
- "seam-testkit",
- "serde_json",
-]
-
-[[package]]
-name = "seam-example-gain"
-version = "0.1.0"
-dependencies = [
- "seam-bridge",
- "seam-host",
- "seam-learn",
- "seam-params",
- "seam-testkit",
- "seam-ump",
- "seam-undo",
- "seam-webview",
-]
-
-[[package]]
-name = "seam-host"
-version = "0.1.0"
-dependencies = [
- "loom",
- "raw-window-handle",
- "seam-learn",
- "seam-macros",
- "seam-params",
- "seam-session",
- "seam-testkit",
- "seam-ump",
- "seam-undo",
- "serde",
- "serde_json",
- "vst3",
- "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "seam-learn"
-version = "0.1.0"
-dependencies = [
- "iai-callgrind",
- "loom",
- "proptest",
- "seam-params",
- "seam-session",
- "seam-testkit",
- "seam-ump",
- "serde_json",
- "triple_buffer",
-]
-
-[[package]]
-name = "seam-macros"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.119",
- "toml",
-]
-
-[[package]]
-name = "seam-params"
-version = "0.1.0"
-dependencies = [
- "iai-callgrind",
- "loom",
- "proptest",
- "seam-macros",
- "seam-testkit",
-]
-
-[[package]]
-name = "seam-session"
-version = "0.1.0"
-dependencies = [
- "seam-params",
- "seam-testkit",
- "serde_json",
-]
-
-[[package]]
-name = "seam-testkit"
-version = "0.1.0"
-dependencies = [
- "assert_no_alloc",
-]
-
-[[package]]
-name = "seam-ump"
-version = "0.1.0"
-dependencies = [
- "iai-callgrind",
- "proptest",
- "seam-testkit",
-]
-
-[[package]]
-name = "seam-undo"
-version = "0.1.0"
-dependencies = [
- "proptest",
- "seam-params",
- "seam-testkit",
-]
-
-[[package]]
-name = "seam-webview"
-version = "0.1.0"
-dependencies = [
- "seam-bridge",
- "seam-host",
- "seam-params",
- "serde",
- "serde_json",
- "wry",
-]
 
 [[package]]
 name = "selectors"
@@ -2128,13 +2128,13 @@ dependencies = [
 name = "xtask"
 version = "0.1.0"
 dependencies = [
+ "hapto-bridge",
+ "hapto-example-eq",
+ "hapto-host",
+ "hapto-params",
+ "hapto-testkit",
  "proc-macro2",
  "quote",
- "seam-bridge",
- "seam-example-eq",
- "seam-host",
- "seam-params",
- "seam-testkit",
  "serde_json",
  "syn 2.0.119",
 ]

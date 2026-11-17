@@ -3,13 +3,13 @@
 
 use std::sync::Arc;
 
-use proptest::prelude::*;
-use proptest::test_runner::FileFailurePersistence;
-use seam_params::{
+use hapto_params::{
     Edit, Gesture, Kind, ParamDecl, ParamId, ParamSet, ParamSetBuilder, Range, Reading, UiParams,
     Watch,
 };
-use seam_testkit::sync::Latch;
+use hapto_testkit::sync::Latch;
+use proptest::prelude::*;
+use proptest::test_runner::FileFailurePersistence;
 
 fn param(key: &'static str) -> ParamDecl {
     ParamDecl::new(key, key, Kind::continuous(0.0, 10.0, 1.0, None), 5.0)

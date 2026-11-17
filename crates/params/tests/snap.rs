@@ -1,8 +1,8 @@
 //! Snapping, the host's 0..1, each origin's fallback, and defaults.
 
+use hapto_params::{Kind, ParamDecl, Range};
 use proptest::prelude::*;
 use proptest::test_runner::FileFailurePersistence;
-use seam_params::{Kind, ParamDecl, Range};
 
 const LABELS: [&str; 8] = ["a", "b", "c", "d", "e", "f", "g", "h"];
 

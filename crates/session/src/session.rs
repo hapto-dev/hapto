@@ -6,7 +6,7 @@ use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use seam_params::{ParamSet, RestoreWriter, audio_thread};
+use hapto_params::{ParamSet, RestoreWriter, audio_thread};
 
 use crate::ui::SessionUi;
 use crate::{Section, SessionError};
@@ -86,7 +86,7 @@ fn object_bytes<'a>(sections: impl Iterator<Item = (&'a str, &'a Kept)>) -> usiz
         .sum::<usize>()
 }
 
-/// The longest saved block a load reads, 64 MiB, which `seam_host` publishes
+/// The longest saved block a load reads, 64 MiB, which `hapto_host` publishes
 /// as its own `MAX_STATE_BYTES`.
 ///
 /// A session's budget starts here, so no capture grows `extra` past the whole
@@ -498,8 +498,8 @@ impl Session {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::ParamSetBuilder;
-    /// use seam_session::Session;
+    /// use hapto_params::ParamSetBuilder;
+    /// use hapto_session::Session;
     ///
     /// let session = Session::new(&ParamSetBuilder::new().build());
     /// let ui = session.take_ui().ok_or("the first UI handle")?;
@@ -527,8 +527,8 @@ impl Session {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::ParamSetBuilder;
-    /// use seam_session::Session;
+    /// use hapto_params::ParamSetBuilder;
+    /// use hapto_session::Session;
     /// use serde_json::json;
     ///
     /// let session = Session::new(&ParamSetBuilder::new().build());
@@ -587,8 +587,8 @@ impl Session {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::ParamSetBuilder;
-    /// use seam_session::Session;
+    /// use hapto_params::ParamSetBuilder;
+    /// use hapto_session::Session;
     /// use serde_json::json;
     ///
     /// let session = Session::new(&ParamSetBuilder::new().build());

@@ -29,8 +29,8 @@
 //! Enrol a parameter, make one gesture, and undo it:
 //!
 //! ```
-//! use seam_params::{Kind, ParamDecl, ParamSet};
-//! use seam_undo::{Bound, History};
+//! use hapto_params::{Kind, ParamDecl, ParamSet};
+//! use hapto_undo::{Bound, History};
 //!
 //! let decl = ParamDecl::new("gain", "Gain", Kind::continuous(0.0, 10.0, 1.0, None), 5.0);
 //! let set = ParamSet::from_decls([decl])?;
@@ -56,12 +56,12 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 //!
-//! [glossary-tick]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#tick
-//! [glossary-entry]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#entry-step
-//! [glossary-transaction]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#transaction
-//! [glossary-restore]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#restore
-//! [glossary-replay]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#replay
-//! [glossary-enrollment]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#enrollment
+//! [glossary-tick]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#tick
+//! [glossary-entry]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#entry-step
+//! [glossary-transaction]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#transaction
+//! [glossary-restore]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#restore
+//! [glossary-replay]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#replay
+//! [glossary-enrollment]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#enrollment
 
 mod enroll;
 mod eq;
@@ -78,8 +78,8 @@ pub use size::UndoSize;
 /// # Examples
 ///
 /// ```
-/// use seam_params::{Kind, ParamDecl, ParamSetBuilder};
-/// use seam_undo::{Bound, History};
+/// use hapto_params::{Kind, ParamDecl, ParamSetBuilder};
+/// use hapto_undo::{Bound, History};
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let mut builder = ParamSetBuilder::new();
@@ -123,7 +123,7 @@ pub struct Entry {
 /// # Examples
 ///
 /// ```
-/// use seam_undo::Bound;
+/// use hapto_undo::Bound;
 ///
 /// // A plugin whose steps are small can keep more of them.
 /// let bound = Bound::default().with_max_units(100_000);
@@ -175,8 +175,8 @@ impl Default for Bound {
 /// # Examples
 ///
 /// ```
-/// use seam_params::{Kind, ParamDecl, ParamSetBuilder};
-/// use seam_undo::{Bound, History, HistoryError};
+/// use hapto_params::{Kind, ParamDecl, ParamSetBuilder};
+/// use hapto_undo::{Bound, History, HistoryError};
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let mut builder = ParamSetBuilder::new();

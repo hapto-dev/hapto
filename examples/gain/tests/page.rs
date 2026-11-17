@@ -3,7 +3,7 @@
 //! React tree renders, and its first call, which waits for the snapshot,
 //! reaches the plugin. Ignored in a normal run, since it needs the page
 //! built (`npm run build` in `page/`) and the WebView2 runtime; run it by
-//! hand on Windows with `cargo test -p seam-example-gain --test page --
+//! hand on Windows with `cargo test -p hapto-example-gain --test page --
 //! --ignored`.
 
 #![cfg(windows)]
@@ -11,13 +11,13 @@
 use std::cell::Cell;
 use std::time::{Duration, Instant};
 
-use seam_example_gain::{GainParams, PAGE};
-use seam_host::vst3::{HiddenWindow, TestHost};
-use seam_host::{
+use hapto_example_gain::{GainParams, PAGE};
+use hapto_host::vst3::{HiddenWindow, TestHost};
+use hapto_host::{
     AuCodes, Block, Category, Editor, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor,
     Status,
 };
-use seam_webview::Page;
+use hapto_webview::Page;
 
 thread_local! {
     /// How many times the page asked for the version.
@@ -39,17 +39,17 @@ struct Probe {
 
 impl Plugin for Probe {
     const INFO: PluginInfo = PluginInfo {
-        name: "Seam Example Gain Page Probe",
-        vendor: "Seam",
+        name: "Hapto Example Gain Page Probe",
+        vendor: "Hapto",
         url: "",
         email: "",
         description: "",
         version: "0.1.0",
-        id: "dev.seam.example-gain-page-probe",
+        id: "dev.hapto.example-gain-page-probe",
         vst3_class_id: [3; 16],
         au_codes: AuCodes {
             subtype: *b"gnpp",
-            manufacturer: *b"Seam",
+            manufacturer: *b"Hapt",
         },
         category: Category::Effect,
         features: &[],

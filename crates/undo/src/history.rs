@@ -6,7 +6,7 @@ use std::fmt;
 use std::mem;
 use std::rc::Rc;
 
-use seam_params::{GestureRecords, RestoreReader, RestoreStamp, UiParams};
+use hapto_params::{GestureRecords, RestoreReader, RestoreStamp, UiParams};
 
 use crate::enroll::{Enrolment, Polled};
 use crate::{Bound, Entry, HistoryError};
@@ -109,8 +109,8 @@ pub(crate) struct Shared {
 /// # Examples
 ///
 /// ```
-/// use seam_params::{Kind, ParamDecl, ParamSet};
-/// use seam_undo::{Bound, History};
+/// use hapto_params::{Kind, ParamDecl, ParamSet};
+/// use hapto_undo::{Bound, History};
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let set = ParamSet::from_decls([
@@ -141,7 +141,7 @@ pub(crate) struct Shared {
 /// In a build with `debug_assertions`, a replay that writes parameters
 /// ([`undo`](Self::undo), [`redo`](Self::redo) and [`jump`](Self::jump))
 /// panics while the thread holds an
-/// [`audio_thread`](seam_params::audio_thread) mark.
+/// [`audio_thread`](hapto_params::audio_thread) mark.
 #[derive(Debug, Clone)]
 pub struct History {
     pub(crate) shared: Rc<Shared>,
@@ -219,7 +219,7 @@ impl History {
     /// # Examples
     ///
     /// ```
-    /// use seam_undo::{Bound, History};
+    /// use hapto_undo::{Bound, History};
     #[doc = include_str!("../doc/setup.rs")]
     /// # let history = History::new(&ui, Bound::default())?;
     /// history.enroll_param(gain)?;
@@ -258,7 +258,7 @@ impl History {
     /// # Examples
     ///
     /// ```
-    /// use seam_undo::{Bound, History, HistoryError};
+    /// use hapto_undo::{Bound, History, HistoryError};
     #[doc = include_str!("../doc/setup.rs")]
     /// # let history = History::new(&ui, Bound::default())?;
     /// history.enroll_param(gain)?;
@@ -305,7 +305,7 @@ impl History {
     /// # Examples
     ///
     /// ```
-    /// use seam_undo::{Bound, History};
+    /// use hapto_undo::{Bound, History};
     #[doc = include_str!("../doc/setup.rs")]
     /// # let history = History::new(&ui, Bound::default())?;
     /// history.enroll_param(gain)?;
@@ -351,7 +351,7 @@ impl History {
     /// # Examples
     ///
     /// ```
-    /// use seam_undo::{Bound, History};
+    /// use hapto_undo::{Bound, History};
     #[doc = include_str!("../doc/setup.rs")]
     /// # let history = History::new(&ui, Bound::default())?;
     /// history.enroll_param(gain)?;
@@ -388,7 +388,7 @@ impl History {
     /// # Examples
     ///
     /// ```
-    /// use seam_undo::{Bound, History};
+    /// use hapto_undo::{Bound, History};
     #[doc = include_str!("../doc/setup.rs")]
     /// # let history = History::new(&ui, Bound::default())?;
     /// history.enroll_param(gain)?;
@@ -570,7 +570,7 @@ impl History {
 /// # Examples
 ///
 /// ```
-/// # use seam_undo::{Bound, History};
+/// # use hapto_undo::{Bound, History};
 #[doc = include_str!("../doc/setup.rs")]
 /// # let history = History::new(&ui, Bound::default())?;
 /// // An empty transaction leaves no step.

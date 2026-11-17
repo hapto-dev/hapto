@@ -25,7 +25,7 @@ impl Kind {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::Kind;
+    /// use hapto_params::Kind;
     /// assert_eq!(Kind::Bool.steps(), 2);
     /// assert_eq!(Kind::Choice(&["Peak", "Shelf", "Notch"]).steps(), 3);
     /// assert_eq!(Kind::continuous(0.0, 10.0, 1.0, None).steps(), 11); // 0, 1, ... 10
@@ -46,7 +46,7 @@ impl Kind {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::Kind;
+    /// use hapto_params::Kind;
     ///
     /// assert!(Kind::Bool.is_discrete());
     /// assert!(Kind::Choice(&["Peak", "Shelf"]).is_discrete());
@@ -131,7 +131,7 @@ impl ParamDecl {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::{Kind, ParamDecl};
+    /// use hapto_params::{Kind, ParamDecl};
     ///
     /// let gain = ParamDecl::new("gain", "Gain", Kind::continuous(-60.0, 12.0, 0.1, None), 0.0);
     /// let mode = ParamDecl::new("mode", "Mode", Kind::Choice(&["Peak", "Shelf"]), 0.0);
@@ -171,7 +171,7 @@ impl ParamDecl {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::{Kind, ParamDecl};
+    /// use hapto_params::{Kind, ParamDecl};
     ///
     /// let gain = ParamDecl::new("gain", "Gain", Kind::continuous(-60.0, 12.0, 0.1, None), 0.0)
     ///     .with_unit("dB");
@@ -217,7 +217,7 @@ impl ParamDecl {
 /// # Examples
 ///
 /// ```
-/// use seam_params::fit_text;
+/// use hapto_params::fit_text;
 ///
 /// assert_eq!(fit_text("Low shelf gain", 9), "Low shelf");
 /// assert_eq!(fit_text("Low shelf gain", 0), "Low shelf gain"); // AU passes 0: unlimited

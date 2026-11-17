@@ -1,5 +1,5 @@
 [package]
-name = "seam-example-eq"
+name = "hapto-example-eq"
 description = "Six biquad bands and an output gain"
 version.workspace = true
 edition.workspace = true
@@ -16,14 +16,14 @@ publish.workspace = true
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
-# Who the plugin is, to every host: `seam_host::manifest_info!` reads it,
+# Who the plugin is, to every host: `hapto_host::manifest_info!` reads it,
 # with the version and description above.
-[package.metadata.seam]
-name = "Seam Example EQ"
-vendor = "Seam"
-id = "dev.seam.example-eq"
+[package.metadata.hapto]
+name = "Hapto Example EQ"
+vendor = "Hapto"
+id = "dev.hapto.example-eq"
 vst3-class-id = "44f0fc1b-fd79-434d-a987-84b801dc348b"
-au-codes = { subtype = "SmEq", manufacturer = "Seam" }
+au-codes = { subtype = "SmEq", manufacturer = "Hapt" }
 category = "effect"
 features = ["equalizer"]
 
@@ -34,19 +34,19 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 default = ["vst3"]
-# The VST3 module's entry points, through Seam's exporter.
-vst3 = ["seam-host/vst3"]
+# The VST3 module's entry points, through Hapto's exporter.
+vst3 = ["hapto-host/vst3"]
 # The C interface's one symbol, for the JUCE adapter, which defines the VST3
 # entry points itself: built without `vst3`.
-cabi = ["seam-host/cabi"]
+cabi = ["hapto-host/cabi"]
 
 [dependencies]
-seam-host = { workspace = true, features = ["manifest"] }
-seam-params.workspace = true
+hapto-host = { workspace = true, features = ["manifest"] }
+hapto-params.workspace = true
 
 [dev-dependencies]
-seam-host = { workspace = true, features = ["vst3", "cabi", "test-host"] }
-seam-testkit.workspace = true
+hapto-host = { workspace = true, features = ["vst3", "cabi", "test-host"] }
+hapto-testkit.workspace = true
 serde_json.workspace = true
 iai-callgrind.workspace = true
 

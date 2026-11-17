@@ -29,17 +29,17 @@
 //!
 //! The [glossary] defines the linked terms.
 //!
-//! [store]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#store
-//! [origin]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#origin
-//! [gesture]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#gesture
-//! [learned-write]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#learned-write
-//! [sync]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#sync
-//! [restore]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#restore
-//! [surface]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#surface
-//! [watch]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#watch
-//! [edit]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#edit
-//! [drain]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#drain
-//! [glossary]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md
+//! [store]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#store
+//! [origin]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#origin
+//! [gesture]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#gesture
+//! [learned-write]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#learned-write
+//! [sync]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#sync
+//! [restore]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#restore
+//! [surface]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#surface
+//! [watch]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#watch
+//! [edit]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#edit
+//! [drain]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#drain
+//! [glossary]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md
 //!
 //! # Examples
 //!
@@ -49,7 +49,7 @@
 //! a debug build catches a drop there, which could free a store.
 //!
 //! ```
-//! use seam_params::{Bool, BoolDecl, Changes, Declarer, Float, FloatDecl, ParamSet, Params};
+//! use hapto_params::{Bool, BoolDecl, Changes, Declarer, Float, FloatDecl, ParamSet, Params};
 //!
 //! struct GainParams {
 //!     gain: Float,
@@ -98,7 +98,7 @@
 //! set.audio().host_write(processor.params.gain.id(), 1.0);
 //! processor.retune();
 //! assert!((processor.factor - 15.848_932).abs() < 1e-3); // +24 dB
-//! # Ok::<(), seam_params::DeclError>(())
+//! # Ok::<(), hapto_params::DeclError>(())
 //! ```
 //!
 //! Invariants: a value never leaves its legal set (writes snap, and a value
@@ -107,13 +107,13 @@
 //! allocate.
 
 // The nightly real-time sanitizer lane marks the calls the audio thread makes.
-#![cfg_attr(seam_rtsan, feature(sanitize))]
+#![cfg_attr(hapto_rtsan, feature(sanitize))]
 // docs.rs shows which feature each gated item needs.
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 #[cfg(not(target_has_atomic = "64"))]
 compile_error!(
-    "seam-params needs 64-bit atomics: a parameter's value and origin are stored as one 64-bit word"
+    "hapto-params needs 64-bit atomics: a parameter's value and origin are stored as one 64-bit word"
 );
 
 pub mod audio_thread;
@@ -195,7 +195,7 @@ pub use watch::Watch;
 /// # Examples
 ///
 /// ```
-/// use seam_params::{Bool, Choice, Choices, Float, ParamSet, Params};
+/// use hapto_params::{Bool, Choice, Choices, Float, ParamSet, Params};
 ///
 /// #[derive(Debug, Clone, Copy, PartialEq, Choices)]
 /// enum Mode {
@@ -228,11 +228,11 @@ pub use watch::Watch;
 /// assert_eq!(drive.mode.get(), Mode::Warm);
 /// assert_eq!(set.bypass(), Some(drive.bypass.id()));
 /// assert_eq!(set.decl(drive.low.freq.id()).group, "Low");
-/// # Ok::<(), seam_params::DeclError>(())
+/// # Ok::<(), hapto_params::DeclError>(())
 /// ```
 #[cfg(feature = "derive")]
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
-pub use seam_macros::Params;
+pub use hapto_macros::Params;
 
 /// Writes [`Choices`](trait@Choices) for a fieldless enum: its labels, and
 /// its two mappings, in the order the variants are written.
@@ -264,7 +264,7 @@ pub use seam_macros::Params;
 /// # Examples
 ///
 /// ```
-/// use seam_params::{Choice, Choices, ParamSet, Params};
+/// use hapto_params::{Choice, Choices, ParamSet, Params};
 ///
 /// #[derive(Debug, Clone, Copy, PartialEq, Choices)]
 /// enum Slope {
@@ -288,8 +288,8 @@ pub use seam_macros::Params;
 /// let (set, filter) = ParamSet::declare::<Filter>()?;
 /// assert_eq!(filter.slope.get(), Slope::Steep);
 /// assert_eq!(set.decl(filter.slope.id()).name, "Slope");
-/// # Ok::<(), seam_params::DeclError>(())
+/// # Ok::<(), hapto_params::DeclError>(())
 /// ```
 #[cfg(feature = "derive")]
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
-pub use seam_macros::Choices;
+pub use hapto_macros::Choices;

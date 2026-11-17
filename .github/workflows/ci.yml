@@ -73,7 +73,7 @@ jobs:
         if: env.EVERY_STEP == 'true'
         run: cargo clippy --workspace --all-targets --all-features --release --locked -- -D warnings
       # Includes the drift gates for generated files (xtask's drift test,
-      # seam-bridge's typescript_drift) and the allocation gates in debug.
+      # hapto-bridge's typescript_drift) and the allocation gates in debug.
       - name: Test
         run: cargo test --workspace --all-features --locked
         # Property tests: proptest's default 256 cases on pull requests,
@@ -106,7 +106,7 @@ jobs:
       # layouts, under the allocation gate, on optimised code.
       - name: Gate matrix (release)
         if: env.EVERY_STEP == 'true'
-        run: cargo test -p seam-example-eq --release --test matrix --test overflow --locked
+        run: cargo test -p hapto-example-eq --release --test matrix --test overflow --locked
       - name: Docs
         if: env.EVERY_STEP == 'true'
         run: cargo doc --workspace --all-features --no-deps --locked
@@ -173,25 +173,25 @@ jobs:
       - name: No decision ids in comments or docs
         run: python3 scripts/check-comment-tags.py
         env:
-          SEAM_XTASK: target/debug/xtask
+          HAPTO_XTASK: target/debug/xtask
       # The decision index still names files and items that exist, and every
       # id the decision record has.
       - name: The decision index matches the record and the code
         run: python3 scripts/check-decision-index.py
         env:
-          SEAM_XTASK: target/debug/xtask
+          HAPTO_XTASK: target/debug/xtask
       # The check scripts refuse the bad input they exist for.
       - name: The check scripts' own tests
         run: python3 scripts/test-checks.py
         env:
-          SEAM_XTASK: target/debug/xtask
+          HAPTO_XTASK: target/debug/xtask
       # And they build on a runner with no WebView or GTK development
       # libraries installed. Every workspace crate is built but the ones that
       # may need them (the host, the WebView shell, the two example plugins),
       # the test tools and xtask, so a new crate is built here until it is
       # excluded.
       - name: Build the core alone
-        run: cargo build --workspace --exclude seam-host --exclude seam-webview --exclude seam-example-eq --exclude seam-example-gain --exclude seam-testkit --exclude xtask --locked
+        run: cargo build --workspace --exclude hapto-host --exclude hapto-webview --exclude hapto-example-eq --exclude hapto-example-gain --exclude hapto-testkit --exclude xtask --locked
 
   loom:
     name: loom models
@@ -274,7 +274,7 @@ jobs:
           test -f dist/assets/index.js
           test -f dist/assets/index.css
 
-  # Everything Seam supports on Linux: the core, the bridge, the C interface
+  # Everything Hapto supports on Linux: the core, the bridge, the C interface
   # and the example EQ through it. The VST3 exporter refuses to build here by
   # design (it has no main-thread timer), and a check proves the refusal.
   linux:
@@ -284,7 +284,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       PACKAGES: --workspace
-      FEATURES: --no-default-features --features seam-host/cabi,seam-host/test-host,seam-example-eq/cabi,seam-bridge/typescript,xtask/generate
+      FEATURES: --no-default-features --features hapto-host/cabi,hapto-host/test-host,hapto-example-eq/cabi,hapto-bridge/typescript,xtask/generate
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Toolchain
@@ -304,22 +304,22 @@ jobs:
       - name: Allocation gates (release)
         run: cargo test $PACKAGES $FEATURES --release --test alloc_gate --locked
       - name: Gate matrix (release)
-        run: cargo test -p seam-example-eq --no-default-features --features cabi --release --test matrix --test overflow --locked
+        run: cargo test -p hapto-example-eq --no-default-features --features cabi --release --test matrix --test overflow --locked
       - name: The VST3 module refuses to build
         run: |
-          if cargo check -p seam-example-eq --locked 2> refusal.txt; then
+          if cargo check -p hapto-example-eq --locked 2> refusal.txt; then
             echo "the VST3 module built on Linux"
             exit 1
           fi
           cat refusal.txt
           grep -q "the VST3 exporter builds for Windows and macOS only" refusal.txt
 
-  # seam.h compiles as C11 and C++11 for both architectures, so its size and
+  # hapto.h compiles as C11 and C++11 for both architectures, so its size and
   # offset assertions run: they fail when the header's layout disagrees with
   # the compiler's. -ffreestanding takes clang's own stdint.h, so no
   # cross-compilation sysroot is needed to check a target's layout.
   header:
-    name: seam.h
+    name: hapto.h
     if: ${{ !github.event.pull_request.draft }}
     timeout-minutes: 5
     runs-on: ubuntu-24.04
@@ -331,7 +331,7 @@ jobs:
           for target in x86_64-linux-gnu aarch64-linux-gnu; do
             for language in "c -std=c11" "c++ -std=c++11"; do
               echo "== $target, $language"
-              clang --target=$target -ffreestanding -fsyntax-only -Wall -Wextra -Werror -x $language crates/host/include/seam.h
+              clang --target=$target -ffreestanding -fsyntax-only -Wall -Wextra -Werror -x $language crates/host/include/hapto.h
             done
           done
 
@@ -356,11 +356,11 @@ jobs:
           rustup show active-toolchain
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Core and bridge
-        run: cargo check --locked --target ${{ matrix.target }} --workspace --exclude seam-host --exclude seam-webview --exclude seam-example-eq --exclude seam-example-gain --exclude seam-testkit --exclude xtask
+        run: cargo check --locked --target ${{ matrix.target }} --workspace --exclude hapto-host --exclude hapto-webview --exclude hapto-example-eq --exclude hapto-example-gain --exclude hapto-testkit --exclude xtask
       - name: C interface and example EQ
-        run: cargo check --locked --target ${{ matrix.target }} -p seam-host -p seam-example-eq --no-default-features --features seam-host/cabi,seam-example-eq/cabi
+        run: cargo check --locked --target ${{ matrix.target }} -p hapto-host -p hapto-example-eq --no-default-features --features hapto-host/cabi,hapto-example-eq/cabi
       - name: C interface alone
-        run: cargo check --locked --target ${{ matrix.target }} -p seam-host --features cabi
+        run: cargo check --locked --target ${{ matrix.target }} -p hapto-host --features cabi
 
   # Full run only. Licences, advisories, bans and sources, by deny.toml.
   deny:
@@ -383,8 +383,8 @@ jobs:
     timeout-minutes: 20
     runs-on: ubuntu-24.04
     env:
-      PACKAGES: --workspace --exclude seam-testkit --exclude xtask
-      FEATURES: --no-default-features --features seam-host/cabi,seam-host/test-host,seam-example-eq/cabi
+      PACKAGES: --workspace --exclude hapto-testkit --exclude xtask
+      FEATURES: --no-default-features --features hapto-host/cabi,hapto-host/test-host,hapto-example-eq/cabi
       # Tests, benchmarks and the test hosts are not measured. Nor are the
       # VST3 editor view and the slot that drives an editor for it: Linux
       # builds both, but the exporter offers a view on Windows alone, so
@@ -440,13 +440,13 @@ jobs:
           rustup toolchain install
           rustup show active-toolchain
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      - run: cargo build -p seam-example-eq --release --locked
+      - run: cargo build -p hapto-example-eq --release --locked
       - name: Lay out the bundle
         shell: bash
         run: |
-          bundle="bundle/Seam Example EQ.vst3"
+          bundle="bundle/Hapto Example EQ.vst3"
           mkdir -p "$bundle/Contents/x86_64-win"
-          cp target/release/seam_example_eq.dll "$bundle/Contents/x86_64-win/Seam Example EQ.vst3"
+          cp target/release/hapto_example_eq.dll "$bundle/Contents/x86_64-win/Hapto Example EQ.vst3"
       - name: Download pluginval
         shell: bash
         run: |
@@ -455,7 +455,7 @@ jobs:
           unzip -q pluginval.zip
       - name: pluginval
         shell: bash
-        run: ./pluginval.exe --strictness-level "${PLUGINVAL_STRICTNESS}" --validate-in-process --skip-gui-tests --output-dir pluginval-logs "bundle/Seam Example EQ.vst3"
+        run: ./pluginval.exe --strictness-level "${PLUGINVAL_STRICTNESS}" --validate-in-process --skip-gui-tests --output-dir pluginval-logs "bundle/Hapto Example EQ.vst3"
       - name: Keep the logs
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -481,7 +481,7 @@ jobs:
       - name: The Steinberg validator
         if: ${{ !cancelled() }}
         shell: bash
-        run: vst3sdk-build/bin/Release/validator.exe "bundle/Seam Example EQ.vst3"
+        run: vst3sdk-build/bin/Release/validator.exe "bundle/Hapto Example EQ.vst3"
 
   # Instruction counts of the EQ's block, a host write, learn's dispatch and
   # UMP decoding; on a pull request, compared with its base.

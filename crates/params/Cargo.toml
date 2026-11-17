@@ -1,5 +1,5 @@
 [package]
-name = "seam-params"
+name = "hapto-params"
 description = "Parameters declared once: one real-units store per parameter, writes told apart by origin, gestures, and change counters for polling"
 version.workspace = true
 edition.workspace = true
@@ -19,14 +19,14 @@ rustdoc-args = ["--cfg", "docsrs"]
 [features]
 # `#[derive(Params)]`, which writes a struct's `declare`, and
 # `#[derive(Choices)]`, which writes an enum's labels and mappings.
-derive = ["dep:seam-macros"]
+derive = ["dep:hapto-macros"]
 
 [dependencies]
-seam-macros = { workspace = true, optional = true }
+hapto-macros = { workspace = true, optional = true }
 
 [dev-dependencies]
 proptest.workspace = true
-seam-testkit.workspace = true
+hapto-testkit.workspace = true
 iai-callgrind.workspace = true
 
 [target.'cfg(loom)'.dependencies]

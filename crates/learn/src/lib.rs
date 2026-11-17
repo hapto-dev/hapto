@@ -43,10 +43,10 @@
 //! use std::cell::RefCell;
 //! use std::rc::Rc;
 //!
-//! use seam_learn::{Config, Control, Learn, Mapping, Source};
-//! use seam_params::{Kind, ParamDecl, ParamSet};
-//! use seam_session::Session;
-//! use seam_ump::{ChannelVoice, EventList, Voice};
+//! use hapto_learn::{Config, Control, Learn, Mapping, Source};
+//! use hapto_params::{Kind, ParamDecl, ParamSet};
+//! use hapto_session::Session;
+//! use hapto_ump::{ChannelVoice, EventList, Voice};
 //!
 //! let decl = ParamDecl::new("gain", "Gain", Kind::continuous(0.0, 1.0, 0.0, None), 0.0);
 //! let set = ParamSet::from_decls([decl])?;
@@ -76,18 +76,18 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 //!
-//! [glossary-target]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#target
-//! [glossary-snapshot]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#snapshot
-//! [glossary-learned-write]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#learned-write
-//! [glossary-tick]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#tick
-//! [glossary-burst]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#burst
-//! [glossary-arm]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#arm
-//! [glossary-capture]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#capture
-//! [glossary-coarse]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#coarse-fine
-//! [glossary-reservation]: https://github.com/nicvlav/seam/blob/main/docs/glossary.md#reservation
+//! [glossary-target]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#target
+//! [glossary-snapshot]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#snapshot
+//! [glossary-learned-write]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#learned-write
+//! [glossary-tick]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#tick
+//! [glossary-burst]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#burst
+//! [glossary-arm]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#arm
+//! [glossary-capture]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#capture
+//! [glossary-coarse]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#coarse-fine
+//! [glossary-reservation]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#reservation
 
 // The nightly real-time sanitizer lane marks the calls the audio thread makes.
-#![cfg_attr(seam_rtsan, feature(sanitize))]
+#![cfg_attr(hapto_rtsan, feature(sanitize))]
 
 mod audio;
 mod capture;
@@ -116,13 +116,13 @@ pub use target::{CustomId, Learnable, RunTimeId, Target, TargetId};
 /// naming its target `key`: what the saved block keeps beside a parameter
 /// made at run time.
 #[doc(hidden)]
-pub fn encode_mapping(key: &str, mapping: &Mapping) -> seam_session::Section {
+pub fn encode_mapping(key: &str, mapping: &Mapping) -> hapto_session::Section {
     saved::encode(key, mapping)
 }
 
 /// Returns the key and mapping [`encode_mapping`] wrote, or `None` for an
 /// entry this build cannot read.
 #[doc(hidden)]
-pub fn decode_mapping(entry: &seam_session::Section) -> Option<(String, Mapping)> {
+pub fn decode_mapping(entry: &hapto_session::Section) -> Option<(String, Mapping)> {
     saved::decode(entry)
 }

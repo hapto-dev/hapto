@@ -1,16 +1,16 @@
 #pragma once
 
-// The generic JUCE adapter: a Seam plugin, through the C interface seam.h
+// The generic JUCE adapter: a Hapto plugin, through the C interface hapto.h
 // declares, as a juce::AudioProcessor. It holds no product's code. Every fact
 // JUCE needs at build time comes from the plugin's generated settings (see
-// SeamJuce.cmake), and everything else from the plugin's table at run time.
+// HaptoJuce.cmake), and everything else from the plugin's table at run time.
 //
 // The contract with the plugin, in the order it runs:
 //
 //  1. The constructor creates the instance, lists its parameters to JUCE by
 //     their keys, and starts the tick, about 60 times a second, on JUCE's
-//     message thread. Which thread may make which call is seam.h's to say
-//     (SeamPlugin). A plugin that cannot move between threads keeps the
+//     message thread. Which thread may make which call is hapto.h's to say
+//     (HaptoPlugin). A plugin that cannot move between threads keeps the
 //     constructing thread. JUCE's VST3 wrapper constructs on the thread the
 //     host creates the plugin on. Where that is not the message thread,
 //     every tick is refused and reported as a fault.
@@ -18,7 +18,7 @@
 //     bus layout, and reports the latency the activation set.
 //  3. processBlock hands each block over in place. The host's automation
 //     reaches the plugin before it, through Parameter::setValue, which JUCE's
-//     wrappers call on the audio thread; Seam flushes denormals itself. A
+//     wrappers call on the audio thread; Hapto flushes denormals itself. A
 //     host's bypass of a plugin that declares no bypass parameter reaches
 //     processBlockBypassed, which delays the input by the reported latency,
 //     so the host's compensation still lines it up.
@@ -35,9 +35,9 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
-#include "seam.h"
+#include "hapto.h"
 
-namespace seam
+namespace hapto
 {
 
 class PluginProcessor final : public juce::AudioProcessor,
@@ -88,7 +88,7 @@ private:
     class Parameter;
 
     // The main buses, from the plugin's first layout.
-    static BusesProperties busesOf (const SeamPlugin& plugin);
+    static BusesProperties busesOf (const HaptoPlugin& plugin);
 
     // Message thread: the tick.
     void timerCallback() override;
@@ -106,10 +106,10 @@ private:
     // bypassed path of the delay it then keeps.
     void reportLatency();
 
-    const SeamPlugin& plugin_;
-    // Null when the plugin was built against another version of seam.h, or
+    const HaptoPlugin& plugin_;
+    // Null when the plugin was built against another version of hapto.h, or
     // refused to start: the processor then plays silence.
-    SeamInstance* instance_ = nullptr;
+    HaptoInstance* instance_ = nullptr;
     // In the plugin's order; owned by the AudioProcessor.
     std::vector<Parameter*> parameters_;
     Parameter* bypass_ = nullptr;
@@ -130,4 +130,4 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluginProcessor)
 };
 
-} // namespace seam
+} // namespace hapto

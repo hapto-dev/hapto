@@ -30,8 +30,8 @@ use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 #[cfg(any(feature = "vst3", feature = "cabi"))]
-use seam_params::ParamId;
-use seam_params::{AudioParams, HostEvent, HostEventDrain, ParamSet};
+use hapto_params::ParamId;
+use hapto_params::{AudioParams, HostEvent, HostEventDrain, ParamSet};
 
 use automation::Automation;
 pub(crate) use automation::Points;
@@ -51,10 +51,10 @@ use crate::faults::{Fault, Faults, report_refused_declarations};
 use crate::{Driver, Layout, MAX_FRAMES, Parts, Plugin, SavedState, Tail};
 
 /// What `tail` answers for a plugin whose output falls silent with its
-/// input; VST3's `kNoTail` and the C interface's `SEAM_TAIL_NONE`.
+/// input; VST3's `kNoTail` and the C interface's `HAPTO_TAIL_NONE`.
 pub(crate) const TAIL_NONE: u32 = 0;
 /// What `tail` answers for a plugin that may never fall silent; VST3's
-/// `kInfiniteTail` and the C interface's `SEAM_TAIL_INFINITE`.
+/// `kInfiniteTail` and the C interface's `HAPTO_TAIL_INFINITE`.
 pub(crate) const TAIL_INFINITE: u32 = u32::MAX;
 
 /// The most MIDI events one block carries each way, for a plugin that takes
@@ -71,7 +71,7 @@ const MAX_EVENTS: usize = 2048;
 /// deadlocking. Past it the waiting call is refused, the host's thread goes
 /// on, and the call that has the plugin can finish.
 ///
-/// `SeamPlugin`'s doc, and so `seam.h`, states it for C users in
+/// `HaptoPlugin`'s doc, and so `hapto.h`, states it for C users in
 /// milliseconds; a test keeps the two equal.
 ///
 /// Open: these calls are never the audio thread's by contract. But JUCE's
@@ -292,7 +292,7 @@ impl<P: Plugin, H> Main<P, H> {
 /// The rules every shell shares:
 ///
 /// - **Threads**, the threading rule in full ([`Plugin`] states it for plugin
-///   authors, and `seam.h` for C users, at `SeamPlugin`). A shell builds the
+///   authors, and `hapto.h` for C users, at `HaptoPlugin`). A shell builds the
 ///   engine bound to the calling thread ([`new`](Self::new)): VST3 at
 ///   `initialize`, the C interface at `create` for a plugin that is not `Send`.
 ///   A main-thread call on any other thread is refused. For a `Send` plugin,
@@ -428,7 +428,7 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
         let driver = Driver::of(&parts);
         let drain = set
             .take_host_event_drain()
-            .expect("a set Seam just built still has its host event drain");
+            .expect("a set Hapto just built still has its host event drain");
         let plugin = P::new(params, parts);
         let layout = const { first_layout(P::INFO.layouts) };
         let answers = Answers::new(layout, &plugin);
@@ -762,7 +762,7 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
     /// The plugin's parts' tick and then its idle call, and then what they
     /// did, told to the host.
     ///
-    /// Seam's tick runs first, so the plugin's idle sees a session the
+    /// Hapto's tick runs first, so the plugin's idle sees a session the
     /// host's load restored applied and a learned mapping committed. Both
     /// run inside the plugin's borrow: a tick that finds the plugin busy
     /// runs neither, so the parts are never ticked from inside a call of
@@ -848,7 +848,7 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
     }
 
     /// Records an editor that failed to open, with `reason`, the editor's
-    /// or Seam's, as [`faults`](crate::faults) says.
+    /// or Hapto's, as [`faults`](crate::faults) says.
     #[cfg(feature = "vst3")]
     pub(crate) fn editor_failed(&self, reason: &dyn Display) {
         self.faults.record_with_reason(
@@ -917,9 +917,9 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
     /// go, so a release that waited would free the engine under it. Either
     /// way a tick may call the host once more after the release, which only a
     /// host that breaks the threading rules meets; the engine leaks, so
-    /// Seam's side stays memory-safe. A VST3 handler is held by the engine's
+    /// Hapto's side stays memory-safe. A VST3 handler is held by the engine's
     /// own reference. The C interface's callbacks, though, are the host's,
-    /// which `seam.h` keeps valid only until `destroy` returns.
+    /// which `hapto.h` keeps valid only until `destroy` returns.
     pub(crate) fn release(&self) -> Release {
         self.guard(Release::Leak, || {
             let main = match self.main.lend() {

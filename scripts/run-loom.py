@@ -34,7 +34,7 @@ NAME = re.compile(r'^name\s*=\s*"([^"]+)"', re.MULTILINE)
 # The crates under `crates/` whose library tests the run builds.
 LANE = ("params", "learn", "host")
 COMMAND = [
-    "cargo", "test", *(arg for name in LANE for arg in ("-p", f"seam-{name}")),
+    "cargo", "test", *(arg for name in LANE for arg in ("-p", f"hapto-{name}")),
     "--release", "--locked", "--lib", "loom_",
 ]
 # Directories that hold no source of the repository's own.

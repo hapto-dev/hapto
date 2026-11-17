@@ -2,12 +2,12 @@
 
 use std::sync::Arc;
 
-use seam_learn::{
+use hapto_learn::{
     CcReservation, Config, Control, Learn, LearnAudio, LearnError, Learned, Mapping,
     NrpnReservation, Source, Takes,
 };
-use seam_params::{Kind, ParamDecl, ParamId, ParamSet, ParamSetBuilder};
-use seam_ump::{ChannelVoice, EventList, Voice};
+use hapto_params::{Kind, ParamDecl, ParamId, ParamSet, ParamSetBuilder};
+use hapto_ump::{ChannelVoice, EventList, Voice};
 
 fn set_of(count: usize) -> Arc<ParamSet> {
     let mut builder = ParamSetBuilder::new();
@@ -533,7 +533,7 @@ fn dropping_the_audio_side_is_silent_off_the_audio_thread() {
 #[should_panic(expected = "dropping LearnAudio must not run on the audio thread")]
 fn dropping_the_audio_side_is_refused_on_the_audio_thread() {
     let Rig { audio, .. } = rig();
-    let _guard = seam_params::audio_thread::enter();
+    let _guard = hapto_params::audio_thread::enter();
     drop(audio);
 }
 

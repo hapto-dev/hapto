@@ -90,7 +90,7 @@ pub enum Profile {
     /// The optimised build, for listening and for shipping.
     Release,
     /// The debug build, which loads its page from a dev server when the
-    /// host's environment sets `SEAM_PAGE_DEV_URL`, so the page reloads live
+    /// host's environment sets `HAPTO_PAGE_DEV_URL`, so the page reloads live
     /// in the host. Its DSP runs unoptimised.
     Debug,
 }
@@ -151,7 +151,7 @@ impl Folder {
 /// A plugin crate, as `cargo metadata` describes it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Plugin {
-    /// The name every host shows, from `[package.metadata.seam]`; the
+    /// The name every host shows, from `[package.metadata.hapto]`; the
     /// bundle's name too.
     pub name: String,
     /// The library's name, which names the file the build writes.
@@ -166,7 +166,7 @@ pub struct Plugin {
 /// # Errors
 ///
 /// Returns why it is no plugin to bundle: not in the workspace, no `cdylib`,
-/// or no name in `[package.metadata.seam]`.
+/// or no name in `[package.metadata.hapto]`.
 pub fn plugin(metadata: &serde_json::Value, package: &str) -> Result<(Plugin, PathBuf), String> {
     let target = metadata["target_directory"]
         .as_str()
@@ -188,9 +188,9 @@ pub fn plugin(metadata: &serde_json::Value, package: &str) -> Result<(Plugin, Pa
         })
         .and_then(|t| t["name"].as_str())
         .ok_or_else(|| format!("{package} builds no cdylib, so it has no module to bundle"))?;
-    let name = found["metadata"]["seam"]["name"]
+    let name = found["metadata"]["hapto"]["name"]
         .as_str()
-        .ok_or_else(|| format!("{package} has no name in [package.metadata.seam]"))?;
+        .ok_or_else(|| format!("{package} has no name in [package.metadata.hapto]"))?;
     let manifest = found["manifest_path"]
         .as_str()
         .ok_or("cargo metadata gave a package no manifest_path")?;
@@ -313,7 +313,7 @@ pub fn run(args: impl IntoIterator<Item = String>) -> Result<usize, String> {
     }
     if options.profile == Profile::Debug {
         println!(
-            "a debug build: start the host with SEAM_PAGE_DEV_URL set to the address \
+            "a debug build: start the host with HAPTO_PAGE_DEV_URL set to the address \
              `npm run dev` prints, and the page reloads live"
         );
     }

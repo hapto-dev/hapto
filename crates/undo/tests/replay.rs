@@ -3,12 +3,12 @@
 
 use std::sync::Arc;
 
-use proptest::prelude::*;
-use proptest::test_runner::FileFailurePersistence;
-use seam_params::{
+use hapto_params::{
     HostEvent, Kind, ParamDecl, ParamId, ParamSet, ParamSetBuilder, UiParams, Value,
 };
-use seam_undo::{Bound, History};
+use hapto_undo::{Bound, History};
+use proptest::prelude::*;
+use proptest::test_runner::FileFailurePersistence;
 
 struct Rig {
     set: Arc<ParamSet>,
@@ -235,6 +235,6 @@ fn a_replay_that_writes_parameters_is_refused_on_the_audio_thread() {
     let rig = rig();
     assert!(rig.ui.write(rig.ids[0], 8.0));
     rig.history.tick();
-    let _audio = seam_params::audio_thread::enter();
+    let _audio = hapto_params::audio_thread::enter();
     let _ = rig.history.undo();
 }

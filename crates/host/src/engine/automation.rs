@@ -31,7 +31,7 @@
     )
 )]
 
-use seam_params::{AudioParams, ParamId};
+use hapto_params::{AudioParams, ParamId};
 
 /// Room for this many points per parameter in a block, on average.
 const POINTS_PER_PARAMETER: usize = 8;
@@ -366,7 +366,7 @@ impl Points<'_> {
 mod tests {
     use std::cell::Cell;
 
-    use seam_params::{Kind, ParamDecl, ParamSet};
+    use hapto_params::{Kind, ParamDecl, ParamSet};
 
     use super::*;
 

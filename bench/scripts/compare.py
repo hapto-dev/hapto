@@ -13,7 +13,7 @@ once it exists.
 
 1. A, B, C and C-clang must first play the parity script bit for bit as the
    Rust EQ driven directly does (scripts/hosted.py); the timing waits on it.
-   A-native and the A-port builds store values a little apart from Seam's,
+   A-native and the A-port builds store values a little apart from Hapto's,
    so they are timed beside them but kept out of that check.
 2. Each measurement runs in a fresh process: a load from the build's
    description, then real-time-paced blocks on an audio thread while the main
@@ -72,15 +72,15 @@ PACES = {
 }
 
 BUILDS = {
-    "A": {"what": "the EQ written in JUCE, no Seam, with Seam's ranges ported so it stores what the Rust EQ stores",
+    "A": {"what": "the EQ written in JUCE, no Hapto, with Hapto's ranges ported so it stores what the Rust EQ stores",
           "ids": "juce", "gated": True,
           "bundle": ROOT / "bench/build/BenchJuceEq_artefacts/Release/VST3/Bench JUCE EQ.vst3"},
     "A-native": {"what": "A with JUCE's own ranges, as a JUCE developer would declare them; timing only",
                  "ids": "juce", "gated": False,
                  "bundle": ROOT / "bench/build/BenchJuceEqNative_artefacts/Release/VST3/Bench JUCE EQ native.vst3"},
-    "B": {"what": "the Rust EQ through Seam's VST3 exporter", "ids": "seam", "gated": True, "bundle": None},
-    "C": {"what": "the Rust EQ through Seam's C interface and the JUCE adapter", "ids": "juce", "gated": True,
-          "bundle": ROOT / "bench/build/BenchSeamJuceEq_artefacts/Release/VST3/Seam Example EQ JUCE.vst3"},
+    "B": {"what": "the Rust EQ through Hapto's VST3 exporter", "ids": "hapto", "gated": True, "bundle": None},
+    "C": {"what": "the Rust EQ through Hapto's C interface and the JUCE adapter", "ids": "juce", "gated": True,
+          "bundle": ROOT / "bench/build/BenchHaptoJuceEq_artefacts/Release/VST3/Hapto Example EQ JUCE.vst3"},
     "A-port": {"what": "A-native with the Rust EQ's filters ported line for line to C++ (`juce-eq/EqPort.h`) in "
                        "place of JUCE's `dsp::IIR`; timing only",
                "ids": "juce", "gated": False,
@@ -92,11 +92,11 @@ BUILDS = {
                                       "Bench JUCE EQ port clang.vst3"},
     "C-clang": {"what": "C with its C++ (JUCE's wrapper and the adapter) built by clang-cl; the same Rust",
                 "ids": "juce", "gated": True,
-                "bundle": ROOT / "bench/build-clang/BenchSeamJuceEq_artefacts/Release/VST3/Seam Example EQ JUCE.vst3"},
+                "bundle": ROOT / "bench/build-clang/BenchHaptoJuceEq_artefacts/Release/VST3/Hapto Example EQ JUCE.vst3"},
 }
 GATED = [build for build, spec in BUILDS.items() if spec["gated"]]
 # Pairs whose outputs must match bit for bit in every run: A, B, C and C-clang
-# store Seam's values; A-native and the A-port builds store JUCE's, and the
+# store Hapto's values; A-native and the A-port builds store JUCE's, and the
 # port's arithmetic is JUCE's filters'.
 MATCHED = [("A", "B"), ("A", "C"), ("B", "C"), ("A", "C-clang"), ("A-native", "A-port"),
            ("A-native", "A-port-clang")]
@@ -109,10 +109,10 @@ STEPS = [
     ("port", "A-port", "A-native", "the Rust EQ's filters ported to C++ against JUCE's `dsp::IIR`, both MSVC"),
     ("compiler", "A-port-clang", "A-port", "clang-cl against MSVC, on the same C++"),
     ("framework", "C-clang", "A-port-clang",
-     "Seam's parameters, the adapter, the C interface and the filters in Rust against JUCE's "
+     "Hapto's parameters, the adapter, the C interface and the filters in Rust against JUCE's "
      "`AudioProcessorValueTreeState` and the same filters in C++, all LLVM, inside the same clang-built wrapper"),
     ("wrapper compiler", "C", "C-clang", "C's wrapper and adapter built by MSVC against clang-cl"),
-    ("exporter", "B", "C", "Seam's VST3 exporter against JUCE's wrapper and the adapter"),
+    ("exporter", "B", "C", "Hapto's VST3 exporter against JUCE's wrapper and the adapter"),
 ]
 LADDER = ["A-native", "A-port", "A-port-clang", "C-clang", "C", "B"]
 
@@ -131,13 +131,13 @@ def module_of(bundle):
 
 def bundle_b(out):
     """Builds the EQ crate's cdylib and puts it in a bundle, as B."""
-    built = run(["cargo", "build", "-p", "seam-example-eq", "--release", "--locked"], cwd=ROOT)
+    built = run(["cargo", "build", "-p", "hapto-example-eq", "--release", "--locked"], cwd=ROOT)
     if built.returncode != 0:
         raise SystemExit(built.stderr)
-    bundle = out / "bundles" / "Seam Example EQ.vst3"
+    bundle = out / "bundles" / "Hapto Example EQ.vst3"
     folder = bundle / "Contents" / "x86_64-win"
     folder.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(ROOT / "target/release/seam_example_eq.dll", folder / "Seam Example EQ.vst3")
+    shutil.copy2(ROOT / "target/release/hapto_example_eq.dll", folder / "Hapto Example EQ.vst3")
     return bundle
 
 
@@ -343,13 +343,13 @@ def plugin_code():
     files = lambda paths: {str(p.relative_to(ROOT)).replace("\\", "/"): code_lines(p) for p in paths}
     return {
         "A": {"files": files(juce_eq), "language": "C++",
-              "ranges_port": code_lines(ROOT / "bench/juce-eq/SeamRange.h")[1],
+              "ranges_port": code_lines(ROOT / "bench/juce-eq/HaptoRange.h")[1],
               "build_lines": cmake_lines(cmake, ["BenchJuceEq"])},
         "A-port": {"filters_port": code_lines(port)[1]},
         "B": {"files": files(rust_eq), "language": "Rust", "build_lines": cargo},
         "C": {"files": files(rust_eq), "language": "Rust",
-              "build_lines": cargo + cmake_lines(cmake, ["BenchSeamJuceEq"]),
-              "generated": "examples/eq/seam-juce.cmake"},
+              "build_lines": cargo + cmake_lines(cmake, ["BenchHaptoJuceEq"]),
+              "generated": "examples/eq/hapto-juce.cmake"},
     }
 
 
@@ -453,7 +453,7 @@ def write_report(out, info, checks, runs, matches, native, sizes, code, argument
     md = []
     w = md.append
     w("# The bare EQ, headless\n")
-    w(f"{info['date']}, Seam `{info['seam']}`{' with local changes' if info['dirty'] else ''}, "
+    w(f"{info['date']}, Hapto `{info['seam']}`{' with local changes' if info['dirty'] else ''}, "
       f"on {info['cpu']} ({info['cores']} cores, {info['threads']} threads, {info['memory_gb']} GB), "
       f"{info['os']}.\n")
     w("| Build | What it is | Module |")
@@ -497,7 +497,7 @@ def write_report(out, info, checks, runs, matches, native, sizes, code, argument
             w(f"## Time per block: {scenario}, {pace}\n")
             w(f"{meaning}, and {how}. Median over {arguments.rounds} rounds of each run's median time in "
               f"`process`, in µs at {RATE // 1000} kHz; in brackets the lowest and highest round. Ratios are of "
-              "the medians; against A-native they set Seam against plain JUCE, against A they compare builds that "
+              "the medians; against A-native they set Hapto against plain JUCE, against A they compare builds that "
               "store the same values.\n")
             w("| Frames | A | A-native | B | C | B/A-native | C/A-native | B/A | C/A |")
             w("| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
@@ -512,7 +512,7 @@ def write_report(out, info, checks, runs, matches, native, sizes, code, argument
     for pace, how in PACES.items():
         for scenario, meaning in SCENARIOS.items():
             w(f"## The ladder: {scenario}, {pace}\n")
-            w(f"{meaning}, and {how}. Each step from plain JUCE to Seam's own build changes one thing, so each "
+            w(f"{meaning}, and {how}. Each step from plain JUCE to Hapto's own build changes one thing, so each "
               "ratio has one cause:\n")
             for name, build, against, what in STEPS:
                 w(f"- **{name}** ({build}/{against}): {what}.")
@@ -591,7 +591,7 @@ def write_report(out, info, checks, runs, matches, native, sizes, code, argument
     w("## Binary size and plugin code\n")
     w("The module is the one binary inside each bundle. Code lines are neither blank nor only a comment; "
       "the Rust EQ's tests are left out. Build lines, by the same rule, are the plugin's own build description: "
-      "A's CMake target, the EQ's `Cargo.toml`, and for C also its `seam_add_juce_plugin` call. A-native is A's "
+      "A's CMake target, the EQ's `Cargo.toml`, and for C also its `hapto_add_juce_plugin` call. A-native is A's "
       "source built with one switch.\n")
     w("| Build | Module bytes | Source files | Lines | Code lines | Build lines |")
     w("| --- | ---: | ---: | ---: | ---: | ---: |")
@@ -604,7 +604,7 @@ def write_report(out, info, checks, runs, matches, native, sizes, code, argument
     w(f"| A-port-clang | {sizes['A-port-clang']:,} | as A-port | | | |")
     w(f"| C-clang | {sizes['C-clang']:,} | as C | | | |")
     w("")
-    w(f"A's code includes `SeamRange.h`, {code['A']['ranges_port']} code lines that port Seam's ranges so A "
+    w(f"A's code includes `HaptoRange.h`, {code['A']['ranges_port']} code lines that port Hapto's ranges so A "
       "stores what the Rust EQ stores; A-native leaves them out. A-port adds `EqPort.h`, "
       f"{code['A-port']['filters_port']} code lines that port the Rust EQ's filters, and leaves out JUCE's "
       f"`dsp::IIR`. C's settings for JUCE (`{code['C']['generated']}`) are generated, not written.\n")
@@ -626,7 +626,7 @@ def write_report(out, info, checks, runs, matches, native, sizes, code, argument
       "block when its frames would be due, spinning or sleeping on a high-resolution timer until then; the main "
       "thread runs the message loop. Only `processBlock` is timed, between fenced reads of the time stamp "
       "counter; it includes JUCE's hosting of the call, the same for every build.")
-    w("- JUCE's hosting hands every build one buffer as both input and output. Seam's exporter processes it in "
+    w("- JUCE's hosting hands every build one buffer as both input and output. Hapto's exporter processes it in "
       "place; JUCE's wrapper, in every other build, copies the input into its own buffer and the result back.")
     w("- The transport reports playing at 120 bpm, and every host write arrives in `process`, a value that "
       "moves what the parameter stores (bench/README.md, console host rules).")
@@ -675,7 +675,7 @@ def main():
     for build, spec in BUILDS.items():
         spec["bundle"] = spec["bundle"].resolve()
         spec["module"] = module_of(spec["bundle"])
-        spec["id_of"] = hosted.seam_id if spec["ids"] == "seam" else hosted.juce_id
+        spec["id_of"] = hosted.hapto_id if spec["ids"] == "hapto" else hosted.juce_id
         spec["description"] = describe(tool, build, spec, out)
 
     checks = {}

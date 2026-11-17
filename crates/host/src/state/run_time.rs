@@ -22,8 +22,8 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use seam_learn::{Mapping, decode_mapping, encode_mapping};
-use seam_params::{HeldValues, ParamRef, WeakParamRef};
+use hapto_learn::{Mapping, decode_mapping, encode_mapping};
+use hapto_params::{HeldValues, ParamRef, WeakParamRef};
 use serde_json::{Map, Value as Json};
 
 use super::{VALUE_BYTES, json_bytes, key_bytes, value_json, value_number};

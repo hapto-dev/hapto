@@ -1,14 +1,14 @@
 # Style
 
-How Seam's code and docs are written. One direction comes before every rule
+How Hapto's code and docs are written. One direction comes before every rule
 here: write idiomatic Rust, and shape the architecture the way Rust shapes it.
-Seam's authors come from C++, so the review question for any design is whether
+Hapto's authors come from C++, so the review question for any design is whether
 it is the Rust shape or a C++ shape written in Rust.
 
 ## Rust shapes, not C++ ones
 
 A C++ instinct is often the wrong shape here. The left column is what to
-notice; the right is what Rust offers instead, with an example from Seam.
+notice; the right is what Rust offers instead, with an example from Hapto.
 
 | A C++ instinct | The Rust shape |
 | --- | --- |
@@ -28,7 +28,7 @@ lints are the wider reference.
 
 ## Docs
 
-Seam follows the API Guidelines' [documentation chapter][documentation] and the
+Hapto follows the API Guidelines' [documentation chapter][documentation] and the
 standard library's conventions ([RFC 1574][rfc1574]):
 
 - **Summary.** The first paragraph is one sentence in the third person
@@ -55,10 +55,11 @@ standard library's conventions ([RFC 1574][rfc1574]):
   fn`: which pointer is valid, for what and how long, on which thread, what
   aliasing is ruled out, and what the host or the header guarantees.
 
-A plain getter or a constant gets a one-line summary. Plumbing public only so
-Seam's other crates reach it is `#[doc(hidden)]`, and no public doc links to it.
+A plain getter or a constant gets a one-line summary. Plumbing public only
+so Hapto's other crates reach it is `#[doc(hidden)]`, and no public doc links
+to it.
 
-## Seam's own rules
+## Hapto's own rules
 
 - **Reasons in words.** A comment or doc gives its reason in words. It cites no
   decision id, audit finding or stage; the
@@ -106,18 +107,18 @@ Seam's other crates reach it is `#[doc(hidden)]`, and no public doc links to it.
 
 | Doc | Holds |
 | --- | --- |
-| [README.md](../README.md) | What Seam is, its status, the layout, how to build, the licence; under 100 lines. |
+| [README.md](../README.md) | What Hapto is, its status, the layout, how to build, the licence; under 100 lines. |
 | [CONTRIBUTING.md](../CONTRIBUTING.md) | How a change reaches `main`: the pull request, its title and the merge. |
 | [AGENTS.md](../AGENTS.md) | Where a coding agent starts: it points at the rules and adds none. |
 | [ARCHITECTURE.md](../ARCHITECTURE.md) | The bird's-eye view, the codemap, a host's call to a block, the invariants and the threads ([matklad's form][architecture]), naming files and items, never line numbers. |
 | [first-plugin.md](first-plugin.md) | A walk through the example gain, in the order a plugin is written. |
 | [testing.md](testing.md) | The test rules, and what each CI lane proves. |
-| [glossary.md](glossary.md) | The words Seam coins, a sentence or two each, linking the item that owns it. |
+| [glossary.md](glossary.md) | The words Hapto coins, a sentence or two each, linking the item that owns it. |
 | [The decision record](decisions.md) | What holds now: each decision's status, question, answer and alternatives. |
 | [decision-history.md](decision-history.md) | How each decision was reached and changed; dates and review words belong here. |
 | [decision-index.md](decision-index.md) | From each decision to its code and tests, one line per site. |
 | [CHANGELOG.md](../CHANGELOG.md) | What each version holds, in [Keep a Changelog][changelog] form. |
-| [ROADMAP.md](../ROADMAP.md) | Where Seam is going: goals in order, never a task list. |
+| [ROADMAP.md](../ROADMAP.md) | Where Hapto is going: goals in order, never a task list. |
 
 ## What checks it
 

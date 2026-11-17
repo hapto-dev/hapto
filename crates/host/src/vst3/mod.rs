@@ -183,7 +183,7 @@ impl Message {
 /// ```no_run
 #[doc = include_str!("../../doc/gain.rs")]
 /// # #[cfg(any(windows, target_os = "macos"))]
-/// seam_host::export_vst3!(Gain);
+/// hapto_host::export_vst3!(Gain);
 /// ```
 #[macro_export]
 #[cfg_attr(docsrs, doc(cfg(feature = "vst3")))]

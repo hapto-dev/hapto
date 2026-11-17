@@ -56,7 +56,7 @@ impl<P: Plugin> TestHost<P> {
 #[doc = include_str!("../../../doc/editor.rs")]
 /// # #[cfg(windows)]
 /// # {
-/// use seam_host::vst3::{HiddenWindow, TestHost};
+/// use hapto_host::vst3::{HiddenWindow, TestHost};
 ///
 /// let host = TestHost::<Panel>::new();
 /// let view = host.view().expect("the plugin has an editor");
@@ -71,7 +71,7 @@ impl<P: Plugin> TestHost<P> {
 /// assert_eq!(view.size(), Some((640, 400)));
 /// view.remove()?;
 /// # }
-/// # Ok::<(), seam_host::vst3::Refused>(())
+/// # Ok::<(), hapto_host::vst3::Refused>(())
 /// ```
 pub struct TestView {
     view: ComPtr<IPlugView>,
@@ -248,7 +248,7 @@ impl IPlugFrameTrait for Frame {
 #[doc = include_str!("../../../doc/editor.rs")]
 /// # #[cfg(windows)]
 /// # {
-/// use seam_host::vst3::{HiddenWindow, TestHost};
+/// use hapto_host::vst3::{HiddenWindow, TestHost};
 ///
 /// let host = TestHost::<Panel>::new();
 /// let view = host.view().expect("the plugin has an editor");
@@ -256,7 +256,7 @@ impl IPlugFrameTrait for Frame {
 /// view.attach(&window)?;
 /// view.remove()?;
 /// # }
-/// # Ok::<(), seam_host::vst3::Refused>(())
+/// # Ok::<(), hapto_host::vst3::Refused>(())
 /// ```
 #[cfg(windows)]
 #[derive(Debug)]
@@ -281,7 +281,7 @@ impl HiddenWindow {
             CreateWindowExW(
                 WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
                 windows_sys::w!("STATIC"),
-                windows_sys::w!("seam test window"),
+                windows_sys::w!("hapto test window"),
                 WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
                 0,
                 0,

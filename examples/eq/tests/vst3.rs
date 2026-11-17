@@ -1,13 +1,13 @@
-//! The example EQ as a VST3 host sees it, through Seam's exporter: its
+//! The example EQ as a VST3 host sees it, through Hapto's exporter: its
 //! parameter list, its saved state, and audio that matches the processor
 //! driven directly, sample for sample.
 
 use std::sync::LazyLock;
 
-use seam_example_eq::ExampleEq;
-use seam_host::vst3::TestHost;
-use seam_host::{Block, EventList, Layout, Plugin, ProcessSetup, Processor};
-use seam_params::{Kind, ParamDecl, host_id};
+use hapto_example_eq::ExampleEq;
+use hapto_host::vst3::TestHost;
+use hapto_host::{Block, EventList, Layout, Plugin, ProcessSetup, Processor};
+use hapto_params::{Kind, ParamDecl, host_id};
 
 mod common;
 use common::{Noise, bits, built, declarations};

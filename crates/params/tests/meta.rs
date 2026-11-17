@@ -1,6 +1,6 @@
 //! Host-facing metadata: step counts, discreteness and real-unit text.
 
-use seam_params::{Kind, ParamDecl, fit_text};
+use hapto_params::{Kind, ParamDecl, fit_text};
 
 const LABELS: [&str; 3] = ["Low", "Mid", "High"];
 

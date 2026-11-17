@@ -6,10 +6,10 @@ For each crate below, lists what it links on every target platform
 (`cargo tree --target all`, dev-dependencies left out), once with its default
 features and once with all of them, and fails if any of it is a window,
 WebView, UI toolkit or plugin-format crate. No feature may pull one in either
-(ARCHITECTURE.md): a crate that needs one belongs in seam-host or in a
-shell crate such as seam-webview.
+(ARCHITECTURE.md): a crate that needs one belongs in hapto-host or in a
+shell crate such as hapto-webview.
 
-It also checks the layering among Seam's own crates against LAYERS: every
+It also checks the layering among Hapto's own crates against LAYERS: every
 dependency, dev-dependencies included, points to a lower layer, so two crates
 of one layer never depend on each other (undo and session in particular). A
 crate missing from the table fails until it is given a layer, and a table entry
@@ -36,16 +36,16 @@ from pathlib import Path
 # bridge to the host; the plugins, which depend on everything, are on top;
 # xtask drives the examples.
 LAYERS = {
-    "seam-testkit": 0,
-    "seam-macros": 0,
-    "seam-params": 1,
-    "seam-ump": 1,
-    "seam-undo": 2,
-    "seam-session": 2,
-    "seam-learn": 3,
-    "seam-bridge": 3,
-    "seam-host": 4,
-    "seam-webview": 5,
+    "hapto-testkit": 0,
+    "hapto-macros": 0,
+    "hapto-params": 1,
+    "hapto-ump": 1,
+    "hapto-undo": 2,
+    "hapto-session": 2,
+    "hapto-learn": 3,
+    "hapto-bridge": 3,
+    "hapto-host": 4,
+    "hapto-webview": 5,
     "xtask": 7,
 }
 
@@ -61,7 +61,7 @@ CORE = [name for name, layer in LAYERS.items() if 1 <= layer <= 3]
 # Exact crate names, and prefixes that cover a family (wry's per-platform
 # backends, the gtk stack, the objc2 AppKit and WebKit bindings).
 FORBIDDEN = {
-    "seam-host",
+    "hapto-host",
     "wry",
     "tao",
     "winit",

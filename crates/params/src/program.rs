@@ -14,7 +14,7 @@ use crate::{Origin, ParamId, ParamRef, ParamSet, RestoreWriter, audio_thread};
 /// # Examples
 ///
 /// ```
-/// # use seam_params as sp;
+/// # use hapto_params as sp;
 /// # let set = sp::ParamSet::from_decls([
 /// #     sp::ParamDecl::new("gain", "Gain", sp::Kind::continuous(-60.0, 12.0, 0.1, None), 0.0),
 /// # ])?;
@@ -30,7 +30,7 @@ use crate::{Origin, ParamId, ParamRef, ParamSet, RestoreWriter, audio_thread};
 /// let load = program.load();
 /// load.restore(gain, 3.0);
 /// assert_eq!(set.value(gain), 3.0);
-/// # Ok::<(), seam_params::DeclError>(())
+/// # Ok::<(), hapto_params::DeclError>(())
 /// ```
 #[derive(Debug, Clone)]
 pub struct ProgramParams {
@@ -58,7 +58,7 @@ impl ProgramParams {
     /// # Examples
     ///
     /// ```
-    /// # use seam_params as sp;
+    /// # use hapto_params as sp;
     /// # let set = sp::ParamSet::from_decls([
     /// #     sp::ParamDecl::new("gain", "Gain", sp::Kind::continuous(-60.0, 12.0, 0.1, None), 0.0),
     /// # ])?;
@@ -70,7 +70,7 @@ impl ProgramParams {
     /// assert!(!program.sync(gain, 3.0)); // the value did not change
     /// assert!(!program.sync(gain, f32::NAN)); // refused
     /// assert_eq!(set.value(gain), 3.0);
-    /// # Ok::<(), seam_params::DeclError>(())
+    /// # Ok::<(), hapto_params::DeclError>(())
     /// ```
     pub fn sync(&self, id: ParamId, value: f32) -> bool {
         let Some(value) = self.set.decl(id).edit_value(value) else {
@@ -111,7 +111,7 @@ impl ProgramParams {
 /// # Examples
 ///
 /// ```
-/// # use seam_params as sp;
+/// # use hapto_params as sp;
 /// # let set = sp::ParamSet::from_decls([
 /// #     sp::ParamDecl::new("gain", "Gain", sp::Kind::continuous(-60.0, 12.0, 0.1, None), 0.0),
 /// # ])?;
@@ -120,7 +120,7 @@ impl ProgramParams {
 /// let load = set.program().load();
 /// load.restore(gain, 3.0);
 /// assert_eq!(set.value(gain), 3.0);
-/// # Ok::<(), seam_params::DeclError>(())
+/// # Ok::<(), hapto_params::DeclError>(())
 /// ```
 #[derive(Debug)]
 pub struct Load {
@@ -148,7 +148,7 @@ impl Load {
     /// # Examples
     ///
     /// ```
-    /// # use seam_params as sp;
+    /// # use hapto_params as sp;
     /// # let set = sp::ParamSet::from_decls([
     /// #     sp::ParamDecl::new("gain", "Gain", sp::Kind::continuous(-60.0, 12.0, 0.1, None), 0.0),
     /// # ])?;
@@ -160,7 +160,7 @@ impl Load {
     /// assert_eq!(set.value(gain), 12.0);
     /// load.restore(gain, f32::NAN); // a corrupt state falls back to the default
     /// assert_eq!(set.value(gain), 0.0);
-    /// # Ok::<(), seam_params::DeclError>(())
+    /// # Ok::<(), hapto_params::DeclError>(())
     /// ```
     pub fn restore(&self, id: ParamId, value: f32) {
         audio_thread::assert_not_here("Load::restore");

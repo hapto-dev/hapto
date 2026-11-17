@@ -12,14 +12,14 @@ use crate::{ParamId, ParamRef, RestoreStamp};
 /// # Examples
 ///
 /// ```
-/// # use seam_params as sp;
+/// # use hapto_params as sp;
 /// # let set = sp::ParamSet::from_decls([
 /// #     sp::ParamDecl::new("gain", "Gain", sp::Kind::continuous(-60.0, 12.0, 0.1, None), 0.0),
 /// # ])?;
 /// # let gain = set.id("gain").expect("declared");
 /// # let ui = set.take_ui().expect("the first UI handle");
 ///
-/// use seam_params::HostEvent;
+/// use hapto_params::HostEvent;
 ///
 /// let mut drain = set.take_host_event_drain().expect("the first drain");
 /// ui.write(gain, -6.0); // a click on the control
@@ -29,7 +29,7 @@ use crate::{ParamId, ParamRef, RestoreStamp};
 /// assert_eq!(heard[0], HostEvent::Begin(gain));
 /// assert!(matches!(heard[1], HostEvent::Value { id, .. } if id == gain));
 /// assert_eq!(heard[2], HostEvent::End(gain));
-/// # Ok::<(), seam_params::DeclError>(())
+/// # Ok::<(), hapto_params::DeclError>(())
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum HostEvent {

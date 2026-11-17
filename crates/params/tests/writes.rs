@@ -4,13 +4,13 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use proptest::prelude::*;
-use proptest::test_runner::FileFailurePersistence;
-use seam_params::{
+use hapto_params::{
     GestureRecords, HostEvent, HostEventDrain, Kind, Origin, ParamDecl, ParamId, ParamSet,
     ParamSetBuilder, UiParams,
 };
-use seam_testkit::sync::Latch;
+use hapto_testkit::sync::Latch;
+use proptest::prelude::*;
+use proptest::test_runner::FileFailurePersistence;
 
 fn param(key: &'static str) -> ParamDecl {
     ParamDecl::new(key, key, Kind::continuous(0.0, 10.0, 1.0, None), 5.0)
@@ -768,7 +768,7 @@ fn a_user_write_while_a_restore_applies_is_refused_in_debug() {
     let p = set.id("p").expect("declared");
     let writer = clock.writer();
     let _applying = writer.applying();
-    seam_testkit::contract::expect_contract_panic("use ProgramParams::sync", || {
+    hapto_testkit::contract::expect_contract_panic("use ProgramParams::sync", || {
         ui.write(p, 7.0);
     });
 }

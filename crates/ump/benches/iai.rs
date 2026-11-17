@@ -6,8 +6,8 @@
 
 use std::hint::black_box;
 
+use hapto_ump::{ChannelVoice, Packets};
 use iai_callgrind::{library_benchmark, library_benchmark_group, main};
-use seam_ump::{ChannelVoice, Packets};
 
 /// A stream of one packet of every size, repeated.
 fn stream() -> Vec<u32> {

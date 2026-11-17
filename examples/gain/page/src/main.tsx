@@ -4,7 +4,7 @@
 
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { createClient, createHooks, webviewTransport } from "seam-page";
+import { createClient, createHooks, webviewTransport } from "@hapto/page";
 
 import type { Params } from "./generated/params";
 import "./styles.css";
@@ -87,7 +87,7 @@ function Gain() {
   return (
     <main>
       <header>
-        <h1>Seam Example Gain</h1>
+        <h1>Hapto Example Gain</h1>
         <Version />
       </header>
       <GainSlider />

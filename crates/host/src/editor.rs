@@ -11,7 +11,7 @@ use crate::ParentWindow;
 /// # Examples
 ///
 /// ```
-/// use seam_host::Size;
+/// use hapto_host::Size;
 ///
 /// let size = Size { width: 480, height: 320 };
 /// // At a scale of 1.5 the host's window is this many of the screen's pixels.
@@ -80,7 +80,7 @@ pub struct Size {
 /// ```
 /// use std::error::Error;
 ///
-/// use seam_host::{Editor, ParentWindow, Size};
+/// use hapto_host::{Editor, ParentWindow, Size};
 ///
 /// #[derive(Default)]
 /// struct Counter {

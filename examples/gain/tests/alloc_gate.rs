@@ -3,16 +3,16 @@
 //! learned controller then drives the gain, and through the VST3 exporter
 //! with every parameter moving.
 
-seam_testkit::install_alloc_gate!();
+hapto_testkit::install_alloc_gate!();
 
 use std::sync::Arc;
 
-use seam_example_gain::Gain;
-use seam_host::vst3::TestHost;
-use seam_host::{Block, Driver, EventList, Layout, Parts, Plugin, ProcessSetup, Processor};
-use seam_params::host_id;
-use seam_testkit::alloc::assert_no_allocations;
-use seam_ump::{ChannelVoice, Voice};
+use hapto_example_gain::Gain;
+use hapto_host::vst3::TestHost;
+use hapto_host::{Block, Driver, EventList, Layout, Parts, Plugin, ProcessSetup, Processor};
+use hapto_params::host_id;
+use hapto_testkit::alloc::assert_no_allocations;
+use hapto_ump::{ChannelVoice, Voice};
 
 const GAIN: &str = "gain";
 const MODE: &str = "mode";

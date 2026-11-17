@@ -28,7 +28,7 @@ use ::vst3::Steinberg::{
     tresult, uint32,
 };
 use ::vst3::{Class, ComPtr, ComRef, ComWrapper};
-use seam_params::{HostEvent, ParamDecl, ParamId, ParamSet, audio_thread};
+use hapto_params::{HostEvent, ParamDecl, ParamId, ParamSet, audio_thread};
 
 mod buses;
 mod controller;
@@ -648,7 +648,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
         })
     }
 
-    #[cfg_attr(seam_rtsan, sanitize(realtime = "nonblocking"))]
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     unsafe fn setProcessing(&self, state: TBool) -> tresult {
         // Either thread, the audio thread included, so a debug build checks
         // it takes no lock. `setParamNormalized` stays unmarked: the SDK
@@ -663,7 +663,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
         }
     }
 
-    #[cfg_attr(seam_rtsan, sanitize(realtime = "nonblocking"))]
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     unsafe fn process(&self, data: *mut ProcessData) -> tresult {
         // SAFETY: the SDK's contract for `process`: `data` is null or the
         // host's process data for this call. Its buses and changes are valid

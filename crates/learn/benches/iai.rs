@@ -6,10 +6,10 @@
 
 use std::hint::black_box;
 
+use hapto_learn::{Config, Control, Learn, LearnAudio, Mapping, Source};
+use hapto_params::{Kind, ParamDecl, ParamSetBuilder, Range};
+use hapto_ump::{ChannelVoice, Event, EventList, Voice};
 use iai_callgrind::{library_benchmark, library_benchmark_group, main};
-use seam_learn::{Config, Control, Learn, LearnAudio, Mapping, Source};
-use seam_params::{Kind, ParamDecl, ParamSetBuilder, Range};
-use seam_ump::{ChannelVoice, Event, EventList, Voice};
 
 const TARGETS: usize = 64;
 

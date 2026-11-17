@@ -1,11 +1,11 @@
 //! One instance behind the C interface: the plugin's [`Engine`], linked to
 //! the host's callbacks, with the interface's block and status codes.
 
-use seam_params::{HostEvent, ParamId, ParamSet};
+use hapto_params::{HostEvent, ParamId, ParamSet};
 
 use super::abi::{
-    RESTART_LATENCY, RESTART_VALUES, STATUS_CONTINUE, STATUS_CONTINUE_IF_NOT_QUIET, STATUS_SLEEP,
-    STATUS_TAIL, SeamHost, SeamProcess,
+    HaptoHost, HaptoProcess, RESTART_LATENCY, RESTART_VALUES, STATUS_CONTINUE,
+    STATUS_CONTINUE_IF_NOT_QUIET, STATUS_SLEEP, STATUS_TAIL,
 };
 use crate::Status;
 use crate::engine::{Engine, HostLink, Restart};
@@ -16,7 +16,7 @@ pub(super) type Instance<P> = Engine<P, Callbacks>;
 
 /// The host's callbacks, as the engine reaches them.
 #[derive(Debug, Clone, Copy)]
-pub(super) struct Callbacks(pub(super) SeamHost);
+pub(super) struct Callbacks(pub(super) HaptoHost);
 
 // SAFETY: the pointers cross threads unread. The engine calls the callbacks,
 // with their context, only inside `idle` or `destroy`, on the thread that
@@ -32,7 +32,7 @@ impl HostLink for Callbacks {
     fn tell(&self, _set: &ParamSet, event: HostEvent) {
         let host = self.0;
         let index = |id: ParamId| id.index() as u32;
-        // SAFETY: the header's contract for `SeamHost`: the callbacks and
+        // SAFETY: the header's contract for `HaptoHost`: the callbacks and
         // their `context` stay valid until `destroy` returns. They may be
         // called inside `idle` or `destroy`, on the thread that made that
         // call, the only places the engine calls this. None unwinds.
@@ -105,7 +105,7 @@ pub(super) unsafe fn channel_list<'a>(channels: *const *mut f32, count: u32) -> 
 /// `block.outputs` is null or holds `output_count` channel pointers, each
 /// null or valid for writing `frames` floats until the caller returns, with
 /// nothing else reading or writing them meanwhile.
-pub(super) unsafe fn silence(block: &SeamProcess) {
+pub(super) unsafe fn silence(block: &HaptoProcess) {
     let frames = block.frames as usize;
     // SAFETY: the caller's contract gives `output_count` pointers for the
     // call, as `channel_list` requires.

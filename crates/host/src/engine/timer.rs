@@ -50,7 +50,7 @@ mod imp {
 
     /// The window class's name, a static UTF-16 string with its null. The
     /// class is local to this module's DLL.
-    const CLASS: PCWSTR = windows_sys::w!("SeamTimer");
+    const CLASS: PCWSTR = windows_sys::w!("HaptoTimer");
     static REGISTERED: AtomicBool = AtomicBool::new(false);
     const ID: usize = 1;
     const PERIOD_MS: u32 = 15;
@@ -156,7 +156,7 @@ mod imp {
     /// another address, and the system would then call code no longer
     /// mapped. Pinned, the module keeps its mapping: after `ExitDll` the
     /// host's next load gets the same one, and `InitDll` runs again with
-    /// every static as it was left. No static in Seam assumes a fresh
+    /// every static as it was left. No static in Hapto assumes a fresh
     /// mapping, and the timer's class is unregistered at `ExitDll` and
     /// registered again by the next timer.
     ///

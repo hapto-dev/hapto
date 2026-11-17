@@ -3,7 +3,7 @@
 use std::fmt::Write as _;
 use std::ops::RangeInclusive;
 
-use seam_params::ParamSet;
+use hapto_params::ParamSet;
 
 use crate::{Category, Plugin};
 
@@ -20,14 +20,15 @@ const JUCE_RESERVED_IDS: [(RangeInclusive<u32>, &str); 2] = [
 /// them unless `JUCE_VST3_EMULATE_MIDI_CC_WITH_PARAMETERS` is 0.
 const JUCE_MIDI_CONTROLLER_IDS: RangeInclusive<u32> = 0x6d63_6d00..=0x6d63_6d00 + 16 * 130 - 1;
 
-/// Returns the settings `seam_add_juce_plugin` (`adapters/juce/SeamJuce.cmake`)
-/// reads for `P`, everything JUCE must know at build time.
+/// Returns the settings `hapto_add_juce_plugin`
+/// (`adapters/juce/HaptoJuce.cmake`) reads for `P`, everything JUCE must know
+/// at build time.
 ///
 /// They come from [`Plugin::INFO`], so the adapter holds no product's facts.
 /// `source` names the declaration it was generated from, for the file's first
 /// line.
 ///
-/// Each setting is a `SEAM_PLUGIN_` variable. The VST3 categories are the
+/// Each setting is a `HAPTO_PLUGIN_` variable. The VST3 categories are the
 /// VST3 exporter's own. The codes are the plugin's
 /// [`au_codes`](crate::PluginInfo::au_codes): the subtype is JUCE's plugin
 /// code and the manufacturer its manufacturer code. JUCE derives its VST3
@@ -46,12 +47,12 @@ const JUCE_MIDI_CONTROLLER_IDS: RangeInclusive<u32> = 0x6d63_6d00..=0x6d63_6d00 
 ///
 /// ```
 #[doc = include_str!("../../doc/gain.rs")]
-/// use seam_host::cabi::juce_settings;
+/// use hapto_host::cabi::juce_settings;
 ///
 /// let cmake = juce_settings::<Gain>("examples/gain/src/lib.rs");
-/// assert!(cmake.contains("set(SEAM_PLUGIN_NAME \"Gain\")"));
-/// assert!(cmake.contains("set(SEAM_PLUGIN_CODE \"gain\")"));
-/// assert!(cmake.contains("set(SEAM_PLUGIN_MANUFACTURER_CODE \"Exmp\")"));
+/// assert!(cmake.contains("set(HAPTO_PLUGIN_NAME \"Gain\")"));
+/// assert!(cmake.contains("set(HAPTO_PLUGIN_CODE \"gain\")"));
+/// assert!(cmake.contains("set(HAPTO_PLUGIN_MANUFACTURER_CODE \"Exmp\")"));
 /// ```
 pub fn juce_settings<P: Plugin>(source: &str) -> String {
     let (set, _) = ParamSet::declare::<P::Params>()
@@ -65,7 +66,7 @@ pub fn juce_settings<P: Plugin>(source: &str) -> String {
         info.name
     );
     let mut text = |name: &str, value: &str| {
-        let _ = writeln!(out, "set(SEAM_PLUGIN_{name} \"{}\")", quoted(value));
+        let _ = writeln!(out, "set(HAPTO_PLUGIN_{name} \"{}\")", quoted(value));
     };
     text("NAME", info.name);
     text("VENDOR", info.vendor);
@@ -79,13 +80,17 @@ pub fn juce_settings<P: Plugin>(source: &str) -> String {
     let flag = |on: bool| if on { "TRUE" } else { "FALSE" };
     let _ = writeln!(
         out,
-        "set(SEAM_PLUGIN_IS_SYNTH {})",
+        "set(HAPTO_PLUGIN_IS_SYNTH {})",
         flag(info.category == Category::Instrument)
     );
-    let _ = writeln!(out, "set(SEAM_PLUGIN_MIDI_INPUT {})", flag(info.midi_input));
     let _ = writeln!(
         out,
-        "set(SEAM_PLUGIN_MIDI_OUTPUT {})",
+        "set(HAPTO_PLUGIN_MIDI_INPUT {})",
+        flag(info.midi_input)
+    );
+    let _ = writeln!(
+        out,
+        "set(HAPTO_PLUGIN_MIDI_OUTPUT {})",
         flag(info.midi_output)
     );
     let categories: Vec<String> = info
@@ -95,7 +100,7 @@ pub fn juce_settings<P: Plugin>(source: &str) -> String {
         .collect();
     let _ = writeln!(
         out,
-        "set(SEAM_PLUGIN_VST3_CATEGORIES {})",
+        "set(HAPTO_PLUGIN_VST3_CATEGORIES {})",
         categories.join(" ")
     );
     out
@@ -105,16 +110,16 @@ pub fn juce_settings<P: Plugin>(source: &str) -> String {
 ///
 /// The id is JUCE 9's `String::hashCode` over the key's characters, its top bit
 /// cleared for Studio One (`VST3ClientExtensions::convertJuceParameterId`).
-/// JUCE's id is not Seam's own, which only Seam's exporters give hosts.
+/// JUCE's id is not Hapto's own, which only Hapto's exporters give hosts.
 ///
 /// # Examples
 ///
 /// ```
-/// use seam_host::cabi::juce_param_id;
+/// use hapto_host::cabi::juce_param_id;
 ///
 /// let id = juce_param_id("gain");
 /// assert_eq!(id & 0x8000_0000, 0, "the top bit is cleared, for Studio One");
-/// assert_ne!(id, seam_params::host_id("gain"), "not the id Seam's own exporters give");
+/// assert_ne!(id, hapto_params::host_id("gain"), "not the id Hapto's own exporters give");
 /// ```
 pub fn juce_param_id(key: &str) -> u32 {
     key.chars().fold(0u32, |hash, character| {

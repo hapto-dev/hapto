@@ -7,7 +7,7 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, LazyLock};
 
-use seam_params::{
+use hapto_params::{
     AudioParams, Declarer, Gesture, Kind, ParamDecl, ParamId, ParamSet, Params, ProgramParams,
     host_id,
 };
@@ -15,10 +15,10 @@ use serde_json::{Map, Value as Json};
 
 use super::instance::{Callbacks, Instance};
 use super::{
-    ABI_VERSION, HostCall, KIND_BOOL, KIND_CHOICE, KIND_CONTINUOUS, PARAM_BYPASS, RESTART_LATENCY,
+    ABI_VERSION, HaptoHost, HaptoInstance, HaptoLayout, HaptoParamInfo, HaptoPlugin, HaptoProcess,
+    HaptoStr, HostCall, KIND_BOOL, KIND_CHOICE, KIND_CONTINUOUS, PARAM_BYPASS, RESTART_LATENCY,
     RESTART_VALUES, Refused, STATUS_CONTINUE, STATUS_CONTINUE_IF_NOT_QUIET, STATUS_SLEEP,
-    STATUS_TAIL, SeamHost, SeamInstance, SeamLayout, SeamParamInfo, SeamPlugin, SeamProcess,
-    SeamStr, TAIL_INFINITE, TAIL_NONE, TestHost, header, juce_settings, plugin,
+    STATUS_TAIL, TAIL_INFINITE, TAIL_NONE, TestHost, header, juce_settings, plugin,
 };
 use crate::boundary::tests::Watched;
 use crate::faults::{thread_faults, written};
@@ -26,7 +26,7 @@ use crate::{
     AuCodes, Block, Category, Feature, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor,
     Status, Tail,
 };
-use seam_testkit::sync::{Latch, PATIENCE, wait_until};
+use hapto_testkit::sync::{Latch, PATIENCE, wait_until};
 
 const PARAMS: &[ParamDecl] = &[
     ParamDecl::new(
@@ -149,16 +149,16 @@ impl Drop for Probe {
 impl Plugin for Probe {
     const INFO: PluginInfo = PluginInfo {
         name: "Probe",
-        vendor: "Seam",
-        url: "https://seam.example",
-        email: "probe@seam.example",
+        vendor: "Hapto",
+        url: "https://hapto.example",
+        email: "probe@hapto.example",
         description: "A \"probe\"",
         version: "1.2.3",
-        id: "dev.seam.probe",
+        id: "dev.hapto.probe",
         vst3_class_id: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
         au_codes: AuCodes {
             subtype: *b"prob",
-            manufacturer: *b"Seam",
+            manufacturer: *b"Hapt",
         },
         category: Category::Effect,
         features: &[Feature::Equalizer, Feature::PitchShift],
@@ -233,7 +233,7 @@ fn running(max_frames: u32) -> TestHost<Probe> {
 
 /// An instance pointer that a test hands to another thread.
 #[derive(Clone, Copy)]
-struct Shared(*mut SeamInstance);
+struct Shared(*mut HaptoInstance);
 
 // SAFETY: the tests below hand it to one other thread at a time, to make
 // calls the table allows from any thread or must refuse there.
@@ -244,11 +244,11 @@ fn the_table_lists_its_layouts_and_every_parameter() {
     let host = TestHost::<Probe>::new();
     assert_eq!(host.table().abi_version, ABI_VERSION);
     assert_eq!(host.layouts(), [Layout::STEREO, Layout::MONO]);
-    let mut layout = SeamLayout {
+    let mut layout = HaptoLayout {
         inputs: 7,
         outputs: 7,
     };
-    // SAFETY: `layout` is valid for writing one `SeamLayout` during the call.
+    // SAFETY: `layout` is valid for writing one `HaptoLayout` during the call.
     let third = unsafe { (host.table().layout)(2, &mut layout) };
     assert!(!third, "no third");
     assert_eq!(host.parameter_count(), 3);
@@ -570,7 +570,7 @@ fn a_main_thread_call_from_another_thread_is_refused() {
                 // SAFETY: calls the instance must refuse on this thread
                 // without touching its main-thread state.
                 unsafe {
-                    let stereo = SeamLayout {
+                    let stereo = HaptoLayout {
                         inputs: 2,
                         outputs: 2,
                     };
@@ -592,7 +592,7 @@ fn a_main_thread_call_from_another_thread_is_refused() {
 /// instance, which leaks.
 fn destroy_elsewhere(panic_in_processor_drop: bool) -> (u64, Vec<String>, Shared) {
     let table = plugin::<Probe>();
-    let stereo = SeamLayout {
+    let stereo = HaptoLayout {
         inputs: 2,
         outputs: 2,
     };
@@ -659,7 +659,7 @@ fn a_processor_that_panics_as_it_drops_on_another_thread_is_caught_there() {
 
 /// A host whose first callback destroys the instance from inside a tick.
 struct Releaser {
-    instance: Cell<*mut SeamInstance>,
+    instance: Cell<*mut HaptoInstance>,
 }
 
 unsafe extern "C" fn destroy_from_callback(context: *mut c_void, _index: u32) {
@@ -680,12 +680,12 @@ fn a_destroy_inside_a_tick_leaks_it_deactivated() {
     let releaser = Box::new(Releaser {
         instance: Cell::new(std::ptr::null_mut()),
     });
-    let host = SeamHost {
+    let host = HaptoHost {
         context: std::ptr::from_ref::<Releaser>(&releaser)
             .cast_mut()
             .cast::<c_void>(),
         begin_edit: Some(destroy_from_callback),
-        ..SeamHost::NONE
+        ..HaptoHost::NONE
     };
     // SAFETY: `host` is readable for `create`, its callbacks never unwind,
     // and its context, the releaser, outlives the instance; every later call
@@ -694,7 +694,7 @@ fn a_destroy_inside_a_tick_leaks_it_deactivated() {
     unsafe {
         let instance = (table.create)(&host);
         releaser.instance.set(instance);
-        let stereo = SeamLayout {
+        let stereo = HaptoLayout {
             inputs: 2,
             outputs: 2,
         };
@@ -728,27 +728,27 @@ fn the_saved_block_round_trips_and_a_stranger_changes_nothing() {
 #[test]
 fn null_pointers_are_answered_not_followed() {
     let table = plugin::<Probe>();
-    let null = std::ptr::null_mut::<SeamInstance>();
+    let null = std::ptr::null_mut::<HaptoInstance>();
     let faults = thread_faults();
-    let mut info = SeamParamInfo {
-        key: SeamStr::new(""),
-        name: SeamStr::new(""),
-        unit: SeamStr::new(""),
-        group: SeamStr::new(""),
+    let mut info = HaptoParamInfo {
+        key: HaptoStr::new(""),
+        name: HaptoStr::new(""),
+        unit: HaptoStr::new(""),
+        group: HaptoStr::new(""),
         host_id: 0,
         kind: 0,
         steps: 0,
         flags: 0,
         default_normalized: 0.0,
     };
-    let block = SeamProcess {
+    let block = HaptoProcess {
         inputs: std::ptr::null(),
         outputs: std::ptr::null(),
         input_count: 2,
         output_count: 2,
         frames: 64,
     };
-    let stereo = SeamLayout {
+    let stereo = HaptoLayout {
         inputs: 2,
         outputs: 2,
     };
@@ -780,7 +780,7 @@ fn null_pointers_are_answered_not_followed() {
         ));
         assert!(!(table.save)(host.instance(), std::ptr::null_mut(), None));
         assert!(!(table.load)(host.instance(), std::ptr::null(), 4));
-        let text = SeamStr {
+        let text = HaptoStr {
             data: std::ptr::null(),
             length: 3,
         };
@@ -796,10 +796,10 @@ fn null_pointers_are_answered_not_followed() {
 #[test]
 fn the_header_declares_every_struct_and_asserts_its_layout() {
     let text = header();
-    assert!(text.starts_with("// seam.h"));
-    assert!(text.contains("#define SEAM_ABI_VERSION 1u"));
-    assert!(text.contains("#define SEAM_TAIL_INFINITE 4294967295u"));
-    assert!(text.contains("const SeamPlugin* seam_plugin(void);"));
+    assert!(text.starts_with("// hapto.h"));
+    assert!(text.contains("#define HAPTO_ABI_VERSION 1u"));
+    assert!(text.contains("#define HAPTO_TAIL_INFINITE 4294967295u"));
+    assert!(text.contains("const HaptoPlugin* hapto_plugin(void);"));
     for item in super::abi::structs() {
         assert!(
             text.contains(&format!("typedef struct {} {{", item.name)),
@@ -807,7 +807,7 @@ fn the_header_declares_every_struct_and_asserts_its_layout() {
             item.name
         );
         assert!(text.contains(&format!(
-            "SEAM_LAYOUT(sizeof({}) == {});",
+            "HAPTO_LAYOUT(sizeof({}) == {});",
             item.name, item.size
         )));
         let mut last = None;
@@ -828,10 +828,12 @@ fn the_header_declares_every_struct_and_asserts_its_layout() {
         }
     }
     assert!(
-        text.contains("    uint32_t (*process)(SeamInstance* instance, const SeamProcess* block);")
+        text.contains(
+            "    uint32_t (*process)(HaptoInstance* instance, const HaptoProcess* block);"
+        )
     );
     assert_eq!(
-        std::mem::size_of::<super::SeamPlugin>(),
+        std::mem::size_of::<super::HaptoPlugin>(),
         8 * 20,
         "a version, padded, then 19 calls"
     );
@@ -874,7 +876,7 @@ fn a_duration_is_read_however_it_is_written() {
         "about 60 times a second",
         "C11's layout",
         "uint32_t frames",
-        "SEAM_MAX_FRAMES",
+        "HAPTO_MAX_FRAMES",
     ] {
         assert_eq!(durations_in_ms(none), Vec::<f64>::new(), "{none:?}");
     }
@@ -996,15 +998,15 @@ fn the_juce_settings_name_the_plugin() {
     let text = juce_settings::<Probe>("the probe");
     assert!(text.contains("Generated by `cargo xtask gen` from the probe."));
     for line in [
-        "set(SEAM_PLUGIN_NAME \"Probe\")",
-        "set(SEAM_PLUGIN_DESCRIPTION \"A \\\"probe\\\"\")",
-        "set(SEAM_PLUGIN_VERSION \"1.2.3\")",
-        "set(SEAM_PLUGIN_ID \"dev.seam.probe\")",
-        "set(SEAM_PLUGIN_CODE \"prob\")",
-        "set(SEAM_PLUGIN_MANUFACTURER_CODE \"Seam\")",
-        "set(SEAM_PLUGIN_IS_SYNTH FALSE)",
-        "set(SEAM_PLUGIN_MIDI_INPUT FALSE)",
-        "set(SEAM_PLUGIN_VST3_CATEGORIES \"Fx\" \"EQ\" \"Pitch Shift\")",
+        "set(HAPTO_PLUGIN_NAME \"Probe\")",
+        "set(HAPTO_PLUGIN_DESCRIPTION \"A \\\"probe\\\"\")",
+        "set(HAPTO_PLUGIN_VERSION \"1.2.3\")",
+        "set(HAPTO_PLUGIN_ID \"dev.hapto.probe\")",
+        "set(HAPTO_PLUGIN_CODE \"prob\")",
+        "set(HAPTO_PLUGIN_MANUFACTURER_CODE \"Hapt\")",
+        "set(HAPTO_PLUGIN_IS_SYNTH FALSE)",
+        "set(HAPTO_PLUGIN_MIDI_INPUT FALSE)",
+        "set(HAPTO_PLUGIN_VST3_CATEGORIES \"Fx\" \"EQ\" \"Pitch Shift\")",
     ] {
         assert!(text.contains(line), "{line}\n{text}");
     }
@@ -1021,13 +1023,13 @@ fn the_header_spells_each_type_as_c_does() {
         <*const *mut f32>::declare("outputs", &[]),
         "float* const* outputs"
     );
-    assert_eq!(<*mut SeamInstance>::declare("", &[]), "SeamInstance*");
+    assert_eq!(<*mut HaptoInstance>::declare("", &[]), "HaptoInstance*");
     assert_eq!(
-        <unsafe extern "C" fn(*mut SeamInstance, u32, f64)>::declare(
+        <unsafe extern "C" fn(*mut HaptoInstance, u32, f64)>::declare(
             "set",
             &["instance", "index", "normalized"]
         ),
-        "void (*set)(SeamInstance* instance, uint32_t index, double normalized)"
+        "void (*set)(HaptoInstance* instance, uint32_t index, double normalized)"
     );
     assert_eq!(
         <unsafe extern "C" fn() -> u32>::declare("count", &[]),
@@ -1039,7 +1041,7 @@ fn the_header_spells_each_type_as_c_does() {
     );
     let text = header();
     assert!(text.contains(
-        "    bool (*save)(SeamInstance* instance, void* context, void (*write)(void*, const uint8_t*, size_t));"
+        "    bool (*save)(HaptoInstance* instance, void* context, void (*write)(void*, const uint8_t*, size_t));"
     ));
     assert!(text.contains("    const char* data;"));
 }
@@ -1173,10 +1175,10 @@ fn an_instrument_plays_with_no_input_or_a_narrower_one() {
     );
     let settings = juce_settings::<Instrument>("the instrument");
     for line in [
-        "set(SEAM_PLUGIN_IS_SYNTH TRUE)",
-        "set(SEAM_PLUGIN_MIDI_INPUT TRUE)",
-        "set(SEAM_PLUGIN_MIDI_OUTPUT FALSE)",
-        "set(SEAM_PLUGIN_VST3_CATEGORIES \"Instrument\" \"Synth\")",
+        "set(HAPTO_PLUGIN_IS_SYNTH TRUE)",
+        "set(HAPTO_PLUGIN_MIDI_INPUT TRUE)",
+        "set(HAPTO_PLUGIN_MIDI_OUTPUT FALSE)",
+        "set(HAPTO_PLUGIN_VST3_CATEGORIES \"Instrument\" \"Synth\")",
     ] {
         assert!(settings.contains(line), "{line}\n{settings}");
     }
@@ -1186,7 +1188,7 @@ fn an_instrument_plays_with_no_input_or_a_narrower_one() {
 /// tick it again from `begin_edit`, or destroy it from either edit
 /// callback.
 struct Reentrant {
-    instance: Cell<*mut SeamInstance>,
+    instance: Cell<*mut HaptoInstance>,
     calls: RefCell<Vec<&'static str>>,
     nest_on_begin: bool,
     destroy_on: &'static str,
@@ -1216,8 +1218,8 @@ impl Reentrant {
         }
     }
 
-    fn host(&self) -> SeamHost {
-        SeamHost {
+    fn host(&self) -> HaptoHost {
+        HaptoHost {
             context: std::ptr::from_ref::<Reentrant>(self)
                 .cast_mut()
                 .cast::<c_void>(),
@@ -1267,7 +1269,7 @@ fn tick_once_with(host: &Reentrant) {
     unsafe {
         let instance = (table.create)(&callbacks);
         host.instance.set(instance);
-        let stereo = SeamLayout {
+        let stereo = HaptoLayout {
             inputs: 2,
             outputs: 2,
         };
@@ -1389,7 +1391,7 @@ fn the_juce_settings_refuse_a_midi_controllers_id_only_for_midi_input() {
         }
     }
     let settings = juce_settings::<Keyed<false>>("no MIDI input");
-    assert!(settings.contains("set(SEAM_PLUGIN_MIDI_INPUT FALSE)"));
+    assert!(settings.contains("set(HAPTO_PLUGIN_MIDI_INPUT FALSE)"));
     let refused = std::panic::catch_unwind(|| juce_settings::<Keyed<true>>("MIDI input"));
     let message = refused.expect_err("refused");
     let message = message
@@ -1482,7 +1484,7 @@ impl Plugin for Learner {
     type Processor = Through;
 
     fn new(_: Table, mut parts: Parts) -> Self {
-        parts.midi_learn(seam_learn::Config::default());
+        parts.midi_learn(hapto_learn::Config::default());
         Learner { _parts: parts }
     }
 
@@ -1518,7 +1520,7 @@ fn a_release_refused_on_another_thread_drops_learn_s_audio_side_there() {
 
 thread_local! {
     /// The instance [`Busy`] has its host tick from inside its activation.
-    static BUSY: Cell<*mut SeamInstance> = const { Cell::new(std::ptr::null_mut()) };
+    static BUSY: Cell<*mut HaptoInstance> = const { Cell::new(std::ptr::null_mut()) };
     /// What [`Busy`]'s participant holds, and how many idles it had.
     static BUSY_ZOOM: Rc<RefCell<Option<Json>>> = Rc::default();
     static BUSY_IDLES: Cell<u32> = const { Cell::new(0) };
@@ -1527,15 +1529,15 @@ thread_local! {
 /// Holds what a restore hands it.
 struct Restored(Rc<RefCell<Option<Json>>>);
 
-impl seam_session::Participant for Restored {
-    fn capture(&self) -> seam_session::Section {
+impl hapto_session::Participant for Restored {
+    fn capture(&self) -> hapto_session::Section {
         self.0.borrow().clone().unwrap_or(Json::Null)
     }
 
     fn apply(
         &mut self,
-        section: Option<&seam_session::Section>,
-    ) -> Result<(), seam_session::ApplyError> {
+        section: Option<&hapto_session::Section>,
+    ) -> Result<(), hapto_session::ApplyError> {
         *self.0.borrow_mut() = section.cloned();
         Ok(())
     }
@@ -1546,7 +1548,7 @@ impl seam_session::Participant for Restored {
 struct Busy {
     _parts: Parts,
     _participant: Rc<RefCell<Restored>>,
-    _registration: seam_session::Registration,
+    _registration: hapto_session::Registration,
 }
 
 impl Plugin for Busy {
@@ -1581,7 +1583,7 @@ impl Plugin for Busy {
 }
 
 #[test]
-fn a_tick_while_the_plugin_is_busy_skips_seam_s_tick_and_its_idle() {
+fn a_tick_while_the_plugin_is_busy_skips_hapto_s_tick_and_its_idle() {
     let host = TestHost::<Busy>::new();
     BUSY.set(host.instance());
     let block = br#"{"seamStateVersion": 1, "parameters": {}, "extra": {"zoom": 2}}"#;
@@ -1591,7 +1593,7 @@ fn a_tick_while_the_plugin_is_busy_skips_seam_s_tick_and_its_idle() {
     assert_eq!(
         BUSY_ZOOM.with(|zoom| zoom.borrow().clone()),
         None,
-        "nor Seam's tick, which would have applied the load"
+        "nor Hapto's tick, which would have applied the load"
     );
     host.idle();
     assert_eq!(BUSY_IDLES.with(Cell::get), 1);
@@ -1605,7 +1607,7 @@ fn a_tick_while_the_plugin_is_busy_skips_seam_s_tick_and_its_idle() {
 /// Creates an instance from `table` on another thread, then activates and
 /// destroys it on this one, and answers whether the activation took and the
 /// faults counted here.
-fn created_elsewhere_then_activated(table: &'static SeamPlugin) -> (bool, u64) {
+fn created_elsewhere_then_activated(table: &'static HaptoPlugin) -> (bool, u64) {
     let instance = std::thread::scope(|scope| {
         // SAFETY: `create` takes a null host as one with no callbacks.
         scope
@@ -1614,7 +1616,7 @@ fn created_elsewhere_then_activated(table: &'static SeamPlugin) -> (bool, u64) {
             .expect("created on another thread")
     });
     let faults = thread_faults();
-    let stereo = SeamLayout {
+    let stereo = HaptoLayout {
         inputs: 2,
         outputs: 2,
     };
@@ -1685,7 +1687,7 @@ fn a_moving_plugin_takes_main_thread_calls_from_any_thread_however_many_ticks_ra
             scope
                 .spawn(move || {
                     let instance = shared;
-                    let stereo = SeamLayout {
+                    let stereo = HaptoLayout {
                         inputs: 2,
                         outputs: 2,
                     };
@@ -1774,7 +1776,7 @@ static WAITS: [Watched; 3] = [const { Watched::new(PATIENCE) }; 3];
 /// waits. The wait is long, since three threads must run before it runs
 /// out, which the engine's own bound does not leave a loaded machine room
 /// for.
-fn watched<const GATE: usize>() -> &'static SeamPlugin {
+fn watched<const GATE: usize>() -> &'static HaptoPlugin {
     const { &super::table::<HeldTick<GATE>>(create_watched::<GATE>) }
 }
 
@@ -1782,11 +1784,13 @@ fn watched<const GATE: usize>() -> &'static SeamPlugin {
 ///
 /// # Safety
 ///
-/// As [`SeamPlugin::create`] and `seam.h`'s pointer rules say.
-unsafe extern "C" fn create_watched<const GATE: usize>(host: *const SeamHost) -> *mut SeamInstance {
+/// As [`HaptoPlugin::create`] and `hapto.h`'s pointer rules say.
+unsafe extern "C" fn create_watched<const GATE: usize>(
+    host: *const HaptoHost,
+) -> *mut HaptoInstance {
     // SAFETY: the header's contract: `host` is null or valid for reading
-    // one `SeamHost` during this call, which copies it at once.
-    let host = unsafe { host.as_ref() }.copied().unwrap_or(SeamHost::NONE);
+    // one `HaptoHost` during this call, which copies it at once.
+    let host = unsafe { host.as_ref() }.copied().unwrap_or(HaptoHost::NONE);
     let instance = Instance::<HeldTick<GATE>>::new_unbound(Some(Callbacks(host)), &WAITS[GATE]);
     Box::into_raw(instance).cast()
 }
@@ -1821,8 +1825,8 @@ impl<const GATE: usize> Plugin for HeldTick<GATE> {
 
 /// A main-thread activation of the instance behind `shared`, as a host's
 /// own thread makes it.
-fn activate_on(table: &'static SeamPlugin, shared: Shared) -> bool {
-    let stereo = SeamLayout {
+fn activate_on(table: &'static HaptoPlugin, shared: Shared) -> bool {
+    let stereo = HaptoLayout {
         inputs: 2,
         outputs: 2,
     };
@@ -2008,7 +2012,7 @@ impl Plugin for Syncer {
 }
 
 /// The instance [`tick_then_destroy_inside`] destroys from inside its tick.
-static INSIDE: std::sync::atomic::AtomicPtr<SeamInstance> =
+static INSIDE: std::sync::atomic::AtomicPtr<HaptoInstance> =
     std::sync::atomic::AtomicPtr::new(std::ptr::null_mut());
 
 /// The host's `restart` callback: ticks the instance again, as a nested
@@ -2030,16 +2034,16 @@ unsafe extern "C" fn tick_then_destroy_inside(_context: *mut c_void, _flags: u32
 fn a_moving_plugin_called_from_inside_its_own_tick_shares_that_tick_s_loan() {
     let faults = thread_faults();
     let table = super::plugin_moving::<Syncer>();
-    let host = SeamHost {
+    let host = HaptoHost {
         restart: Some(tick_then_destroy_inside),
-        ..SeamHost::NONE
+        ..HaptoHost::NONE
     };
     // SAFETY: `host` is readable for `create`, and its callback never
     // unwinds; every later call is on the instance `create` answered, with
     // no other call in flight.
     unsafe {
         let instance = (table.create)(&host);
-        let stereo = SeamLayout {
+        let stereo = HaptoLayout {
             inputs: 2,
             outputs: 2,
         };
@@ -2126,7 +2130,7 @@ fn the_first_refused_load_writes_the_reason_and_is_no_fault_through_the_cabi_exp
     assert_eq!(host.load(older), Err(Refused), "the host's answer stands");
     let lines = written();
     assert_eq!(lines.len(), 1, "{lines:?}");
-    assert!(lines[0].starts_with("seam: Probe (instance "), "{lines:?}");
+    assert!(lines[0].starts_with("hapto: Probe (instance "), "{lines:?}");
     assert!(
         lines[0].contains("): the host's saved state was refused: "),
         "{lines:?}"
@@ -2177,7 +2181,7 @@ fn a_refused_declaration_builds_no_instance_and_says_why_through_the_cabi_export
     assert!(instance.is_null(), "no instance");
     assert_eq!(thread_faults(), faults + 1, "the refusal counts as a fault");
     let lines = written();
-    let refusal = "seam: Probe: no instance was built, since a declaration was refused: \
+    let refusal = "hapto: Probe: no instance was built, since a declaration was refused: \
                    key \"gain\" is declared twice.";
     assert!(lines.iter().any(|line| line == refusal), "{lines:?}");
 }

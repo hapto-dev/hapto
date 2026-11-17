@@ -6,12 +6,12 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use seam_host::{
+use hapto_host::{
     AuCodes, Block, Category, Driver, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor,
     Status,
 };
-use seam_params::{Declarer, Params, Value};
-use seam_session::{ApplyError, Participant, Section, SessionError};
+use hapto_params::{Declarer, Params, Value};
+use hapto_session::{ApplyError, Participant, Section, SessionError};
 use serde::{Deserialize, Serialize, Serializer};
 use serde_json::json;
 
@@ -38,16 +38,16 @@ struct Bare;
 impl Plugin for Bare {
     const INFO: PluginInfo = PluginInfo {
         name: "Bare",
-        vendor: "Seam",
+        vendor: "Hapto",
         url: "",
         email: "",
         description: "",
         version: "0.1.0",
-        id: "dev.seam.bare",
+        id: "dev.hapto.bare",
         vst3_class_id: [0; 16],
         au_codes: AuCodes {
             subtype: *b"bare",
-            manufacturer: *b"Seam",
+            manufacturer: *b"Hapt",
         },
         category: Category::Effect,
         features: &[],
@@ -368,7 +368,7 @@ fn a_value_serde_cannot_write_as_json_is_a_contract_panic() {
     let mut parts = parts();
     // JSON's object keys are strings, and a pair is not one.
     let pairs = BTreeMap::from([((1_u8, 2_u8), 3_u8)]);
-    seam_testkit::contract::expect_contract_panic("serde cannot write a saved value", || {
+    hapto_testkit::contract::expect_contract_panic("serde cannot write a saved value", || {
         let _ = parts.saved_value("pairs", pairs);
     });
 }

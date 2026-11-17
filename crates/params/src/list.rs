@@ -88,7 +88,7 @@ impl<T> Shared<T> {
 /// # Examples
 ///
 /// ```
-/// use seam_params::{List, ParamSet};
+/// use hapto_params::{List, ParamSet};
 ///
 /// // A list belongs to a parameter set, so restores and undo see it.
 /// let set = ParamSet::from_decls([])?;
@@ -100,7 +100,7 @@ impl<T> Shared<T> {
 /// let names = samples.with(|items| items.join(", "));
 /// assert_eq!(names, "kick, snare, hat");
 /// assert_eq!(samples.len(), 3);
-/// # Ok::<(), seam_params::DeclError>(())
+/// # Ok::<(), hapto_params::DeclError>(())
 /// ```
 ///
 /// # Panics
@@ -182,7 +182,7 @@ impl<T> List<T> {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::{List, Origin, ParamSet, Value};
+    /// use hapto_params::{List, Origin, ParamSet, Value};
     ///
     /// let set = ParamSet::from_decls([])?;
     /// let samples = List::new(vec!["kick"], &set);
@@ -193,7 +193,7 @@ impl<T> List<T> {
     /// let reading = samples.read(<[_]>::len);
     /// count.set_from(reading.value, reading.origin);
     /// assert_eq!((count.get(), count.read().origin), (2, Origin::Host));
-    /// # Ok::<(), seam_params::DeclError>(())
+    /// # Ok::<(), hapto_params::DeclError>(())
     /// ```
     pub fn read<R>(&self, read: impl FnOnce(&[T]) -> R) -> Reading<R> {
         let state = self.shared.lock();
@@ -214,7 +214,7 @@ impl<T> List<T> {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::{List, ParamSet};
+    /// use hapto_params::{List, ParamSet};
     ///
     /// let set = ParamSet::from_decls([])?;
     /// let list = List::new(vec!["kick", "hat"], &set);
@@ -222,7 +222,7 @@ impl<T> List<T> {
     /// assert_eq!(list.insert(1, "snare"), Ok(())); // between the two
     /// assert_eq!(list.insert(9, "clap"), Err("clap")); // past the end: handed back
     /// assert_eq!(list.with(|items| items.to_vec()), ["kick", "snare", "hat"]);
-    /// # Ok::<(), seam_params::DeclError>(())
+    /// # Ok::<(), hapto_params::DeclError>(())
     /// ```
     pub fn insert(&self, index: usize, element: T) -> Result<(), T> {
         self.own().insert(index, element)
@@ -239,7 +239,7 @@ impl<T> List<T> {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::{List, ParamSet};
+    /// use hapto_params::{List, ParamSet};
     ///
     /// let set = ParamSet::from_decls([])?;
     /// let list = List::new(vec!["kick", "snare"], &set);
@@ -247,7 +247,7 @@ impl<T> List<T> {
     /// assert!(list.remove(0));
     /// assert!(!list.remove(5)); // no such element: nothing changes
     /// assert_eq!(list.with(|items| items.to_vec()), ["snare"]);
-    /// # Ok::<(), seam_params::DeclError>(())
+    /// # Ok::<(), hapto_params::DeclError>(())
     /// ```
     pub fn remove(&self, index: usize) -> bool {
         self.own().remove(index)
@@ -259,7 +259,7 @@ impl<T> List<T> {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::{List, ParamSet};
+    /// use hapto_params::{List, ParamSet};
     ///
     /// let set = ParamSet::from_decls([])?;
     /// let list = List::new(vec!["kick", "snare", "hat"], &set);
@@ -268,7 +268,7 @@ impl<T> List<T> {
     /// assert_eq!(list.with(|items| items.to_vec()), ["snare", "hat", "kick"]);
     /// assert!(!list.move_item(1, 1)); // onto its own slot
     /// assert!(!list.move_item(0, 3)); // out of range
-    /// # Ok::<(), seam_params::DeclError>(())
+    /// # Ok::<(), hapto_params::DeclError>(())
     /// ```
     pub fn move_item(&self, from: usize, to: usize) -> bool {
         self.own().move_item(from, to)
@@ -279,7 +279,7 @@ impl<T> List<T> {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::{List, ParamSet};
+    /// use hapto_params::{List, ParamSet};
     ///
     /// let set = ParamSet::from_decls([])?;
     /// let list = List::new(vec!["kick"], &set);
@@ -287,7 +287,7 @@ impl<T> List<T> {
     /// assert!(list.clear());
     /// assert!(!list.clear()); // already empty: nothing changes
     /// assert!(list.is_empty());
-    /// # Ok::<(), seam_params::DeclError>(())
+    /// # Ok::<(), hapto_params::DeclError>(())
     /// ```
     pub fn clear(&self) -> bool {
         self.own().clear()
@@ -321,7 +321,7 @@ impl<T> List<T> {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::{List, Origin, ParamSet};
+    /// use hapto_params::{List, Origin, ParamSet};
     ///
     /// let set = ParamSet::from_decls([])?;
     /// let list = List::new(vec!["kick"], &set);
@@ -332,7 +332,7 @@ impl<T> List<T> {
     /// list.reset(vec!["hat"]);
     /// assert_eq!(list.with(|items| items.to_vec()), ["hat"]);
     /// assert_eq!(list.read(<[_]>::len).origin, Origin::Restore);
-    /// # Ok::<(), seam_params::DeclError>(())
+    /// # Ok::<(), hapto_params::DeclError>(())
     /// ```
     pub fn reset(&self, items: Vec<T>) {
         let mut state = self.shared.lock();
@@ -381,16 +381,16 @@ impl<T> List<T> {
 /// # Examples
 ///
 /// ```
-/// use seam_params::List;
-/// # let set = seam_params::ParamSet::from_decls([])?;
+/// use hapto_params::List;
+/// # let set = hapto_params::ParamSet::from_decls([])?;
 /// let samples = List::new(vec!["kick", "snare"], &set);
-/// use seam_params::Origin;
+/// use hapto_params::Origin;
 ///
 /// let derived = samples.derived(Origin::Host);
 /// derived.push("hat");
 /// derived.remove(0);
 /// assert_eq!(samples.with(|items| items.to_vec()), ["snare", "hat"]);
-/// # Ok::<(), seam_params::DeclError>(())
+/// # Ok::<(), hapto_params::DeclError>(())
 /// ```
 #[derive(Debug)]
 pub struct Derived<'a, T> {

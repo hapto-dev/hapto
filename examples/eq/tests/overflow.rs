@@ -4,14 +4,14 @@
 //! exporter has room for on average, so the walk finds the room full, drops
 //! points, and still lands each queue's last one.
 
-seam_testkit::install_alloc_gate!();
+hapto_testkit::install_alloc_gate!();
 
 use std::sync::LazyLock;
 
-use seam_example_eq::ExampleEq;
-use seam_host::vst3::TestHost;
-use seam_params::{ParamDecl, host_id};
-use seam_testkit::alloc::assert_no_allocations;
+use hapto_example_eq::ExampleEq;
+use hapto_host::vst3::TestHost;
+use hapto_params::{ParamDecl, host_id};
+use hapto_testkit::alloc::assert_no_allocations;
 
 mod common;
 use common::declarations;

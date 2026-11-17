@@ -17,7 +17,7 @@ use raw_window_handle::{HandleError, HasWindowHandle, RawWindowHandle, WindowHan
 ///
 /// ```
 /// use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-/// use seam_host::ParentWindow;
+/// use hapto_host::ParentWindow;
 ///
 /// /// What an editor's `open` reads before it makes its window inside.
 /// fn platform(parent: &ParentWindow) -> &'static str {

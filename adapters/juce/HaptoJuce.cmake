@@ -1,11 +1,11 @@
-# The generic JUCE adapter's build: turns a Seam plugin crate into a JUCE
+# The generic JUCE adapter's build: turns a Hapto plugin crate into a JUCE
 # plugin target, with no product C++.
 #
-#   seam_add_juce_plugin(<target>
+#   hapto_add_juce_plugin(<target>
 #       PACKAGE <the plugin's cargo package>
-#       SETTINGS <its generated seam-juce.cmake>
+#       SETTINGS <its generated hapto-juce.cmake>
 #       FORMATS <JUCE formats...>
-#       [MANIFEST_PATH <the Cargo.toml to build from; Seam's workspace by default>]
+#       [MANIFEST_PATH <the Cargo.toml to build from; Hapto's workspace by default>]
 #       [LIB_NAME <the crate's library name; the package's, with - as _, by default>]
 #       [PRODUCT_NAME <a name other than the plugin's>])
 #
@@ -22,23 +22,23 @@
 #    each architecture's Rust target must be installed (`rustup target add
 #    aarch64-apple-darwin x86_64-apple-darwin`; for iOS `aarch64-apple-ios`,
 #    and for its simulator `aarch64-apple-ios-sim` and `x86_64-apple-ios`).
-# 3. It adds the JUCE plugin, the adapter's sources (SeamPluginProcessor) and
-#    seam.h, and links the library.
+# 3. It adds the JUCE plugin, the adapter's sources (HaptoPluginProcessor) and
+#    hapto.h, and links the library.
 #
-# seam.h is the one committed beside the seam-host this file comes with, so
-# the plugin must build against that same seam-host; the adapter checks
-# SEAM_ABI_VERSION at run time all the same. JUCE must be added first. The
+# hapto.h is the one committed beside the hapto-host this file comes with, so
+# the plugin must build against that same hapto-host; the adapter checks
+# HAPTO_ABI_VERSION at run time all the same. JUCE must be added first. The
 # Rust side is always built with cargo's release profile; it takes the C
 # runtime from whatever the JUCE target links, so Debug and Release builds of
 # the plugin both work.
 
-set(SEAM_JUCE_ADAPTER_DIR "${CMAKE_CURRENT_LIST_DIR}")
-get_filename_component(SEAM_ROOT "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
+set(HAPTO_JUCE_ADAPTER_DIR "${CMAKE_CURRENT_LIST_DIR}")
+get_filename_component(HAPTO_ROOT "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
 
 # The commands that build the library once per Apple architecture and join
 # the archives into one, into `out_build`, and that archive's path into
 # `out_archive`.
-function(_seam_apple_build out_build out_archive cargo_dir lib_name)
+function(_hapto_apple_build out_build out_archive cargo_dir lib_name)
     set(cargo ${ARGN})
     set(archs ${CMAKE_OSX_ARCHITECTURES})
     if(NOT archs)
@@ -72,100 +72,100 @@ function(_seam_apple_build out_build out_archive cargo_dir lib_name)
         elseif(arch STREQUAL "x86_64")
             set(triple "x86_64-apple-${os}")
         else()
-            message(FATAL_ERROR "seam_add_juce_plugin: no Rust target for the Apple architecture ${arch}")
+            message(FATAL_ERROR "hapto_add_juce_plugin: no Rust target for the Apple architecture ${arch}")
         endif()
         list(APPEND build COMMAND ${env} ${cargo} --target ${triple})
         list(APPEND archives "${cargo_dir}/${triple}/release/lib${lib_name}.a")
     endforeach()
     set(archive "${cargo_dir}/universal/lib${lib_name}.a")
-    find_program(SEAM_LIPO lipo REQUIRED)
+    find_program(HAPTO_LIPO lipo REQUIRED)
     list(APPEND build
         COMMAND "${CMAKE_COMMAND}" -E make_directory "${cargo_dir}/universal"
-        COMMAND "${SEAM_LIPO}" -create -output "${archive}" ${archives})
+        COMMAND "${HAPTO_LIPO}" -create -output "${archive}" ${archives})
     set(${out_build} ${build} PARENT_SCOPE)
     set(${out_archive} "${archive}" PARENT_SCOPE)
 endfunction()
 
-function(seam_add_juce_plugin target)
-    cmake_parse_arguments(PARSE_ARGV 1 SEAM ""
+function(hapto_add_juce_plugin target)
+    cmake_parse_arguments(PARSE_ARGV 1 HAPTO ""
         "PACKAGE;SETTINGS;MANIFEST_PATH;LIB_NAME;PRODUCT_NAME" "FORMATS")
-    if(NOT SEAM_PACKAGE OR NOT SEAM_SETTINGS OR NOT SEAM_FORMATS)
-        message(FATAL_ERROR "seam_add_juce_plugin(${target}) needs PACKAGE, SETTINGS and FORMATS")
+    if(NOT HAPTO_PACKAGE OR NOT HAPTO_SETTINGS OR NOT HAPTO_FORMATS)
+        message(FATAL_ERROR "hapto_add_juce_plugin(${target}) needs PACKAGE, SETTINGS and FORMATS")
     endif()
-    include("${SEAM_SETTINGS}")
-    if(NOT SEAM_PRODUCT_NAME)
-        set(SEAM_PRODUCT_NAME "${SEAM_PLUGIN_NAME}")
+    include("${HAPTO_SETTINGS}")
+    if(NOT HAPTO_PRODUCT_NAME)
+        set(HAPTO_PRODUCT_NAME "${HAPTO_PLUGIN_NAME}")
     endif()
-    if(NOT SEAM_MANIFEST_PATH)
-        set(SEAM_MANIFEST_PATH "${SEAM_ROOT}/Cargo.toml")
+    if(NOT HAPTO_MANIFEST_PATH)
+        set(HAPTO_MANIFEST_PATH "${HAPTO_ROOT}/Cargo.toml")
     endif()
-    if(NOT SEAM_LIB_NAME)
-        string(REPLACE "-" "_" SEAM_LIB_NAME "${SEAM_PACKAGE}")
+    if(NOT HAPTO_LIB_NAME)
+        string(REPLACE "-" "_" HAPTO_LIB_NAME "${HAPTO_PACKAGE}")
     endif()
 
-    find_program(SEAM_CARGO cargo REQUIRED)
-    set(cargo_dir "${CMAKE_BINARY_DIR}/seam-cargo")
-    set(cargo "${SEAM_CARGO}" rustc --manifest-path "${SEAM_MANIFEST_PATH}"
-        --package "${SEAM_PACKAGE}" --release --locked
+    find_program(HAPTO_CARGO cargo REQUIRED)
+    set(cargo_dir "${CMAKE_BINARY_DIR}/hapto-cargo")
+    set(cargo "${HAPTO_CARGO}" rustc --manifest-path "${HAPTO_MANIFEST_PATH}"
+        --package "${HAPTO_PACKAGE}" --release --locked
         --no-default-features --features cabi --crate-type staticlib
         --target-dir "${cargo_dir}")
     set(build)
     if(APPLE)
         set(system)
-        _seam_apple_build(build archive "${cargo_dir}" "${SEAM_LIB_NAME}" ${cargo})
+        _hapto_apple_build(build archive "${cargo_dir}" "${HAPTO_LIB_NAME}" ${cargo})
     elseif(WIN32)
-        set(archive "${cargo_dir}/release/${SEAM_LIB_NAME}.lib")
+        set(archive "${cargo_dir}/release/${HAPTO_LIB_NAME}.lib")
         # What rustc lists as the library's native dependencies
         # (`--print native-static-libs`).
         set(system kernel32 ntdll userenv ws2_32 dbghelp)
         set(build COMMAND ${cargo})
     else()
-        set(archive "${cargo_dir}/release/lib${SEAM_LIB_NAME}.a")
+        set(archive "${cargo_dir}/release/lib${HAPTO_LIB_NAME}.a")
         set(system pthread dl m)
         set(build COMMAND ${cargo})
     endif()
 
     # Beside the manifest, so rustup takes the toolchain its project pins.
-    get_filename_component(manifest_dir "${SEAM_MANIFEST_PATH}" DIRECTORY)
+    get_filename_component(manifest_dir "${HAPTO_MANIFEST_PATH}" DIRECTORY)
     add_custom_target(${target}_rust
         ${build}
         WORKING_DIRECTORY "${manifest_dir}"
         BYPRODUCTS "${archive}"
-        COMMENT "Building ${SEAM_PACKAGE} as a static library"
+        COMMENT "Building ${HAPTO_PACKAGE} as a static library"
         USES_TERMINAL
         VERBATIM)
-    add_library(${target}_seam STATIC IMPORTED)
-    set_target_properties(${target}_seam PROPERTIES IMPORTED_LOCATION "${archive}")
-    target_link_libraries(${target}_seam INTERFACE ${system})
+    add_library(${target}_hapto STATIC IMPORTED)
+    set_target_properties(${target}_hapto PROPERTIES IMPORTED_LOCATION "${archive}")
+    target_link_libraries(${target}_hapto INTERFACE ${system})
 
     juce_add_plugin(${target}
-        PRODUCT_NAME "${SEAM_PRODUCT_NAME}"
-        COMPANY_NAME "${SEAM_PLUGIN_VENDOR}"
-        COMPANY_WEBSITE "${SEAM_PLUGIN_URL}"
-        COMPANY_EMAIL "${SEAM_PLUGIN_EMAIL}"
-        DESCRIPTION "${SEAM_PLUGIN_DESCRIPTION}"
-        VERSION "${SEAM_PLUGIN_VERSION}"
-        BUNDLE_ID "${SEAM_PLUGIN_ID}"
-        PLUGIN_MANUFACTURER_CODE "${SEAM_PLUGIN_MANUFACTURER_CODE}"
-        PLUGIN_CODE "${SEAM_PLUGIN_CODE}"
-        FORMATS ${SEAM_FORMATS}
-        IS_SYNTH ${SEAM_PLUGIN_IS_SYNTH}
-        NEEDS_MIDI_INPUT ${SEAM_PLUGIN_MIDI_INPUT}
-        NEEDS_MIDI_OUTPUT ${SEAM_PLUGIN_MIDI_OUTPUT}
+        PRODUCT_NAME "${HAPTO_PRODUCT_NAME}"
+        COMPANY_NAME "${HAPTO_PLUGIN_VENDOR}"
+        COMPANY_WEBSITE "${HAPTO_PLUGIN_URL}"
+        COMPANY_EMAIL "${HAPTO_PLUGIN_EMAIL}"
+        DESCRIPTION "${HAPTO_PLUGIN_DESCRIPTION}"
+        VERSION "${HAPTO_PLUGIN_VERSION}"
+        BUNDLE_ID "${HAPTO_PLUGIN_ID}"
+        PLUGIN_MANUFACTURER_CODE "${HAPTO_PLUGIN_MANUFACTURER_CODE}"
+        PLUGIN_CODE "${HAPTO_PLUGIN_CODE}"
+        FORMATS ${HAPTO_FORMATS}
+        IS_SYNTH ${HAPTO_PLUGIN_IS_SYNTH}
+        NEEDS_MIDI_INPUT ${HAPTO_PLUGIN_MIDI_INPUT}
+        NEEDS_MIDI_OUTPUT ${HAPTO_PLUGIN_MIDI_OUTPUT}
         IS_MIDI_EFFECT FALSE
         COPY_PLUGIN_AFTER_BUILD FALSE
-        VST3_CATEGORIES ${SEAM_PLUGIN_VST3_CATEGORIES})
+        VST3_CATEGORIES ${HAPTO_PLUGIN_VST3_CATEGORIES})
 
-    target_sources(${target} PRIVATE "${SEAM_JUCE_ADAPTER_DIR}/SeamPluginProcessor.cpp")
+    target_sources(${target} PRIVATE "${HAPTO_JUCE_ADAPTER_DIR}/HaptoPluginProcessor.cpp")
     target_include_directories(${target} PRIVATE
-        "${SEAM_JUCE_ADAPTER_DIR}"
-        "${SEAM_ROOT}/crates/host/include")
+        "${HAPTO_JUCE_ADAPTER_DIR}"
+        "${HAPTO_ROOT}/crates/host/include")
     target_compile_definitions(${target} PUBLIC
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0)
     target_link_libraries(${target}
-        PRIVATE ${target}_seam juce::juce_audio_processors
+        PRIVATE ${target}_hapto juce::juce_audio_processors
         PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags
             juce::juce_recommended_warning_flags)
     add_dependencies(${target} ${target}_rust)

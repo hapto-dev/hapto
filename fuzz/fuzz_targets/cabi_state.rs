@@ -4,8 +4,8 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use seam_fuzz::Fuzzed;
-use seam_host::cabi::TestHost;
+use hapto_fuzz::Fuzzed;
+use hapto_host::cabi::TestHost;
 
 fuzz_target!(|data: &[u8]| {
     let host = TestHost::<Fuzzed>::new();

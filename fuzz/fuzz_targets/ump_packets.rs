@@ -5,7 +5,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use seam_ump::{ChannelVoice, Packets, packet_words};
+use hapto_ump::{ChannelVoice, Packets, packet_words};
 
 fuzz_target!(|data: &[u8]| {
     let words: Vec<u32> = data

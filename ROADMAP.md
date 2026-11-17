@@ -1,6 +1,6 @@
 # Roadmap
 
-Where Seam is going, in the order it means to get there. This is the big
+Where Hapto is going, in the order it means to get there. This is the big
 picture only: each entry is a goal, not a task list. Working plans and tickets
 stay out of the repository, and this file changes in a pull request of its own.
 
@@ -34,10 +34,10 @@ the design of what is decided and waiting.
 ## Later
 
 - **CLAP.** An exporter over the same engine as VST3 and the C interface.
-- **MIDI-CI.** Spoken by the host for a VST3 plugin, and answered by Seam
+- **MIDI-CI.** Spoken by the host for a VST3 plugin, and answered by Hapto
   everywhere else.
 - **A comparison with the editors open.** The bench run again with each
-  build's UI showing, once a plugin window can show Seam's page.
+  build's UI showing, once a plugin window can show Hapto's page.
 - **The first public release.** The docs raised to reference grade.
 
 Open: the order within Next and Later is not settled.

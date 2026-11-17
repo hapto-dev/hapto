@@ -27,7 +27,7 @@ pub(crate) mod rules;
 /// # Examples
 ///
 /// ```
-/// use seam_params::{Declarer, Float, FloatDecl, ParamSet, Params};
+/// use hapto_params::{Declarer, Float, FloatDecl, ParamSet, Params};
 ///
 /// struct Gain {
 ///     gain: Float,
@@ -48,7 +48,7 @@ pub(crate) mod rules;
 /// let (set, params) = ParamSet::declare::<Gain>()?;
 /// assert_eq!(params.gain.get(), 0.0);
 /// assert_eq!(set.decl(params.gain.id()).unit, "dB");
-/// # Ok::<(), seam_params::DeclError>(())
+/// # Ok::<(), hapto_params::DeclError>(())
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FloatDecl {
@@ -137,7 +137,7 @@ impl FloatDecl {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::FloatDecl;
+    /// use hapto_params::FloatDecl;
     ///
     /// const MIX: FloatDecl = FloatDecl::new("mix", "Mix", 0.0..=100.0, 100.0)
     ///     .with_unit("%")
@@ -148,7 +148,7 @@ impl FloatDecl {
     /// outside its range".
     ///
     /// ```compile_fail
-    /// use seam_params::FloatDecl;
+    /// use hapto_params::FloatDecl;
     ///
     /// const MIX: FloatDecl = FloatDecl::new("mix", "Mix", 0.0..=100.0, 150.0)
     ///     .with_unit("%")
@@ -184,7 +184,7 @@ impl FloatDecl {
 /// # Examples
 ///
 /// ```
-/// use seam_params::{Bool, BoolDecl, Declarer, ParamSet, Params};
+/// use hapto_params::{Bool, BoolDecl, Declarer, ParamSet, Params};
 ///
 /// struct Switches {
 ///     bypass: Bool,
@@ -201,7 +201,7 @@ impl FloatDecl {
 /// let (set, params) = ParamSet::declare::<Switches>()?;
 /// assert_eq!(set.bypass(), Some(params.bypass.id()));
 /// assert!(!params.bypass.get());
-/// # Ok::<(), seam_params::DeclError>(())
+/// # Ok::<(), hapto_params::DeclError>(())
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BoolDecl {
@@ -271,7 +271,7 @@ impl BoolDecl {
 /// # Examples
 ///
 /// ```
-/// use seam_params::{Choice, ChoiceDecl, Choices, Declarer, ParamSet, Params};
+/// use hapto_params::{Choice, ChoiceDecl, Choices, Declarer, ParamSet, Params};
 ///
 /// #[derive(Debug, Clone, Copy, PartialEq)]
 /// enum Mode {
@@ -308,7 +308,7 @@ impl BoolDecl {
 ///
 /// let (_, params) = ParamSet::declare::<Drive>()?;
 /// assert_eq!(params.mode.get(), Mode::Warm);
-/// # Ok::<(), seam_params::DeclError>(())
+/// # Ok::<(), hapto_params::DeclError>(())
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChoiceDecl<E> {
@@ -368,7 +368,7 @@ impl<E: Choices> ChoiceDecl<E> {
 /// # Examples
 ///
 /// ```
-/// use seam_params::{Bool, BoolDecl, Declaration, Declarer, Float, FloatDecl, ParamSet, Params};
+/// use hapto_params::{Bool, BoolDecl, Declaration, Declarer, Float, FloatDecl, ParamSet, Params};
 ///
 /// /// Declares a parameter of any kind, in a build that has a sidechain.
 /// fn sidechain<D: Declaration>(p: &mut Declarer, decl: D) -> Option<D::Param> {
@@ -392,7 +392,7 @@ impl<E: Choices> ChoiceDecl<E> {
 /// let (set, params) = ParamSet::declare::<Compressor>()?;
 /// assert!(params.listen.is_none()); // this doc test has no such feature
 /// assert_eq!(set.len(), 1);
-/// # Ok::<(), seam_params::DeclError>(())
+/// # Ok::<(), hapto_params::DeclError>(())
 /// ```
 pub trait Declaration: Sealed {
     /// The typed parameter it makes.
@@ -464,7 +464,7 @@ impl<E: Choices> Declaration for ChoiceDecl<E> {
 /// What the derive writes for a field whose type is an alias:
 ///
 /// ```
-/// use seam_params::{Declared, Float, FloatDecl};
+/// use hapto_params::{Declared, Float, FloatDecl};
 ///
 /// type Decibels = Float;
 ///
@@ -548,7 +548,7 @@ pub const fn discriminant_is_position(discriminant: usize, position: usize) {
 /// # Examples
 ///
 /// ```
-/// use seam_params::{Bool, BoolDecl, Declarer, Float, FloatDecl, ParamSet, Params};
+/// use hapto_params::{Bool, BoolDecl, Declarer, Float, FloatDecl, ParamSet, Params};
 ///
 /// struct Band {
 ///     on: Bool,
@@ -588,7 +588,7 @@ pub const fn discriminant_is_position(discriminant: usize, position: usize) {
 /// let keys: Vec<_> = set.ids().map(|id| set.decl(id).key).collect();
 /// assert_eq!(keys, ["out", "low.on", "low.freq"]);
 /// assert_eq!(eq.low.freq.get(), 100.0);
-/// # Ok::<(), seam_params::DeclError>(())
+/// # Ok::<(), hapto_params::DeclError>(())
 /// ```
 pub trait Params: Sized {
     /// Declares every parameter through `p` and returns them.
@@ -614,7 +614,7 @@ impl Params for () {
 /// that refusal.
 ///
 /// ```
-/// use seam_params::{Bool, BoolDecl, DeclError, Declarer, ParamSet, Params};
+/// use hapto_params::{Bool, BoolDecl, DeclError, Declarer, ParamSet, Params};
 ///
 /// struct Clash {
 ///     on: Bool,
@@ -754,7 +754,7 @@ impl Declarer {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::{Declarer, Float, Kind, ParamDecl, ParamSet, Params};
+    /// use hapto_params::{Declarer, Float, Kind, ParamDecl, ParamSet, Params};
     ///
     /// const TABLE: &[ParamDecl] = &[
     ///     ParamDecl::new("a", "A", Kind::Bool, 0.0),
@@ -863,7 +863,7 @@ impl ParamSet {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::{Bool, BoolDecl, DeclError, Declarer, ParamSet, Params};
+    /// use hapto_params::{Bool, BoolDecl, DeclError, Declarer, ParamSet, Params};
     ///
     /// struct Twice {
     ///     first: Bool,

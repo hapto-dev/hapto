@@ -6,7 +6,7 @@
 //! module natively, and the `cabi` module as a C ABI plus a generated header.
 //! One generic JUCE adapter turns that into AU, AUv3, AAX and hosting.
 //!
-//! Seam builds each instance's [`Parts`], its parameter set, session and
+//! Hapto builds each instance's [`Parts`], its parameter set, session and
 //! saved state, from the plugin's declarations, and hands them to
 //! [`Plugin::new`]. The audio thread gets each block as a [`Block`] in
 //! [`Processor::process`], and reads the parameters the plugin handed its
@@ -37,11 +37,11 @@
 //! learn.
 //!
 //! ```no_run
-//! use seam_host::{
+//! use hapto_host::{
 //!     AuCodes, Block, Category, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor,
 //!     Status,
 //! };
-//! use seam_params::{Declarer, Float, FloatDecl, Params};
+//! use hapto_params::{Declarer, Float, FloatDecl, Params};
 //!
 //! /// The parameters, each declared where it is held.
 //! #[derive(Clone)]
@@ -72,7 +72,7 @@
 //!     }
 //! }
 //!
-//! /// The main-thread half: it keeps the parameters Seam declared for it.
+//! /// The main-thread half: it keeps the parameters Hapto declared for it.
 //! struct Gain {
 //!     params: GainParams,
 //! }
@@ -110,11 +110,11 @@
 //!
 //! // At the root of the plugin's `cdylib` crate.
 //! # #[cfg(all(feature = "vst3", any(windows, target_os = "macos")))]
-//! seam_host::export_vst3!(Gain);
+//! hapto_host::export_vst3!(Gain);
 //! ```
 
 // The nightly real-time sanitizer lane marks the audio thread's entry points.
-#![cfg_attr(seam_rtsan, feature(sanitize))]
+#![cfg_attr(hapto_rtsan, feature(sanitize))]
 // docs.rs shows which feature each gated item needs.
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
@@ -154,8 +154,8 @@ mod faults;
 #[allow(unsafe_code, reason = "a host boundary: every block says why it holds")]
 pub mod vst3;
 
-// Inlined: `Event` and `EventList` are `seam_ump`'s, shown here as this
-// crate's, so a plugin needs no `seam_ump` import for its blocks.
+// Inlined: `Event` and `EventList` are `hapto_ump`'s, shown here as this
+// crate's, so a plugin needs no `hapto_ump` import for its blocks.
 #[doc(inline)]
 pub use audio::{Block, Event, EventList, MAX_FRAMES, ProcessSetup, Status};
 pub use boundary::ParentWindow;
@@ -164,14 +164,11 @@ pub use editor::{Editor, Size};
 pub use faults::boundary_faults;
 #[doc(hidden)]
 pub use faults::report_line;
-pub use info::{AuCodes, Category, Feature, Layout, PluginInfo};
-pub use parts::{Driver, Maker, Parts};
-pub use plugin::{Plugin, Processor, Tail};
 /// Writes a plugin's [`PluginInfo`]: who the plugin is from its manifest, and
 /// what its code relies on from the fields the macro is given.
 ///
 /// It reads the manifest of the crate it is used in. Its
-/// `[package.metadata.seam]` table gives the `name`, the `vendor`, the
+/// `[package.metadata.hapto]` table gives the `name`, the `vendor`, the
 /// vendor's `url` and `email`, the `id`, the `vst3-class-id` written as a
 /// UUID, the `au-codes`, the `category` and the `features`: each of the last
 /// two is a [`Category`] or [`Feature`] variant in kebab case, `effect` or
@@ -193,7 +190,7 @@ pub use plugin::{Plugin, Processor, Tail};
 /// This crate's own manifest holds the table the example reads:
 ///
 /// ```toml
-/// [package.metadata.seam]
+/// [package.metadata.hapto]
 /// name = "Tone"
 /// vendor = "Example"
 /// url = "https://example.com"
@@ -205,9 +202,9 @@ pub use plugin::{Plugin, Processor, Tail};
 /// ```
 ///
 /// ```
-/// use seam_host::{Category, Feature, Layout, PluginInfo};
+/// use hapto_host::{Category, Feature, Layout, PluginInfo};
 ///
-/// const INFO: PluginInfo = seam_host::manifest_info! {
+/// const INFO: PluginInfo = hapto_host::manifest_info! {
 ///     layouts: &[Layout::STEREO, Layout::MONO],
 ///     midi_input: false,
 ///     midi_output: false,
@@ -219,5 +216,8 @@ pub use plugin::{Plugin, Processor, Tail};
 /// ```
 #[cfg(feature = "manifest")]
 #[cfg_attr(docsrs, doc(cfg(feature = "manifest")))]
-pub use seam_macros::manifest_info;
+pub use hapto_macros::manifest_info;
+pub use info::{AuCodes, Category, Feature, Layout, PluginInfo};
+pub use parts::{Driver, Maker, Parts};
+pub use plugin::{Plugin, Processor, Tail};
 pub use state::{LoadError, MAX_STATE_BYTES, STATE_VERSION, SavedState};

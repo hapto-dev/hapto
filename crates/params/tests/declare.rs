@@ -5,7 +5,7 @@
 use std::cell::{Cell, RefCell};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
-use seam_params::{
+use hapto_params::{
     Bool, BoolDecl, Changes, Choice, ChoiceDecl, Choices, DeclError, Declarer, Float, FloatDecl,
     Kind, ParamDecl, ParamSet, ParamSetBuilder, Params, RangeError,
 };
@@ -435,7 +435,7 @@ fn the_first_refusal_wins_and_declare_runs_to_its_end() {
     }
     #[cfg(debug_assertions)]
     for param in &kept {
-        seam_testkit::contract::expect_contract_panic("no id until its set is built", || {
+        hapto_testkit::contract::expect_contract_panic("no id until its set is built", || {
             param.id();
         });
     }
@@ -472,7 +472,7 @@ struct AsksEarly {
 impl Params for AsksEarly {
     fn declare(p: &mut Declarer) -> Self {
         let gain = p.add(FloatDecl::new("gain", "Gain", -60.0..=12.0, 0.0));
-        seam_testkit::contract::expect_contract_panic("no id until its set is built", || {
+        hapto_testkit::contract::expect_contract_panic("no id until its set is built", || {
             gain.id();
         });
         AsksEarly { gain }

@@ -17,9 +17,12 @@ fi
 
 TOLERANCE="${TOLERANCE:-2%}"
 # Every workspace crate with a bench target named iai runs it. The example EQ
-# is built without its VST3 module, which does not build on Linux.
+# is built without its VST3 module, which does not build on Linux. Its package
+# name is read from the checkout, since the base may name it differently.
 bench() {
-    cargo bench --locked --workspace --no-default-features --features seam-example-eq/cabi --bench iai -- "$@"
+    local eq
+    eq="$(sed -n 's/^name = "\(.*\)"$/\1/p' examples/eq/Cargo.toml | head -n 1)"
+    cargo bench --locked --workspace --no-default-features --features "$eq/cabi" --bench iai -- "$@"
 }
 
 base="${1:-}"

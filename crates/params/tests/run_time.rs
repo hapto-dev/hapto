@@ -3,7 +3,7 @@
 //! of its type; a gesture on one made at run time has no id; and the host
 //! hears nothing of it.
 
-use seam_params::{
+use hapto_params::{
     Bool, BoolDecl, Choice, ChoiceDecl, Choices, Declaration, Declarer, Float, FloatDecl, Origin,
     ParamSet, Params,
 };
@@ -180,7 +180,7 @@ fn the_plugin_holds_a_parameter_until_its_last_typed_one_drops() {
 fn the_id_of_a_parameter_made_at_run_time_is_a_contract_panic_naming_the_fix() {
     let set = ParamSet::from_decls([]).expect("empty");
     let gain = one(&set, FloatDecl::new("gain", "Gain", -60.0..=12.0, 0.0));
-    seam_testkit::contract::expect_contract_panic("pass the parameter itself", || {
+    hapto_testkit::contract::expect_contract_panic("pass the parameter itself", || {
         let _ = gain.id();
     });
 }
@@ -195,7 +195,7 @@ fn a_user_write_while_a_restore_applies_names_the_fix_for_a_parameter_made_at_ru
     let ui = set.take_ui().expect("the first UI handle");
     let writer = set.clock().writer();
     let _applying = writer.applying();
-    seam_testkit::contract::expect_contract_panic("declare it in the apply instead", || {
+    hapto_testkit::contract::expect_contract_panic("declare it in the apply instead", || {
         ui.write(&gain, -6.0);
     });
 }
@@ -203,8 +203,8 @@ fn a_user_write_while_a_restore_applies_names_the_fix_for_a_parameter_made_at_ru
 #[cfg(debug_assertions)]
 #[test]
 fn another_instances_parameter_is_a_contract_panic_and_changes_nothing() {
-    use seam_params::AnyParam;
-    use seam_testkit::contract::expect_contract_panic;
+    use hapto_params::AnyParam;
+    use hapto_testkit::contract::expect_contract_panic;
 
     let ours = ParamSet::from_decls([]).expect("empty");
     let theirs = ParamSet::from_decls([]).expect("empty");
@@ -241,8 +241,8 @@ fn another_instances_parameter_is_refused_and_changes_nothing() {
 
 #[test]
 fn a_mistake_in_a_struct_made_at_run_time_panics_with_the_fix() {
-    use seam_params::{Kind, ParamDecl};
-    use seam_testkit::contract::expect_contract_panic;
+    use hapto_params::{Kind, ParamDecl};
+    use hapto_testkit::contract::expect_contract_panic;
 
     struct Twice(
         #[expect(dead_code, reason = "made for the panic")] Bool,

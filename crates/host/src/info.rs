@@ -8,7 +8,7 @@ mod manifest_refusals;
 /// # Examples
 ///
 /// ```
-/// use seam_host::{Category, Layout};
+/// use hapto_host::{Category, Layout};
 ///
 /// // An instrument has no input.
 /// let (category, layout) = (Category::Instrument, Layout::new(0, 2));
@@ -30,7 +30,7 @@ pub enum Category {
 /// # Examples
 ///
 /// ```
-/// use seam_host::{Category, Feature};
+/// use hapto_host::{Category, Feature};
 ///
 /// // What the example EQ tells a host's plugin browser.
 /// const CATEGORY: Category = Category::Effect;
@@ -85,7 +85,7 @@ pub enum Feature {
 /// # Examples
 ///
 /// ```
-/// use seam_host::Layout;
+/// use hapto_host::Layout;
 ///
 /// // A plugin that runs as mono or as stereo; the first is the default.
 /// const LAYOUTS: &[Layout] = &[Layout::STEREO, Layout::MONO];
@@ -120,7 +120,7 @@ impl Layout {
 /// # Examples
 ///
 /// ```
-/// use seam_host::AuCodes;
+/// use hapto_host::AuCodes;
 ///
 /// // Each plugin's own subtype, under the vendor's one manufacturer code.
 /// const TONE: AuCodes = AuCodes { subtype: *b"tone", manufacturer: *b"Exmp" };
@@ -144,7 +144,7 @@ pub struct AuCodes {
 /// # Examples
 ///
 /// ```
-/// use seam_host::{AuCodes, Category, Feature, Layout, PluginInfo};
+/// use hapto_host::{AuCodes, Category, Feature, Layout, PluginInfo};
 ///
 /// const INFO: PluginInfo = PluginInfo {
 ///     name: "Tone",

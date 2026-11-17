@@ -13,13 +13,13 @@ const CONTROL_CHANGE: u32 = 0xB;
 const REGISTERED_CONTROLLER: u32 = 0x2;
 const ASSIGNABLE_CONTROLLER: u32 = 0x3;
 
-/// A channel voice message Seam reads, with the group and channel it came
+/// A channel voice message Hapto reads, with the group and channel it came
 /// on.
 ///
 /// # Examples
 ///
 /// ```
-/// use seam_ump::{ChannelVoice, Voice};
+/// use hapto_ump::{ChannelVoice, Voice};
 ///
 /// // Group 2, channel 5: a MIDI 2.0 note-on at full velocity.
 /// let voice = ChannelVoice {
@@ -39,13 +39,13 @@ pub struct ChannelVoice {
     pub voice: Voice,
 }
 
-/// The channel voice messages Seam reads. Each carries its values at
+/// The channel voice messages Hapto reads. Each carries its values at
 /// the width its protocol sends them; nothing here rescales.
 ///
 /// # Examples
 ///
 /// ```
-/// use seam_ump::Voice;
+/// use hapto_ump::Voice;
 ///
 /// // MIDI 1.0 sends a velocity of 0 as a note-off; MIDI 2.0 does not.
 /// fn sounds(voice: Voice) -> bool {
@@ -132,7 +132,7 @@ impl ChannelVoice {
     /// # Examples
     ///
     /// ```
-    /// use seam_ump::{ChannelVoice, Voice};
+    /// use hapto_ump::{ChannelVoice, Voice};
     ///
     /// // A MIDI 2.0 registered controller: bank 0, index 2, half of full scale.
     /// let message = ChannelVoice::decode([0x4020_0002, 0x8000_0000, 0, 0]);
@@ -141,10 +141,10 @@ impl ChannelVoice {
     ///     Some(Voice::Midi2RegisteredController { bank: 0, index: 2, value: 0x8000_0000 })
     /// );
     ///
-    /// // A pitch bend (status 0xE) is not one Seam reads.
+    /// // A pitch bend (status 0xE) is not one Hapto reads.
     /// assert_eq!(ChannelVoice::decode([0x20E0_0000, 0, 0, 0]), None);
     /// ```
-    #[cfg_attr(seam_rtsan, sanitize(realtime = "nonblocking"))]
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn decode(words: [u32; 4]) -> Option<Self> {
         let head = words[0];
         let status = (head >> 20) & 0xF;
@@ -209,7 +209,7 @@ impl ChannelVoice {
     /// # Examples
     ///
     /// ```
-    /// use seam_ump::{ChannelVoice, Voice};
+    /// use hapto_ump::{ChannelVoice, Voice};
     ///
     /// // A value past its width is masked: 200 becomes 72 in a 7-bit field.
     /// let message = ChannelVoice {
@@ -219,7 +219,7 @@ impl ChannelVoice {
     /// };
     /// assert_eq!(message.words(), [0x20B0_0748, 0, 0, 0]);
     /// ```
-    #[cfg_attr(seam_rtsan, sanitize(realtime = "nonblocking"))]
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn words(&self) -> [u32; 4] {
         let seven = |byte: u8| u32::from(byte & 0x7F);
         let head = |kind: u32, status: u32, byte3: u8, byte4: u8| {
@@ -267,7 +267,7 @@ impl ChannelVoice {
     /// The packet as an event at `offset`, ready to push on an
     /// [`EventList`](crate::EventList). The [crate overview](crate#examples)
     /// shows one pushed and read back.
-    #[cfg_attr(seam_rtsan, sanitize(realtime = "nonblocking"))]
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn event(&self, offset: u32) -> Event {
         Event {
             offset,

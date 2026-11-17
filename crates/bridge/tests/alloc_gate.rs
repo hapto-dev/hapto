@@ -2,11 +2,11 @@
 //! every main-thread tick of a plugin with an editor open, however many
 //! parameters and values the page shows.
 
-seam_testkit::install_alloc_gate!();
+hapto_testkit::install_alloc_gate!();
 
-use seam_bridge::{Commands, Dispatcher, Values};
-use seam_params::{Kind, ParamDecl, ParamSetBuilder, Value};
-use seam_testkit::alloc::assert_no_allocations;
+use hapto_bridge::{Commands, Dispatcher, Values};
+use hapto_params::{Kind, ParamDecl, ParamSetBuilder, Value};
+use hapto_testkit::alloc::assert_no_allocations;
 
 const KEYS: [&str; 16] = [
     "p00", "p01", "p02", "p03", "p04", "p05", "p06", "p07", "p08", "p09", "p10", "p11", "p12",

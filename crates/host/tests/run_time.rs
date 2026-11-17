@@ -10,21 +10,21 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 
-use seam_host::{
+use hapto_host::{
     AuCodes, Block, Category, Driver, EventList, Layout, Maker, Parts, Plugin, PluginInfo,
     ProcessSetup, Processor, SavedState, Status,
 };
-use seam_learn::{Config, Control, DEFAULT_MAX_MAPPINGS, Mapping, Source, Takes};
-use seam_params::{
+use hapto_learn::{Config, Control, DEFAULT_MAX_MAPPINGS, Mapping, Source, Takes};
+use hapto_params::{
     AnyParam, Bool, BoolDecl, Changes, Declarer, Float, FloatDecl, List, Origin, Params,
     audio_thread, host_id,
 };
-use seam_session::{ApplyError, Participant, Registration, Section};
-use seam_ump::{ChannelVoice, Voice};
-use seam_undo::{Bound, History, UndoSize};
+use hapto_session::{ApplyError, Participant, Registration, Section};
+use hapto_ump::{ChannelVoice, Voice};
+use hapto_undo::{Bound, History, UndoSize};
 use serde_json::{Value as Json, json};
 
-seam_testkit::install_alloc_gate!();
+hapto_testkit::install_alloc_gate!();
 
 const GAIN: FloatDecl = FloatDecl::new("gain", "Gain", -60.0..=12.0, 0.0)
     .with_step(0.1)
@@ -275,7 +275,7 @@ thread_local! {
 }
 
 /// The tree as the session saves it: its structure only, each group's id
-/// and the next id. Seam saves each parameter's value, read live at the
+/// and the next id. Hapto saves each parameter's value, read live at the
 /// save, and its learned mapping, under the group's scope.
 #[derive(Debug)]
 struct Tree {
@@ -392,16 +392,16 @@ impl Mixer {
 impl Plugin for Mixer {
     const INFO: PluginInfo = PluginInfo {
         name: "Run-time mixer",
-        vendor: "Seam",
+        vendor: "Hapto",
         url: "",
         email: "",
         description: "",
         version: "0.1.0",
-        id: "dev.seam.test.run-time-mixer",
+        id: "dev.hapto.test.run-time-mixer",
         vst3_class_id: [7; 16],
         au_codes: AuCodes {
             subtype: *b"RtMx",
-            manufacturer: *b"Seam",
+            manufacturer: *b"Hapt",
         },
         category: Category::Effect,
         features: &[],
@@ -563,7 +563,7 @@ fn block(processor: &mut MixerProcessor, events: &EventList) -> f32 {
     let mut out = EventList::with_capacity(0);
     let mut channels = [&mut left[..], &mut right[..]];
     let block = Block::new(&mut channels, 8, events, &mut out);
-    seam_testkit::alloc::assert_no_allocations("a block", || {
+    hapto_testkit::alloc::assert_no_allocations("a block", || {
         let _mark = audio_thread::enter();
         Processor::process(processor, block);
     });
@@ -630,14 +630,14 @@ fn saved_block(ids: &[u64]) -> Vec<u8> {
 
 #[test]
 fn never_a_host_parameter() {
-    let vst3 = seam_host::vst3::TestHost::<Mixer>::new();
+    let vst3 = hapto_host::vst3::TestHost::<Mixer>::new();
     assert_eq!(vst3.parameter_count(), 1);
     for key in ["volume", "muted", "drive"] {
         assert!(vst3.set_normalized(host_id(key), 0.5).is_err(), "{key}");
     }
     assert!(vst3.set_normalized(host_id("gain"), 0.5).is_ok());
 
-    let cabi = seam_host::cabi::TestHost::<Mixer>::new();
+    let cabi = hapto_host::cabi::TestHost::<Mixer>::new();
     assert_eq!(cabi.parameter_count(), 1);
     assert!(cabi.parameter(1).is_none());
 
@@ -750,7 +750,7 @@ fn midi_learnable_in_the_block_the_controller_arrives_in() {
     let mut processor = activated(&mut plugin);
     let mut learn = driver.learn_audio().expect("learn is on");
     let mut run = |processor: &mut MixerProcessor, events: &EventList| {
-        seam_testkit::alloc::assert_no_allocations("learn's audio side", || {
+        hapto_testkit::alloc::assert_no_allocations("learn's audio side", || {
             let _mark = audio_thread::enter();
             learn.process(events);
         });
@@ -904,7 +904,7 @@ fn nothing_to_handle_and_a_source_mistake_panics_with_the_fix() {
             Twice(p.add(VOLUME), p.add(VOLUME))
         }
     }
-    let message = seam_testkit::contract::expect_contract_panic("declared twice", || {
+    let message = hapto_testkit::contract::expect_contract_panic("declared twice", || {
         let _: Twice = plugin.parts.declare("twice");
     });
     assert!(message.contains("\"volume\""), "{message}");
@@ -916,7 +916,7 @@ fn nothing_to_handle_and_a_source_mistake_panics_with_the_fix() {
             Bypass(p.add(BoolDecl::new("bypass", "Bypass", false).as_bypass()))
         }
     }
-    seam_testkit::contract::expect_contract_panic(
+    hapto_testkit::contract::expect_contract_panic(
         "declare the bypass in the plugin's Params",
         || {
             let _: Bypass = plugin.parts.declare("bypass");
@@ -927,16 +927,16 @@ fn nothing_to_handle_and_a_source_mistake_panics_with_the_fix() {
     struct Table;
     impl Params for Table {
         fn declare(p: &mut Declarer) -> Self {
-            p.extend([seam_params::ParamDecl::new(
+            p.extend([hapto_params::ParamDecl::new(
                 "on",
                 "On",
-                seam_params::Kind::Bool,
+                hapto_params::Kind::Bool,
                 0.0,
             )]);
             Table
         }
     }
-    seam_testkit::contract::expect_contract_panic("declare each with Declarer::add", || {
+    hapto_testkit::contract::expect_contract_panic("declare each with Declarer::add", || {
         let _: Table = plugin.parts.maker().declare("table");
     });
 }
@@ -1447,7 +1447,7 @@ fn a_save_inside_the_pass_holds_the_mapping_of_a_group_the_pass_declared() {
 
 #[test]
 fn a_shared_path_is_one_fault_and_saves_the_later_and_a_load_declaring_again_is_none() {
-    let host = seam_host::vst3::TestHost::<Mixer>::new();
+    let host = hapto_host::vst3::TestHost::<Mixer>::new();
     REUSE.set(true);
     host.expect_faults(1);
     host.tick();
@@ -1473,7 +1473,7 @@ fn a_declare_between_a_load_and_its_tick_is_no_shared_path_fault() {
         lend_maker: true,
         ..Setup::default()
     });
-    let host = seam_host::vst3::TestHost::<Mixer>::new();
+    let host = hapto_host::vst3::TestHost::<Mixer>::new();
     SETUP.set(Setup::default());
     let maker = MAKER.take().expect("the plugin lent its maker");
     host.load(&bytes).expect("loaded");
@@ -1493,7 +1493,7 @@ fn a_block_that_repeats_an_owner_is_one_shared_path_fault() {
     let mut block: Json = serde_json::from_slice(&saved_block(&[2])).expect("JSON");
     block["extra"]["tree"]["groups"] = json!([2, 2]);
     let bytes = serde_json::to_vec(&block).expect("JSON");
-    let host = seam_host::vst3::TestHost::<Mixer>::new();
+    let host = hapto_host::vst3::TestHost::<Mixer>::new();
     host.expect_faults(1);
     host.load(&bytes).expect("loaded");
     host.tick();
@@ -1508,7 +1508,7 @@ fn another_instances_parameter_is_refused_through_this_ones_ui() {
     let (theirs, _, _) = built();
     let group = theirs.group(1).expect("the first group");
     #[cfg(debug_assertions)]
-    seam_testkit::contract::expect_contract_panic("a parameter of another set", || {
+    hapto_testkit::contract::expect_contract_panic("a parameter of another set", || {
         ours.parts.ui().write(&group.volume, -6.0);
     });
     #[cfg(not(debug_assertions))]

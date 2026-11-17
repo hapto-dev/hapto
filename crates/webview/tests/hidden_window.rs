@@ -6,7 +6,7 @@
 //! navigate away.
 //! Ignored in a normal run, since it needs the WebView2 runtime and starts
 //! its browser processes; run it by hand on Windows with `cargo test -p
-//! seam-webview --test hidden_window -- --ignored`.
+//! hapto-webview --test hidden_window -- --ignored`.
 //!
 //! It never shows a window, takes focus or sends input: the page acts by
 //! itself, as its script says.
@@ -17,15 +17,15 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use seam_host::vst3::{HiddenWindow, TestHost};
-use seam_host::{
+use hapto_host::vst3::{HiddenWindow, TestHost};
+use hapto_host::{
     AuCodes, Block, Category, Editor, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor,
     Size, Status,
 };
-use seam_params::{Declarer, Float, FloatDecl, Params, Value};
-use seam_webview::{Asset, Page};
+use hapto_params::{Declarer, Float, FloatDecl, Params, Value};
+use hapto_webview::{Asset, Page};
 
-/// A page that speaks the protocol by hand, as `seam-page`'s client does:
+/// A page that speaks the protocol by hand, as `@hapto/page`'s client does:
 /// it listens, sends `ready`, and once the snapshot arrives reports the
 /// level and the label in it through a command, sets the level to 0.75 and
 /// the label to "Page". Then it tries to leave for another address and,
@@ -38,7 +38,7 @@ const PAGE: &[Asset] = &[Asset {
   const send = (message) => window.ipc.postMessage(JSON.stringify(message));
   let call = 0;
   const seen = (text) => send({ type: "invoke", call: ++call, command: "seen", args: text });
-  window.__seam = {
+  window.__hapto = {
     receive(text) {
       const message = JSON.parse(text);
       if (message.type === "snapshot") {
@@ -94,17 +94,17 @@ struct Probe {
 
 impl Plugin for Probe {
     const INFO: PluginInfo = PluginInfo {
-        name: "Seam WebView Probe",
-        vendor: "Seam",
+        name: "Hapto WebView Probe",
+        vendor: "Hapto",
         url: "",
         email: "",
         description: "",
         version: "0.1.0",
-        id: "dev.seam.webview-probe",
+        id: "dev.hapto.webview-probe",
         vst3_class_id: [9; 16],
         au_codes: AuCodes {
             subtype: *b"wvpr",
-            manufacturer: *b"Seam",
+            manufacturer: *b"Hapt",
         },
         category: Category::Effect,
         features: &[],
@@ -148,12 +148,12 @@ struct Unstartable {
 
 impl Plugin for Unstartable {
     const INFO: PluginInfo = PluginInfo {
-        name: "Seam WebView Probe That Cannot Start",
-        id: "dev.seam.webview-probe-unstartable",
+        name: "Hapto WebView Probe That Cannot Start",
+        id: "dev.hapto.webview-probe-unstartable",
         vst3_class_id: [10; 16],
         au_codes: AuCodes {
             subtype: *b"wvpu",
-            manufacturer: *b"Seam",
+            manufacturer: *b"Hapt",
         },
         ..Probe::INFO
     };
@@ -211,10 +211,10 @@ fn until(hosts: &[TestHost<Probe>], patience: Duration, mut done: impl FnMut() -
     done()
 }
 
-/// Keeps the editors open, ticking, for 20 seconds when `SEAM_HOLD_OPEN`
+/// Keeps the editors open, ticking, for 20 seconds when `HAPTO_HOLD_OPEN`
 /// is set: time to read their processes and memory from outside.
 fn hold_open(hosts: &[TestHost<Probe>]) {
-    if std::env::var_os("SEAM_HOLD_OPEN").is_some() {
+    if std::env::var_os("HAPTO_HOLD_OPEN").is_some() {
         until(hosts, Duration::from_secs(20), || false);
     }
 }
@@ -236,8 +236,8 @@ fn label() -> Value<String> {
 
 fn level(host: &TestHost<Probe>) -> f64 {
     host.plain(
-        seam_params::host_id("level"),
-        host.normalized(seam_params::host_id("level")),
+        hapto_params::host_id("level"),
+        host.normalized(hapto_params::host_id("level")),
     )
 }
 

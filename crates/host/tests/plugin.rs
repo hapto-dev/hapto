@@ -4,12 +4,12 @@ use std::cell::Cell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use seam_host::{
+use hapto_host::{
     AuCodes, Block, Category, Driver, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor,
     Status,
 };
-use seam_params::{Bool, BoolDecl, Declarer, Kind, ParamDecl, ParamSet, Params};
-use seam_session::Session;
+use hapto_params::{Bool, BoolDecl, Declarer, Kind, ParamDecl, ParamSet, Params};
+use hapto_session::Session;
 use serde_json::json;
 
 const PARAMS: &[ParamDecl] = &[ParamDecl::new("on", "On", Kind::Bool, 1.0)];
@@ -45,16 +45,16 @@ struct Minimal {
 impl Plugin for Minimal {
     const INFO: PluginInfo = PluginInfo {
         name: "Minimal",
-        vendor: "Seam",
+        vendor: "Hapto",
         url: "",
         email: "",
         description: "",
         version: "0.1.0",
-        id: "dev.seam.minimal",
+        id: "dev.hapto.minimal",
         vst3_class_id: [0; 16],
         au_codes: AuCodes {
             subtype: *b"mini",
-            manufacturer: *b"Seam",
+            manufacturer: *b"Hapt",
         },
         category: Category::Effect,
         features: &[],
@@ -118,8 +118,8 @@ fn a_mapping_learned_after_the_session_ticks_waits_a_tick_for_the_save() {
     // Why `Driver::tick` polls learn before it ticks the session.
     use std::cell::RefCell;
 
-    use seam_learn::{Config, Learn, SESSION_KEY, Takes};
-    use seam_ump::{ChannelVoice, EventList, Voice};
+    use hapto_learn::{Config, Learn, SESSION_KEY, Takes};
+    use hapto_ump::{ChannelVoice, EventList, Voice};
 
     let set = ParamSet::from_decls(PARAMS.iter().copied()).expect("valid");
     let session = Session::new(&set);
@@ -169,7 +169,7 @@ struct Listening;
 impl Plugin for Listening {
     const INFO: PluginInfo = PluginInfo {
         name: "Listening",
-        id: "dev.seam.listening",
+        id: "dev.hapto.listening",
         midi_input: true,
         ..Minimal::INFO
     };
@@ -188,15 +188,15 @@ impl Plugin for Listening {
 /// A section of the plugin's own: a zoom level the session restores.
 struct Zoom(f64);
 
-impl seam_session::Participant for Zoom {
-    fn capture(&self) -> seam_session::Section {
+impl hapto_session::Participant for Zoom {
+    fn capture(&self) -> hapto_session::Section {
         json!(self.0)
     }
 
     fn apply(
         &mut self,
-        section: Option<&seam_session::Section>,
-    ) -> Result<(), seam_session::ApplyError> {
+        section: Option<&hapto_session::Section>,
+    ) -> Result<(), hapto_session::ApplyError> {
         self.0 = section.and_then(serde_json::Value::as_f64).unwrap_or(1.0);
         Ok(())
     }
@@ -206,9 +206,9 @@ impl seam_session::Participant for Zoom {
 fn one_tick_applies_a_restore_saves_a_learned_mapping_and_records_a_gesture() {
     use std::cell::RefCell;
 
-    use seam_learn::{Config, SESSION_KEY, Takes};
-    use seam_ump::{ChannelVoice, EventList, Voice};
-    use seam_undo::Bound;
+    use hapto_learn::{Config, SESSION_KEY, Takes};
+    use hapto_ump::{ChannelVoice, EventList, Voice};
+    use hapto_undo::Bound;
 
     let (params, mut parts) = Parts::for_plugin::<Listening>().expect("valid declarations");
     let history = parts.undo(Bound::default());
@@ -265,8 +265,8 @@ fn one_tick_applies_a_restore_saves_a_learned_mapping_and_records_a_gesture() {
 
 #[test]
 fn the_driver_hands_out_learn_s_audio_side_only_while_learn_is_on_and_the_parts_live() {
-    use seam_learn::{Config, Control, Mapping, Source};
-    use seam_ump::{ChannelVoice, EventList, Voice};
+    use hapto_learn::{Config, Control, Mapping, Source};
+    use hapto_ump::{ChannelVoice, EventList, Voice};
 
     let (params, mut parts) = Parts::for_plugin::<Listening>().expect("valid declarations");
     let driver = Driver::of(&parts);
@@ -304,21 +304,21 @@ fn the_driver_hands_out_learn_s_audio_side_only_while_learn_is_on_and_the_parts_
 #[should_panic(expected = "MIDI learn needs MIDI input")]
 fn learn_is_refused_to_a_plugin_that_takes_no_midi() {
     let (_, mut parts) = Parts::for_plugin::<Minimal>().expect("valid declarations");
-    parts.midi_learn(seam_learn::Config::default());
+    parts.midi_learn(hapto_learn::Config::default());
 }
 
 #[test]
 #[should_panic(expected = "MIDI learn's session key is taken")]
 fn learn_turned_on_twice_panics() {
     let (_, mut parts) = Parts::for_plugin::<Listening>().expect("valid declarations");
-    parts.midi_learn(seam_learn::Config::default());
-    parts.midi_learn(seam_learn::Config::default());
+    parts.midi_learn(hapto_learn::Config::default());
+    parts.midi_learn(hapto_learn::Config::default());
 }
 
 #[test]
 fn undo_panics_while_the_plugin_s_own_history_is_alive() {
-    use seam_testkit::contract::expect_contract_panic;
-    use seam_undo::{Bound, History};
+    use hapto_testkit::contract::expect_contract_panic;
+    use hapto_undo::{Bound, History};
 
     let (params, mut parts) = Parts::for_plugin::<Minimal>().expect("valid declarations");
     let own = History::new(parts.ui(), Bound::default()).expect("the first history");

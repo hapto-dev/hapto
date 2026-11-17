@@ -22,7 +22,7 @@ pub const PATIENCE: Duration = Duration::from_secs(10);
 /// ```
 /// use std::sync::atomic::{AtomicBool, Ordering};
 ///
-/// use seam_testkit::sync::Latch;
+/// use hapto_testkit::sync::Latch;
 ///
 /// let ready = Latch::new(1);
 /// let handed_over = AtomicBool::new(false);
@@ -57,7 +57,7 @@ impl Latch {
     /// # Examples
     ///
     /// ```
-    /// use seam_testkit::sync::Latch;
+    /// use hapto_testkit::sync::Latch;
     ///
     /// let latch = Latch::new(2);
     /// latch.count_down();
@@ -88,7 +88,7 @@ impl Latch {
     /// # Examples
     ///
     /// ```
-    /// use seam_testkit::sync::Latch;
+    /// use hapto_testkit::sync::Latch;
     ///
     /// // A latch of 0 is open: the wait returns without another thread.
     /// Latch::new(0).wait();
@@ -130,7 +130,7 @@ impl Latch {
 /// ```
 /// use std::sync::atomic::{AtomicU32, Ordering};
 ///
-/// use seam_testkit::sync::wait_until;
+/// use hapto_testkit::sync::wait_until;
 ///
 /// let processed = AtomicU32::new(0);
 /// std::thread::scope(|scope| {

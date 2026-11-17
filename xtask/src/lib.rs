@@ -1,4 +1,4 @@
-//! Seam's repository tasks, run as `cargo xtask <task>`.
+//! Hapto's repository tasks, run as `cargo xtask <task>`.
 //!
 //! `gen` rewrites every file the repository commits that Rust generates:
 //! the page's protocol types and its test parameter map, the C header the

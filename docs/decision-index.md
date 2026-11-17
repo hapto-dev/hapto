@@ -123,7 +123,7 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d12-host-step-metadata-for-a-stepped-range)
 
-- `adapters/juce/SeamPluginProcessor.cpp`: `PluginProcessor`
+- `adapters/juce/HaptoPluginProcessor.cpp`: `PluginProcessor`
 - `crates/host/src/cabi/abi.rs`: `KIND_CONTINUOUS`
 - `crates/host/src/cabi/mod.rs`: `param_info`
 - `crates/host/src/vst3/component/controller.rs`: `Component::getParameterInfo`
@@ -314,7 +314,7 @@ move its line here; when a decision gains code, add one.
 [Record section](decisions.md#d31-what-identifies-a-parameter-to-hosts)
 
 - `crates/bridge/src/typescript.rs`: `param_map`
-- `crates/host/src/cabi/abi.rs`: `SeamParamInfo::host_id`
+- `crates/host/src/cabi/abi.rs`: `HaptoParamInfo::host_id`
 - `crates/host/src/cabi/juce.rs`: `juce_param_id`
 - `crates/host/src/plugin.rs`: `Plugin::Params`
 - `crates/host/src/vst3/mod.rs`: module
@@ -548,10 +548,10 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d53-what-ticks-a-plugin-with-no-editor-open)
 
-- `adapters/juce/SeamPluginProcessor.h`: module
+- `adapters/juce/HaptoPluginProcessor.h`: module
 - `bench/hosted/hosted.cpp`: `pumpMessagesUntil`
 - `crates/host/Cargo.toml`: `[features]`
-- `crates/host/src/cabi/abi.rs`: `SeamPlugin::idle`
+- `crates/host/src/cabi/abi.rs`: `HaptoPlugin::idle`
 - `crates/host/src/cabi/mod.rs`: module
 - `crates/host/src/plugin.rs`: `Plugin::idle`
 - `crates/host/src/parts.rs`: `Driver::tick`
@@ -588,7 +588,7 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d57-the-lattice-of-a-stepped-range)
 
-- `bench/juce-eq/SeamRange.h`: module
+- `bench/juce-eq/HaptoRange.h`: module
 - `crates/params/src/decl.rs`: `Range`, `Range::lattice`, `Lattice`
 - `crates/params/src/meta.rs`: `lattice`
 - `examples/eq/src/dsp.rs`: module
@@ -632,7 +632,7 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d61-who-flushes-denormals)
 
-- `adapters/juce/SeamPluginProcessor.h`: module
+- `adapters/juce/HaptoPluginProcessor.h`: module
 - `bench/juce-eq/PluginProcessor.cpp`: `JuceEq::processBlock`
 - `bench/juce-eq/PluginProcessor.h`: module
 - `crates/host/src/engine/process.rs`: `Engine::play`
@@ -641,9 +641,9 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d62-the-c-interface-for-the-juce-adapter)
 
-- `crates/host/include/seam.h`: module
+- `crates/host/include/hapto.h`: module
 - `crates/host/src/boundary.rs`: `MainThread::bound`, `MainThread::unbound`, `MainThread::lend`, `MainThread::lend_or_wait`, `MainThread::is_owner`, `MainThread::owned`, `here`, `Wait`, `Lent`, `Refused`
-- `crates/host/src/cabi/abi.rs`: `SeamPlugin`, `SeamHost`
+- `crates/host/src/cabi/abi.rs`: `HaptoPlugin`, `HaptoHost`
 - `crates/host/src/cabi/instance.rs`: `Instance`, `Callbacks`
 - `crates/host/src/cabi/mod.rs`: module, `plugin`, `plugin_moving`, `Table`, `BoundAtCreation`, `create_unbound`, `destroy`, `text`, `export_cabi`
 - `crates/host/src/engine/mod.rs`: `LOAN_WAIT`, `Engine`, `Engine::new_unbound`, `Engine::main`, `Engine::idle`, `Engine::host_write`, `Engine::release`, `Engine::leak_refused`
@@ -667,7 +667,7 @@ move its line here; when a decision gains code, add one.
 [Record section](decisions.md#d64-how-the-juce-adapter-builds-a-plugin)
 
 - `.github/workflows/juce-adapter.yml`: module
-- `adapters/juce/SeamJuce.cmake`: `seam_add_juce_plugin`, `_seam_apple_build`
+- `adapters/juce/HaptoJuce.cmake`: `hapto_add_juce_plugin`, `_hapto_apple_build`
 - `crates/host/src/cabi/juce.rs`: `juce_settings`
 
 ### D65. What a host sees through JUCE
@@ -675,8 +675,8 @@ move its line here; when a decision gains code, add one.
 [Record section](decisions.md#d65-what-a-host-sees-through-juce)
 
 - `.github/workflows/juce-adapter.yml`: module
-- `adapters/juce/SeamPluginProcessor.cpp`: `PluginProcessor::processBlockBypassed`, `PluginProcessor::reportLatency`, `PluginProcessor::timerCallback`, `getValueForText`
-- `adapters/juce/SeamPluginProcessor.h`: module, `getProgramName`
+- `adapters/juce/HaptoPluginProcessor.cpp`: `PluginProcessor::processBlockBypassed`, `PluginProcessor::reportLatency`, `PluginProcessor::timerCallback`, `getValueForText`
+- `adapters/juce/HaptoPluginProcessor.h`: module, `getProgramName`
 - `crates/host/src/cabi/juce.rs`: `juce_param_id`
 - `crates/host/src/plugin.rs`: `Plugin`
 
@@ -883,7 +883,7 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d84-the-saved-blocks-two-versions)
 
-- `crates/host/src/state.rs`: `STATE_VERSION`, `SEAM_VERSION`, `PLUGIN_VERSION`, `Versions`, `Versions::newest`, `LastLoad::versions`, `SavedState::versions`, `SavedState::new`, `SavedState::save`, `SavedState::load`, `versions`, `whole`, `LoadError::BadVersion`, `LoadError::BadPluginVersion`
+- `crates/host/src/state.rs`: `STATE_VERSION`, `HAPTO_VERSION`, `PLUGIN_VERSION`, `Versions`, `Versions::newest`, `LastLoad::versions`, `SavedState::versions`, `SavedState::new`, `SavedState::save`, `SavedState::load`, `versions`, `whole`, `LoadError::BadVersion`, `LoadError::BadPluginVersion`
 - test `crates/host/tests/state.rs`: `a_block_is_version_parameters_extra_in_that_order_with_each_value_typed_by_kind`, `each_version_saves_as_the_higher_of_the_blocks_and_this_builds_on_its_own`, `the_migration_runs_only_for_a_block_of_an_older_plugin_version_and_gets_that_version`, `a_block_without_a_plugin_version_is_at_0`, `a_save_writes_both_versions_first_whatever_order_the_block_held_them_in`, `a_version_past_u64s_range_or_written_as_a_float_still_loads`, `a_refused_block_says_which_check_it_failed`, `the_largest_capture_saves_a_block_at_the_limit_that_loads_and_one_byte_more_is_refused`
 - test `crates/host/tests/hostile.rs`: `block`, `check`
 
@@ -900,7 +900,7 @@ move its line here; when a decision gains code, add one.
 
 - `crates/host/src/info.rs`: `AuCodes`, `PluginInfo::au_codes`
 - `crates/host/src/cabi/juce.rs`: `juce_settings`
-- `examples/eq/seam-juce.cmake`: `SEAM_PLUGIN_CODE`, `SEAM_PLUGIN_MANUFACTURER_CODE`
+- `examples/eq/hapto-juce.cmake`: `HAPTO_PLUGIN_CODE`, `HAPTO_PLUGIN_MANUFACTURER_CODE`
 - test `xtask/tests/drift.rs`: `every_generated_file_is_current`
 
 ### D87. The main bus in `ProcessSetup`
@@ -965,9 +965,9 @@ move its line here; when a decision gains code, add one.
 - `examples/eq/src/lib.rs`: `ExampleEq`
 - `examples/eq/src/params.rs`: `EqParams`, `BandParams::declare`
 - `examples/gain/src/lib.rs`: `Gain`, `GainParams`
-- test `crates/host/src/cabi/tests.rs`: `Unbuilt`, `a_refused_declaration_builds_no_instance_and_says_why_through_the_cabi_exporter`, `Busy`, `an_unbound_instance_holds_no_driver_and_no_timer`, `a_tick_while_the_plugin_is_busy_skips_seam_s_tick_and_its_idle`, `an_unbound_instance_takes_no_audio_side_of_learn`, `Learner`, `a_release_refused_on_another_thread_drops_learn_s_audio_side_there`
+- test `crates/host/src/cabi/tests.rs`: `Unbuilt`, `a_refused_declaration_builds_no_instance_and_says_why_through_the_cabi_exporter`, `Busy`, `an_unbound_instance_holds_no_driver_and_no_timer`, `a_tick_while_the_plugin_is_busy_skips_hapto_s_tick_and_its_idle`, `an_unbound_instance_takes_no_audio_side_of_learn`, `Learner`, `a_release_refused_on_another_thread_drops_learn_s_audio_side_there`
 - test `crates/host/src/engine/process/tests.rs`: `a_learned_controller_is_written_before_the_processor_reads_in_its_own_block`, `a_controller_in_a_later_piece_is_read_by_every_piece_of_its_block`, `a_controller_a_block_brings_while_a_target_is_armed_is_learned_at_the_next_poll`
-- test `crates/host/src/engine/tests.rs`: `Restoring`, `Idleless`, `Learning`, `Unlearned`, `the_parameters_new_is_handed_are_the_ones_the_host_writes`, `seam_ticks_the_parts_before_the_plugin_s_idle`, `a_plugin_that_writes_no_idle_still_has_its_parts_ticked`, `a_plugin_that_dropped_its_parts_is_ticked_with_nothing_reported`, `each_activation_takes_learn_s_audio_side_and_drops_the_last_off_the_audio_thread`, `an_activation_takes_no_audio_side_of_learn_while_learn_is_off`, `an_activation_takes_no_audio_side_of_learn_from_parts_the_plugin_dropped`
+- test `crates/host/src/engine/tests.rs`: `Restoring`, `Idleless`, `Learning`, `Unlearned`, `the_parameters_new_is_handed_are_the_ones_the_host_writes`, `hapto_ticks_the_parts_before_the_plugin_s_idle`, `a_plugin_that_writes_no_idle_still_has_its_parts_ticked`, `a_plugin_that_dropped_its_parts_is_ticked_with_nothing_reported`, `each_activation_takes_learn_s_audio_side_and_drops_the_last_off_the_audio_thread`, `an_activation_takes_no_audio_side_of_learn_while_learn_is_off`, `an_activation_takes_no_audio_side_of_learn_from_parts_the_plugin_dropped`
 - test `crates/host/src/vst3/tests.rs`: `Unbuilt`, `a_refused_declaration_builds_no_instance_and_says_why_through_the_vst3_exporter`
 - test `crates/host/tests/alloc_gate.rs`: `an_idle_tick_of_a_plugin_s_parts_does_not_allocate`, `an_idle_tick_through_the_engine_does_not_allocate`, `a_block_through_the_engine_with_learn_on_does_not_allocate`
 - test `crates/host/tests/plugin.rs`: `one_tick_applies_a_restore_saves_a_learned_mapping_and_records_a_gesture`, `learn_is_refused_to_a_plugin_that_takes_no_midi`, `the_driver_hands_out_learn_s_audio_side_only_while_learn_is_on_and_the_parts_live`
@@ -1056,12 +1056,12 @@ move its line here; when a decision gains code, add one.
 [Record section](decisions.md#d97-a-plugins-identity-in-its-manifest)
 
 - `Cargo.toml`: `toml`
-- `crates/host/Cargo.toml`: `[package.metadata.seam]`, `manifest`
+- `crates/host/Cargo.toml`: `[package.metadata.hapto]`, `manifest`
 - `crates/macros/src/lib.rs`: `manifest_info`
 - `crates/macros/src/manifest.rs`: module, `expand`, `written_once`, `refusal`, `info`, `identity`, `Reader`, `uuid`, `is_plain_version`
-- `examples/eq/Cargo.toml`: `[package.metadata.seam]`
+- `examples/eq/Cargo.toml`: `[package.metadata.hapto]`
 - `examples/eq/src/lib.rs`: `ExampleEq::INFO`
-- `examples/gain/Cargo.toml`: `[package.metadata.seam]`
+- `examples/gain/Cargo.toml`: `[package.metadata.hapto]`
 - `examples/gain/src/lib.rs`: `Gain::INFO`
 - test `crates/macros/src/manifest.rs`: `the_categories_and_features_name_the_hosts_variants`, `a_manifest_reads_as_the_plugins_identity`, `every_mistake_is_refused_on_its_line`, `a_manifest_without_the_table_is_refused`, `a_version_with_a_pre_release_part_is_refused`, `a_field_the_manifest_gives_is_refused_in_rust`, `a_uuid_reads_as_its_bytes`
 - test `crates/host/src/info/manifest_refusals.rs`: module, `FieldTheManifestGives`, `FieldInNeither`
@@ -1224,8 +1224,8 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#p7-the-host-write-sanitise-clamp-convert-snap-store-publish)
 
-- `adapters/juce/SeamPluginProcessor.cpp`: `PluginProcessor`
-- `crates/host/src/cabi/abi.rs`: `SeamPlugin::set`
+- `adapters/juce/HaptoPluginProcessor.cpp`: `PluginProcessor`
+- `crates/host/src/cabi/abi.rs`: `HaptoPlugin::set`
 - `crates/host/src/cabi/mod.rs`: module
 - `crates/host/src/vst3/mod.rs`: module
 - `crates/params/src/decl.rs`: `ParamDecl::host_value`
@@ -1267,7 +1267,7 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#p10-identity-and-order)
 
-- `crates/host/src/cabi/abi.rs`: `SeamPlugin::param_info`
+- `crates/host/src/cabi/abi.rs`: `HaptoPlugin::param_info`
 - `crates/host/src/cabi/mod.rs`: module
 - `crates/host/src/state.rs`: `SavedState::save`
 - `crates/params/src/decl.rs`: `Range::new`
@@ -1770,7 +1770,7 @@ move its line here; when a decision gains code, add one.
 - `Cargo.toml`: `float_roundtrip`
 - `crates/host/src/lib.rs`: module
 - `crates/host/src/parts.rs`: `Parts::saved`
-- `crates/host/src/state.rs`: module, `STATE_VERSION`, `SEAM_VERSION`, `PLUGIN_VERSION`, `SavedState::save`, `SavedState::with_migration`
+- `crates/host/src/state.rs`: module, `STATE_VERSION`, `HAPTO_VERSION`, `PLUGIN_VERSION`, `SavedState::save`, `SavedState::with_migration`
 - `crates/host/src/vst3/mod.rs`: module
 - test `crates/host/tests/state.rs`: module, `a_block_is_version_parameters_extra_in_that_order_with_each_value_typed_by_kind`, `save_load_save_gives_the_same_bytes_on_linear_skewed_and_stepped_ranges`, `a_save_racing_loads_writes_one_block_or_the_other_never_a_mix`, `save_load_save_is_a_fixpoint_for_any_double_in_a_section_or_a_kept_key`
 - test `crates/session/tests/float_fixpoint.rs`: module
@@ -1780,8 +1780,8 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#h2-loading-tolerates-anything)
 
-- `adapters/juce/SeamPluginProcessor.cpp`: `PluginProcessor::setStateInformation`
-- `crates/host/src/cabi/abi.rs`: `SeamPlugin::load`
+- `adapters/juce/HaptoPluginProcessor.cpp`: `PluginProcessor::setStateInformation`
+- `crates/host/src/cabi/abi.rs`: `HaptoPlugin::load`
 - `crates/host/src/cabi/mod.rs`: `load`
 - `crates/host/src/parts.rs`: `Parts::saved`
 - `crates/host/src/state.rs`: `SavedState::load`, `versions`, `whole`
@@ -1815,7 +1815,7 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#h5-smaller-boundary-rules)
 
-- `adapters/juce/SeamPluginProcessor.h`: `PluginProcessor`
+- `adapters/juce/HaptoPluginProcessor.h`: `PluginProcessor`
 - `crates/host/src/plugin.rs`: `Plugin`
 - `crates/params/src/set.rs`: `ParamSet::id_at`
 
@@ -1949,7 +1949,7 @@ move its line here; when a decision gains code, add one.
 Cited in the record's [D59
 section](decisions.md#d59-the-shape-of-the-vst3-exporter).
 
-- `adapters/juce/SeamPluginProcessor.h`: module
+- `adapters/juce/HaptoPluginProcessor.h`: module
 - `crates/host/src/cabi/mod.rs`: module
 - `crates/host/src/engine/mod.rs`: `Engine::tick`, `Engine::tell_host`
 - `crates/host/src/plugin.rs`: `Plugin::idle`
@@ -1960,7 +1960,7 @@ section](decisions.md#d59-the-shape-of-the-vst3-exporter).
 Cited in the record's [D65
 section](decisions.md#d65-what-a-host-sees-through-juce).
 
-- `adapters/juce/SeamPluginProcessor.cpp`: `PluginProcessor::onRestart`
+- `adapters/juce/HaptoPluginProcessor.cpp`: `PluginProcessor::onRestart`
 
 ### C5. MIDI crosses the C interface as UMP both ways, with the exporters' MIDI input (cited in the C interface's decision).
 

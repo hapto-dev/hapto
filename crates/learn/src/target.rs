@@ -20,7 +20,7 @@ use loom::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 #[cfg(not(loom))]
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
-use seam_params::{AnyParam, Bool, Choice, Float, ParamId, ParamRef};
+use hapto_params::{AnyParam, Bool, Choice, Float, ParamId, ParamRef};
 
 /// What a mapping drives.
 ///
@@ -34,7 +34,7 @@ use seam_params::{AnyParam, Bool, Choice, Float, ParamId, ParamRef};
 /// # Examples
 ///
 /// ```
-/// use seam_learn::{Config, Learn, TargetId};
+/// use hapto_learn::{Config, Learn, TargetId};
 #[doc = include_str!("../doc/setup.rs")]
 /// // A parameter and a registered target are both targets, by `From`.
 /// let (mut learn, _audio) = Learn::new(&set, Config::default());
@@ -66,7 +66,7 @@ pub enum TargetId {
 /// # Examples
 ///
 /// ```
-/// use seam_learn::{Config, Learn, TargetId, Takes};
+/// use hapto_learn::{Config, Learn, TargetId, Takes};
 #[doc = include_str!("../doc/setup.rs")]
 #[doc = include_str!("../doc/run_time.rs")]
 /// // `volume` is a parameter made at run time, as `Parts::declare` makes one.
@@ -92,8 +92,8 @@ pub struct RunTimeId(u64);
 /// # Examples
 ///
 /// ```
-/// use seam_learn::{Config, Control, Learn, Learnable, Mapping, Source};
-/// use seam_params::Float;
+/// use hapto_learn::{Config, Control, Learn, Learnable, Mapping, Source};
+/// use hapto_params::Float;
 #[doc = include_str!("../doc/setup.rs")]
 #[doc = include_str!("../doc/run_time.rs")]
 /// /// Maps controller 7 to any target.
@@ -201,7 +201,7 @@ impl From<CustomId> for TargetId {
 /// # Examples
 ///
 /// ```
-/// use seam_learn::{Config, Learn};
+/// use hapto_learn::{Config, Learn};
 #[doc = include_str!("../doc/setup.rs")]
 /// let (mut learn, _audio) = Learn::new(&set, Config::default());
 /// let first = learn.register("fader", Box::new(Fader))?;
@@ -224,9 +224,9 @@ pub struct CustomId(pub(crate) u64);
 /// with no value, or when the target is unmapped or detached, or learn drops.
 ///
 /// A learned value is never an undo step, as for a parameter. So a target
-/// over a plain [`Value`](seam_params::Value) opens no gesture: `apply`
-/// writes with [`Value::set_from`](seam_params::Value::set_from) and
-/// [`Origin::Learn`](seam_params::Origin::Learn), and any gesture open on
+/// over a plain [`Value`](hapto_params::Value) opens no gesture: `apply`
+/// writes with [`Value::set_from`](hapto_params::Value::set_from) and
+/// [`Origin::Learn`](hapto_params::Origin::Learn), and any gesture open on
 /// the value is the user's.
 ///
 /// Learn calls a target only while it holds itself mutably, inside `poll` or
@@ -242,7 +242,7 @@ pub struct CustomId(pub(crate) u64);
 /// use std::cell::RefCell;
 /// use std::rc::Rc;
 ///
-/// use seam_learn::{Config, Control, Learn, Mapping, Source, Target};
+/// use hapto_learn::{Config, Control, Learn, Mapping, Source, Target};
 #[doc = include_str!("../doc/setup.rs")]
 /// // Records each call learn makes.
 /// struct Bars {
@@ -299,9 +299,9 @@ pub trait Target {
     /// once they let go. The answer must not count learn's own burst. The
     /// default is `false`.
     ///
-    /// A target over a plain [`Value`](seam_params::Value) that opens no
+    /// A target over a plain [`Value`](hapto_params::Value) that opens no
     /// gesture answers with
-    /// [`Value::gesture_open`](seam_params::Value::gesture_open).
+    /// [`Value::gesture_open`](hapto_params::Value::gesture_open).
     fn held(&self) -> bool {
         false
     }

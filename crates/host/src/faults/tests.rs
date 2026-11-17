@@ -44,7 +44,7 @@ fn an_instance_reports_each_kind_once_and_counts_every_fault() {
     faults.report("Probe (instance 1)");
     let lines = written();
     assert_eq!(lines.len(), 1, "{lines:?}");
-    assert!(lines[0].starts_with("seam: Probe (instance 1): the processor panicked"));
+    assert!(lines[0].starts_with("hapto: Probe (instance 1): the processor panicked"));
     faults.record(Fault::AudioPanic);
     faults.record(Fault::Panic);
     faults.report("Probe (instance 1)");

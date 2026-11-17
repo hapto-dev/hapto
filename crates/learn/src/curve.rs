@@ -27,7 +27,7 @@ use std::fmt;
 /// # Examples
 ///
 /// ```
-/// use seam_learn::Curve;
+/// use hapto_learn::Curve;
 ///
 /// // A knob that should be fine at the low end: skew 2 squares the value.
 /// let fine_low = Curve::new(2.0, 0.0, 1.0)?;
@@ -48,7 +48,7 @@ pub struct Curve {
 /// # Examples
 ///
 /// ```
-/// use seam_learn::{Curve, CurveError};
+/// use hapto_learn::{Curve, CurveError};
 ///
 /// // The ends of a window must lie inside 0..1.
 /// assert_eq!(Curve::new(1.0, 0.0, 1.5), Err(CurveError::Window));
@@ -115,7 +115,7 @@ impl Curve {
     /// # Examples
     ///
     /// ```
-    /// use seam_learn::Curve;
+    /// use hapto_learn::Curve;
     ///
     /// assert_eq!(Curve::IDENTITY.inverted().apply(1.0), 0.0);
     /// assert!(Curve::IDENTITY.inverted().is_inverted());
@@ -159,7 +159,7 @@ impl Curve {
     /// # Examples
     ///
     /// ```
-    /// use seam_learn::Curve;
+    /// use hapto_learn::Curve;
     ///
     /// let curve = Curve::new(1.0, 0.0, 0.5)?.inverted();
     ///

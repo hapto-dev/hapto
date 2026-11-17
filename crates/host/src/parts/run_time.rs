@@ -4,7 +4,7 @@
 use std::rc::Weak;
 use std::sync::Arc;
 
-use seam_params::{Declaration, Declarer, ParamRef, Params};
+use hapto_params::{Declaration, Declarer, ParamRef, Params};
 
 use super::Ticked;
 use crate::SavedState;
@@ -28,8 +28,8 @@ use crate::state::Assigned;
 /// use std::cell::RefCell;
 /// use std::rc::Rc;
 ///
-/// use seam_host::{Driver, Maker};
-/// use seam_session::{ApplyError, Participant, Section};
+/// use hapto_host::{Driver, Maker};
+/// use hapto_session::{ApplyError, Participant, Section};
 /// use serde_json::json;
 ///
 /// struct Group {

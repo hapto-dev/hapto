@@ -31,7 +31,7 @@ use crate::param::sealed::Token;
 /// # Examples
 ///
 /// ```
-/// use seam_params::{Changes, Float, Kind, ParamDecl, ParamSet};
+/// use hapto_params::{Changes, Float, Kind, ParamDecl, ParamSet};
 ///
 /// let set = ParamSet::from_decls([
 ///     ParamDecl::new("freq", "Frequency", Kind::continuous(20.0, 20_000.0, 1.0, None), 1_000.0),
@@ -78,7 +78,7 @@ impl Changes {
     /// # Examples
     ///
     /// ```
-    /// use seam_params::{Bool, Changes, Float, Kind, ParamDecl, ParamSet};
+    /// use hapto_params::{Bool, Changes, Float, Kind, ParamDecl, ParamSet};
     ///
     /// let set = ParamSet::from_decls([
     ///     ParamDecl::new("gain", "Gain", Kind::continuous(-60.0, 12.0, 0.1, None), 0.0),
@@ -93,7 +93,7 @@ impl Changes {
     /// assert!(band.moved([&gain])); // another group than last time
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
-    #[cfg_attr(seam_rtsan, sanitize(realtime = "nonblocking"))]
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn moved<const N: usize>(&mut self, members: [&dyn AnyParam; N]) -> bool {
         let now = stamp(&members);
         if self.seen == Some(now) {

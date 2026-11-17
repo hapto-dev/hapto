@@ -1,6 +1,6 @@
 //! A plugin for the fuzz targets that load saved state: parameters of every
 //! kind and two session participants, one that takes strings only and one
-//! that takes anything. The plugin keeps its parts, and Seam ticks them, so
+//! that takes anything. The plugin keeps its parts, and Hapto ticks them, so
 //! a target that ticks after a load makes the restored sections reach the
 //! participants.
 
@@ -8,12 +8,12 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use seam_host::{
+use hapto_host::{
     AuCodes, Block, Category, Driver, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor,
     SavedState, Status,
 };
-use seam_params::{Declarer, Kind, ParamDecl, Params};
-use seam_session::{ApplyError, Participant, Registration, Section, SessionUi};
+use hapto_params::{Declarer, Kind, ParamDecl, Params};
+use hapto_session::{ApplyError, Participant, Registration, Section, SessionUi};
 
 const MODES: &[&str] = &["low", "band", "high"];
 
@@ -109,7 +109,7 @@ impl<P: Participant + 'static> Held<P> {
 
 /// The fuzzed plugin.
 pub struct Fuzzed {
-    /// Kept, so Seam ticks them.
+    /// Kept, so Hapto ticks them.
     parts: Parts,
     notes: Held<Notes>,
     _anything: Held<Anything>,
@@ -145,16 +145,16 @@ impl Fuzzed {
 impl Plugin for Fuzzed {
     const INFO: PluginInfo = PluginInfo {
         name: "Fuzzed",
-        vendor: "Seam",
+        vendor: "Hapto",
         url: "",
         email: "",
         description: "",
         version: "0.0.0",
-        id: "dev.seam.fuzzed",
+        id: "dev.hapto.fuzzed",
         vst3_class_id: [0; 16],
         au_codes: AuCodes {
             subtype: *b"Fuzz",
-            manufacturer: *b"Seam",
+            manufacturer: *b"Hapt",
         },
         category: Category::Effect,
         features: &[],

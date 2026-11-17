@@ -1,8 +1,8 @@
 //! The gate itself: it counts what it should and nothing else.
 
-seam_testkit::install_alloc_gate!();
+hapto_testkit::install_alloc_gate!();
 
-use seam_testkit::alloc::{allocations_in, assert_no_allocations, permit_alloc};
+use hapto_testkit::alloc::{allocations_in, assert_no_allocations, permit_alloc};
 
 #[test]
 fn counts_an_allocation_and_its_free() {

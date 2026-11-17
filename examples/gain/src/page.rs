@@ -4,13 +4,13 @@
 //! is built with. A build that finds them missing says so, and the plugin
 //! offers no editor, unless a debug build loads the page from a dev server.
 
-use seam_host::{Editor, Plugin, Size};
-use seam_webview::{Asset, Page};
+use hapto_host::{Editor, Plugin, Size};
+use hapto_webview::{Asset, Page};
 
 use crate::Gain;
 
 /// The page's built files, when they were there to build in.
-#[cfg(seam_page)]
+#[cfg(hapto_page)]
 pub const PAGE: Option<&[Asset]> = Some(&[
     Asset {
         path: "index.html",
@@ -27,7 +27,7 @@ pub const PAGE: Option<&[Asset]> = Some(&[
 ]);
 
 /// The page's built files, when they were there to build in.
-#[cfg(not(seam_page))]
+#[cfg(not(hapto_page))]
 pub const PAGE: Option<&[Asset]> = None;
 
 /// The editor that shows the page: none when the page was not built in and

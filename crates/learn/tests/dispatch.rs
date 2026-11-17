@@ -2,12 +2,12 @@
 
 use std::sync::Arc;
 
-use seam_learn::{
+use hapto_learn::{
     Config, Control, Curve, CurveError, Learn, LearnAudio, LearnError, Mapping, NrpnReservation,
     ReservationError, Source,
 };
-use seam_params::{Kind, ParamDecl, ParamId, ParamSet, ParamSetBuilder};
-use seam_ump::{ChannelVoice, Event, EventList, Voice};
+use hapto_params::{Kind, ParamDecl, ParamId, ParamSet, ParamSetBuilder};
+use hapto_ump::{ChannelVoice, Event, EventList, Voice};
 
 /// A value no message in these tests writes.
 const UNTOUCHED: f32 = 0.37;
@@ -711,7 +711,7 @@ fn the_table_at_the_ceiling_still_finds_every_mapping() {
     // The worst case at the default ceiling of 4,096 mappings: every
     // mapping on its own source, spread over every kind and every way of
     // naming a group and channel, then every mapping on one source.
-    let count = seam_learn::DEFAULT_MAX_MAPPINGS;
+    let count = hapto_learn::DEFAULT_MAX_MAPPINGS;
     let mut rig = rig(count + 1);
     let legal_ccs: Vec<u8> = (0..128)
         .filter(|cc| ![6, 38, 96, 97, 98, 99, 100, 101].contains(cc))

@@ -5,7 +5,7 @@
 //!
 //! The outputs run to megabytes, so the golden file holds each mode's line
 //! count, a hash of the whole output and its first lines, and a failure names
-//! the mode that moved. `SEAM_BLESS=1` rewrites the file; the bench's parity
+//! the mode that moved. `HAPTO_BLESS=1` rewrites the file; the bench's parity
 //! run then says whether the JUCE side still agrees.
 //!
 //! The coefficients use the C runtime's `powf`, `sinf`, `cosf` and `tanf`
@@ -112,5 +112,5 @@ fn golden() -> String {
 #[test]
 fn the_examples_ranges_snaps_writes_coefficients_and_audio_match_the_golden_file() {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden/parity.txt");
-    seam_testkit::drift::check_generated(&path, &golden());
+    hapto_testkit::drift::check_generated(&path, &golden());
 }

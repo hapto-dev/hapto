@@ -7,10 +7,10 @@
 use std::hint::black_box;
 use std::sync::Arc;
 
-use iai_callgrind::{library_benchmark, library_benchmark_group, main};
-use seam_params::{
+use hapto_params::{
     AnyParam, AudioParams, Changes, Float, Kind, ParamDecl, ParamId, ParamSet, ParamSetBuilder,
 };
+use iai_callgrind::{library_benchmark, library_benchmark_group, main};
 
 const LABELS: [&str; 4] = ["a", "b", "c", "d"];
 

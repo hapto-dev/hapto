@@ -58,10 +58,10 @@ use crate::{Control, LearnError, Mapping, Source, TargetId};
 /// # Examples
 ///
 /// ```
-/// use seam_learn::{Takes, TargetId};
+/// use hapto_learn::{Takes, TargetId};
 #[doc = include_str!("../doc/setup.rs")]
-/// # use seam_learn::Config;
-/// # use seam_learn::Learn;
+/// # use hapto_learn::Config;
+/// # use hapto_learn::Learn;
 /// # let (mut learn, mut audio) = Learn::new(&set, Config::default());
 /// // A plain button learns from a note or a controller alike.
 /// learn.arm(gain, Takes::CONTROLLER | Takes::NOTE)?;
@@ -84,7 +84,7 @@ impl Takes {
     /// # Examples
     ///
     /// ```
-    /// use seam_learn::{Control, Takes};
+    /// use hapto_learn::{Control, Takes};
     ///
     /// assert!(Takes::CONTROLLER.accepts(Control::Nrpn(300)));
     /// assert!(!Takes::CONTROLLER.accepts(Control::Note(60)));
@@ -571,7 +571,7 @@ impl Arm {
 /// # Examples
 ///
 /// ```
-/// use seam_learn::{Config, Learn, Learned, LearnError, Takes};
+/// use hapto_learn::{Config, Learn, Learned, LearnError, Takes};
 #[doc = include_str!("../doc/setup.rs")]
 /// // A table that holds no mappings refuses the one the arm learned.
 /// let mut config = Config::default();

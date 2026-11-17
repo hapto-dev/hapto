@@ -25,7 +25,7 @@ use crate::{Control, Source};
 /// # Examples
 ///
 /// ```
-/// use seam_learn::{CcReservation, ReservationError};
+/// use hapto_learn::{CcReservation, ReservationError};
 ///
 /// assert_eq!(CcReservation::new(Some(16), None, 0, 1), Err(ReservationError::Group));
 /// assert_eq!(CcReservation::new(None, None, 0, 128), Err(ReservationError::Number));
@@ -73,7 +73,7 @@ pub(crate) fn check_fields(group: Option<u8>, channel: Option<u8>) -> Result<(),
 /// # Examples
 ///
 /// ```
-/// use seam_learn::{CcReservation, Config, Learn, Learned, Takes};
+/// use hapto_learn::{CcReservation, Config, Learn, Learned, Takes};
 #[doc = include_str!("../doc/setup.rs")]
 /// // The plugin's own controllers 20 to 23 are never learned, on any channel.
 /// let reserved = CcReservation::new(None, None, 20, 23)?;
@@ -154,7 +154,7 @@ impl CcReservation {
 /// # Examples
 ///
 /// ```
-/// use seam_learn::{Config, Control, Learn, LearnError, Mapping, NrpnReservation, Source};
+/// use hapto_learn::{Config, Control, Learn, LearnError, Mapping, NrpnReservation, Source};
 #[doc = include_str!("../doc/setup.rs")]
 /// // The plugin's own protocol owns NRPNs 0 to 99: they cannot be mapped.
 /// let reserved = NrpnReservation::new(None, None, 0, 99)?;

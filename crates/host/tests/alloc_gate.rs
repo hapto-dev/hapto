@@ -1,18 +1,18 @@
-//! What seam-host runs over and over does not allocate: the per-block event
+//! What hapto-host runs over and over does not allocate: the per-block event
 //! list a format exporter fills and a processor reads, a block through an
 //! exporter with learn's audio side in it, and a plugin's idle tick when
 //! nothing changed, which every instance runs about 60 times a second.
 
-seam_testkit::install_alloc_gate!();
+hapto_testkit::install_alloc_gate!();
 
-use seam_host::{
+use hapto_host::{
     AuCodes, Block, Category, Driver, Event, EventList, Layout, Parts, Plugin, PluginInfo,
     ProcessSetup, Processor, Status,
 };
-use seam_learn::{Config, Control, Mapping, Source};
-use seam_params::{Declarer, Float, FloatDecl, Params};
-use seam_testkit::alloc::assert_no_allocations;
-use seam_undo::Bound;
+use hapto_learn::{Config, Control, Mapping, Source};
+use hapto_params::{Declarer, Float, FloatDecl, Params};
+use hapto_testkit::alloc::assert_no_allocations;
+use hapto_undo::Bound;
 
 #[test]
 fn filling_and_reading_a_block_of_events_does_not_allocate() {
@@ -59,16 +59,16 @@ struct Listening;
 impl Plugin for Listening {
     const INFO: PluginInfo = PluginInfo {
         name: "Listening",
-        vendor: "Seam",
+        vendor: "Hapto",
         url: "",
         email: "",
         description: "",
         version: "0.1.0",
-        id: "dev.seam.listening",
+        id: "dev.hapto.listening",
         vst3_class_id: [0; 16],
         au_codes: AuCodes {
             subtype: *b"lstn",
-            manufacturer: *b"Seam",
+            manufacturer: *b"Hapt",
         },
         category: Category::Effect,
         features: &[],
@@ -159,7 +159,7 @@ impl Plugin for Kept {
 #[cfg(all(feature = "cabi", feature = "test-host"))]
 #[test]
 fn an_idle_tick_through_the_engine_does_not_allocate() {
-    let host = seam_host::cabi::TestHost::<Kept>::new();
+    let host = hapto_host::cabi::TestHost::<Kept>::new();
     host.idle();
     assert_no_allocations(
         "the engine's idle ticks of a plugin that keeps its parts",
@@ -175,7 +175,7 @@ fn an_idle_tick_through_the_engine_does_not_allocate() {
 #[cfg(all(feature = "cabi", feature = "test-host"))]
 #[test]
 fn a_block_through_the_engine_with_learn_on_does_not_allocate() {
-    let host = seam_host::cabi::TestHost::<Kept>::new();
+    let host = hapto_host::cabi::TestHost::<Kept>::new();
     assert_eq!(host.activate(48_000.0, 256, Layout::STEREO), Ok(()));
     let (mut left, mut right) = (vec![0.25f32; 600], vec![-0.25f32; 600]);
     host.process_in_place(&mut [&mut left, &mut right], 256);

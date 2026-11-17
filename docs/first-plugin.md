@@ -1,7 +1,7 @@
 # Your first plugin
 
 This guide walks through [`examples/gain`](../examples/gain/src/lib.rs), a
-stereo gain that uses the parts of Seam most plugins need: parameters, saved
+stereo gain that uses the parts of Hapto most plugins need: parameters, saved
 state, undo, a value that is not a parameter, MIDI learn, and the VST3 export.
 It leaves one thing out: nothing smooths its gain. Its editor, a page in the
 host's window, comes last. Read it beside the source,
@@ -33,26 +33,26 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 default = ["vst3"]
-# The VST3 module's entry points, through Seam's exporter.
-vst3 = ["seam-host/vst3"]
+# The VST3 module's entry points, through Hapto's exporter.
+vst3 = ["hapto-host/vst3"]
 
 [dependencies]
-seam-host = { workspace = true, features = ["manifest"] }
-seam-learn.workspace = true
-seam-params = { workspace = true, features = ["derive"] }
-seam-undo.workspace = true
-seam-webview.workspace = true
+hapto-host = { workspace = true, features = ["manifest"] }
+hapto-learn.workspace = true
+hapto-params = { workspace = true, features = ["derive"] }
+hapto-undo.workspace = true
+hapto-webview.workspace = true
 
 [dev-dependencies]
-seam-host = { workspace = true, features = ["vst3", "test-host"] }
-seam-ump.workspace = true
+hapto-host = { workspace = true, features = ["vst3", "test-host"] }
+hapto-ump.workspace = true
 ```
 
-`seam-host` builds no exporter by default, so the crate's own `vst3` feature
+`hapto-host` builds no exporter by default, so the crate's own `vst3` feature
 turns the VST3 one on, and the tests add the test host. Its `manifest` feature
 gives `manifest_info!`, which [section 3](#3-the-plugin-and-its-parts) uses.
-`seam-params`'s `derive` feature gives `#[derive(Params)]` and
-`#[derive(Choices)]`. `seam-webview` shows the plugin's page in the host's
+`hapto-params`'s `derive` feature gives `#[derive(Params)]` and
+`#[derive(Choices)]`. `hapto-webview` shows the plugin's page in the host's
 window (section 9). Each `workspace = true` takes its value from the
 repository's root manifest; [your own crate](#your-own-crate) says what
 replaces it outside this repository.
@@ -99,7 +99,7 @@ real units, then its options. Everything else follows from it: the host's id
   `cargo check`, on the mark. rustfmt leaves a mark as it is typed, so a long
   one is wrapped by hand, as the gain's is: the arguments, then the options.
 - The store keeps real units (dB, not 0 to 1). A host speaks in 0 to 1
-  positions, and Seam converts both ways at its boundary.
+  positions, and Hapto converts both ways at its boundary.
 - A choice's names are its labels, and the host sees them as the parameter's
   text. The mode's come from the enum that names its values, so the two cannot
   drift apart.
@@ -142,7 +142,7 @@ project loads the wrong mode.
 Each field is a [typed parameter](../crates/params/src/param.rs) that carries
 its store: `get` returns the gain in dB as an `f32`, the mode as a `Mode` and
 the bypass as a `bool`, on any thread, with no lookup or threshold. A clone is
-the same parameter, sharing the store. Seam calls `declare` when it builds an
+the same parameter, sharing the store. Hapto calls `declare` when it builds an
 instance, and a declaration it refuses, such as a key two parameters share,
 fails that build with the reason, in any test.
 
@@ -176,14 +176,14 @@ to read them. Reading takes atomics only, and the audio thread never
 allocates, locks or waits ([the invariants](../ARCHITECTURE.md#invariants)).
 The loop itself is plain DSP.
 
-Open: Seam has no smoothing yet. The gain is read once per block, at its
+Open: Hapto has no smoothing yet. The gain is read once per block, at its
 start, so a change steps there, and a large one can click.
 
 ## 3. The plugin and its parts
 
 [`Plugin`](../crates/host/src/plugin.rs) is the main thread's half. Its
 constants name the plugin (`INFO`), and its `Params` is the struct above.
-Seam declares it, builds the parameter set, the session and the saved state
+Hapto declares it, builds the parameter set, the session and the saved state
 over it, and hands the parameters and those
 [`Parts`](../crates/host/src/parts.rs) to `new`. `new` keeps what the plugin
 uses; `activate` builds a fresh processor each time the host activates it, so
@@ -196,7 +196,7 @@ fn activate(&mut self, _setup: &ProcessSetup) -> GainProcessor {
 ```
 
 The host saves and loads through the saved state in the parts, on threads of
-its own, without touching the plugin. The saved block is JSON: Seam's version
+its own, without touching the plugin. The saved block is JSON: Hapto's version
 and the plugin's own, the parameters' values, and one keyed section per
 session participant. A later version of the plugin that renames or rescales a
 parameter raises its `SCHEMA_VERSION` and upgrades an older block in its
@@ -212,12 +212,12 @@ the plugin is sits in the manifest, with the package's version and
 description, which are the plugin's:
 
 ```toml
-[package.metadata.seam]
-name = "Seam Example Gain"
-vendor = "Seam"
-id = "dev.seam.example-gain"
+[package.metadata.hapto]
+name = "Hapto Example Gain"
+vendor = "Hapto"
+id = "dev.hapto.example-gain"
 vst3-class-id = "5b0ad271-3e96-4c18-a37f-e0248db56a19"
-au-codes = { subtype = "SmGn", manufacturer = "Seam" }
+au-codes = { subtype = "SmGn", manufacturer = "Hapt" }
 category = "effect"
 ```
 
@@ -227,7 +227,7 @@ What the code relies on, the bus layouts it processes and the MIDI it takes,
 is written beside the code:
 
 ```rust
-const INFO: PluginInfo = seam_host::manifest_info! {
+const INFO: PluginInfo = hapto_host::manifest_info! {
     layouts: &[Layout::STEREO],
     midi_input: true,
     midi_output: false,
@@ -249,7 +249,7 @@ let history = parts.undo(Bound::default());
 It returns no `Result`. Its one failure, a history the plugin made of its
 own, is a mistake in the plugin's source, so it panics with what to change,
 and an exporter then refuses to build the instance. The style guide's
-[rule](style.md#seams-own-rules) says which calls panic and which return a
+[rule](style.md#haptos-own-rules) says which calls panic and which return a
 `Result`.
 
 The `History` it returns records changes to what is enrolled in it. Only
@@ -317,7 +317,7 @@ parts.midi_learn(Config::default());
 
 It registers learn's own participant, so its mappings save under their own
 key. Like `undo`, it panics on a mistake in the plugin's source: learn turned
-on twice, or a plugin that declares no MIDI input. Seam runs the rest: each
+on twice, or a plugin that declares no MIDI input. Hapto runs the rest: each
 activation takes learn's audio side, a
 [`LearnAudio`](../crates/learn/src/audio.rs), and each block runs it over the
 block's MIDI before the processor. Learned writes then land before the
@@ -336,17 +336,17 @@ do.
 
 ## 7. The idle tick
 
-About 60 times a second on the main thread, Seam ticks the parts the plugin
+About 60 times a second on the main thread, Hapto ticks the parts the plugin
 keeps: [`Driver::tick`](../crates/host/src/parts.rs) runs learn, the session,
 the history and the saved values in the one order that works, and owns the
 reasons for it. The plugin writes nothing for it, and the gain writes no
 `idle`. `Plugin::idle` is for a plugin's own main-thread work, and runs right
-after Seam's tick, so it sees a restore applied and a learned mapping
+after Hapto's tick, so it sees a restore applied and a learned mapping
 committed.
 
 ## 8. Test it through a host
 
-`seam_host::vst3::TestHost` drives the plugin through the VST3 exporter's own
+`hapto_host::vst3::TestHost` drives the plugin through the VST3 exporter's own
 interfaces, as a host would.
 [`examples/gain/tests/gain.rs`](../examples/gain/tests/gain.rs) uses it for
 what a host can reach: it sets up, activates and starts the host, each call
@@ -377,7 +377,7 @@ the mapping survives. Run the example's
 tests, this guide's check among them, with:
 
 ```sh
-cargo test -p seam-example-gain
+cargo test -p hapto-example-gain
 ```
 
 [docs/testing.md](testing.md) says what each CI lane proves.
@@ -386,7 +386,7 @@ cargo test -p seam-example-gain
 
 The gain's editor is a page: a slider on the gain, a field for the label and
 the plugin's version, a small Vite and React app in
-[`examples/gain/page`](../examples/gain/page/src/main.tsx) on the `seam-page`
+[`examples/gain/page`](../examples/gain/page/src/main.tsx) on the `@hapto/page`
 hooks, typed by the gain's parameter map, which a test of the gain keeps in
 step with its declarations. `npm run build` there writes three files under
 fixed names, which
@@ -402,7 +402,7 @@ fn editor(&mut self) -> Option<Box<dyn Editor>> {
 }
 ```
 
-[`Page`](../crates/webview/src/lib.rs), from `seam-webview`, makes it from the
+[`Page`](../crates/webview/src/lib.rs), from `hapto-webview`, makes it from the
 built files, a size, the label and one command:
 
 ```rust
@@ -436,7 +436,7 @@ would: one host gesture and one undo step per drag. The VST3 exporter opens
 the editor in the host's window on Windows, follows its size and scale, and
 ticks it after each idle; elsewhere `into_editor` gives `None`, and the host
 shows its own controls. A debug build loads the page from Vite's dev server,
-with hot reload, when `SEAM_PAGE_DEV_URL` holds the address `npm run dev`
+with hot reload, when `HAPTO_PAGE_DEV_URL` holds the address `npm run dev`
 prints, whether or not the page was built in; with no files and no dev
 server, `into_editor` gives `None`.
 
@@ -448,7 +448,7 @@ One command, in any shell, builds the page, then the module in release, lays
 out its bundle and installs it:
 
 ```sh
-cargo xtask bundle -p seam-example-gain --install
+cargo xtask bundle -p hapto-example-gain --install
 ```
 
 It runs `npm ci` in `page/` when `node_modules` is missing or older than the
@@ -460,11 +460,11 @@ parameter map; neither that nor a stale page reaches the bundle.
 
 `--debug` bundles the debug build instead, for working on the page in the
 host: run `npm run dev` in `page/`, and start the host with
-`SEAM_PAGE_DEV_URL` set to the address it prints, and the page reloads as you
-edit it. From PowerShell, `$env:SEAM_PAGE_DEV_URL = "http://localhost:5173"`,
+`HAPTO_PAGE_DEV_URL` set to the address it prints, and the page reloads as you
+edit it. From PowerShell, `$env:HAPTO_PAGE_DEV_URL = "http://localhost:5173"`,
 then the host's executable from that shell. The DSP runs unoptimised in that
 build, so listen to a release bundle. The bundle goes to
-`target/bundle/Seam Example Gain.vst3`, named from `[package.metadata.seam]`.
+`target/bundle/Hapto Example Gain.vst3`, named from `[package.metadata.hapto]`.
 `--install` copies it to the per-user VST3 folder,
 `%LOCALAPPDATA%\Programs\Common\VST3`, which needs no administrator;
 `--install-system` copies it to `C:\Program Files\Common Files\VST3` instead,
@@ -478,24 +478,24 @@ lays out the EQ's bundle:
 
 ```sh
 cd examples/gain/page && npm ci && npm run typecheck && npm run build && cd ../../..
-cargo build -p seam-example-gain --release
-bundle="target/bundle/Seam Example Gain.vst3"
+cargo build -p hapto-example-gain --release
+bundle="target/bundle/Hapto Example Gain.vst3"
 mkdir -p "$bundle/Contents/x86_64-win"
-cp target/release/seam_example_gain.dll \
-  "$bundle/Contents/x86_64-win/Seam Example Gain.vst3"
+cp target/release/hapto_example_gain.dll \
+  "$bundle/Contents/x86_64-win/Hapto Example Gain.vst3"
 ```
 
 The editor needs the WebView2 runtime, which Windows 11 ships; where it is
 missing, the editor does not open, the fault report says why, and the audio
 goes on. The page keeps its browser data in
-`%LOCALAPPDATA%\dev.seam.example-gain\WebView2`.
+`%LOCALAPPDATA%\dev.hapto.example-gain\WebView2`.
 [pluginval](https://github.com/Tracktion/pluginval) checks a bundle without a
 host. CI runs version 1.0.4 on the EQ's bundle with these options; for the
 gain's:
 
 ```sh
 pluginval --strictness-level 5 --validate-in-process --skip-gui-tests \
-  "target/bundle/Seam Example Gain.vst3"
+  "target/bundle/Hapto Example Gain.vst3"
 ```
 
 Once a plugin's editor has opened, a host keeps the module's file in use until
@@ -507,20 +507,20 @@ The macOS bundle is not built yet, and the command refuses there.
 
 ## Your own crate
 
-Seam's crates are not published yet, so a plugin outside this repository takes
+Hapto's crates are not published yet, so a plugin outside this repository takes
 them from git or from a checkout. Copy `examples/gain` to a folder of its own,
 delete `tests/guide.rs`, which checks this guide against the example, and
 change the manifest:
 
 - In `[package]`, give each `.workspace = true` a value of your own: edition
-  2024 and a `rust-version` of 1.99 or later, as Seam's.
-- Point each Seam dependency, in `[dev-dependencies]` too, at where it lives:
-  `seam-host = { git = "https://github.com/nicvlav/seam", rev = "..." }`,
-  or `seam-host = { path = "../seam/crates/host" }` for a checkout. Pin one
-  `rev` for every Seam crate, since before 1.0 a minor version may break the
-  API. A dependency with `features`, `seam-host`, `seam-params` and the
-  dev-dependency on `seam-host`, keeps them beside its source.
-- Give `[package.metadata.seam]` a name, a vendor and ids of your own: a new
+  2024 and a `rust-version` of 1.99 or later, as Hapto's.
+- Point each Hapto dependency, in `[dev-dependencies]` too, at where it lives:
+  `hapto-host = { git = "https://github.com/hapto-dev/hapto", rev = "..." }`,
+  or `hapto-host = { path = "../hapto/crates/host" }` for a checkout. Pin one
+  `rev` for every Hapto crate, since before 1.0 a minor version may break the
+  API. A dependency with `features`, `hapto-host`, `hapto-params` and the
+  dev-dependency on `hapto-host`, keeps them beside its source.
+- Give `[package.metadata.hapto]` a name, a vendor and ids of your own: a new
   UUID for `vst3-class-id`, which `uuidgen` prints, and AU codes no other
   plugin of yours has. With the example's ids, every host takes it for the
   example.
@@ -529,9 +529,9 @@ change the manifest:
   or drop the `[lints]` table, and copy its `[profile.release]` for the same
   release build.
 
-The page takes `seam-page` from a checkout too, since the package is not on
+The page takes `@hapto/page` from a checkout too, since the package is not on
 npm: in `page/package.json`, point it at the checkout's `page` folder by a
-path from the page's own folder, `"seam-page": "file:../../seam/page"` for a
+path from the page's own folder, `"@hapto/page": "file:../../hapto/page"` for a
 checkout beside the crate. The gain's path leads into this repository, so
 `npm ci` in a copy fails until it is changed. `cargo xtask bundle` is this
 repository's and bundles its crates only; lay out your own crate's bundle with
@@ -544,7 +544,8 @@ the steps in section 10.
   [params](../crates/params/src/lib.rs), [undo](../crates/undo/src/lib.rs),
   [session](../crates/session/src/lib.rs), [learn](../crates/learn/src/lib.rs)
   and [host](../crates/host/src/lib.rs).
-- The [glossary](glossary.md) defines the words Seam uses in a sense of its own.
+- The [glossary](glossary.md) defines the words Hapto uses in a sense of
+  its own.
 - The example EQ shows a larger processor, with the allocation gates and the
   parity tests that prove it.
 - [docs/style.md](style.md) is how code and docs are written here.

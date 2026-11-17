@@ -10,29 +10,29 @@
 //! each queue's last point before the block, so many points per parameter
 //! compare with one write. The output must be finite and free of denormals.
 //!
-//! `soak` runs the grid at random for `SEAM_SOAK_SECONDS` (default 10), and
-//! is ignored in a normal run. It prints its seed; `SEAM_SOAK_SEED` repeats a
+//! `soak` runs the grid at random for `HAPTO_SOAK_SECONDS` (default 10), and
+//! is ignored in a normal run. It prints its seed; `HAPTO_SOAK_SEED` repeats a
 //! run.
 //!
 //! ```sh
-//! SEAM_SOAK_SECONDS=1800 cargo test --release -p seam-example-eq \
+//! HAPTO_SOAK_SECONDS=1800 cargo test --release -p hapto-example-eq \
 //!     --test matrix -- --ignored soak
 //! ```
 //!
 //! The exporters hand a plugin no MIDI yet, so only the processor-direct
 //! side fills its event lists, to capacity.
 
-seam_testkit::install_alloc_gate!();
+hapto_testkit::install_alloc_gate!();
 
 use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 
-use seam_example_eq::ExampleEq;
-use seam_host::cabi::TestHost as CHost;
-use seam_host::vst3::TestHost as Vst3Host;
-use seam_host::{Block, Event, EventList, Layout, Plugin, ProcessSetup, Processor};
-use seam_params::{ParamDecl, audio_thread, host_id};
-use seam_testkit::alloc::assert_no_allocations;
+use hapto_example_eq::ExampleEq;
+use hapto_host::cabi::TestHost as CHost;
+use hapto_host::vst3::TestHost as Vst3Host;
+use hapto_host::{Block, Event, EventList, Layout, Plugin, ProcessSetup, Processor};
+use hapto_params::{ParamDecl, audio_thread, host_id};
+use hapto_testkit::alloc::assert_no_allocations;
 
 mod common;
 use common::{built, declarations};
@@ -120,7 +120,7 @@ fn queues(rng: &mut Rng, frames: usize, density: usize) -> Vec<Queue> {
 struct Direct {
     plugin: ExampleEq,
     processor: Option<<ExampleEq as Plugin>::Processor>,
-    saved: std::sync::Arc<seam_host::SavedState>,
+    saved: std::sync::Arc<hapto_host::SavedState>,
     events: EventList,
     out_events: EventList,
 }
@@ -381,13 +381,13 @@ fn a_block_longer_than_the_setup_plays_in_pieces_through_both_exporters() {
 }
 
 #[test]
-#[ignore = "runs for SEAM_SOAK_SECONDS; see the module docs"]
+#[ignore = "runs for HAPTO_SOAK_SECONDS; see the module docs"]
 fn soak() {
-    let seconds: u64 = std::env::var("SEAM_SOAK_SECONDS")
+    let seconds: u64 = std::env::var("HAPTO_SOAK_SECONDS")
         .ok()
         .and_then(|value| value.parse().ok())
         .unwrap_or(10);
-    let seed: u64 = std::env::var("SEAM_SOAK_SEED")
+    let seed: u64 = std::env::var("HAPTO_SOAK_SEED")
         .ok()
         .and_then(|value| value.parse().ok())
         .unwrap_or_else(|| {
@@ -397,7 +397,7 @@ fn soak() {
                 .as_nanos() as u64
                 | 1
         });
-    eprintln!("soak: {seconds} s, SEAM_SOAK_SEED={seed}");
+    eprintln!("soak: {seconds} s, HAPTO_SOAK_SEED={seed}");
     let mut rng = Rng(seed);
     let mut tally = Tally::default();
     let (mut sessions, deadline) = (0u64, Instant::now() + Duration::from_secs(seconds));

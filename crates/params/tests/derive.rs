@@ -3,7 +3,7 @@
 //! of either kind. `#[derive(Choices)]`: a derived enum maps as the same enum
 //! written by hand does.
 
-use seam_params::{
+use hapto_params::{
     Bool, BoolDecl, Choice, ChoiceDecl, Choices, DeclError, Declarer, Float, FloatDecl, Kind,
     ParamDecl, ParamSet, Params,
 };

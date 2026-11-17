@@ -22,17 +22,17 @@ python3 scripts/test-checks.py       # pull request: the check scripts refuse th
 python3 scripts/check-shape-append-only.py origin/main   # pull request, against its base: the shape file only gains lines
 cargo xtask wrap                     # pull request: the comment lines of crates/, examples/ and xtask/ past 80 columns
 cargo xtask wrap --markdown          # pull request: the prose lines of the repository's docs past 80 columns
-RUSTFLAGS="-Zsanitizer=realtime --cfg seam_rtsan" cargo +nightly test ... --target x86_64-unknown-linux-gnu   # nightly workflow: see Real-time sanitizer
+RUSTFLAGS="-Zsanitizer=realtime --cfg hapto_rtsan" cargo +nightly test ... --target x86_64-unknown-linux-gnu   # nightly workflow: see Real-time sanitizer
 cargo test --manifest-path fuzz/Cargo.toml --lib   # nightly workflow: the fuzz crate's unit test
 python3 scripts/run-loom.py          # pull request: the loom models, counted
-cargo test -p seam-example-eq --release --test matrix --test overflow   # pull request: the gate matrix
-SEAM_SOAK_SECONDS=60 cargo test -p seam-example-eq --release --test matrix -- --ignored soak --nocapture   # nightly workflow (30 minutes) and weekly workflow (3 hours)
+cargo test -p hapto-example-eq --release --test matrix --test overflow   # pull request: the gate matrix
+HAPTO_SOAK_SECONDS=60 cargo test -p hapto-example-eq --release --test matrix -- --ignored soak --nocapture   # nightly workflow (30 minutes) and weekly workflow (3 hours)
 cargo +nightly fuzz run saved_block  # nightly workflow, ten minutes per target; in fuzz/, needs a nightly compiler
 scripts/run-benches.sh               # pull request, against the base; Linux, with valgrind and iai-callgrind-runner
 cd page && npm ci && npm run typecheck && npm test                   # pull request
 cd examples/gain/page && npm ci && npm run typecheck && npm run build   # pull request: the gain's page
-cargo test -p seam-webview --test hidden_window -- --ignored          # by hand, Windows: the page in a real WebView2, in windows never shown
-cargo test -p seam-example-gain --test page -- --ignored              # by hand, Windows, with the gain's page built: the same, for its page
+cargo test -p hapto-webview --test hidden_window -- --ignored          # by hand, Windows: the page in a real WebView2, in windows never shown
+cargo test -p hapto-example-gain --test page -- --ignored              # by hand, Windows, with the gain's page built: the same, for its page
 ```
 
 ## CI lanes
@@ -43,7 +43,7 @@ cargo test -p seam-example-gain --test page -- --ignored              # by hand,
 developer's own Windows machine cannot show, and the checks that cost seconds.
 Those are `linux`, the macOS leg of `rust` (two steps: Clippy with all
 features, and Test), `core builds alone`, `loom models`, `benchmarks`, `page`,
-`seam.h` and `protocol shape history`. It runs once the pull request is ready
+`hapto.h` and `protocol shape history`. It runs once the pull request is ready
 for review. A draft runs nothing, and `main` is not tested again after a
 merge: the squash of a branch rebased onto `main` is the tree its pull request
 tested. So before a pull request, the commands above marked for it are run on
@@ -73,14 +73,14 @@ real-time sanitizer, which needs Linux.
 | `rust`: Docs | Every doc builds with no warning, broken link included. |
 | `doc examples` (Windows, pinned nightly) | Every struct, enum, trait, function and macro a user can reach has a Rust example, in every library crate under `crates/` (see [Doc examples](#doc-examples)). |
 | `linux` | The code is formatted, and the core, the bridge, the C interface and the example EQ through it build, pass clippy and pass their tests, gates and matrix on Linux, and the VST3 module refuses to compile there, with its message. |
-| `seam.h` | The header compiles as C11 and C++11 for x86_64 and aarch64, so its size and offset assertions hold for both. |
+| `hapto.h` | The header compiles as C11 and C++11 for x86_64 and aarch64, so its size and offset assertions hold for both. |
 | `cross check` (aarch64 Linux, aarch64 Android) | The core, the bridge and the C interface type-check for those targets. Nothing is linked or run. |
 | `cargo deny` | Every dependency of the workspace has a licence `deny.toml` lists, no advisory applies (two, in the benchmark harness, are named there), no source is outside crates.io. It does not read `fuzz/`, which is outside the workspace and whose libFuzzer is under NCSA. |
 | `coverage` | Line coverage of the code Linux builds is at least 92 % (see [Coverage](#coverage)). |
 | `plugin validators (windows)`: pluginval | pluginval 1.0.4, pinned by hash, passes the example EQ's VST3 bundle at strictness level 5 without a GUI, run in the validator's own process. It does not show what a real host does with it. |
 | `plugin validators (windows)`: The Steinberg validator | The Steinberg validator, built from the VST3 SDK at a pinned commit, passes the same bundle. It runs whether or not pluginval passed. |
 | `benchmarks` | On a pull request, no benchmark's instruction count grew more than 2 % against the base (see [Benchmarks](#benchmarks)). |
-| `core builds alone`: No window, WebView or host dependency | No core crate or `seam-bridge` links a window, WebView, UI toolkit or plugin-format crate, and no crate depends on one of its own layer or above (see [Repository checks](#repository-checks)). |
+| `core builds alone`: No window, WebView or host dependency | No core crate or `hapto-bridge` links a window, WebView, UI toolkit or plugin-format crate, and no crate depends on one of its own layer or above (see [Repository checks](#repository-checks)). |
 | `core builds alone`: The Rust reader's tests | `cargo xtask scan`, `defs` and `wrap` read comments, string literals, `fn` names and item definitions as the language does (see [Repository checks](#repository-checks)). |
 | `core builds alone`: Comments wrap at 80 columns | No `///`, `//!` or `//` prose line of `crates/`, `examples/` or `xtask/` passes 80 columns (see [Repository checks](#repository-checks)). |
 | `core builds alone`: Docs wrap at 80 columns | No prose line of README.md, ARCHITECTURE.md, CHANGELOG.md, `bench/README.md`, `page/README.md` or `docs/*.md` passes 80 columns (see [Repository checks](#repository-checks)). |
@@ -93,8 +93,8 @@ real-time sanitizer, which needs Linux.
 | `page`: Typecheck, Test | The page compiles against the committed generated types, and its tests pass. |
 | `page`: the gain's page | The example gain's page installs, type-checks against the package and the gain's generated parameter map, and builds the files the gain embeds, under the names it embeds them by. No lane compiles the gain with them built in. |
 | `JUCE adapter` (macOS, started by hand) | The example EQ builds through the adapter as VST3 and AU, at the JUCE commit `bench/` pins, and both the Rust library and the plugin binaries hold arm64 and x86_64. It does not load the plugin. |
-| `JUCE adapter` (Windows, started by hand) | The example EQ's VST3 build through the adapter passes the Steinberg validator, built from the VST3 SDK at the pinned commit, as the native `plugin validators (windows)` lane passes Seam's own. |
-| Nightly: `miri` | `seam-host`'s tests, the core crates' unit tests and some integration tests find no undefined behaviour under Stacked Borrows and Tree Borrows (see [Miri](#miri)). |
+| `JUCE adapter` (Windows, started by hand) | The example EQ's VST3 build through the adapter passes the Steinberg validator, built from the VST3 SDK at the pinned commit, as the native `plugin validators (windows)` lane passes Hapto's own. |
+| Nightly: `miri` | `hapto-host`'s tests, the core crates' unit tests and some integration tests find no undefined behaviour under Stacked Borrows and Tree Borrows (see [Miri](#miri)). |
 | Nightly: `rtsan` (Linux) | A canary that allocates inside a marked call aborts, and the allocation gates and the gate matrix pass under RealtimeSanitizer. See [Real-time sanitizer](#real-time-sanitizer). |
 | Nightly: `fuzz` | Each of four `cargo-fuzz` targets ran ten minutes with no crash, no panic and no broken fixpoint (see [Fuzzing](#fuzzing)). |
 | Nightly: `soak` (Linux, Windows) | The matrix's conditions, drawn at random for 30 minutes, with random parameter moves, produced no allocation, fault, NaN, denormal or drift from the processor driven directly. |
@@ -107,7 +107,7 @@ cross check in `ci.yml`, and the miri run in `nightly.yml`.
 
 The rules below each close a class of failure that reaches a release. Their
 tools live in `crates/testkit`, except the boundary record, which lives with the
-exporters in `seam-host`.
+exporters in `hapto-host`.
 
 ## 1. A contract assertion is a test failure
 
@@ -127,7 +127,7 @@ What keeps that true:
   pins is a deadlock.
 - **A deliberate violation is declared.** A test that breaks a contract on
   purpose wraps the call in
-  `seam_testkit::contract::expect_contract_panic(expected, f)`. That fails when
+  `hapto_testkit::contract::expect_contract_panic(expected, f)`. That fails when
   nothing fires, and when the panic's message does not contain `expected`. An
   assertion removed from the library fails its test instead of silently passing
   it. An unrelated panic cannot stand in for the contract under test. Such a
@@ -136,18 +136,18 @@ What keeps that true:
 - **Boundaries record what they catch.** A host calls in through COM or the C
   ABI, where a panic must not unwind. The exporters catch it there and count it,
   and a call refused for its thread the same way, per instance and per process
-  (`seam_host::boundary_faults()`). `crates/host/src/faults.rs` says when the
-  first fault of each kind is written as a line; in a test build of `seam-host`
+  (`hapto_host::boundary_faults()`). `crates/host/src/faults.rs` says when the
+  first fault of each kind is written as a line; in a test build of `hapto-host`
   the line goes to a list the test reads instead.
 
-  `seam_host::vst3::TestHost` drives a plugin through the VST3 exporter's own
+  `hapto_host::vst3::TestHost` drives a plugin through the VST3 exporter's own
   COM interfaces, its editor's view included (`TestHost::view`).
-  `seam_host::cabi::TestHost` drives it through the C interface's table, as
+  `hapto_host::cabi::TestHost` drives it through the C interface's table, as
   the JUCE adapter calls it. A call the plugin may refuse
   answers `Result<(), Refused>`: the VST3 host's `Refused` carries the
   `tresult`, the C interface's stands for its `false`, so a test pins what the
-  host was told. Both exist only with `seam-host`'s `test-host` feature, which a
-  plugin crate turns on in its dev-dependencies, so a shipping plugin carries
+  host was told. Both exist only with `hapto-host`'s `test-host` feature, which
+  a plugin crate turns on in its dev-dependencies, so a shipping plugin carries
   neither. When dropped, each checks that its instance had no fault on any
   thread, less the faults the test declares with `expect_faults`. A test that
   provokes one on purpose declares it and checks that the count moved by exactly
@@ -160,13 +160,13 @@ Every buffer it touches has a fixed capacity, sized when the plugin is activated
 on the main thread and never grown.
 
 Allocation is checked by test. Each crate with audio-thread code has a test
-target named `alloc_gate` (`tests/alloc_gate.rs`): `seam-host`, `seam-learn`,
-`seam-params`, `seam-ump`, and the example EQ and gain. `seam-testkit` has one
-too, which checks the gate itself, and so does `seam-bridge`, whose tick runs
-on every main-thread tick of an open editor and allocates nothing while
+target named `alloc_gate` (`tests/alloc_gate.rs`): `hapto-host`, `hapto-learn`,
+`hapto-params`, `hapto-ump`, and the example EQ and gain. `hapto-testkit` has
+one too, which checks the gate itself, and so does `hapto-bridge`, whose tick
+runs on every main-thread tick of an open editor and allocates nothing while
 nothing moved. Each:
 
-1. installs the counting allocator once: `seam_testkit::install_alloc_gate!();`
+1. installs the counting allocator once: `hapto_testkit::install_alloc_gate!();`
 2. builds and activates what it tests outside the gate, where allocating is
    allowed;
 3. runs the audio-thread path inside `assert_no_allocations("what", || ...)`,
@@ -183,9 +183,9 @@ path by review. In `process` and anything it calls there is no `Mutex`,
 spawn. Nor is there an `Arc` drop that could be the last one. Wait-free queues
 and atomics cross threads.
 
-A debug build also checks the locking half. `seam_params::audio_thread::enter()`
-marks the calling thread as the audio thread until its guard drops. These assert
-the mark is absent:
+A debug build also checks the locking half.
+`hapto_params::audio_thread::enter()` marks the calling thread as the audio
+thread until its guard drops. These assert the mark is absent:
 
 - every call that locks (`Value`, `List`, `Session`, `Load::restore`, the load
   hold that undo replays take);
@@ -230,8 +230,8 @@ denormals and the direct processor does not. `overflow.rs` sends far more points
 than the exporter's room, so the walk's room-full branches run. The exporters
 hand a plugin no MIDI yet, so the matrix fills the event lists to capacity on
 the processor-driven side only. `matrix.rs`'s `soak` test, ignored in a normal
-run, plays the matrix at random for `SEAM_SOAK_SECONDS` and prints the seed it
-used (`SEAM_SOAK_SEED` repeats a run).
+run, plays the matrix at random for `HAPTO_SOAK_SECONDS` and prints the seed it
+used (`HAPTO_SOAK_SEED` repeats a run).
 
 The example EQ's parity output must also equal its golden file. That test runs
 on Windows only.
@@ -257,7 +257,7 @@ What the pinned nightly (`nightly-2026-11-04`, rustc 1.101.0-nightly) supports:
 
 What the lane does: `nightly.yml`'s `rtsan` job builds for
 `x86_64-unknown-linux-gnu` with
-`RUSTFLAGS="-Zsanitizer=realtime --cfg seam_rtsan"`. `--target` keeps the flags
+`RUSTFLAGS="-Zsanitizer=realtime --cfg hapto_rtsan"`. `--target` keeps the flags
 off build scripts and proc macros.
 First comes the canary, `crates/host/tests/rtsan_canary.rs`, built only under
 the cfg: a processor that allocates, played through the C interface's marked
@@ -267,11 +267,11 @@ nothing. Then the lane runs the release allocation gates and the gate matrix,
 as the `linux` lane does.
 
 Marking is for `crates/`, behind the custom cfg so stable never sees the
-attribute: `#![cfg_attr(seam_rtsan, feature(sanitize))]` at a crate root, and
-`#[cfg_attr(seam_rtsan, sanitize(realtime = "nonblocking"))]` on a function.
-The workspace's `unexpected_cfgs` setting names `cfg(seam_rtsan)`. The
+attribute: `#![cfg_attr(hapto_rtsan, feature(sanitize))]` at a crate root, and
+`#[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]` on a function.
+The workspace's `unexpected_cfgs` setting names `cfg(hapto_rtsan)`. The
 sanitizer checks everything a marked function calls, so the marks go on the
-audio thread's entry points. These carry it, in `seam-host`:
+audio thread's entry points. These carry it, in `hapto-host`:
 
 - `Engine::process` and `Engine::play` (`crates/host/src/engine/process.rs`),
   which every exporter's process goes through;
@@ -398,9 +398,9 @@ Two tools cover what real threads cannot make happen on demand:
   so the model cannot see them. They rest on the argument written at
   `HostQueue::mark_dirty` (`crates/params/src/host_events.rs`).
 
-The `loom models` lane runs `RUSTFLAGS="--cfg loom" cargo test -p seam-params -p
-seam-learn -p seam-host --release --locked --lib loom_`. The host's models need
-no feature, since its core builds without one. The cfg swaps the modelled
+The `loom models` lane runs `RUSTFLAGS="--cfg loom" cargo test -p hapto-params
+-p hapto-learn -p hapto-host --release --locked --lib loom_`. The host's models
+need no feature, since its core builds without one. The cfg swaps the modelled
 atomics for loom's, which work only inside a model, so the lane runs the models
 alone (the `loom_` prefix). `loom` is pulled in only under `cfg(loom)`.
 
@@ -412,8 +412,8 @@ under `cfg(miri)`. The host crate's tests pass under both of Rust's aliasing
 models:
 
 ```sh
-MIRIFLAGS="-Zmiri-ignore-leaks" cargo +nightly miri test -p seam-host --features vst3,cabi,test-host --lib
-MIRIFLAGS="-Zmiri-ignore-leaks -Zmiri-tree-borrows" cargo +nightly miri test -p seam-host --features vst3,cabi,test-host --lib
+MIRIFLAGS="-Zmiri-ignore-leaks" cargo +nightly miri test -p hapto-host --features vst3,cabi,test-host --lib
+MIRIFLAGS="-Zmiri-ignore-leaks -Zmiri-tree-borrows" cargo +nightly miri test -p hapto-host --features vst3,cabi,test-host --lib
 ```
 
 `-Zmiri-ignore-leaks` is needed because some tests leak an instance on purpose.
@@ -424,7 +424,7 @@ staging's model test, which tries 86,730 ways a host can hand its buffers, runs
 every 863rd of them, about a hundred, under miri.
 
 The nightly workflow runs this under both models. It also runs the core crates'
-unit tests, the UMP crate's integration tests and `seam-learn`'s capture,
+unit tests, the UMP crate's integration tests and `hapto-learn`'s capture,
 dispatch, saved and targets tests, with `-Zmiri-disable-isolation` and four
 property cases. Learn's four take about 20 seconds under either model on
 Windows. Its ceiling test maps 4,096 sources, did not finish in 25 minutes and
@@ -432,7 +432,7 @@ is skipped. Its allocation gate is not run (it hits the allocator fault
 described below on Windows, and Linux has not run it yet). Among the core
 crates' unit tests, the parameters' check that no two of 65,536 small groups
 share an identity is ignored under miri: it takes minutes in the interpreter.
-The other integration tests are left out: `seam-undo`'s do not finish in an
+The other integration tests are left out: `hapto-undo`'s do not finish in an
 hour under the interpreter.
 
 No allocation gate runs under miri, so the counting allocator itself is not
@@ -440,8 +440,8 @@ checked for undefined behaviour. Open: whether the gates pass under miri on
 Linux, where the nightly lane runs; nobody has tried. On Windows, std's `System`
 allocator under a forwarding `#[global_allocator]` reads a header outside the
 pointer's provenance for over-aligned blocks
-(`library/std/src/sys/alloc/windows.rs`). A repro with no Seam code fails the
-same way, so the fault is not Seam's.
+(`library/std/src/sys/alloc/windows.rs`). A repro with no Hapto code fails the
+same way, so the fault is not Hapto's.
 
 ## 4. Generated files do not drift
 
@@ -464,7 +464,7 @@ change that caused it:
 cargo xtask gen
 ```
 
-Running a failing gate with `SEAM_BLESS=1` set (empty or `0` counts as unset)
+Running a failing gate with `HAPTO_BLESS=1` set (empty or `0` counts as unset)
 rewrites its file too. With `CI` set the gate refuses to rewrite and fails, so a
 pipeline cannot bless its own output.
 
@@ -482,8 +482,8 @@ The generated files are:
   `tests/page_params.rs` is its drift gate, not xtask's: xtask linking a
   second plugin would bring two sets of VST3 entry points into one binary;
 - the C header the `cabi` feature generates for the JUCE adapter
-  (`crates/host/include/seam.h`);
-- the example EQ's JUCE settings (`examples/eq/seam-juce.cmake`).
+  (`crates/host/include/hapto.h`);
+- the example EQ's JUCE settings (`examples/eq/hapto-juce.cmake`).
 
 ## 5. A check that finds nothing fails
 
@@ -524,7 +524,7 @@ What each check in the `core builds alone` lane, and the protocol shape check,
 fails on.
 
 - **Core dependencies** (`scripts/check-core-deps.py`). No core crate or
-  `seam-bridge` links a window, WebView, UI toolkit or plugin-format crate, on
+  `hapto-bridge` links a window, WebView, UI toolkit or plugin-format crate, on
   any platform, with any features. No crate depends on one of its own layer or
   above. The layers are the table in the script, checked against `cargo
   metadata`: a workspace crate missing from it, or an entry that is no workspace
@@ -598,8 +598,8 @@ fails on.
 ## Doc examples
 
 `scripts/check-example-coverage.py` reads nightly rustdoc's JSON for every
-library crate under `crates/` (`seam-host` with its `vst3`, `cabi` and
-`test-host` features, `seam-bridge` with `typescript`), walks it from the crate
+library crate under `crates/` (`hapto-host` with its `vst3`, `cabi` and
+`test-host` features, `hapto-bridge` with `typescript`), walks it from the crate
 root through public modules and re-exports as a user's `use` does, and fails
 below 100 % in any crate. Every struct, enum, trait, function and macro a user
 can reach has a Rust code block that is not marked `ignore`, `text` or
@@ -685,13 +685,13 @@ the report. It says nothing about Windows- and macOS-only code.
 
 ## Benchmarks
 
-`scripts/run-benches.sh` runs the `iai` benchmarks of `seam-ump`, `seam-params`,
-`seam-learn` and `seam-example-eq` under valgrind with iai-callgrind and prints
-instruction counts, which do not vary with the machine's load. Given a base
-revision it records the base's counts, then fails if any count at the current
-revision is more than 2 % higher. A benchmark function is what is counted, so
-each hands back the state its setup made, and freeing it falls outside the
-count. A base without the benchmarks is run alone. On
-a pull request they cover the EQ's block, a host write, learn's dispatch and UMP
-decoding. Instruction counts say nothing about time or cache behaviour. The
+`scripts/run-benches.sh` runs the `iai` benchmarks of `hapto-ump`,
+`hapto-params`, `hapto-learn` and `hapto-example-eq` under valgrind with
+iai-callgrind and prints instruction counts, which do not vary with the
+machine's load. Given a base revision it records the base's counts, then fails
+if any count at the current revision is more than 2 % higher. A benchmark
+function is what is counted, so each hands back the state its setup made, and
+freeing it falls outside the count. A base without the benchmarks is run alone.
+On a pull request they cover the EQ's block, a host write, learn's dispatch and
+UMP decoding. Instruction counts say nothing about time or cache behaviour. The
 runner's version must equal the `iai-callgrind` dependency's.

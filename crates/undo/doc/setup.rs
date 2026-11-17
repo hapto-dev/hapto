@@ -1,4 +1,4 @@
-# use seam_params::{Kind, ParamDecl, ParamSetBuilder};
+# use hapto_params::{Kind, ParamDecl, ParamSetBuilder};
 # let mut builder = ParamSetBuilder::new();
 # builder.add(ParamDecl::new("gain", "Gain", Kind::continuous(0.0, 10.0, 1.0, None), 5.0)
 #     .with_unit("dB"))?;

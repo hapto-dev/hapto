@@ -17,8 +17,8 @@ use std::path::PathBuf;
 use std::rc::{Rc, Weak};
 use std::time::Instant;
 
-use seam_bridge::{Dispatcher, Outbox};
-use seam_host::{Editor, ParentWindow, Size};
+use hapto_bridge::{Dispatcher, Outbox};
+use hapto_host::{Editor, ParentWindow, Size};
 use wry::dpi::{PhysicalPosition, PhysicalSize};
 use wry::http::header::{CONTENT_TYPE, HeaderValue};
 use wry::http::{Response, StatusCode};
@@ -42,8 +42,8 @@ impl Outbox for ToPage {
         if message.starts_with(r#"{"type":"snapshot""#)
             && let Some(opened) = self.opened.take()
         {
-            seam_host::report_line(&format!(
-                "seam: {}: the page answered its first ready {} ms after the editor opened.",
+            hapto_host::report_line(&format!(
+                "hapto: {}: the page answered its first ready {} ms after the editor opened.",
                 self.name,
                 opened.elapsed().as_millis()
             ));
@@ -58,11 +58,11 @@ impl Outbox for ToPage {
 }
 
 /// The script that hands `message` to the page's transport, which listens
-/// as `window.__seam`: the message as a JavaScript string, which JSON's
+/// as `window.__hapto`: the message as a JavaScript string, which JSON's
 /// string syntax is.
 fn script(message: &str) -> String {
     let text = serde_json::Value::String(message.to_owned()).to_string();
-    format!("window.__seam?.receive({text})")
+    format!("window.__hapto?.receive({text})")
 }
 
 /// The page's native side, which the editor and its WebView's IPC handler
@@ -282,8 +282,8 @@ impl Editor for PageEditor {
 fn deliver(name: &'static str, native: &Native, message: String) {
     let handled = panic::catch_unwind(AssertUnwindSafe(|| native.deliver(message)));
     if handled.is_err() {
-        seam_host::report_line(&format!(
-            "seam: {name}: a message from the page panicked and was dropped."
+        hapto_host::report_line(&format!(
+            "hapto: {name}: a message from the page panicked and was dropped."
         ));
     }
 }
@@ -328,8 +328,8 @@ mod tests {
     use std::cell::RefCell;
     use std::rc::Rc;
 
-    use seam_host::{AuCodes, Category, Layout, PluginInfo};
-    use seam_params::{Kind, ParamDecl, ParamId, ParamSet, UiParams};
+    use hapto_host::{AuCodes, Category, Layout, PluginInfo};
+    use hapto_params::{Kind, ParamDecl, ParamId, ParamSet, UiParams};
 
     use super::*;
     use crate::{Asset, Page};

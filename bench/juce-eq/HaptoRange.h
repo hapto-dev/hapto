@@ -1,6 +1,6 @@
 #pragma once
 
-// Seam's continuous range, ported so this JUCE build stores the same
+// Hapto's continuous range, ported so this JUCE build stores the same
 // parameter values as the Rust EQ, bit for bit. Every step mirrors
 // crates/params/src/decl.rs: the lattice laid out in whole numbers of the
 // finest decimal place, so every point of a decimal range, 0 dB included,
@@ -95,8 +95,8 @@ struct Lattice
     }
 };
 
-/** One continuous parameter's range, as Seam declares it. */
-struct SeamRange
+/** One continuous parameter's range, as Hapto declares it. */
+struct HaptoRange
 {
     float start, end, interval;
     std::optional<float> skewCentre;

@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use seam_params::{Kind, List, ParamDecl, ParamSet, ParamSetBuilder, Value, audio_thread};
+use hapto_params::{Kind, List, ParamDecl, ParamSet, ParamSetBuilder, Value, audio_thread};
 
 fn set() -> Arc<ParamSet> {
     let mut builder = ParamSetBuilder::new();
@@ -55,7 +55,7 @@ fn every_checked_call_is_silent_off_the_audio_thread() {
 
 #[cfg(debug_assertions)]
 mod debug_checks {
-    use seam_params::HostEventDrain;
+    use hapto_params::HostEventDrain;
 
     use super::*;
 

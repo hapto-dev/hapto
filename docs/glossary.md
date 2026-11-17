@@ -1,6 +1,6 @@
 # Glossary
 
-The words Seam coins, or uses in a sense of its own. Each entry says what the
+The words Hapto coins, or uses in a sense of its own. Each entry says what the
 word means here and links the item or doc that owns it. An item's own docs are
 the contract; this page is the map.
 
@@ -28,8 +28,8 @@ takes (`Takes`). A new arm ends the last one.
 ### Audio-thread mark
 
 A debug-build mark an exporter raises around everything a block runs. Under it,
-a call to one of Seam's locking types, a `Value` or a `Session` say, panics
-([`seam_params::audio_thread`](../crates/params/src/audio_thread.rs)).
+a call to one of Hapto's locking types, a `Value` or a `Session` say, panics
+([`hapto_params::audio_thread`](../crates/params/src/audio_thread.rs)).
 
 ### Block
 
@@ -40,7 +40,7 @@ Three senses:
   count and the events in and out.
 - **The saved block**: the plugin's saved state, the JSON object a host stores
   and hands back ([`SavedState`](../crates/host/src/state.rs)). It names two
-  versions: `seamStateVersion`, of the frame Seam gives it, and
+  versions: `seamStateVersion`, of the frame Hapto gives it, and
   `pluginStateVersion`, of the plugin's own schema, which a migration raises.
 - **A reserved block**: a range of NRPN numbers the plugin's own protocol owns
   (see [reservation](#reservation)).
@@ -119,7 +119,7 @@ one step, or every step a [transaction](#transaction) recorded
 The code that turns one plugin format's calls into calls on a plugin: VST3, and
 the C interface the JUCE adapter drives; CLAP's is planned, not built. The
 exporters are thin shells over one core, the engine
-([seam-host](../crates/host/src/lib.rs)).
+([hapto-host](../crates/host/src/lib.rs)).
 
 ### Fault
 
@@ -191,8 +191,8 @@ main-thread call takes the plugin on loan for its length, on whichever thread it
 arrives. A call that meets another's loan waits up to 50 ms, and a tick skips
 ([`Engine`'s threading rule](../crates/host/src/engine/mod.rs); the state that
 is lent, and the `Patience` that sets the wait, are `MainThread` in
-[boundary.rs](../crates/host/src/boundary.rs); `SeamPlugin` in
-[seam.h](../crates/host/include/seam.h) for C users).
+[boundary.rs](../crates/host/src/boundary.rs); `HaptoPlugin` in
+[hapto.h](../crates/host/include/hapto.h) for C users).
 
 ### Main thread
 
@@ -226,7 +226,7 @@ restore applies to it on a later tick
 ### Parts
 
 One instance's parameter set, the session and the saved state over it, and
-its undo history and learn once the plugin turns them on. Seam builds them from
+its undo history and learn once the plugin turns them on. Hapto builds them from
 the plugin's declarations and hands them to `Plugin::new`, and ticks them
 through a [driver](#driver) while the plugin keeps them
 ([`Parts`](../crates/host/src/parts.rs)).
@@ -323,7 +323,7 @@ Two senses: learn's dispatch snapshot, the table of mappings the audio thread
 reads ([snapshot.rs](../crates/learn/src/snapshot.rs)), and the page protocol's
 `snapshot` message: the native side's answer to a page's `ready`, with every
 parameter's state and every [bound value](#bound-value)
-([seam-bridge](../crates/bridge/src/lib.rs)).
+([hapto-bridge](../crates/bridge/src/lib.rs)).
 
 ### Staged
 
@@ -363,7 +363,7 @@ target the plugin registers, written on the UI thread in [bursts](#burst)
 ### Tick
 
 The main thread's turn, about 60 times a second for the instance's life,
-editor open or not. "Once per UI tick" means from that turn: Seam first runs
+editor open or not. "Once per UI tick" means from that turn: Hapto first runs
 `Learn::poll`, `SessionUi::tick`, `History::tick` and the capture of the values
 `Parts::saved_value` made, through
 [`Driver::tick`](../crates/host/src/parts.rs), and then calls
