@@ -20,6 +20,43 @@ interface Values {
 }
 
 const client = createClient(webviewTransport());
+
+// A stand-in for the keyboard watcher `@hapto/page` will install, to be
+// replaced by it: after a click, a drag or a blur, in the next task, the
+// keyboard goes back to the host unless the label field has it.
+let pointerDown = false;
+let asked = false;
+const ask = () => {
+  if (asked) return;
+  asked = true;
+  setTimeout(() => {
+    asked = false;
+    const field = document.activeElement?.matches('input[type="text"]') ?? false;
+    if (document.hasFocus() && !pointerDown && !field) {
+      (window as { ipc?: { postMessage(text: string): void } }).ipc?.postMessage('{"shell":"releaseKeys"}');
+    }
+  }, 0);
+};
+window.addEventListener("pointerdown", () => (pointerDown = true), true);
+for (const type of ["pointerup", "pointercancel"]) {
+  window.addEventListener(type, () => ((pointerDown = false), ask()), true);
+}
+window.addEventListener("focusout", ask, true);
+
+/** Who has the keyboard, as `document.hasFocus()` says: part of the stand-in. */
+function KeyboardLine() {
+  const [page, setPage] = useState(document.hasFocus());
+  useEffect(() => {
+    const read = () => setTimeout(() => setPage(document.hasFocus()), 0);
+    window.addEventListener("focus", read);
+    window.addEventListener("blur", read);
+    return () => {
+      window.removeEventListener("focus", read);
+      window.removeEventListener("blur", read);
+    };
+  }, []);
+  return <p className="version">keyboard: {page ? "page" : "host"}</p>;
+}
 const { useParam, useValue, useCommand } = createHooks<Params, Record<string, never>, Commands, Values>(client);
 
 function GainSlider() {
@@ -92,6 +129,7 @@ function Gain() {
       </header>
       <GainSlider />
       <LabelField />
+      <KeyboardLine />
     </main>
   );
 }

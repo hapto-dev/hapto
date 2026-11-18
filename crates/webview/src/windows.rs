@@ -7,6 +7,13 @@
 //! page's messages arrive later, from the message loop, through the IPC
 //! handler, outside any call of the exporter's: a panic there is caught,
 //! since it would unwind into WebView2.
+//!
+//! The keyboard: the WebView takes it when the page is clicked, and the page
+//! gives it back when nothing there needs keys, with one fixed message,
+//! [`HAND_BACK`], below the protocol. The shell then focuses the host's
+//! window, so a key such as the space bar reaches the host again. A
+//! hand-back is dropped while a command runs, since a dialog's message loop
+//! may be what has the keyboard then.
 
 use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
@@ -26,6 +33,11 @@ use wry::{Rect, WebContext, WebView, WebViewBuilder, WebViewBuilderExtWindows};
 
 use crate::Page;
 use crate::assets::{SCHEME, Served, data_folder, dev_url, is_page, page_url, serve};
+
+/// The page's message that gives the keyboard back to the host: nothing in
+/// the page needs keys. It is no protocol message, which is tagged by
+/// `type`, so it never reaches the dispatcher.
+const HAND_BACK: &str = r#"{"shell":"releaseKeys"}"#;
 
 /// The page's side of the conversation: what the dispatcher posts goes to
 /// the WebView open now, in order, and nowhere while none is.
@@ -89,6 +101,12 @@ impl Native {
         if let Ok(mut dispatcher) = self.dispatcher.try_borrow_mut() {
             self.catch_up(&mut dispatcher);
         }
+    }
+
+    /// Whether the dispatcher is in a call: a command the page called is
+    /// running.
+    fn in_call(&self) -> bool {
+        self.dispatcher.try_borrow_mut().is_err()
     }
 
     /// Hands over what was held, then tells the page what the tick changed;
@@ -199,6 +217,7 @@ impl Editor for PageEditor {
         let mut context = WebContext::new(Some(self.folder.clone()));
         let (assets, name) = (self.assets, self.name);
         let native = Rc::clone(&self.native);
+        let target = Rc::clone(&self.target);
         let dev = dev_url();
         let (navigable, speaks) = (dev.clone(), dev.clone());
         let built = WebViewBuilder::new_with_web_context(&mut context)
@@ -210,7 +229,7 @@ impl Editor for PageEditor {
                 // Only the page speaks for the user: any other document's
                 // message is dropped.
                 if is_page(&request.uri().to_string(), speaks.as_deref()) {
-                    deliver(name, &native, request.into_body());
+                    from_page(name, &native, &target, request.into_body());
                 }
             })
             // The WebView shows the page and nothing else: a link or a
@@ -277,6 +296,58 @@ impl Editor for PageEditor {
     }
 }
 
+/// Takes a message the page posted: the hand-back, or one for the
+/// dispatcher.
+fn from_page(
+    name: &'static str,
+    native: &Native,
+    target: &RefCell<Weak<WebView>>,
+    message: String,
+) {
+    if message != HAND_BACK {
+        deliver(name, native, message);
+        return;
+    }
+    let handed = hand_back(native, target);
+    // Each hand-back is reported while hosts are tried; a failure is
+    // otherwise ignored, as a failed `set_bounds` is.
+    hapto_host::report_line(&format!("hapto: {name}: keyboard hand-back: {handed:?}."));
+}
+
+/// What a hand-back did.
+#[derive(Debug, PartialEq)]
+enum HandBack {
+    /// The host's window was given the keyboard.
+    Handed,
+    /// Dropped: a command is running.
+    InCall,
+    /// No WebView is open.
+    Closed,
+    /// wry could not focus the host's window, for this reason.
+    Failed(String),
+    /// It panicked, and was dropped.
+    Panicked,
+}
+
+/// Gives the keyboard to the host's window, the one the WebView was built
+/// in, unless a command is running or no WebView is open. It runs inside
+/// WebView2's callback, so a panic is caught here.
+fn hand_back(native: &Native, target: &RefCell<Weak<WebView>>) -> HandBack {
+    let handed = panic::catch_unwind(AssertUnwindSafe(|| {
+        if native.in_call() {
+            return HandBack::InCall;
+        }
+        let Some(webview) = target.borrow().upgrade() else {
+            return HandBack::Closed;
+        };
+        match webview.focus_parent() {
+            Ok(()) => HandBack::Handed,
+            Err(error) => HandBack::Failed(error.to_string()),
+        }
+    }));
+    handed.unwrap_or(HandBack::Panicked)
+}
+
 /// Hands a message the page posted to the native side. It runs inside
 /// WebView2's callback, so a panic is caught here and the message dropped.
 fn deliver(name: &'static str, native: &Native, message: String) {
@@ -328,6 +399,7 @@ mod tests {
     use std::cell::RefCell;
     use std::rc::Rc;
 
+    use hapto_bridge::Refusals;
     use hapto_host::{AuCodes, Category, Layout, PluginInfo};
     use hapto_params::{Kind, ParamDecl, ParamId, ParamSet, UiParams};
 
@@ -389,7 +461,61 @@ mod tests {
     /// Posts as the page does, through the WebView's IPC handler.
     fn poster(editor: &PageEditor) -> impl Fn(&str) + 'static {
         let native = Rc::clone(&editor.native);
-        move |message| deliver("Panel", &native, message.to_owned())
+        let target = Rc::clone(&editor.target);
+        move |message| from_page("Panel", &native, &target, message.to_owned())
+    }
+
+    #[test]
+    fn the_hand_back_is_the_fixtures_text() {
+        let fixture = include_str!("../tests/fixtures/shell.json");
+        assert_eq!(HAND_BACK, fixture.trim_end());
+    }
+
+    #[test]
+    fn the_hand_back_reaches_no_dispatcher_and_any_other_text_does() {
+        let (editor, _ui, _bypass) = editor();
+        let post = poster(&editor.borrow());
+        post(READY);
+        post(HAND_BACK);
+        let refusals = || editor.borrow().native.dispatcher.borrow().refusals();
+        assert_eq!(
+            refusals(),
+            Refusals::default(),
+            "the hand-back is not refused as malformed"
+        );
+        post(r#"{"shell":"releaseKeys","more":1}"#);
+        assert_eq!(
+            refusals().malformed,
+            1,
+            "only the exact text is the hand-back"
+        );
+    }
+
+    #[test]
+    fn a_hand_back_with_no_webview_open_does_nothing() {
+        let (editor, _ui, _bypass) = editor();
+        let editor = editor.borrow();
+        assert_eq!(hand_back(&editor.native, &editor.target), HandBack::Closed);
+    }
+
+    #[test]
+    fn a_hand_back_while_a_command_runs_is_dropped() {
+        let (editor, _ui, _bypass) = editor();
+        let post = poster(&editor.borrow());
+        let seen = Rc::new(RefCell::new(None));
+        let (native, target) = {
+            let editor = editor.borrow();
+            (Rc::clone(&editor.native), Rc::clone(&editor.target))
+        };
+        let during = Rc::clone(&seen);
+        DURING_DIALOG.with(|slot| {
+            *slot.borrow_mut() = Some(Box::new(move || {
+                *during.borrow_mut() = Some(hand_back(&native, &target));
+            }));
+        });
+        post(READY);
+        post(DIALOG);
+        assert_eq!(*seen.borrow(), Some(HandBack::InCall));
     }
 
     #[test]
