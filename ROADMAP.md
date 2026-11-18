@@ -38,6 +38,8 @@ the design of what is decided and waiting.
   everywhere else.
 - **A comparison with the editors open.** The bench run again with each
   build's UI showing, once a plugin window can show Hapto's page.
-- **The first public release.** The docs raised to reference grade.
+- **The first public release.** The docs raised to reference grade, the
+  crates published on crates.io, and the page's hooks on npm as
+  `@hapto/page`, at the crates' version number.
 
 Open: the order within Next and Later is not settled.
