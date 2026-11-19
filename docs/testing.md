@@ -95,7 +95,7 @@ real-time sanitizer, which needs Linux.
 | `page`: the gain's page | The example gain's page installs, type-checks against the package and the gain's generated parameter map, and builds the files the gain embeds, under the names it embeds them by. No lane compiles the gain with them built in. |
 | `JUCE adapter` (macOS, started by hand) | The example EQ builds through the adapter as VST3 and AU, at the JUCE commit `bench/` pins, and both the Rust library and the plugin binaries hold arm64 and x86_64. It does not load the plugin. |
 | `JUCE adapter` (Windows, started by hand) | The example EQ's VST3 build through the adapter passes the Steinberg validator, built from the VST3 SDK at the pinned commit, as the native `plugin validators (windows)` lane passes Hapto's own. |
-| Nightly: `miri` | `hapto-host`'s tests, the core crates' unit tests and some integration tests find no undefined behaviour under Stacked Borrows and Tree Borrows (see [Miri](#miri)). |
+| Nightly: `miri` | `hapto-host`'s tests, on Linux and on Windows, the core crates' unit tests and some integration tests find no undefined behaviour under Stacked Borrows and Tree Borrows (see [Miri](#miri)). |
 | Nightly: `rtsan` (Linux) | A canary that allocates inside a marked call aborts, and the allocation gates and the gate matrix pass under RealtimeSanitizer. See [Real-time sanitizer](#real-time-sanitizer). |
 | Nightly: `fuzz` | Each of four `cargo-fuzz` targets ran ten minutes with no crash, no panic and no broken fixpoint (see [Fuzzing](#fuzzing)). |
 | Nightly: `soak` (Linux, Windows) | The matrix's conditions, drawn at random for 30 minutes, with random parameter moves, produced no allocation, fault, NaN, denormal or drift from the processor driven directly. |
@@ -424,17 +424,18 @@ real timer and one reads 64 MiB of stream, too slow to interpret. The channel
 staging's model test, which tries 86,730 ways a host can hand its buffers, runs
 every 863rd of them, about a hundred, under miri.
 
-The nightly workflow runs this under both models. It also runs the core crates'
-unit tests, the UMP crate's integration tests and `hapto-learn`'s capture,
-dispatch, saved and targets tests, with `-Zmiri-disable-isolation` and four
-property cases. Learn's four take about 20 seconds under either model on
-Windows. Its ceiling test maps 4,096 sources, did not finish in 25 minutes and
-is skipped. Its allocation gate is not run (it hits the allocator fault
-described below on Windows, and Linux has not run it yet). Among the core
-crates' unit tests, the parameters' check that no two of 65,536 small groups
-share an identity is ignored under miri: it takes minutes in the interpreter.
-The other integration tests are left out: `hapto-undo`'s do not finish in an
-hour under the interpreter.
+The nightly workflow runs this under both models, on Linux and again on Windows,
+since the VST3 view's tests build on Windows alone: a view attaches to an `HWND`
+only. On Linux it also runs the core crates' unit tests, the UMP crate's
+integration tests and `hapto-learn`'s capture, dispatch, saved and targets
+tests, with `-Zmiri-disable-isolation` and four property cases. Learn's four
+take about 20 seconds under either model on Windows. Its ceiling test maps 4,096
+sources, did not finish in 25 minutes and is skipped. Its allocation gate is not
+run (it hits the allocator fault described below on Windows, and Linux has not
+run it yet). Among the core crates' unit tests, the parameters' check that no
+two of 65,536 small groups share an identity is ignored under miri: it takes
+minutes in the interpreter. The other integration tests are left out:
+`hapto-undo`'s do not finish in an hour under the interpreter.
 
 No allocation gate runs under miri, so the counting allocator itself is not
 checked for undefined behaviour. Open: whether the gates pass under miri on

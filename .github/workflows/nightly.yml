@@ -68,6 +68,31 @@ jobs:
           MIRIFLAGS: -Zmiri-ignore-leaks -Zmiri-disable-isolation ${{ matrix.flags }}
           PROPTEST_CASES: "4"
 
+  # The host crate's tests again on Windows, where the VST3 view's tests
+  # build: a view attaches to an HWND alone, so the job above never runs
+  # them. The core crates' tests are the same on both systems and stay there.
+  miri-windows:
+    name: miri windows (${{ matrix.borrows }})
+    runs-on: windows-2025
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - borrows: stacked borrows
+            flags: ""
+          - borrows: tree borrows
+            flags: -Zmiri-tree-borrows
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Toolchain
+        run: rustup toolchain install $env:NIGHTLY --profile minimal --component miri,rust-src
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: hapto-host
+        run: cargo "+$env:NIGHTLY" miri test -p hapto-host --features vst3,cabi,test-host --lib --locked
+        env:
+          MIRIFLAGS: -Zmiri-ignore-leaks ${{ matrix.flags }}
+
   fuzz:
     name: fuzz (${{ matrix.target }})
     runs-on: ubuntu-24.04

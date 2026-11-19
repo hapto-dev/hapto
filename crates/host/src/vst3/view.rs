@@ -20,6 +20,7 @@ use std::cell::{Cell, RefCell};
 use std::ffi::{CStr, c_void};
 use std::ptr::NonNull;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicPtr, Ordering};
 
 use ::vst3::Steinberg::IPlugViewContentScaleSupport_::ScaleFactor;
 use ::vst3::Steinberg::Vst::IEditController;
@@ -28,6 +29,7 @@ use ::vst3::Steinberg::{
     IPlugViewContentScaleSupportTrait, IPlugViewTrait, TBool, ViewRect, char16, int16,
     kInternalError, kInvalidArgument, kResultFalse, kResultOk, kResultTrue, tresult,
 };
+use ::vst3::com_scrape_types::Unknown;
 use ::vst3::{Class, ComPtr, ComRef, ComWrapper};
 
 use super::component::Handler;
@@ -46,7 +48,33 @@ pub(crate) struct View<P: Plugin> {
     /// The component's engine, which `component` keeps alive.
     engine: NonNull<Engine<P, Handler>>,
     /// A reference to the component, released last.
-    _component: ComPtr<IEditController>,
+    component: ComponentRef,
+}
+
+/// A view's reference to its component: released as the view drops, or at
+/// the end of a call the host released the view from inside, whichever comes
+/// first.
+struct ComponentRef(AtomicPtr<IEditController>);
+
+impl ComponentRef {
+    fn new(component: ComPtr<IEditController>) -> Self {
+        ComponentRef(AtomicPtr::new(component.into_raw()))
+    }
+
+    /// Releases the reference, once: a later call does nothing. The
+    /// component, and its engine, may go with it.
+    fn release(&self) {
+        let raw = self.0.swap(std::ptr::null_mut(), Ordering::AcqRel);
+        // SAFETY: a pointer that is not null is the reference `new` took,
+        // swapped out here once, so it is released once.
+        drop(unsafe { ComPtr::from_raw(raw) });
+    }
+}
+
+impl Drop for ComponentRef {
+    fn drop(&mut self) {
+        self.release();
+    }
 }
 
 /// What only the plugin's main thread touches.
@@ -80,7 +108,7 @@ pub(crate) fn create<P: Plugin>(
             this: Cell::new(std::ptr::null_mut()),
         }),
         engine: NonNull::from(engine),
-        _component: component,
+        component: ComponentRef::new(component),
     });
     let Some(this) = view.as_com_ref::<IPlugView>() else {
         return std::ptr::null_mut();
@@ -128,8 +156,14 @@ impl<P: Plugin> View<P> {
     /// As [`call`](Self::call), holding a reference to the view for the
     /// body's length: for a call whose body may reach the host, which may
     /// release the view from inside it. The reference goes after the guard
-    /// and the main thread's loan have ended, so a release that frees the
-    /// view there, and with it maybe the component, comes last.
+    /// and the main thread's loan have ended.
+    ///
+    /// A host that released every reference of its own meanwhile, though
+    /// COM has a caller hold what it calls across the call, leaves this one
+    /// the last. Dropping it would free the view under its own call, which
+    /// Rust's aliasing rules forbid, so the view goes as far as it can
+    /// instead: its editor, its frame and its component now, and its own
+    /// few bytes never.
     fn call_held(
         &self,
         refused: tresult,
@@ -143,9 +177,52 @@ impl<P: Plugin> View<P> {
             held = unsafe { ComRef::from_raw(state.this.get()) }.map(|view| view.to_com_ptr());
             body(state, slot)
         });
-        // Nothing touches the view after this.
-        drop(held);
+        let Some(held) = held else {
+            return answer;
+        };
+        if Self::only_holder(&held) {
+            self.retire();
+            // The component, and the engine with it, may go here: nothing
+            // touches either after.
+            self.component.release();
+            std::mem::forget(held);
+        } else {
+            drop(held);
+        }
         answer
+    }
+
+    /// Whether `held` is the only reference to the view: the host released
+    /// every one of its own. Counted by adding a reference and taking it
+    /// back, which COM answers with the count, on the main thread, where a
+    /// host holds its views.
+    fn only_holder(held: &ComPtr<IPlugView>) -> bool {
+        let this = held.as_ptr();
+        // SAFETY: `held` keeps the view alive across both calls, and the
+        // reference added is taken back at once.
+        let count = unsafe {
+            let count = IPlugView::add_ref(this);
+            IPlugView::release(this);
+            count
+        };
+        count == 2
+    }
+
+    /// Closes the editor and lets it go, with the frame, on the main thread
+    /// and inside the guard, unless a tick still holds the editor.
+    /// Elsewhere the state leaks, as bound state does, and the call is a
+    /// fault.
+    fn retire(&self) {
+        self.call(kResultOk, |state, slot| {
+            // Guarded on its own, so a panic in the editor's `close` ends
+            // here and the slot is still taken: the editor then drops as
+            // this call returns, inside its guard, and not while that panic
+            // unwinds, where a panic in its drop would abort the host.
+            self.engine().guard((), || slot.close());
+            drop(state.slot.take());
+            drop(state.frame.take());
+            kResultOk
+        });
     }
 
     /// The view's size in the screen's pixels, for `size` at `scale`.
@@ -192,18 +269,8 @@ impl<P: Plugin> View<P> {
 impl<P: Plugin> Drop for View<P> {
     fn drop(&mut self) {
         // A view the host releases without removing it closes its editor
-        // here, on the main thread, and the editor drops here too, inside
-        // the guard, unless a tick still holds it. Elsewhere the state
-        // leaks, as bound state does, and the call is a fault.
-        self.call(kResultOk, |state, slot| {
-            // Guarded on its own, so a panic in the editor's `close` ends
-            // here and the slot is still taken: the editor then drops as
-            // this call returns, inside its guard, and not while that panic
-            // unwinds, where a panic in its drop would abort the host.
-            self.engine().guard((), || slot.close());
-            drop(state.slot.take());
-            kResultOk
-        });
+        // here; the component goes last, with the field.
+        self.retire();
     }
 }
 
