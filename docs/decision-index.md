@@ -1213,20 +1213,19 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d109-the-plugin-authors-command)
 
-- `crates/cli/src/main.rs`: module, `main`, `usage_of`
-- `crates/cli/src/args.rs`: `Args::port`, `wants_help`
-- test `crates/cli/src/args/tests.rs`: `a_port_is_one_to_listen_on`, `a_request_for_help_is_seen_wherever_it_stands`
+- `crates/cli/src/main.rs`: module, `Cli`, `Command`, `command_line`, `main`, `parse_as`
+- test `crates/cli/src/tests.rs`: `the_declarations_are_sound`, `each_command_is_read_by_its_name_and_says_its_help`
 - `crates/cli/src/workspace.rs`: `Workspace::find`, `Workspace::plugin`, `Package::plugin`, `Workspace::warn_of_another_version`, `locked_version`
-- `crates/cli/src/bundle.rs`: module, `build`, `layout`, `file_name`, `arch_folder`, `windows_only`, `head`, `module_of`, `install`, `copy_error`
+- `crates/cli/src/bundle.rs`: module, `Line`, `build`, `layout`, `file_name`, `arch_folder`, `windows_only`, `head`, `module_of`, `install`, `copy_error`
 - `crates/cli/src/tool.rs`: `Artifact`, `Artifact::read`, `build`
 - `crates/cli/src/page.rs`: `build`, `install`, `packages`, `scripts`
-- `crates/cli/src/validate.rs`: module, `PLUGINVAL_ARGS`, `pluginval_command`, `run_pluginval`
+- `crates/cli/src/validate.rs`: module, `Options`, `PLUGINVAL_ARGS`, `pluginval_command`, `run_pluginval`
 - `.github/workflows/ci.yml`: `validators:`
-- `crates/cli/src/dev.rs`: module, `Options::parse`, `App::of`, `Copies`, `RELAUNCH`, `Ended`, `Ended::of`, `Seen`, `Build`, `Next`, `after_build`, `build_app`, `app_command`, `PageSource`, `page_source`, `in_app`, `Running::ended`, `Running::quit`
-- `crates/cli/src/serve.rs`: module, `Options::parse`, `run_command`
+- `crates/cli/src/dev.rs`: module, `Line`, `App::of`, `Copies`, `RELAUNCH`, `Ended`, `Ended::of`, `Seen`, `Build`, `Next`, `after_build`, `build_app`, `app_command`, `PageSource`, `page_source`, `in_app`, `Running::ended`, `Running::quit`
+- `crates/cli/src/serve.rs`: module, `Options`, `run`
 - `crates/cli/src/watch.rs`: module, `Watch::fingerprint`, `TEMPORARY`, `WORKSPACE`, `walk`
 - `crates/cli/src/page.rs`: `DevServer::start`, `DevServer::wait`, `PAGE_DEV_URL`, `prepare`, `claim`, `write_param_map`, `param_map_test`, `linked`
-- `crates/cli/src/init.rs`: module, `Options::parse`, `Identity::new`, `folder_name`, `class_id`, `subtype`, `au_code`, `render`, `write`, `checkout`, `crate_name`, `FILES`, `MADE`, `TAKEN`, `KEYWORDS`, `CRATES`
+- `crates/cli/src/init.rs`: module, `Options`, `Identity::new`, `folder_name`, `class_id`, `subtype`, `au_code`, `render`, `write`, `checkout`, `crate_name`, `FILES`, `MADE`, `TAKEN`, `KEYWORDS`, `CRATES`
 - `crates/cli/template/Cargo.toml.tmpl`: `[package.metadata.hapto]`
 - test `crates/cli/src/init/tests.rs`: `a_folders_name_gives_the_crate_its_type_and_its_names`, `names_the_template_cannot_take_are_refused`, `names_the_generated_code_could_not_compile_are_refused`, `a_folder_git_alone_holds_takes_the_new_crate`, `the_folder_s_name_is_read_from_a_dot_or_a_dot_dot_too`, `every_type_a_template_file_imports_is_taken`, `init_refuses_a_name_the_bundle_or_the_module_cannot_take`, `a_vendor_with_no_letters_cannot_make_the_default_id`, `the_au_subtype_is_drawn_at_random_and_the_manufacturer_is_the_vendor_s`, `each_init_writes_a_fresh_version_4_class_id`, `every_placeholder_of_every_file_is_filled`, `a_new_crate_is_written_only_into_a_new_or_empty_folder`, `a_new_crate_builds_and_passes_its_tests`
 - test `crates/cli/src/page/tests.rs`: `a_package_the_page_links_by_file_is_found`, `the_map_is_written_on_a_machine_and_checked_in_ci`, `a_port_something_listens_on_is_refused`, `a_held_port_is_refused_before_the_page_s_packages_are_installed`

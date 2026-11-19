@@ -14,22 +14,55 @@ use std::fs;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
-use crate::args::Args;
 use crate::page::{self, PAGE_DEV_URL};
 use crate::tool::{self, Artifact, cargo};
 use crate::workspace::{Plugin, Workspace};
 
-/// What `cargo hapto help` prints for this command.
-pub(crate) const USAGE: &str =
-    "  build [-p <crate>] [--no-page] [--debug] [--install | --install-system]
-                    check and build the crate's page, build the crate in release, lay out its
-                    VST3 bundle under target/bundle/ and print its path; --debug bundles the
-                    debug build, --install copies the bundle to the per-user VST3 folder,
-                    --install-system to the one in Program Files";
-
 /// The Windows error a copy over a file another process holds fails with:
 /// `ERROR_SHARING_VIOLATION`.
 const SHARING_VIOLATION: i32 = 32;
+
+/// What `cargo hapto build` reads from its command line.
+#[derive(Clone, Debug, PartialEq, Eq, clap::Args)]
+pub(crate) struct Line {
+    /// The plugin crate, by its package name; else the one the folder is
+    /// in, or the workspace's only one.
+    #[arg(short, long, value_name = "CRATE")]
+    package: Option<String>,
+    /// Skip the page, for a Rust-only rebuild: the bundle has the page last
+    /// built.
+    #[arg(long)]
+    no_page: bool,
+    /// Bundle the debug build, which loads its page from a dev server.
+    #[arg(long)]
+    debug: bool,
+    /// Copy the bundle to the per-user VST3 folder.
+    #[arg(long, conflicts_with = "install_system")]
+    install: bool,
+    /// Copy the bundle to the VST3 folder in Program Files, from an
+    /// administrator's shell.
+    #[arg(long)]
+    install_system: bool,
+}
+
+impl From<Line> for Options {
+    fn from(line: Line) -> Options {
+        Options {
+            package: line.package,
+            page: !line.no_page,
+            profile: if line.debug {
+                Profile::Debug
+            } else {
+                Profile::Release
+            },
+            install: match (line.install, line.install_system) {
+                (true, _) => Some(Folder::User),
+                (false, true) => Some(Folder::System),
+                (false, false) => None,
+            },
+        }
+    }
+}
 
 /// What `cargo hapto build` was asked to do.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -42,43 +75,6 @@ pub(crate) struct Options {
     pub(crate) profile: Profile,
     /// The VST3 folder to copy the bundle into, if any.
     pub(crate) install: Option<Folder>,
-}
-
-impl Options {
-    /// Reads the command's arguments, its own name excluded.
-    ///
-    /// # Errors
-    ///
-    /// Returns what is wrong with them: an unknown flag, or both install
-    /// flags.
-    pub(crate) fn parse(args: impl IntoIterator<Item = String>) -> Result<Options, String> {
-        let mut args = Args::new(args, USAGE);
-        let mut options = Options {
-            package: None,
-            page: true,
-            profile: Profile::Release,
-            install: None,
-        };
-        while let Some(arg) = args.next() {
-            match arg.as_str() {
-                "-p" | "--package" => options.package = Some(args.value(&arg)?),
-                "--no-page" => options.page = false,
-                "--debug" => options.profile = Profile::Debug,
-                "--install" | "--install-system" => {
-                    let folder = if arg == "--install" {
-                        Folder::User
-                    } else {
-                        Folder::System
-                    };
-                    if options.install.replace(folder).is_some_and(|f| f != folder) {
-                        return Err("--install and --install-system: pick one".into());
-                    }
-                }
-                _ => return Err(args.unknown(&arg)),
-            }
-        }
-        Ok(options)
-    }
 }
 
 /// The Cargo build a bundle's module comes from.
@@ -310,13 +306,12 @@ pub(crate) fn copy_error(error: &io::Error, path: &Path, folder: Folder) -> Stri
     }
 }
 
-/// Runs `cargo hapto build` with the arguments after the command's name.
+/// Runs `cargo hapto build` with `options`.
 ///
 /// # Errors
 ///
 /// Returns the step that failed and why.
-pub(crate) fn run_command(args: impl IntoIterator<Item = String>) -> Result<(), String> {
-    let options = Options::parse(args)?;
+pub(crate) fn run(options: &Options) -> Result<(), String> {
     let (workspace, plugin) = Workspace::find(options.package.as_deref())?;
     let bundle = build(&workspace, &plugin, options.page, options.profile)?;
     if let Some(folder) = options.install {

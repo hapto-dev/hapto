@@ -21,22 +21,11 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::time::{Duration, Instant};
 
-use crate::args::Args;
 use crate::bundle::Profile;
 use crate::page::{self, DEV_PORT, DevServer, PAGE_DEV_URL, write_param_map};
 use crate::tool::{self, cargo};
 use crate::watch::Watch;
 use crate::workspace::{Plugin, Workspace};
-
-/// What `cargo hapto help` prints for this command.
-pub(crate) const USAGE: &str =
-    "  dev [-p <crate>] [--host] [--signal sine|noise|silence] [--port <n>] [--no-page]
-      [--release]
-                    run the plugin standalone, rebuilding and restarting it with its saved
-                    block kept after each change to Rust, with the page from its dev server;
-                    --host runs it through the dev host, the VST3 exporter or the C interface
-                    with a settings window. --release builds the page into the app instead,
-                    since a release build reads no dev server";
 
 /// The exit code with which the app asks to be started again at once, as a
 /// switch of the dev host's format does: `hapto-standalone`'s own, which a
@@ -158,6 +147,53 @@ pub(crate) enum Mode {
     DevHost,
 }
 
+/// What `cargo hapto dev` reads from its command line.
+#[derive(Clone, Debug, PartialEq, Eq, clap::Args)]
+pub(crate) struct Line {
+    /// The plugin crate, by its package name; else the one the folder is
+    /// in, or the workspace's only one.
+    #[arg(short, long, value_name = "CRATE")]
+    package: Option<String>,
+    /// Run it through the dev host: the VST3 exporter or the C interface,
+    /// with a settings window.
+    #[arg(long)]
+    host: bool,
+    /// What plays into the plugin's inputs; silence by default.
+    #[arg(long, value_parser = ["sine", "noise", "silence"])]
+    signal: Option<String>,
+    /// The page's dev server's port, on 127.0.0.1.
+    #[arg(long, default_value_t = DEV_PORT, value_parser = clap::value_parser!(u16).range(1..))]
+    port: u16,
+    /// Run with no page.
+    #[arg(long)]
+    no_page: bool,
+    /// Build in release, the page built into the app, since a release build
+    /// reads no dev server.
+    #[arg(long)]
+    release: bool,
+}
+
+impl From<Line> for Options {
+    fn from(line: Line) -> Options {
+        Options {
+            package: line.package,
+            mode: if line.host {
+                Mode::DevHost
+            } else {
+                Mode::Standalone
+            },
+            signal: line.signal,
+            port: line.port,
+            page: !line.no_page,
+            profile: if line.release {
+                Profile::Release
+            } else {
+                Profile::Debug
+            },
+        }
+    }
+}
+
 /// What `cargo hapto dev` was asked to do.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Options {
@@ -175,45 +211,12 @@ pub(crate) struct Options {
     pub(crate) profile: Profile,
 }
 
-impl Options {
-    /// Reads the command's arguments, its own name excluded.
-    ///
-    /// # Errors
-    ///
-    /// Returns what is wrong with them.
-    pub(crate) fn parse(args: impl IntoIterator<Item = String>) -> Result<Options, String> {
-        let mut args = Args::new(args, USAGE);
-        let mut options = Options {
-            package: None,
-            mode: Mode::Standalone,
-            signal: None,
-            port: DEV_PORT,
-            page: true,
-            profile: Profile::Debug,
-        };
-        while let Some(arg) = args.next() {
-            match arg.as_str() {
-                "-p" | "--package" => options.package = Some(args.value(&arg)?),
-                "--host" => options.mode = Mode::DevHost,
-                "--signal" => options.signal = Some(args.value(&arg)?),
-                "--port" => options.port = args.port(&arg)?,
-                "--no-page" => options.page = false,
-                "--release" => options.profile = Profile::Release,
-                _ => return Err(args.unknown(&arg)),
-            }
-        }
-        Ok(options)
-    }
-}
-
-/// Runs `cargo hapto dev` with the arguments after the command's name, until
-/// the plugin's window closes.
+/// Runs `cargo hapto dev` with `options`, until the plugin's window closes.
 ///
 /// # Errors
 ///
 /// Returns the step that failed and why.
-pub(crate) fn run_command(args: impl IntoIterator<Item = String>) -> Result<(), String> {
-    let options = Options::parse(args)?;
+pub(crate) fn run(options: &Options) -> Result<(), String> {
     let (workspace, plugin) = Workspace::find(options.package.as_deref())?;
     // A crate with no standalone binary is told so before the page's
     // packages and server, which take time.
@@ -222,7 +225,7 @@ pub(crate) fn run_command(args: impl IntoIterator<Item = String>) -> Result<(), 
         .join("hapto")
         .join("dev")
         .join(&plugin.package);
-    let app = App::of(&plugin, &options, &session)?;
+    let app = App::of(&plugin, options, &session)?;
     let source = page_source(plugin.page().is_some(), options.page, options.profile);
     let server = match (source, plugin.page()) {
         (PageSource::Server, Some(page)) => Some(DevServer::start(&page, options.port)?),
@@ -240,7 +243,7 @@ pub(crate) fn run_command(args: impl IntoIterator<Item = String>) -> Result<(), 
         println!("the page is served from {}", server.url);
     }
     let url = server.as_ref().map(|s| s.url.as_str());
-    in_app(&workspace, &plugin, &options, &app, &session, url)
+    in_app(&workspace, &plugin, options, &app, &session, url)
 }
 
 /// The app's binary and how it is built and run, for a mode that runs it.

@@ -22,7 +22,7 @@ fn temp(name: &str) -> PathBuf {
 
 #[test]
 fn the_folder_and_flags_are_read() {
-    let parse = |args: &[&str]| Options::parse(args.iter().map(|a| (*a).to_owned()));
+    let parse = crate::parse_as::<Options>;
     let options =
         parse(&["my-plugin", "--name", "My Plugin", "--hapto", "../hapto"]).expect("valid");
     assert_eq!(options.folder, Path::new("my-plugin"));

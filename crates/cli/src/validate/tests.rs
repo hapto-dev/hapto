@@ -7,7 +7,7 @@ use std::path::Path;
 use super::{Options, pluginval_command, run_pluginval};
 
 fn parse(args: &[&str]) -> Result<Options, String> {
-    Options::parse(args.iter().map(|a| (*a).to_owned()))
+    crate::parse_as::<Options>(args)
 }
 
 #[test]

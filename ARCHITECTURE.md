@@ -91,8 +91,9 @@ reading how Hapto works inside, start with
   each rebuild, with the page from its dev server (`dev.rs`, `watch.rs`);
   `serve` runs that server alone, for a debug bundle in a real host
   (`serve.rs`); `build` builds a plugin crate's page and module and lays out
-  its VST3 bundle; `validate` runs pluginval on it. It links no Hapto crate: it
-  runs Cargo, npm and Node.
+  its VST3 bundle; `validate` runs pluginval on it. `main.rs` declares the
+  command line, which clap reads. It links no Hapto crate: it runs Cargo, npm
+  and Node.
 - `xtask`: `cargo xtask gen` writes every generated file; each has a drift gate.
 - `bench`: the comparison against plain JUCE.
 

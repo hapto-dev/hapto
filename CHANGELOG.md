@@ -235,10 +235,10 @@ exporter.
   its saved block kept; `--host` runs it in the dev host. `cargo hapto serve`
   runs the page's dev server alone, for the debug bundle in a real host.
   `cargo hapto build` writes a plugin crate's page map, builds its page and
-  the crate in release,
-  lays out its VST3 bundle under `target/bundle/` and installs it, per user or
-  for every user, on Windows. `cargo hapto validate` runs pluginval on that
-  bundle as CI does: CI's validator lane runs it.
+  the crate in release, lays out its VST3 bundle under `target/bundle/` and
+  installs it, per user or for every user, on Windows. `cargo hapto validate`
+  runs pluginval on that bundle as CI does: CI's validator lane runs it. Each
+  command's `--help` says its flags.
 - `hapto-host`: the standalone exporter, behind the `standalone` feature: a
   plugin driven by an app of its own with no host, through the same engine.
 - `hapto-standalone`: a plugin as an app of its own, on Windows, which a plugin

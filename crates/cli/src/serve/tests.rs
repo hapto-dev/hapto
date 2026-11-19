@@ -5,7 +5,7 @@ use super::Options;
 use crate::page::DEV_PORT;
 
 fn parse(args: &[&str]) -> Result<Options, String> {
-    Options::parse(args.iter().map(|a| (*a).to_owned()))
+    crate::parse_as::<Options>(args)
 }
 
 #[test]

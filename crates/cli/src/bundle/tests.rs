@@ -11,7 +11,7 @@ use crate::tool::Artifact;
 use crate::workspace::Plugin;
 
 fn parse(args: &[&str]) -> Result<Options, String> {
-    Options::parse(args.iter().map(|a| (*a).to_owned()))
+    crate::parse_as::<super::Line>(args).map(Options::from)
 }
 
 #[test]
@@ -45,7 +45,8 @@ fn bad_arguments_are_refused() {
     assert!(parse(&["-p", "gain", "--release"]).is_err(), "unknown flag");
     let both = parse(&["-p", "gain", "--install", "--install-system"]);
     assert!(both.is_err(), "both install folders");
-    assert!(parse(&["-p", "gain", "--install", "--install"]).is_ok());
+    let twice = parse(&["-p", "gain", "--install", "--install"]);
+    assert!(twice.is_err(), "a flag given twice");
 }
 
 #[test]

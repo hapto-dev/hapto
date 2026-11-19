@@ -9,18 +9,10 @@ use std::io;
 use std::path::Path;
 use std::process::Command;
 
-use crate::args::Args;
+use clap::ArgAction;
+
 use crate::bundle::{self, Profile};
-
 use crate::workspace::Workspace;
-
-/// What `cargo hapto help` prints for this command.
-pub(crate) const USAGE: &str =
-    "  validate [-p <crate>] [--no-page] [--pluginval <path>] [--logs <folder>]
-                    build the crate's release bundle and run pluginval on it as CI does: at
-                    strictness level 5, in pluginval's own process, without its GUI tests;
-                    pluginval is --pluginval, else PLUGINVAL, else the one on the PATH, and
-                    --logs keeps its logs in a folder";
 
 /// The options pluginval runs with, here and in CI, which runs this command:
 /// the highest strictness the example EQ passes today, in pluginval's own
@@ -33,53 +25,31 @@ pub(crate) const PLUGINVAL_ARGS: [&str; 4] = [
 ];
 
 /// What `cargo hapto validate` was asked to do.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, clap::Args)]
 pub(crate) struct Options {
-    /// The plugin crate, by its package name; `None` finds it.
+    /// The plugin crate, by its package name; else the one the folder is
+    /// in, or the workspace's only one.
+    #[arg(short, long, value_name = "CRATE")]
     pub(crate) package: Option<String>,
-    /// Whether to build the crate's page first.
+    /// Skip the page, for a Rust-only rebuild: the bundle has the page last
+    /// built.
+    #[arg(long = "no-page", action = ArgAction::SetFalse)]
     pub(crate) page: bool,
-    /// The pluginval to run, when given.
+    /// The pluginval to run.
+    #[arg(long, value_name = "PATH")]
     pub(crate) pluginval: Option<OsString>,
-    /// The folder pluginval keeps its logs in, when given.
+    /// A folder to keep pluginval's logs in.
+    #[arg(long, value_name = "FOLDER")]
     pub(crate) logs: Option<OsString>,
 }
 
-impl Options {
-    /// Reads the command's arguments, its own name excluded.
-    ///
-    /// # Errors
-    ///
-    /// Returns the argument it does not take.
-    pub(crate) fn parse(args: impl IntoIterator<Item = String>) -> Result<Options, String> {
-        let mut args = Args::new(args, USAGE);
-        let mut options = Options {
-            package: None,
-            page: true,
-            pluginval: None,
-            logs: None,
-        };
-        while let Some(arg) = args.next() {
-            match arg.as_str() {
-                "-p" | "--package" => options.package = Some(args.value(&arg)?),
-                "--no-page" => options.page = false,
-                "--pluginval" => options.pluginval = Some(args.value(&arg)?.into()),
-                "--logs" => options.logs = Some(args.value(&arg)?.into()),
-                _ => return Err(args.unknown(&arg)),
-            }
-        }
-        Ok(options)
-    }
-}
-
-/// Runs `cargo hapto validate` with the arguments after the command's name.
+/// Runs `cargo hapto validate` with `options`.
 ///
 /// # Errors
 ///
 /// Returns the step that failed: the build, or pluginval, which fails when
 /// the bundle does not pass.
-pub(crate) fn run_command(args: impl IntoIterator<Item = String>) -> Result<(), String> {
-    let options = Options::parse(args)?;
+pub(crate) fn run(options: Options) -> Result<(), String> {
     let (workspace, plugin) = Workspace::find(options.package.as_deref())?;
     let bundle = bundle::build(&workspace, &plugin, options.page, Profile::Release)?;
     let pluginval = options

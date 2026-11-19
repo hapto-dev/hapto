@@ -12,7 +12,7 @@ use crate::page::{DEV_PORT, PAGE_DEV_URL};
 use crate::workspace::Plugin;
 
 fn parse(args: &[&str]) -> Result<Options, String> {
-    Options::parse(args.iter().map(|a| (*a).to_owned()))
+    crate::parse_as::<super::Line>(args).map(Options::from)
 }
 
 fn gain(standalone: Option<&str>) -> Plugin {

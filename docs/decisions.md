@@ -3079,6 +3079,10 @@ lockfile pins the crates it builds.
   starts inside, else the workspace's only one. A plugin crate is a member
   that builds a `cdylib` and names the plugin in `[package.metadata.hapto]`;
   any other `-p` is refused with what it lacks.
+- **The command line** is clap's, from one declaration per command, so each
+  command's flags, its `--help` and its errors come from one place. A flag it
+  does not know, one given twice or a value out of range is refused with the
+  command's usage and exit code 2, as Cargo refuses its own.
 - **`init`** writes a new plugin crate from a template in `crates/cli/template`,
   into a new or empty folder, one holding only `.git` among them: a gain and a
   bypass, its page, a standalone binary, the page's parameter map and its test,
@@ -3155,7 +3159,8 @@ which its lockfile would pin with the crates; xtask's `bundle`, as it was,
 which served this repository's crates only; and copying the example gain,
 which carries its ids into every copy. A binary that links no Hapto
 crate needs no xtask in the plugin's workspace, and the version warning covers
-what pinning would.
+what pinning would. A parser of the command's own, as it first had, kept each
+command's help apart from its flags, written by hand.
 
 [History](decision-history.md#d109-the-plugin-authors-command)
 

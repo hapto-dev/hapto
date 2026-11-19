@@ -15,6 +15,9 @@ publish.workspace = true
 # A binary only: it drives Cargo and npm as processes and links no Hapto
 # crate, so a plugin's workspace pins the crates and this tool reads which.
 [dependencies]
+# The command line: each command's flags, help and errors, from one
+# declaration per command.
+clap = { version = "4.6.7", features = ["derive"] }
 # `cargo metadata` and a page's `package.json`.
 serde_json.workspace = true
 # The random half of the VST3 class id `init` writes. The version the

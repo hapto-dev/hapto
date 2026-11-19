@@ -1100,6 +1100,11 @@ and `serve` runs the dev server alone until Ctrl+C; the debug bundle comes
 from `build --debug --install`, and the author starts the host. `--host` now
 means the dev host alone.
 
+On 2026-11-19, at the owner's call: the command line is clap's in place of a
+parser of the command's own, whose help was written by hand beside each
+command's flags. A flag given twice, which that parser took, is refused, as
+Cargo refuses its own.
+
 ### D110. The standalone exporter and app
 
 [The decision](decisions.md#d110-the-standalone-exporter-and-app)

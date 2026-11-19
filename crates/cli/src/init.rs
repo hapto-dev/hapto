@@ -18,15 +18,7 @@ mod tests;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
-use crate::args::Args;
 use crate::bundle;
-
-/// What `cargo hapto help` prints for this command.
-pub(crate) const USAGE: &str =
-    "  init <folder> [--name <name>] [--vendor <vendor>] [--id <id>] [--hapto <checkout>]
-                    write a new plugin crate in <folder>: a gain with a bypass, its page, a
-                    standalone binary and tests, with fresh ids; its Hapto crates come from
-                    the checkout --hapto names, by default the one this command was built from";
 
 /// Each file the template writes: where it goes in the new crate, and its
 /// text.
@@ -148,49 +140,22 @@ const CRATES: &[&str] = &[
 ];
 
 /// What `cargo hapto init` was asked to do.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, clap::Args)]
 pub(crate) struct Options {
     /// The new crate's folder.
     pub(crate) folder: PathBuf,
     /// The name hosts show; from the folder's name by default.
+    #[arg(long)]
     pub(crate) name: Option<String>,
-    /// The vendor hosts show.
+    /// The vendor hosts show; "My Company" by default.
+    #[arg(long)]
     pub(crate) vendor: Option<String>,
     /// The reverse-DNS id; from the vendor and the crate by default.
+    #[arg(long)]
     pub(crate) id: Option<String>,
     /// The Hapto checkout to take the crates from.
+    #[arg(long, value_name = "CHECKOUT")]
     pub(crate) hapto: Option<PathBuf>,
-}
-
-impl Options {
-    /// Reads the command's arguments, its own name excluded.
-    ///
-    /// # Errors
-    ///
-    /// Returns what is wrong with them: no folder, or a flag it does not
-    /// take.
-    pub(crate) fn parse(args: impl IntoIterator<Item = String>) -> Result<Options, String> {
-        let mut args = Args::new(args, USAGE);
-        let (mut folder, mut name, mut vendor, mut id, mut hapto) = (None, None, None, None, None);
-        while let Some(arg) = args.next() {
-            match arg.as_str() {
-                "--name" => name = Some(args.value(&arg)?),
-                "--vendor" => vendor = Some(args.value(&arg)?),
-                "--id" => id = Some(args.value(&arg)?),
-                "--hapto" => hapto = Some(args.value(&arg)?.into()),
-                _ if !arg.starts_with('-') && folder.is_none() => folder = Some(arg.into()),
-                _ => return Err(args.unknown(&arg)),
-            }
-        }
-        let folder = folder.ok_or_else(|| format!("init wants a folder\n\n{USAGE}"))?;
-        Ok(Options {
-            folder,
-            name,
-            vendor,
-            id,
-            hapto,
-        })
-    }
 }
 
 /// Who the new plugin is, and the names its code uses.
@@ -418,14 +383,13 @@ pub(crate) fn render(text: &str, identity: &Identity, hapto: &str) -> String {
     })
 }
 
-/// Runs `cargo hapto init` with the arguments after the command's name.
+/// Runs `cargo hapto init` with `options`.
 ///
 /// # Errors
 ///
 /// Returns why it wrote nothing: a folder that is not empty, a name it
 /// cannot use, no checkout.
-pub(crate) fn run_command(args: impl IntoIterator<Item = String>) -> Result<(), String> {
-    let options = Options::parse(args)?;
+pub(crate) fn run(options: &Options) -> Result<(), String> {
     let folder_name = folder_name(&options.folder)?;
     let mut random = [0_u8; 16];
     getrandom::fill(&mut random).map_err(|e| format!("random bytes for the class id: {e}"))?;
