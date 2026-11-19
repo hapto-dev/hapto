@@ -73,6 +73,7 @@ extern "C" {
 // State that `save` writes changed and no edit was told for it: a
 // value that is no parameter, or a parameter the plugin does not list.
 // Count the project as changed. `save` already writes the new state.
+// It always comes alone, in a call of its own.
 #define HAPTO_RESTART_STATE 4u
 
 // Keep processing, whatever the input.
@@ -172,9 +173,9 @@ typedef struct HaptoHost {
     void (*perform_edit)(void* context, uint32_t index, double normalized);
     // The user finished changing the parameter at `index`.
     void (*end_edit)(void* context, uint32_t index);
-    // `flags` holds `HAPTO_RESTART_VALUES`, `HAPTO_RESTART_LATENCY` and
-    // `HAPTO_RESTART_STATE`, or'd together. One `idle` may call it more
-    // than once.
+    // `flags` holds `HAPTO_RESTART_VALUES` and `HAPTO_RESTART_LATENCY`,
+    // or'd together, or `HAPTO_RESTART_STATE` alone. One `idle` calls it
+    // at most twice: with the first two, then with the third.
     void (*restart)(void* context, uint32_t flags);
 } HaptoHost;
 

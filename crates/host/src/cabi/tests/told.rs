@@ -1,6 +1,7 @@
 //! State the host does not list, told through the restart callback: with
-//! its own flag, in a call after the other flags', and with the new state
-//! already in a save made from inside the call.
+//! its own flag, in a call after the other flags', with the new state
+//! already in a save made from inside the call, and never for a load the
+//! host makes from inside the call before it.
 
 use std::cell::{Cell, RefCell};
 use std::ffi::c_void;
@@ -52,44 +53,99 @@ impl Plugin for Noted {
     }
 }
 
+/// What [`Saving`] does from inside its first restart call.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Inside {
+    Nothing,
+    /// Destroys the instance.
+    Destroy,
+    /// Loads the block the instance saved as it was made.
+    Load,
+}
+
 /// A host whose restart callback records its flags, saves the instance's
-/// state when they say it changed, and can destroy the instance from inside
-/// its first call.
+/// state when they say it changed, and acts as [`Inside`] says from inside
+/// its first call. It asserts nothing there: a panic in an `extern "C"`
+/// callback aborts the test binary with no failure named, so the test's
+/// body checks what it recorded.
 struct Saving {
     instance: Cell<*mut HaptoInstance>,
-    destroy_in_first: bool,
+    inside: Inside,
+    /// What the instance saved as it was made.
+    made: RefCell<Vec<u8>>,
     restarts: RefCell<Vec<u32>>,
-    /// The block each call with the state flag saved.
-    saved: RefCell<Vec<Vec<u8>>>,
+    /// The block each call with the state flag saved, or `None` where the
+    /// save was refused.
+    saved: RefCell<Vec<Option<Vec<u8>>>>,
+    /// Whether the load from inside the first call took.
+    loaded: Cell<Option<bool>>,
+}
+
+impl Saving {
+    fn new(inside: Inside) -> Box<Saving> {
+        Box::new(Saving {
+            instance: Cell::new(std::ptr::null_mut()),
+            inside,
+            made: RefCell::new(Vec::new()),
+            restarts: RefCell::new(Vec::new()),
+            saved: RefCell::new(Vec::new()),
+            loaded: Cell::new(None),
+        })
+    }
+
+    /// The instance's saved block, or `None` when the save was refused.
+    ///
+    /// # Safety
+    ///
+    /// The instance is live, and this runs on its main thread.
+    unsafe fn save(&self) -> Option<Vec<u8>> {
+        let mut block: Vec<u8> = Vec::new();
+        // SAFETY: the caller's contract. `collect` reads its context as the
+        // `Vec<u8>` it is, which outlives the call, and never unwinds.
+        let saved = unsafe {
+            (plugin::<Noted>().save)(
+                self.instance.get(),
+                (&raw mut block).cast::<c_void>(),
+                Some(collect),
+            )
+        };
+        saved.then_some(block)
+    }
 }
 
 unsafe extern "C" fn saving_restart(context: *mut c_void, flags: u32) {
     // SAFETY: the context is the test's `Saving`, which outlives the
     // instance and is shared only through `&` references.
     let host = unsafe { &*context.cast::<Saving>() };
+    let first = host.restarts.borrow().is_empty();
     host.restarts.borrow_mut().push(flags);
-    let table = plugin::<Noted>();
     if flags & RESTART_STATE != 0 {
-        let mut block: Vec<u8> = Vec::new();
         // SAFETY: the live instance, on its main thread, from inside its own
-        // tick. `collect` reads its context as the `Vec<u8>` it is, which
-        // outlives the call, and never unwinds.
-        let saved = unsafe {
-            (table.save)(
-                host.instance.get(),
-                (&raw mut block).cast::<c_void>(),
-                Some(collect),
-            )
-        };
-        assert!(saved, "a save from inside the call");
-        host.saved.borrow_mut().push(block);
+        // tick.
+        let saved = unsafe { host.save() };
+        host.saved.borrow_mut().push(saved);
     }
-    if host.destroy_in_first {
-        let instance = host.instance.replace(std::ptr::null_mut());
-        if !instance.is_null() {
-            // SAFETY: the instance this test made, destroyed on its main
-            // thread from inside its own tick.
-            unsafe { (table.destroy)(instance) };
+    if !first {
+        return;
+    }
+    let table = plugin::<Noted>();
+    match host.inside {
+        Inside::Nothing => {}
+        Inside::Destroy => {
+            let instance = host.instance.replace(std::ptr::null_mut());
+            if !instance.is_null() {
+                // SAFETY: the instance this test made, destroyed on its main
+                // thread from inside its own tick.
+                unsafe { (table.destroy)(instance) };
+            }
+        }
+        Inside::Load => {
+            let made = host.made.borrow();
+            // SAFETY: the live instance, on its main thread, from inside its
+            // own tick; `made` is valid for reading its length during the
+            // call.
+            let loaded = unsafe { (table.load)(host.instance.get(), made.as_ptr(), made.len()) };
+            host.loaded.set(Some(loaded));
         }
     }
 }
@@ -107,8 +163,9 @@ unsafe extern "C" fn collect(context: *mut c_void, data: *const u8, length: usiz
     }
 }
 
-/// Creates the plugin with `host`'s callback, renames its label and syncs a
-/// listed parameter, and ticks it twice.
+/// Creates the plugin with `host`'s callback and keeps what it saves as it
+/// is made, renames its label and syncs a listed parameter, and ticks it
+/// twice.
 fn tick_twice_with(host: &Saving) {
     let table = plugin::<Noted>();
     let callbacks = HaptoHost {
@@ -124,6 +181,7 @@ fn tick_twice_with(host: &Saving) {
     // thread, unless the callback destroyed it and left a null.
     unsafe {
         host.instance.set((table.create)(&callbacks));
+        *host.made.borrow_mut() = host.save().expect("saved as it was made");
         HANDED.with(|handed| {
             let handed = handed.borrow();
             let handed = handed.as_ref().expect("a plugin was made");
@@ -139,15 +197,19 @@ fn tick_twice_with(host: &Saving) {
     }
 }
 
+/// Destroys `host`'s instance, if it is still live.
+fn destroy(host: &Saving) {
+    let instance = host.instance.replace(std::ptr::null_mut());
+    if !instance.is_null() {
+        // SAFETY: the live instance this test made, on its main thread.
+        unsafe { (plugin::<Noted>().destroy)(instance) };
+    }
+}
+
 #[test]
 fn the_state_flag_comes_alone_after_the_others_and_a_save_inside_holds_the_new_state() {
     let faults = thread_faults();
-    let host = Box::new(Saving {
-        instance: Cell::new(std::ptr::null_mut()),
-        destroy_in_first: false,
-        restarts: RefCell::new(Vec::new()),
-        saved: RefCell::new(Vec::new()),
-    });
+    let host = Saving::new(Inside::Nothing);
     tick_twice_with(&host);
     assert_eq!(
         *host.restarts.borrow(),
@@ -155,22 +217,17 @@ fn the_state_flag_comes_alone_after_the_others_and_a_save_inside_holds_the_new_s
         "each told once, in two calls"
     );
     let saved = host.saved.borrow();
-    let block: Json = serde_json::from_slice(&saved[0]).expect("JSON");
+    let block = saved[0].as_ref().expect("a save from inside the call");
+    let block: Json = serde_json::from_slice(block).expect("JSON");
     assert_eq!(block["extra"]["label"], "Drums");
-    // SAFETY: the live instance this test made, on its main thread.
-    unsafe { (plugin::<Noted>().destroy)(host.instance.get()) };
+    destroy(&host);
     assert_eq!(thread_faults(), faults);
 }
 
 #[test]
 fn a_destroy_inside_the_restart_ends_the_ticks_calls_to_the_host() {
     let faults = thread_faults();
-    let host = Box::new(Saving {
-        instance: Cell::new(std::ptr::null_mut()),
-        destroy_in_first: true,
-        restarts: RefCell::new(Vec::new()),
-        saved: RefCell::new(Vec::new()),
-    });
+    let host = Saving::new(Inside::Destroy);
     tick_twice_with(&host);
     assert!(host.instance.get().is_null(), "destroyed in the tick");
     assert_eq!(
@@ -178,6 +235,24 @@ fn a_destroy_inside_the_restart_ends_the_ticks_calls_to_the_host() {
         [RESTART_VALUES],
         "the state is not told to a host that may be gone"
     );
+    assert_eq!(thread_faults(), faults);
+}
+
+#[test]
+fn a_load_inside_the_restart_is_not_told_as_a_change() {
+    let faults = thread_faults();
+    let host = Saving::new(Inside::Load);
+    tick_twice_with(&host);
+    assert_eq!(host.loaded.get(), Some(true), "the load took");
+    assert_eq!(
+        *host.restarts.borrow(),
+        [RESTART_VALUES],
+        "the rename the load replaced is not told"
+    );
+    // SAFETY: the live instance this test made, on its main thread.
+    let saved = unsafe { host.save() }.expect("saved");
+    assert_eq!(saved, *host.made.borrow(), "and it holds what it loaded");
+    destroy(&host);
     assert_eq!(thread_faults(), faults);
 }
 

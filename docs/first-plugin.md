@@ -308,8 +308,8 @@ at the next tick; that method says why and what it costs. A load writes the
 parameters at once, before it returns, but the label at the next tick.
 
 The host lists no label, so no edit tells it of a rename. Hapto tells it at
-that tick that the project changed, so it asks to save one where only the
-label moved. A load is not such a change.
+that tick that the project changed, so the host asks to save a project in
+which only the label moved. A load is not such a change.
 
 ## 6. MIDI learn
 

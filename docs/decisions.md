@@ -1433,7 +1433,9 @@ which stores what the store already holds unless a host write landed since. JUCE
 has no "re-read every value" for a plugin with one program, so a sync (D1)
 reaches the host as a value notification for each parameter that moved, which
 JUCE sends on as an edit outside any gesture; a host in latch mode may record
-those, to check with AU in Logic and Pro Tools (C4).
+those, to check with AU in Logic and Pro Tools (C4). A change to state no
+parameter holds (D108) reaches JUCE's VST3 wrapper, which tells the host; its
+AU wrapper tells an AU host nothing.
 
 The host's state is Hapto's block followed by JUCE's own trailer, so a state
 saved through JUCE does not load into Hapto's native build (H2). A text that
@@ -3014,17 +3016,37 @@ changed and however often since the last tick.
 - **How.** VST3 asks the host's handler for `IComponentHandler2` and calls
   `setDirty(true)`; a host whose handler lacks it is told nothing, and that
   is no fault. The C interface calls the restart callback with
-  `HAPTO_RESTART_STATE`, in a call of its own, after the call that carries
-  the other flags. The JUCE adapter passes it on as `updateHostDisplay` with
-  `withNonParameterStateChanged`. Each call to the host reads the link again,
-  so a host that released the instance inside the restart is not told.
+  `HAPTO_RESTART_STATE` alone, in a call of its own, after the call that
+  carries the other flags, and the header promises so. The JUCE adapter
+  passes it on as `updateHostDisplay` with `withNonParameterStateChanged`.
+  The mark is taken as it is told, after the restart call, and each call to
+  the host reads the link again: a host that released the instance inside
+  the restart is not told, a load it made there drops the mark, and a
+  handler it unlinked there leaves the change for the next one.
+- **Not told either**, since none is a change the plugin reported: a
+  parameter made at run time being declared, a registration's first
+  capture, and a section a lowered budget drops. A tree of parameters made
+  at run time reports a change to its structure through its own
+  participant's `changed()`.
 
 `HAPTO_ABI_VERSION` moved to 2 with the flag: the header gave an adapter no
-rule for a flag it does not know. Open: no host has been seen to act on it;
-the run in Cubase renames the gain's label and closes the project. Open: a
-participant's apply that writes another participant's saved value leaves that
-value differing from the loaded block, and it is told as a change. Open: the
-JUCE adapter's line is checked against JUCE's source, not in a host.
+rule for a flag it does not know, so an adapter built before it refuses a
+plugin built after.
+
+Through the JUCE adapter, JUCE 9's VST3 wrapper passes the change on as
+`setDirty`, then a restart with no flags. Its AU wrapper does nothing with
+it, so an AU host is told nothing through the adapter.
+
+Open: no host has been seen to act on it; the run in Cubase renames the
+gain's label and closes the project. Open: a plugin that writes unlisted
+state as it is made tells a new instance changed once, before the project's
+load in VST3, whose timer ticks from `initialize`; the gain writes nothing
+then. Open: an edit to a parameter made at run time between a load and the
+tick that assigns the load is told, though the load's value replaces it; a
+saved value in that place is not. Open: a participant's apply that writes
+another participant's saved value leaves that value differing from the
+loaded block, and it is told as a change. Open: the JUCE adapter's line is
+checked against JUCE's source, not in a host.
 
 **Alternatives.** The alternatives were telling the host as each change is
 made, before the tick captures it, where a host that saves at once saves the

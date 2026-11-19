@@ -75,7 +75,10 @@ impl HostLink for Callbacks {
     /// The restart callback again, with `HAPTO_RESTART_STATE` alone.
     fn state_changed(&self) {
         if let Some(callback) = self.0.restart {
-            // SAFETY: as in `restart`.
+            // SAFETY: as in `restart`. A host may `destroy` the instance
+            // inside the first call; the engine reads its link to the host
+            // again before this one, and a destroy inside a tick clears it,
+            // so this runs only while the callbacks are still valid.
             unsafe { callback(self.0.context, RESTART_STATE) };
         }
     }

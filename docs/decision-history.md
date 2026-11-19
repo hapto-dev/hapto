@@ -1074,6 +1074,14 @@ wait for the owner: the comparison, the load dropping what was not told,
 `HAPTO_ABI_VERSION` at 2, and the state flag in a restart call of its own.
 To confirm.
 
+A review the same day found the mark taken before the restart call and told
+after it, so a load the host made inside that call was told as an edit, and
+a handler unlinked there lost the change. The mark is now taken as it is
+told. The owner took the review's recommendations: the version at 2, the
+state flag alone in a call of its own with the header promising it, and an
+edit between a load and its assignment left as an open line rather than
+code, since the fix offered would lose a real edit in the same place.
+
 ## Rules
 
 ### P7. The host write: sanitise, clamp, convert, snap, store, publish

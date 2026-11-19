@@ -7,6 +7,7 @@ use std::rc::Rc;
 
 use hapto_learn::{Config, Control, LearnAudio, Mapping, Source};
 use hapto_params::{Float, FloatDecl, Value};
+use hapto_session::{ApplyError, Participant, Registration, Section};
 use hapto_ump::{ChannelVoice, EventList, Voice};
 use hapto_undo::{Bound, History};
 use serde_json::Value as Json;
@@ -32,6 +33,37 @@ struct Kit {
     history: History,
     /// Learn's audio side, which a block would feed.
     learn: LearnAudio,
+    /// A participant of the plugin's own, saved under `tab`.
+    tab: Rc<RefCell<Tab>>,
+}
+
+/// A participant a plugin registers itself: the tab a view shows, which
+/// reports its own change from inside its setter.
+struct Tab {
+    index: u64,
+    registration: Option<Registration>,
+}
+
+impl Tab {
+    /// Sets the tab and reports it, under its owner's borrow, so the session
+    /// captures it at the next tick.
+    fn set(&mut self, index: u64) {
+        self.index = index;
+        if let Some(registration) = &self.registration {
+            registration.changed();
+        }
+    }
+}
+
+impl Participant for Tab {
+    fn capture(&self) -> Section {
+        Section::from(self.index)
+    }
+
+    fn apply(&mut self, section: Option<&Section>) -> Result<(), ApplyError> {
+        self.index = section.and_then(Section::as_u64).unwrap_or(0);
+        Ok(())
+    }
 }
 
 thread_local! {
@@ -67,6 +99,12 @@ impl Plugin for Unlisted {
         let drive = parts.add("", FloatDecl::new("drive", "Drive", 0.0..=1.0, 0.0));
         // As an activation would take it; this plugin is never activated.
         let learn = Driver::of(&parts).learn_audio().expect("learn is on");
+        let tab = Rc::new(RefCell::new(Tab {
+            index: 0,
+            registration: None,
+        }));
+        let registration = parts.session().register("tab", &tab).expect("a free key");
+        tab.borrow_mut().registration = Some(registration);
         let parts = Rc::new(RefCell::new(parts));
         KIT.set(Some(Kit {
             parts: Rc::clone(&parts),
@@ -75,6 +113,7 @@ impl Plugin for Unlisted {
             label,
             history,
             learn,
+            tab,
         }));
         Unlisted { _parts: parts }
     }
@@ -121,8 +160,44 @@ through_every_shell!(
     a_saved_value_that_changed_is_told_once_at_the_tick_that_captures_it,
     an_edit_to_a_parameter_made_at_run_time_is_told_and_one_to_a_listed_parameter_is_not,
     a_learned_mapping_is_told_and_what_its_controller_writes_is_not,
+    changes_to_the_session_and_to_learned_mappings_in_one_tick_are_told_once,
+    a_participant_of_the_plugin_s_own_is_told_at_the_tick_that_captures_it,
     a_load_is_never_told_and_drops_what_was_not_told_before_it,
 );
+
+fn changes_to_the_session_and_to_learned_mappings_in_one_tick_are_told_once<S: Shell>() {
+    let mut host = settled::<S>();
+    // A listed parameter's mapping is in the session's section, one made at
+    // run time is saved outside it: both marks are set in one tick.
+    kit(|kit| {
+        let parts = kit.parts.borrow();
+        let mut learn = parts.learn();
+        learn.map(&kit.gain, cc(11)).expect("mapped");
+        learn.map(&kit.drive, cc(7)).expect("mapped");
+    });
+    host.tick();
+    assert_eq!(host.heard(), ONCE);
+    host.tick();
+    assert_eq!(host.heard(), NOTHING, "both marks were taken at the first");
+    host.expect_faults(0);
+}
+
+fn a_participant_of_the_plugin_s_own_is_told_at_the_tick_that_captures_it<S: Shell>() {
+    let mut host = settled::<S>();
+    kit(|kit| kit.tab.borrow_mut().set(2));
+    host.tick();
+    assert_eq!(host.heard(), ONCE);
+    let block: Json = serde_json::from_slice(&host.save()).expect("JSON");
+    assert_eq!(block["extra"]["tab"], 2);
+    host.tick();
+    assert_eq!(host.heard(), NOTHING, "told once");
+
+    // Reported again with the tab it holds: captured, and no change.
+    kit(|kit| kit.tab.borrow_mut().set(2));
+    host.tick();
+    assert_eq!(host.heard(), NOTHING);
+    host.expect_faults(0);
+}
 
 fn a_saved_value_that_changed_is_told_once_at_the_tick_that_captures_it<S: Shell>() {
     let mut host = settled::<S>();

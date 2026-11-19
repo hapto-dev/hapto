@@ -155,21 +155,51 @@ fn a_handler_without_the_second_interface_is_told_nothing_and_that_is_no_fault()
 
 /// A host's handler that saves the instance's state from inside the call
 /// that tells it the state changed, and can drop the instance's last
-/// reference from inside a call, as the tick that makes it goes on.
+/// reference, or unlink itself, from inside a call, as the tick that makes
+/// it goes on.
+///
+/// It asserts nothing inside a call: a panic in a COM callback aborts the
+/// test binary with no failure named, so the test's body checks what it
+/// recorded.
 #[derive(Default)]
 struct Saver {
     instance: RefCell<Option<ComPtr<IComponent>>>,
     /// The call it drops the instance in: `"restart"` or `"dirty"`.
     release_in: Cell<&'static str>,
+    /// Whether `restartComponent` unlinks this handler, as a host that
+    /// swaps its handler there would.
+    unlink_in_restart: Cell<bool>,
+    /// What each unlink answered.
+    unlinked: RefCell<Vec<tresult>>,
     calls: RefCell<Vec<HostCall>>,
-    /// The block each `setDirty` saved.
-    saved: RefCell<Vec<Vec<u8>>>,
+    /// The block each `setDirty` saved, or `None` where the save was
+    /// refused.
+    saved: RefCell<Vec<Option<Vec<u8>>>>,
 }
 
 impl Saver {
     fn release_in(&self, call: &str) {
         if self.release_in.get() == call {
             drop(self.instance.borrow_mut().take());
+        }
+    }
+
+    /// Unlinks this handler, when `restartComponent` is to.
+    fn unlink(&self) {
+        if !self.unlink_in_restart.get() {
+            return;
+        }
+        let controller = self
+            .instance
+            .borrow()
+            .as_ref()
+            .and_then(ComPtr::cast::<IEditController>);
+        if let Some(controller) = controller {
+            // SAFETY: the instance is alive while `controller` holds its
+            // reference, a null handler unlinks the host's, and this is the
+            // instance's main thread, inside its own tick.
+            let answer = unsafe { controller.setComponentHandler(std::ptr::null_mut()) };
+            self.unlinked.borrow_mut().push(answer);
         }
     }
 }
@@ -198,6 +228,7 @@ impl IComponentHandlerTrait for Saver {
 
     unsafe fn restartComponent(&self, flags: int32) -> tresult {
         self.calls.borrow_mut().push(HostCall::Restart(flags));
+        self.unlink();
         self.release_in("restart");
         kResultOk
     }
@@ -214,8 +245,8 @@ impl IComponentHandler2Trait for Saver {
             // after the call, and this is the instance's main thread, inside
             // the tick that tells the host.
             let saved = unsafe { instance.getState(pointer) };
-            assert_eq!(saved, kResultOk, "a save from inside the call");
-            self.saved.borrow_mut().push(stream.bytes.borrow().clone());
+            let block = (saved == kResultOk).then(|| stream.bytes.borrow().clone());
+            self.saved.borrow_mut().push(block);
         }
         self.release_in("dirty");
         kResultOk
@@ -241,10 +272,38 @@ fn saved_labels(saver: &Saver) -> Vec<Json> {
         .borrow()
         .iter()
         .map(|block| {
+            let block = block.as_ref().expect("a save from inside the call");
             let block: Json = serde_json::from_slice(block).expect("JSON");
             block["extra"]["label"].clone()
         })
         .collect()
+}
+
+#[test]
+fn a_handler_unlinked_inside_the_restart_leaves_the_change_for_the_next_one() {
+    let host = TestHost::<Noted>::new();
+    let saver = ComWrapper::new(Saver::default());
+    saver.unlink_in_restart.set(true);
+    let handler = saver.to_com_ptr::<IComponentHandler>().expect("a handler");
+    link(&host, Some(&handler));
+    *saver.instance.borrow_mut() = Some(host.interfaces().0.clone());
+
+    rename("Drums");
+    handed(|handed| assert!(handed.program.sync(handed.mode, 0.0)));
+    host.tick();
+    assert_eq!(*saver.unlinked.borrow(), [kResultOk], "unlinked inside");
+    assert_eq!(
+        *saver.calls.borrow(),
+        [HostCall::Restart(RESTART_VALUES)],
+        "nothing after the restart: no handler was linked"
+    );
+    let next = ComWrapper::new(Recorder::default());
+    let handler = next.to_com_ptr::<IComponentHandler>().expect("a handler");
+    link(&host, Some(&handler));
+    host.tick();
+    assert_eq!(*next.calls.borrow(), [HostCall::Dirty(true)], "told to it");
+    assert_eq!(host.faults(), 0);
+    saver.instance.borrow_mut().take();
 }
 
 #[test]

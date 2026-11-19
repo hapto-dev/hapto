@@ -162,7 +162,8 @@ impl Ticked {
     /// load and is still held takes the load's value for its path, or its
     /// default, as a restore. Every one still held takes the load's mapping
     /// for its path; one declared before it with none held is unmapped. Then
-    /// the load's entries go.
+    /// the load's entries go, and the mappings a save writes become the ones
+    /// learn now holds, the load's own, which no host is told of.
     ///
     /// The load itself wrote none of them: on the host's thread, they are the
     /// tree the load replaces, still playing. Learn's restore in that pass
@@ -203,7 +204,8 @@ impl Ticked {
         }
         // What learn holds now is what the load left, and the tick's
         // capture compares with it: the load's own mappings are no change
-        // to tell the host of.
+        // to tell the host of. Noting learn's revision spares that capture,
+        // which would find them equal.
         if let Some(learn) = learn.as_deref() {
             self.saved
                 .run_time()

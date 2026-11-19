@@ -245,6 +245,7 @@ c_consts! {
     /// State that `save` writes changed and no edit was told for it: a
     /// value that is no parameter, or a parameter the plugin does not list.
     /// Count the project as changed. `save` already writes the new state.
+    /// It always comes alone, in a call of its own.
     pub const RESTART_STATE = 4 => "HAPTO_RESTART_STATE";
     /// Keep processing, whatever the input.
     pub const STATUS_CONTINUE = 0 => "HAPTO_STATUS_CONTINUE";
@@ -574,9 +575,9 @@ c_structs! {
         /// The user finished changing the parameter at `index`.
         #[args(context, index)]
         pub end_edit: Option<unsafe extern "C" fn(*mut c_void, u32)>,
-        /// `flags` holds `HAPTO_RESTART_VALUES`, `HAPTO_RESTART_LATENCY` and
-        /// `HAPTO_RESTART_STATE`, or'd together. One `idle` may call it more
-        /// than once.
+        /// `flags` holds `HAPTO_RESTART_VALUES` and `HAPTO_RESTART_LATENCY`,
+        /// or'd together, or `HAPTO_RESTART_STATE` alone. One `idle` calls it
+        /// at most twice: with the first two, then with the third.
         #[args(context, flags)]
         pub restart: Option<unsafe extern "C" fn(*mut c_void, u32)>,
     }

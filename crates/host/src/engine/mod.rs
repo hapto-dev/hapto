@@ -889,14 +889,12 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
         if let Ok(mut drain) = main.drain.try_borrow_mut() {
             drain.drain(|event| self.emit(main, event));
         }
-        // Both taken only for a host to tell: with none linked yet, each
-        // request waits for the tick after one is.
-        let linked = Self::linked(main).is_some();
+        // Taken only for a host to tell: with none linked yet, the request
+        // waits for the tick after one is.
         let mut restart = Restart {
-            values: linked && self.set.take_rescan(),
+            values: Self::linked(main).is_some() && self.set.take_rescan(),
             latency: false,
         };
-        let state = linked && self.take_unlisted();
         if let Ok(plugin) = main.plugin.try_borrow() {
             let latency = self.answers.read(&*plugin);
             if latency != main.reported.get() {
@@ -909,7 +907,12 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
         {
             host.restart(restart);
         }
-        if state && let Some(host) = Self::linked(main) {
+        // Taken as it is told, not before the restart: a load the host
+        // makes inside that call drops it, and a host unlinked there leaves
+        // it for the next one.
+        if let Some(host) = Self::linked(main)
+            && self.take_unlisted()
+        {
             host.state_changed();
         }
     }
