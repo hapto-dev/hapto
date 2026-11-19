@@ -213,6 +213,43 @@ describe("watchKeys", () => {
     expect(sent).toBe(1);
   });
 
+  test("a pick whose release the list took gives the keyboard back", () => {
+    const select = get("select");
+    pointer("pointerdown", select);
+    select.focus();
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    nextTask();
+    expect(sent).toBe(1);
+  });
+
+  test("a select focused again after a pick keeps its keys", () => {
+    const select = get("select");
+    select.focus();
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    nextTask();
+    get("slider").focus();
+    select.focus();
+    const key = new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true });
+    select.dispatchEvent(key);
+    expect(key.defaultPrevented).toBe(false);
+  });
+
+  test("a cancelled pointer is a release", () => {
+    pointer("pointerdown", get("slider"));
+    pointer("pointercancel", get("slider"));
+    nextTask();
+    expect(sent).toBe(1);
+  });
+
+  test("a key pressed during a drag is not dropped", () => {
+    pointer("pointerdown", get("slider"));
+    const key = new KeyboardEvent("keydown", { key: "Shift", bubbles: true, cancelable: true });
+    document.body.dispatchEvent(key);
+    expect(key.defaultPrevented).toBe(false);
+    nextTask();
+    expect(sent).toBe(0);
+  });
+
   test("events in one task give it back once", () => {
     get("field").focus();
     click(get("background"));

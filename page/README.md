@@ -70,9 +70,13 @@ key while it has the focus:
 In a field every key is the page's, Ctrl+Z and Ctrl+S included. Escape is the
 control's to handle. A control that reads a modifier while dragged takes it
 from the pointer's event (`event.shiftKey`): a key let go after the keyboard
-went back never reaches the page. Only the WebView transport does any of
-this; the memory transport, and a scope with no `ipc` or no document, watch
-nothing.
+went back never reaches the page. A key pressed while nothing holds the
+keyboard still reaches the page's own listeners, its default prevented, and
+the keys after it are the host's: a page with a shortcut of its own on the
+window marks `body`. Only the WebView transport does any of this; the memory
+transport, and a scope with no `ipc` or no document, watch nothing. Make the
+transport once per page, at module scope: each one adds a watcher, and none
+is removed.
 
 ## Not built yet
 

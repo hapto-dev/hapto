@@ -132,6 +132,9 @@ describe("webviewTransport and the keyboard", () => {
     const t = memoryTransport();
     const client = createClient(t.page);
     click();
+    const key = new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true });
+    document.body.dispatchEvent(key);
+    expect(key.defaultPrevented).toBe(false);
     expect(t.native.received).toEqual([{ type: "ready", protocol: PROTOCOL_VERSION }]);
     client.dispose();
   });

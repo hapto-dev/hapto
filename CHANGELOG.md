@@ -196,9 +196,9 @@ exporter.
 - `page`: `webviewTransport`, the transport of a page in a plugin's window.
 - `page` and `hapto-webview`: the keyboard goes back to the host. After a
   click, a drag or a blur on a page in a plugin's window, the host's window
-  gets the keyboard again unless a field, a `select` or a control marked
-  `data-hapto-keys` has the focus, so the space bar reaches the host's
-  transport.
+  gets the keyboard again unless a field, editable content, a `select` until
+  a pick or a control marked `data-hapto-keys` has the focus, so the space
+  bar reaches the host's transport.
 - `page`: React hooks (`useParam`, `useValue`, `useEvent`, `useCommand`) over
   a pluggable transport, typed by the page's four maps. A held queue keeps the
   writes made before the native side answers and sends them in the order the

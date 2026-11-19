@@ -108,6 +108,9 @@ export function watchKeys(scope: KeyScope, send: () => void): () => void {
         const target = event.target as Element | null;
         if (target?.tagName !== "SELECT") return;
         picked = target;
+        // The press that opened the list may have its release taken by the
+        // list's own window, so the page never hears it.
+        pointerDown = false;
         ask();
       },
     ],
