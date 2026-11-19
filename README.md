@@ -32,9 +32,9 @@ versioning](https://semver.org/): before 1.0, a minor version may break the API.
 
 - **Built:** the core crates, the VST3 exporter (Windows and macOS; a plugin's
   editor in the host's window on Windows), the C interface and the generic
-  JUCE adapter, the page's React hooks and protocol
-  and the native side that answers the page, the example gain, the example EQ,
-  and the comparison against plain JUCE.
+  JUCE adapter, the page's React hooks and protocol and the native side that
+  answers the page, the example gain, the example EQ, the standalone app on
+  Windows, `cargo hapto`, and the comparison against plain JUCE.
 - **Not built:** the CLAP exporter; a page in a plugin window anywhere but
   Windows, where `hapto-webview` shows it; and MIDI delivered to a plugin
   through an exporter. [ROADMAP.md](ROADMAP.md) says what comes next.
@@ -50,7 +50,9 @@ export together. Read it first, then the crate overviews it links.
 The Rust crates are in `crates/`: the core (`params`, `undo`, `session`,
 `learn`, `ump`), the parameters' derives and the manifest reader (`macros`), the
 [exporters](docs/glossary.md#exporter) (`host`), the page protocol (`bridge`),
-the page in a plugin's window (`webview`) and test tools (`testkit`). Beside
+the page in a plugin's window (`webview`), a plugin as an app of its own
+(`standalone`), the plugin author's command, `cargo hapto` (`cli`), and test
+tools (`testkit`). Beside
 them are the example gain (`examples/gain`), the example EQ (`examples/eq`),
 the page's React hooks (`page`), the generic JUCE adapter (`adapters/juce`),
 the repository's tasks (`xtask`), the fuzz targets (`fuzz`) and the comparison
@@ -91,7 +93,7 @@ reaches `main`.
 
 ## Licence
 
-MIT ([LICENSE](LICENSE)). A plugin built with Hapto also carries the VST3 SDK's
-MIT notice and `triple_buffer`'s MPL-2.0 notice, and one whose editor is a
-page those of wry's WebView2 bindings, Microsoft's WebView2 loader, `bytes`
-and `dpi`, all in [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES).
+MIT ([LICENSE](LICENSE)). [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES) holds the
+notices of the works a build carries besides: in a plugin, the VST3 SDK and
+`triple_buffer`, and with a page wry's WebView2 bindings, Microsoft's WebView2
+loader, `bytes` and `dpi`; a standalone app adds `cpal`, `winit` and `tracing`.

@@ -1,3 +1,6 @@
 [alias]
 # Repository tasks (xtask/): `cargo xtask gen` rewrites every generated file.
 xtask = "run --package xtask --"
+# The plugin author's command (crates/cli), run from this checkout as an
+# installed `cargo-hapto` would be: `cargo hapto build -p <crate>`.
+hapto = "run --quiet --package cargo-hapto --"

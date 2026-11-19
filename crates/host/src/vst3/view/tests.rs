@@ -14,7 +14,7 @@ use ::vst3::Steinberg::{
 use ::vst3::{ComPtr, ComRef};
 
 use crate::faults::written;
-use crate::vst3::{Refused, TestHost, TestView};
+use crate::vst3::{ChildWindow, HiddenWindow, Refused, TestHost, TestView};
 use crate::{
     AuCodes, Block, Category, Editor, Layout, ParentWindow, Parts, Plugin, PluginInfo,
     ProcessSetup, Processor, Size, Status,
@@ -262,6 +262,26 @@ fn attaching_tells_the_editor_its_scale_and_size_then_opens_it() {
     // Attached twice with no removal between: refused, the editor untouched.
     assert_eq!(view.attach_raw(1), Err(Refused(kResultFalse)));
     assert!(calls().is_empty());
+    assert_eq!(view.remove(), Ok(()));
+    assert_eq!(calls(), [Call::Close]);
+}
+
+#[test]
+#[cfg_attr(
+    miri,
+    ignore = "it makes real Win32 windows, which the interpreter cannot"
+)]
+fn the_view_opens_in_a_child_window_a_host_places_in_its_own() {
+    let (_host, view) = viewed();
+    let window = HiddenWindow::new().expect("a window");
+    let child = ChildWindow::new(&window, 0, 36, 320, 200).expect("a child");
+    assert_eq!(view.attach_to(&child), Ok(()));
+    assert_eq!(
+        calls(),
+        [Call::Scale(1.0), Call::Size(320, 200), Call::Open]
+    );
+    child.place(0, 36, 400, 260);
+    assert_eq!(window.shown_children(), 1, "the child, in its place");
     assert_eq!(view.remove(), Ok(()));
     assert_eq!(calls(), [Call::Close]);
 }

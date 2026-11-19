@@ -49,15 +49,15 @@ use std::ffi::c_void;
 use ::vst3::Steinberg::IPluginFactory;
 use ::vst3::{ComPtr, ComWrapper};
 
-#[cfg(all(windows, any(test, feature = "test-host")))]
-#[cfg_attr(docsrs, doc(cfg(all(windows, feature = "test-host"))))]
-pub use test_host::HiddenWindow;
 #[cfg(any(test, feature = "test-host"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "test-host")))]
 pub use test_host::{
     AudioSide, HostCall, Options, ParamInfo, RESTART_LATENCY, RESTART_VALUES, Refused, TestHost,
     TestView,
 };
+#[cfg(all(windows, any(test, feature = "test-host")))]
+#[cfg_attr(docsrs, doc(cfg(all(windows, feature = "test-host"))))]
+pub use test_host::{ChildWindow, HiddenWindow};
 
 use crate::boundary::guard;
 use crate::{Layout, Plugin};

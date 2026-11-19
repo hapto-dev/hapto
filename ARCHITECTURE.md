@@ -51,7 +51,8 @@ reading how Hapto works inside, start with
   `engine`, which holds the plugin's life and builds with no feature. CLAP is
   planned, not built. A plugin's editor is an `Editor` (`editor.rs`), which
   knows no toolkit; `engine/editor.rs` drives one for each view a host asks
-  for, and the VST3 exporter's view is `vst3/view.rs`.
+  for, and the VST3 exporter's view is `vst3/view.rs`. The `standalone`
+  exporter (`standalone.rs`) drives the same engine for an app with no host.
 - `crates/bridge`: the page protocol, its native side (`Dispatcher`, which
   answers a page and tells it of every change to the parameters and to the
   values a plugin binds for it in `Values`), and the TypeScript generated from
@@ -60,6 +61,15 @@ reading how Hapto works inside, start with
   window, on Windows: `Page` makes the `Editor`, a WebView2 child window
   through wry, which serves the page from bytes built into the plugin and
   joins it to a `Dispatcher` (`windows.rs`).
+- `crates/standalone`: `hapto-standalone`, the plugin as an app of its own, on
+  Windows: the standalone exporter's instance, its editor in a winit window,
+  and a test signal through it to the system's audio output through cpal
+  (`app.rs`, `device.rs`, `block.rs`), with its saved block kept between runs
+  (`session.rs`). A plugin crate's binary calls its `main`, and its
+  allocation gate reaches the audio path through a hidden `gate` module
+  (`gate.rs`). Its dev host (`dev_host/`, the `dev-host` feature) runs the
+  plugin through the VST3 or C interface test host instead, below a bar that
+  names the format, with a settings window of what the host sees.
 - `crates/testkit`: test tools: allocation gate, latches, expected assertions,
   drift check.
 - `examples/gain`: the example gain, which wires parameters, undo, a saved
@@ -75,9 +85,15 @@ reading how Hapto works inside, start with
   outside.
 - `adapters/juce`: the generic JUCE adapter: any Hapto plugin, through
   `hapto.h`, as a JUCE plugin.
+- `crates/cli`: `cargo-hapto`, the plugin author's command, for a plugin crate
+  in any workspace: `cargo hapto init` writes a new plugin crate from
+  `template/`; `dev` runs the plugin's standalone binary and restarts it after
+  each rebuild, with the page from its dev server (`dev.rs`, `watch.rs`);
+  `serve` runs that server alone, for a debug bundle in a real host
+  (`serve.rs`); `build` builds a plugin crate's page and module and lays out
+  its VST3 bundle; `validate` runs pluginval on it. It links no Hapto crate: it
+  runs Cargo, npm and Node.
 - `xtask`: `cargo xtask gen` writes every generated file; each has a drift gate.
-  `cargo xtask bundle` builds a plugin crate's page and module and lays out its
-  VST3 bundle.
 - `bench`: the comparison against plain JUCE.
 
 ## From a host's call to your block
@@ -148,15 +164,15 @@ VST3 does, the C interface does not. `ACTIVATION_TELLS_LATENCY` says whether the
 host reads the latency as an activation returns. The engine is generic over it,
 so one engine serves both shells.
 
-| Host's call | VST3 (`vst3/component.rs`; the controller half in `vst3/component/controller.rs`) | C interface (`cabi/mod.rs`) | `Engine` method |
-| --- | --- | --- | --- |
-| One block, with its automation | `process` | `process` | `process` |
-| A write outside a block | `setParamNormalized` | `set` | `controller_write` (VST3), `host_write` (C) |
-| Start or stop processing | `setProcessing` | none | `set_processing` |
-| Reset the processor | a stop in `setProcessing` | `reset` | `request_reset` |
-| Activate or deactivate | `setActive` | `activate`, `deactivate` | `activate`, `deactivate` |
-| A tick | the exporter's timer | `idle` | `tick`, `idle` |
-| The editor's view | `createView`, then the view's `attached`, `onSize`, `setContentScaleFactor`, `removed` (`vst3/view.rs`) | none | `editor`, then the view's `EditorSlot` |
+| Host's call | VST3 (`vst3/component.rs`; the controller half in `vst3/component/controller.rs`) | C interface (`cabi/mod.rs`) | Standalone (`standalone.rs`) | `Engine` method |
+| --- | --- | --- | --- | --- |
+| One block, with its automation | `process` | `process` | `StandaloneAudio::process`, with no automation | `process` |
+| A write outside a block | `setParamNormalized` | `set` | none | `controller_write` (VST3), `host_write` (C) |
+| Start or stop processing | `setProcessing` | none | none | `set_processing` |
+| Reset the processor | a stop in `setProcessing` | `reset` | `reset` | `request_reset` |
+| Activate or deactivate | `setActive` | `activate`, `deactivate` | `activate`, `deactivate` | `activate`, `deactivate` |
+| A tick | the exporter's timer | `idle` | the app's `tick` | `tick`, `idle` |
+| The editor's view | `createView`, then the view's `attached`, `onSize`, `setContentScaleFactor`, `removed` (`vst3/view.rs`) | none | `editor`, then `StandaloneEditor`'s `open`, `set_size`, `set_scale`, `close` | `editor`, then the view's `EditorSlot` |
 
 To prove a change, run the tests that reach it. `engine/tests.rs` tests each of
 the engine's rules through both exporters with one body.
@@ -188,9 +204,9 @@ with `cargo doc -p hapto-host --features vst3,cabi,test-host
   over it ([a load and a replay][load]). A user's gesture still open when the
   load lands, a lone write included, keeps its value from before the gesture,
   and undoing it writes that value.
-- `unsafe` is denied workspace-wide. Only `host`'s `vst3` and `cabi` modules
-  and the `boundary`, `engine` and `faults` modules they share allow it, with a
-  `// SAFETY:` comment on every block.
+- `unsafe` is denied workspace-wide. Only `host`'s `vst3`, `cabi` and
+  `standalone` modules and the `boundary`, `engine` and `faults` modules they
+  share allow it, with a `// SAFETY:` comment on every block.
 - A panic never unwinds into a host. An exporter catches it at the entry point,
   counts it as a fault, and a processor that panicked plays silence until the
   next activation. The first fault of each kind in an instance is reported as a
@@ -223,8 +239,10 @@ with `cargo doc -p hapto-host --features vst3,cabi,test-host
   CI ([what runs the generator][generator], [keeping the header true][header]).
 - A page in a plugin's window exists on Windows only: elsewhere
   `hapto-webview` offers no editor, and a host shows its own controls ([where
-  the WebView pieces live][webview]). Absent: no exporter delivers MIDI events
-  yet ([the VST3 exporter's shape][vst3]).
+  the WebView pieces live][webview]). So does the standalone app, which says
+  so and ends elsewhere ([the standalone exporter and app][standalone]).
+  Absent: no exporter delivers MIDI events yet ([the VST3 exporter's
+  shape][vst3]).
 
 ## Threads
 
@@ -241,8 +259,9 @@ with `cargo doc -p hapto-host --features vst3,cabi,test-host
   (`parts.rs`) says what it ticks, and in what order. The engine reaches the
   parts through a `Driver`, which does not keep them alive, so a plugin that
   drops its parts is not ticked. The JUCE adapter ticks through JUCE on
-  every platform. The VST3 exporter runs its own timer on Windows and macOS, and
-  refuses to build for any other platform. There nothing would tick it: no edit
+  every platform, and the standalone app from its window's event loop. The
+  VST3 exporter runs its own timer on Windows and macOS, and refuses to build
+  for any other platform. There nothing would tick it: no edit
   would reach the host, and a load would never apply session sections to their
   participants ([what ticks a plugin][tick], [when a restore
   applies][applies]).
@@ -269,9 +288,9 @@ with `cargo doc -p hapto-host --features vst3,cabi,test-host
 ## Decided, not built
 
 - The page path beyond Windows: wry inside a plugin window on macOS, and
-  the JUCE adapter's own editor, which brings the page to AU hosts and a
-  standalone app. Open: that macOS WebKit inside a host process loads plain
-  `http://127.0.0.1` is not verified.
+  the JUCE adapter's own editor, which brings the page to AU hosts. Open: that
+  macOS WebKit inside a host process loads plain `http://127.0.0.1` is not
+  verified.
 - MIDI-CI: a VST3 host speaks it for the plugin, which states what it supports
   through VST3's interfaces. Everywhere else a core crate, `hapto-ci`, answers
   with UMP in and out, SysEx7 included, through the C interface and CLAP. Open:
@@ -320,3 +339,4 @@ with `cargo doc -p hapto-host --features vst3,cabi,test-host
 [versions]: docs/decisions.md#d84-the-saved-blocks-two-versions
 [vst3]: docs/decisions.md#d59-the-shape-of-the-vst3-exporter
 [webview]: docs/decisions.md#d16-where-the-webview-pieces-live
+[standalone]: docs/decisions.md#d109-the-standalone-exporter-and-app

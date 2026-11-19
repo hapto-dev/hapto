@@ -34,11 +34,15 @@ crate-type = ["cdylib", "rlib"]
 default = ["vst3"]
 # The VST3 module's entry points, through Hapto's exporter.
 vst3 = ["hapto-host/vst3"]
+# The gain as an app of its own, which `cargo hapto dev` runs; the module
+# never links it.
+standalone = ["dep:hapto-standalone"]
 
 [dependencies]
 hapto-host = { workspace = true, features = ["manifest"] }
 hapto-learn.workspace = true
 hapto-params = { workspace = true, features = ["derive"] }
+hapto-standalone = { workspace = true, optional = true }
 hapto-undo.workspace = true
 hapto-webview.workspace = true
 
@@ -52,3 +56,8 @@ hapto-bridge = { workspace = true, features = ["typescript"] }
 
 [lints]
 workspace = true
+
+[[bin]]
+name = "hapto-example-gain-standalone"
+path = "src/bin/standalone.rs"
+required-features = ["standalone"]

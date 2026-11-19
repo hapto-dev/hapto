@@ -13,6 +13,9 @@ all-features = true
 allow = [
     "Apache-2.0",
     "BSD-1-Clause",
+    # libloading, which winit's Linux keyboard backend reaches through dlib:
+    # hapto-standalone takes winit on Windows only, so no Hapto build has it.
+    "ISC",
     "MIT",
     "MPL-2.0",
     "Unicode-3.0",

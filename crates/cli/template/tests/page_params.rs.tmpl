@@ -1,0 +1,26 @@
+//! The drift gate for the page's parameter map: `page/src/generated/params.ts`
+//! is the plugin's own declarations, generated. `cargo hapto dev` and `build`
+//! rewrite it before each build; so does `HAPTO_BLESS=1 cargo test --test
+//! page_params`.
+
+use std::path::Path;
+
+use {{lib}}::{{type}}Params;
+use hapto_params::ParamSet;
+
+/// The header's instruction for a map `cargo xtask gen` writes, and this
+/// one's.
+const XTASK: &str = "regenerate with `cargo xtask gen`";
+const HERE: &str = "regenerate with `HAPTO_BLESS=1 cargo test --test page_params`";
+
+#[test]
+fn the_pages_parameter_map_matches_the_declarations() {
+    let (set, _) = ParamSet::declare::<{{type}}Params>().expect("valid declarations");
+    let map = hapto_bridge::typescript::param_map(&set, "src/lib.rs ({{type}}Params)");
+    assert!(
+        map.contains(XTASK),
+        "the map's header changed: update this test"
+    );
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("page/src/generated/params.ts");
+    hapto_testkit::drift::check_generated(&path, &map.replace(XTASK, HERE));
+}

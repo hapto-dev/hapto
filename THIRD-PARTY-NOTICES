@@ -1,7 +1,8 @@
 Third-party notices
 
-A plugin built with Hapto carries code from the works below. Each notice is
-quoted from the work as it is used here.
+A plugin built with Hapto carries code from the works below, up to the part
+for a standalone app, whose works an app built with `hapto-standalone`
+carries besides. Each notice is quoted from the work as it is used here.
 
 -------------------------------------------------------------------------------
 VST 3 SDK (Steinberg Media Technologies GmbH), version 3.8.0
@@ -358,3 +359,61 @@ Apache License
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+
+===============================================================================
+A standalone app built with hapto-standalone
+===============================================================================
+
+An app a plugin crate builds with `hapto-standalone`, on Windows, carries what
+its plugin carries, above, and the works below besides: its window and its
+audio device, and what they bring with them.
+
+-------------------------------------------------------------------------------
+cpal (the RustAudio project), version 0.18.2
+-------------------------------------------------------------------------------
+
+The app plays to the audio device through `cpal`, under the Apache License
+2.0 alone. Its `LICENSE` file is the licence quoted above for `dpi`, word for
+word but for the brackets around the placeholders of its appendix. It has no
+`NOTICE` file.
+
+-------------------------------------------------------------------------------
+winit (the winit project), version 0.30.13
+-------------------------------------------------------------------------------
+
+The app's window comes from `winit`, under the Apache License 2.0 alone. Its
+`LICENSE` file is the licence quoted above for `dpi`. It has no `NOTICE`
+file.
+
+-------------------------------------------------------------------------------
+tracing and tracing-core (Tokio Contributors), versions 0.1.44 and 0.1.36
+-------------------------------------------------------------------------------
+
+The app carries `tracing` and `tracing-core`, through winit. Their notice,
+as each crate's `LICENSE` file gives it:
+
+Copyright (c) 2019 Tokio Contributors
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.

@@ -20,8 +20,10 @@ publish = false
 #   2  hapto-undo, hapto-session
 #   3  hapto-learn (the core's top), hapto-bridge (the page)
 #   4  hapto-host (plugin formats)
-#   5  hapto-webview (the page in a plugin's window, a shell)
-#   6  hapto-example-eq and hapto-example-gain, plugins; 7 xtask
+#   5  hapto-webview (the page in a plugin's window, a shell), hapto-standalone
+#      (a plugin as an app of its own, a shell)
+#   6  hapto-example-eq and hapto-example-gain, plugins; 7 xtask and
+#      cargo-hapto
 # The core (layers 1 to 3) builds with no window, WebView or host dependency;
 # that script enforces both in CI.
 [workspace.dependencies]
@@ -34,6 +36,7 @@ hapto-host = { path = "crates/host" }
 hapto-bridge = { path = "crates/bridge" }
 hapto-macros = { path = "crates/macros" }
 hapto-webview = { path = "crates/webview" }
+hapto-standalone = { path = "crates/standalone" }
 # Tests only.
 hapto-testkit = { path = "crates/testkit" }
 

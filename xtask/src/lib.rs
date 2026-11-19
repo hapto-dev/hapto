@@ -5,10 +5,6 @@
 //! JUCE adapter builds against, and the example EQ's JUCE build settings.
 //! Each has a drift gate (`tests/drift.rs`), so a stale one fails CI.
 //!
-//! `bundle` builds a plugin crate's page and the crate in release, lays out
-//! its VST3 bundle under `target/bundle/`, and installs it when asked: see
-//! [`bundle`].
-//!
 //! Three tasks read Rust source exactly, with `syn` and `proc-macro2`, for the
 //! repository's check scripts and for the style gate:
 //!
@@ -18,9 +14,8 @@
 //!   that run past the wrap width, and with `--markdown` the prose lines of
 //!   the repository's Markdown.
 //!
-//! They and `bundle` need no other crate of the workspace, so a lane that
-//! only reads source builds xtask with `--no-default-features` and skips the
-//! generators.
+//! They need no other crate of the workspace, so a lane that only reads
+//! source builds xtask with `--no-default-features` and skips the generators.
 
 use std::path::{Path, PathBuf};
 
@@ -29,7 +24,6 @@ mod generate;
 #[cfg(feature = "generate")]
 pub use generate::{Generated, generated, page_test_params};
 
-pub mod bundle;
 pub mod scan;
 pub mod wrap;
 

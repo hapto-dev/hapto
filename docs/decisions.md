@@ -63,7 +63,7 @@ comments never cite an id: they state the reason in words, and
 | D24 | [Who answers MIDI-CI when a plugin must answer for itself?](#d24-answering-midi-ci) | A VST3 host speaks MIDI-CI for the plugin, so the VST3 exporter projects declarations onto VST3's interfaces. Everywhere else a core-tier crate, `hapto-ci`, answers, later. | decided |
 | D25 | [Who owns the SysEx manufacturer ID that a MIDI-CI identity needs? (D24)](#d25-the-sysex-manufacturer-id) | None: a business answer. The working group's helper uses `0x7D`, which is reserved for non-commercial use. | held |
 | D26 | [How does a debug build load the page from a dev server? (B5)](#d26-loading-the-page-from-a-dev-server) | `HAPTO_PAGE_DEV_URL`, read in debug builds only: set, `hapto-webview` loads that URL, so Vite's hot reload works; unset, it serves the bundled page. | decided |
-| D27 | [What runs the generator? (B3)](#d27-what-runs-the-generator) | An xtask: `cargo xtask gen` writes every generated file, and `cargo xtask bundle` is to run the generator, the page build and the plugin build in that order. Not built yet: `bundle`. | decided |
+| D27 | [What runs the generator? (B3)](#d27-what-runs-the-generator) | An xtask: `cargo xtask gen` writes every file the repository generates. A plugin's own page map is its own test's, which `cargo hapto` runs (D109). | decided |
 | D28 | [Which threads may make a program write? (P6, P11)](#d28-threads-that-may-make-a-program-write) | An edit runs on the UI thread only and joins the parameter's gesture count. A sync runs on any thread but audio. | decided |
 | D29 | [Do plain values have gestures? (U3, U4, U5, U16, L7)](#d29-gestures-on-plain-values) | Yes. A plain value has its own gesture count and token, so one drag on any control is one undo step. | decided |
 | D30 | [An NRPN data entry sent with only its high byte. (L2)](#d30-an-nrpn-data-entry-with-only-its-high-byte) | A new high byte dispatches the 14-bit value with the low byte at 0, and a low byte that follows refines it. A binding whose capture saw no low byte scales the high byte as 7-bit instead. | decided |
@@ -145,6 +145,9 @@ comments never cite an id: they state the reason in words, and
 | D106 | [How does a page show and write plugin state that is not a parameter? (B1, B2, D99)](#d106-page-bound-values) | As a value the plugin binds by key (`Values::value`, `Page::value`): the snapshot carries it, a `value` message brings each change at the tick whatever made it, and a `setValue` is the user's write through `Value::set`, stored when it decodes to the value's type and answered either way. | to confirm |
 | D107 | [How do keys reach the host while a page is in its window? (D104)](#d107-the-keyboard-goes-back-to-the-host) | The page gives the keyboard back whenever nothing in it needs keys: after a click, a drag or a blur, decided in the next task, the WebView transport posts one fixed text below the protocol, and the editor focuses the host's window. A field, a `select` until a pick, editable content and a control marked `data-hapto-keys` keep it. | to confirm |
 | D108 | [Is the host told when state it does not list changed? (D1, D53, D92, D96)](#d108-the-host-is-told-of-state-it-does-not-list) | Yes, once at the tick that follows, after the parts' tick and the plugin's idle: a saved section a participant reported changed, an edit to a parameter made at run time, a learned mapping of one. Never for a load, a learned controller's write or a listed parameter. VST3 calls `IComponentHandler2::setDirty`; the C interface passes `HAPTO_RESTART_STATE`. | to confirm |
+| D109 | [What builds, bundles, checks and runs a plugin crate outside this repository? (D27)](#d109-the-plugin-authors-command) | `cargo hapto`, a binary that runs Cargo, npm and Node and links no Hapto crate, so it serves any workspace: it writes a new plugin crate with fresh ids, finds the plugin crate, runs it while its author edits it, builds its page and module, lays out and installs its bundle, and validates it. It warns when the workspace locks another Hapto version than its own. | to confirm |
+| D110 | [How does a plugin run with no host, while its author works on it and as an app of its own? (D16, D100, D109)](#d110-the-standalone-exporter-and-app) | Through a standalone exporter over the same engine, which the app is the host of, and `hapto-standalone`, an app any plugin crate's binary runs: the editor in a window, a test signal to the audio output, the saved block kept between runs. Windows only, as the page is. | to confirm |
+| D111 | [How does a plugin's author see it through a plugin format while working on it, with no real host? (D109, D110)](#d111-the-dev-host) | The standalone app's dev host: the plugin through Hapto's own VST3 and C interface test hosts, in process, its editor as the exporter's view below a bar that names the format, with a settings window of what the host sees, a tab each. It changes the sample rate, of those the device takes, and the most frames a block holds by reactivating the plugin as a host does, cuts blocks by a plan, and logs what the plugin tells the host. A switch of format starts the app again with the saved block, and a block the plugin refused is kept for the next run. It stands in for no real host. | to confirm |
 
 **Open.** D25 is held until `hapto-ci` needs it. It keeps its recommendation
 until decided, and no rule depends on it.
@@ -555,10 +558,13 @@ check that never fails a commit, and before every embedded build
 (`examples/CMakeLists.txt:66-74`, `.githooks/pre-commit:11-12`,
 `cmake/seam_web_example.cmake:156-165`).
 
-**Rust.** An xtask: `cargo xtask gen` writes every generated file, and `cargo
-xtask bundle` is to run the generator, the page build and the plugin build in
-that order, once a plugin window shows the page. Each output keeps its drift
-test for CI. Not built yet: `bundle`.
+**Rust.** An xtask: `cargo xtask gen` writes every file the repository
+generates, and each output keeps its drift test for CI. A plugin's page map is
+the plugin's own: its `page_params` test checks it and, with `HAPTO_BLESS=1`,
+rewrites it, since xtask linking a plugin would bring that plugin's entry
+points into its binary. `cargo hapto`, the plugin author's command (D109),
+runs that test, the page build and the plugin build, in that order, not
+xtask.
 
 ### D28. Threads that may make a program write
 
@@ -3058,6 +3064,263 @@ restart request, which in VST3 is a second call to the host made after a
 call the host may have released the instance in.
 
 [History](decision-history.md#d108-the-host-is-told-of-state-it-does-not-list)
+
+### D109. The plugin author's command
+
+**Question and C++ Seam.** What builds, bundles, checks and runs a plugin
+crate outside this repository? (D27) Not checked against C++.
+
+**Rust.** `cargo hapto`: `cargo-hapto`, a binary crate a plugin author
+installs as a Cargo subcommand. It runs Cargo, npm and Node as processes and
+links no Hapto crate, so it serves any workspace, and the plugin's own
+lockfile pins the crates it builds.
+
+- **The plugin** is the crate `-p` names, else the plugin crate the command
+  starts inside, else the workspace's only one. A plugin crate is a member
+  that builds a `cdylib` and names the plugin in `[package.metadata.hapto]`;
+  any other `-p` is refused with what it lacks.
+- **`init`** writes a new plugin crate from a template in `crates/cli/template`,
+  into a new or empty folder, one holding only `.git` among them: a gain and a
+  bypass, its page, a standalone binary, the page's parameter map and its test,
+  and a test through the VST3 exporter, as a workspace of its own. The identity
+  comes from the folder's name, the one `.` names too, and the flags, checked so
+  every file takes it as written: a fresh version 4 UUID for the VST3 class id,
+  an AU subtype drawn at random, since a host tells a vendor's plugins apart by
+  it and two names can begin alike, and a manufacturer code from the vendor,
+  each with a capital, since Apple keeps lower-case codes for its own; a crate
+  name that is no Rust keyword and no crate it builds with, and a type name that
+  neither it nor the parameters' and processor's types made from it share with
+  the template's imports, which a test reads, or the prelude's names it uses. A
+  vendor with no letter or digit asks for `--id`, since the default id is made
+  from it. Its Hapto crates and `@hapto/page` come by path from a checkout,
+  `--hapto` or the one the command was built from, until they are published. A
+  test, run by hand, writes a crate with this checkout's crates and builds and
+  tests it.
+- **`dev`** runs the plugin while its author edits it (D110): its standalone
+  binary, a `bin` target that needs the crate's `standalone` feature, in debug
+  by default. It serves the page from Vite on the loopback address, on a port
+  nothing else listens on there, writes the page's parameter map through the
+  crate's `page_params` test, and builds; with `--release`, which reads no dev
+  server, it builds the page into the app instead. It runs a numbered copy of
+  the build, since on Windows a running executable cannot be replaced, clearing
+  at start the copies a session ended by Ctrl+C left, and watches each member's
+  `src`, manifest and build script, and the workspace's own manifest, lockfile
+  and Cargo configuration, each file by its path and time, but for an editor's
+  own swap, backup, autosave and safe-write files. A change rebuilds while the
+  app plays on; a build that writes a new binary, as Cargo's messages say,
+  closes the app's stdin, which asks it to quit keeping its saved block, and
+  starts the new copy. The app's exit code 3 asks to be started again at once,
+  and a close, exit code 0, ends the command and the dev server with it, during
+  a build too. Any other exit is a crash: the command says so, goes on watching,
+  and starts the app again after the next build that succeeds. `--host` builds
+  the binary with `hapto-standalone`'s `dev-host` feature and runs it in the dev
+  host (D111).
+- **`serve`** runs the page's dev server alone, as `dev` starts it, until
+  Ctrl+C, for the debug bundle in a real host, which loads its page from the
+  address `HAPTO_PAGE_DEV_URL` gives (D26). A host keeps the module loaded, so
+  a change to Rust needs the bundle built and the host started again; the
+  server goes on through both, and a host started through a launcher, which
+  exits at once, does not take the server with it.
+- **`build`** writes the page's parameter map through the crate's `page_params`
+  test, or in CI checks it, since a test that rewrites its own file passes
+  whatever the code generates. It installs the page's packages when they are
+  missing or stale (`npm ci`, or `npm install` for a page with no lockfile yet),
+  and those of a package it links by `file:` when that has none, since
+  TypeScript checks a linked package's source with them. It type-checks the page
+  and builds it, then builds the crate, and lays out its VST3 bundle under
+  `target/bundle/`, installing it per user or for every user when asked. It
+  takes the module from where Cargo's messages say it wrote it, whatever target
+  folder and target Cargo was given, and puts it under the folder of the machine
+  its own header names. The bundle takes the plugin's name with each character a
+  Windows file name cannot hold written as `-`, so a name with `/` or `:` names
+  one file in the bundle's folder and never a path out of it. A name Windows
+  keeps for a device, whatever follows it after a dot, is refused before the
+  build, and `init` refuses it too, with a crate whose module's name would be
+  one.
+- **`validate`** builds the release bundle and runs pluginval on it, at
+  strictness level 5, in pluginval's own process and without its GUI tests,
+  keeping its logs in a folder when asked. CI's validator lane runs it, so
+  the options are written once, in the command.
+- **Versions.** The command warns when the workspace's lockfile pins a
+  `hapto-host` of another version than its own, and goes on: before 1.0, a
+  bundle's layout may change between versions.
+
+This repository runs it through an alias, `cargo hapto`, and `cargo xtask`
+keeps the repository's own tasks: its generated files and its checks of
+source. Open: the command lays out a Windows bundle only, and a real host
+needs the bundle built and the host started again after a change to Rust.
+
+**Alternatives.** The alternatives were a library a plugin's own xtask calls,
+which its lockfile would pin with the crates; xtask's `bundle`, as it was,
+which served this repository's crates only; and copying the example gain,
+which carries its ids into every copy. A binary that links no Hapto
+crate needs no xtask in the plugin's workspace, and the version warning covers
+what pinning would.
+
+[History](decision-history.md#d109-the-plugin-authors-command)
+
+### D110. The standalone exporter and app
+
+**Question and C++ Seam.** How does a plugin run with no host, while its
+author works on it and as an app of its own? (D16, D100, D109) Not checked
+against C++.
+
+**Rust.** Through two pieces.
+
+- **The standalone exporter**, `hapto_host::standalone`, behind the `standalone`
+  feature: `Standalone` drives the engine every exporter drives, so
+  activation, the block, the tick, the saved block, faults and teardown keep
+  their rules. The app is the host: an edit lands in the parameter store with
+  no one to tell, and no automation or MIDI reaches the plugin. `Standalone`
+  is made on the app's main thread and is not `Send`. Its `StandaloneAudio`
+  side is `Send` for the device's callback and allocates nothing: its channel
+  lists live on the stack, up to 32 each way, and a block is as long as its
+  shortest channel. Inputs that share part of a buffer are refused, as the
+  engine takes channels that are one buffer or share nothing. A teardown with
+  an audio side still alive leaks the instance rather than free the plugin
+  where that side could reach it, and the leak is a fault; an editor may
+  outlive it, and the last to drop frees the plugin on the main thread.
+  A refused load says why, with the state's own reason, and a panic in a
+  load or an activation is refused as a panic, not taken for a busy plugin.
+  `StandaloneEditor` drives the editor's slot as the VST3 view does, in a
+  window the app keeps until it closes the editor.
+- **The app**, `hapto-standalone`: `hapto_standalone::main::<P>()`, which a
+  plugin crate's binary calls, behind a `standalone` feature of the crate's so
+  the module never links it. It opens the plugin's editor in a winit window,
+  activates for the system's default output through cpal in its own
+  configuration, at 32-bit floats and blocks of up to 1024 frames, and plays
+  into every input what `--signal` asks for: silence by default, so nothing
+  sounds until its author asks, or a 440 Hz sine at -24 dBFS, or white noise at
+  -24 dBFS. A plugin with one output plays it on every channel. A device that
+  stops playing on its own, unplugged say, is named in a line and in the
+  window's title. It ticks the plugin from the window's event loop every 16 ms.
+  The saved block is kept in a session folder, the plugin's own below the user's
+  local application data, or under `cargo hapto dev` the one `--dev` names,
+  where it is also kept each second it changed and the app quits, keeping it,
+  when its stdin closes. A block the plugin refuses, or one that cannot be read,
+  is held: the session writes nothing over it, so the plugin's defaults never
+  replace the author's state, and the next run tries it again.
+
+Windows only, as the page in a window is: elsewhere `main` says so and ends.
+Open: the app takes no audio input from a device, and the shipped app has no
+settings for its device. Past a block, which is as long as its shortest
+channel, an output keeps what it held, so an app that hands a shorter input
+than output plays its own stale samples there: whether that part should be
+silence, or the outputs set the block's length, is still to discuss. A
+shipped app carries cpal and winit, under the Apache License 2.0 alone, and
+tracing, under MIT, which a plugin's module never links; THIRD-PARTY-NOTICES
+holds their notices apart from a plugin's, and nothing ships that file with
+an app or a bundle yet.
+
+**Alternatives.** The alternatives were the JUCE adapter's standalone app,
+which needs CMake and JUCE in a `cargo` loop; and a plugin hosted in a real
+host, which keeps the module loaded until it exits, so a change to Rust means
+quitting it.
+
+[History](decision-history.md#d110-the-standalone-exporter-and-app)
+
+### D111. The dev host
+
+**Question and C++ Seam.** How does a plugin's author see it through a
+plugin format while working on it, with no real host? (D109, D110) Not
+checked against C++.
+
+**Rust.** The standalone app's dev host, behind `hapto-standalone`'s
+`dev-host` feature, run with `--host`: the plugin through Hapto's own test
+hosts, in process, linked into the app.
+
+- **VST3.** `vst3::TestHost`, made with its timer, so the exporter ticks the
+  instance on the window's message loop as in a host, and its editor is the
+  exporter's view, attached with `TestView::attach_to` to a `ChildWindow`
+  below the bar, since an editor opens at the top left of the window it is
+  given. A resize the view asks of its frame resizes the window. The
+  settings window's controls reach the processor as one-point queues with the
+  next block, as a host's own controls do while it processes: a slot per
+  parameter, the latest write winning, taken with no lock or allocation, up
+  to 64 a block. With processing stopped, no block runs to carry one, so a
+  control writes through the controller's `setParamNormalized`, as a host
+  writes one then.
+- **The C interface.** `cabi::TestHost`, ticked by the dev host every 16 ms
+  as the JUCE adapter ticks it, with no editor. A control writes through
+  `set`, which lands at once.
+- **The window** is the plugin's, as in a host, with a bar across the top:
+  the format the plugin runs through, the sample rate, the most frames a
+  block holds, the faults, and a button for the settings window. A view that
+  cannot resize fixes the window's size; one that can fills it below the
+  bar. With no view, the bar fills the window and says the parameters are in
+  the settings window, which opens with it.
+- **The settings window** is a WebView with its browser data in the
+  session's folder, shown ten times a second, a tab each: the audio; the
+  parameters as the host lists them, each with its kind, a control, the text
+  the plugin gives its value and the MIDI learn mappings in the saved block
+  that name it, matched by the host id a mapping's key hashes to; the
+  Activity log; the saved block; the faults; and MIDI and MIDI-CI, marked
+  planned, since no exporter passes MIDI yet. Its header switches the format
+  and shows whether the plugin processes, its latency and its faults; AU,
+  AUv3 and CLAP show there too, out of reach. It opens beside the main
+  window, and a close hides it, so it opens again as it was. Its page says
+  when it has loaded, and is told everything then: wry keeps no script run
+  before then. The bar's page and its own go to no other page, since each
+  posts to the dev host: navigation away, a dropped file and a new window
+  are refused.
+- **The Activity log** is laid out as Windows MIDI Services' `midi endpoint
+  monitor`: what the plugin told the host, each call by its name in the
+  format with what it carried, and what the dev host did to the plugin, such
+  as a reactivation, a new cut or processing stopped, each stamped with the
+  time since the run began, up to the last 1,000. While it follows, it snaps
+  to the newest entry; scrolled up, it stays where it is.
+- **The saved block** shows as the plugin saves it now, with how the run's
+  first load went: loaded, upgraded from an older `pluginStateVersion`,
+  refused, unreadable, or none to load. A refused or unreadable block is held
+  as the app holds one (D110).
+- **The audio** is changed as a host changes it. The settings window offers the
+  standard rates, 44.1 to 192 kHz, that the system's default output takes
+  through cpal, and the device's own, which it marks: on Windows the system
+  converts a stream at any of them to the device's own rate, and the dev host
+  resamples nothing itself. It offers maxima of 32 to 4,096 frames. A new rate
+  or maximum drops the device's stream, so no block runs, stops processing,
+  deactivates the plugin, sets it up again and activates it, then starts the
+  stream at the new rate. A plugin's refusal brings the settings before back and
+  shows its reason. Reactivate does the same with the settings the plugin has.
+  Stop processing deactivates the plugin, with no block running, until Start,
+  and a new rate or maximum then waits for the start. A start the plugin refuses
+  brings back the settings it last ran with, and at a run's first start, kept
+  settings it refuses give way to the device's own; one it refuses even then
+  leaves processing stopped with its reason, so no refusal keeps the dev host
+  from starting. A start the device refuses stops the plugin again, and a device
+  that stops playing on its own, unplugged say, stops processing with its
+  reason, as a host stops. The test signal changes at the next block, with no
+  reactivation. The settings are kept in the session once the plugin runs with
+  them.
+- **Blocks** are cut from the device's buffers by a plan the audio thread
+  reads at each block, changed with no reactivation: as the device asks, cut
+  at the maximum; always the maximum; random lengths from 1 to the maximum;
+  or a cycle of awkward lengths, 1 frame, none, the maximum, one past it,
+  which the engine plays in pieces, and odd ones. Each block is rendered
+  ahead into a queue the device takes its frames from, so the sound is the
+  same whatever the cut, at most a block late. The standalone app cuts as
+  the device asks, at 1,024 frames.
+- **A switch of format** keeps the saved block and the format in the
+  session, then ends the app with exit code 3, which `cargo hapto dev` takes
+  to start it again; run on its own, the app starts itself again. A test
+  host's audio side borrows the host and the device's callback owns that
+  side, so each run makes its test host once and keeps it for the run.
+
+Open: the plugin is linked in, so the module's loading and its factory are
+not the ones a host meets, and the instance is never released at the end of
+a run. A call of the host is stamped when the dev host takes it from its
+test host, at the next tick, so the time between two calls is good to 16 ms.
+Neither format passes on why a load was refused, so the settings window shows
+the format's answer, and the plugin's reason goes to an attached debugger. A
+real host's quirks, such as Cubase asking `IMidiMapping2` alone, are what the
+dev host cannot show, so a real host still comes before a release.
+
+**Alternatives.** The alternatives were a host app that loads a built bundle
+from disk, which meets the module's loading but is a host of its own to
+build for each format; and switching format in the running app, which would
+need a test host's audio side that outlives the host.
+
+[History](decision-history.md#d111-the-dev-host)
 
 ## How to read this
 

@@ -1,0 +1,53 @@
+[package]
+name = "hapto-standalone"
+description = "A plugin as an app of its own, with its page in a window and a test signal on the audio device"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords = ["audio", "plugin", "standalone"]
+categories = ["multimedia::audio"]
+publish.workspace = true
+
+[features]
+# The dev host, `--host`: the plugin through the VST3 exporter or the C
+# interface, in process, by Hapto's test hosts, with a settings window. For
+# `cargo hapto dev --host`, never for a shipped app.
+dev-host = [
+    "hapto-host/vst3",
+    "hapto-host/cabi",
+    "hapto-host/test-host",
+    "dep:hapto-learn",
+    "dep:hapto-params",
+    "dep:serde_json",
+    "dep:wry",
+]
+
+[dependencies]
+hapto-host = { workspace = true, features = ["standalone"] }
+# The dev host's Parameters tab: which parameter a MIDI learn mapping in the
+# saved block names, by the host id its key hashes to.
+hapto-learn = { workspace = true, optional = true }
+hapto-params = { workspace = true, optional = true }
+
+# The window and the audio device, on Windows alone for now: the page shows
+# there only, and elsewhere `main` says so and ends.
+[target.'cfg(windows)'.dependencies]
+cpal = "0.18.2"
+winit = { version = "0.30.13", default-features = false, features = ["rwh_06"] }
+# The dev host's bar and settings window: their pages, and the JSON they
+# speak.
+serde_json = { workspace = true, optional = true }
+wry = { workspace = true, optional = true }
+
+[dev-dependencies]
+# The plugins of the doc example, the dev host's tests and the allocation
+# gate.
+hapto-params.workspace = true
+hapto-testkit.workspace = true
+
+[lints]
+workspace = true

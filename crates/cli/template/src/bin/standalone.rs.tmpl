@@ -1,0 +1,6 @@
+//! {{name}} as an app of its own, which `cargo hapto dev` runs: its page in a
+//! window, and a test signal through it to the audio output.
+
+fn main() -> std::process::ExitCode {
+    hapto_standalone::main::<{{lib}}::{{type}}>()
+}

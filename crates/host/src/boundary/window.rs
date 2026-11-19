@@ -5,12 +5,12 @@ use raw_window_handle::{HandleError, HasWindowHandle, RawWindowHandle, WindowHan
 /// The host's window an [`Editor`](crate::Editor) opens inside, as a
 /// toolkit takes it: through [`HasWindowHandle`].
 ///
-/// Only an exporter makes one, from the window a host hands it, and lends it
-/// to [`Editor::open`](crate::Editor::open) for that call alone. It cannot
-/// be cloned or kept, so a handle borrowed from it names the window the host
-/// made for that open. A host may still remove the editor while `open` runs,
-/// as a message loop run inside it delivers, and destroy the window before
-/// `open` returns: a toolkit's calls on it then fail, and
+/// Only an exporter makes one, from the window a host hands it or an app
+/// lends it, and lends it to [`Editor::open`](crate::Editor::open) for that
+/// call alone. It cannot be cloned or kept, so a handle borrowed from it
+/// names the window made for that open. A host may still remove the editor
+/// while `open` runs, as a message loop run inside it delivers, and destroy
+/// the window before `open` returns: a toolkit's calls on it then fail, and
 /// [`close`](crate::Editor::close) follows `open`.
 ///
 /// # Examples
@@ -38,10 +38,11 @@ impl ParentWindow {
     /// The window `raw` names, which the host keeps valid until it removes
     /// the editor; the exporter lends it to the editor's `open` alone.
     #[cfg_attr(
-        not(all(windows, feature = "vst3")),
+        not(any(all(windows, feature = "vst3"), feature = "standalone")),
         expect(
             dead_code,
-            reason = "only the VST3 exporter opens an editor, on Windows alone"
+            reason = "the VST3 exporter opens an editor on Windows alone, and \
+                      the standalone one in the app's window"
         )
     )]
     pub(crate) fn new(raw: RawWindowHandle) -> Self {
@@ -51,17 +52,21 @@ impl ParentWindow {
 
 impl HasWindowHandle for ParentWindow {
     fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
-        // SAFETY: an exporter makes a `ParentWindow` only from the non-null
-        // window a host handed it to attach an editor to, inside that call,
-        // and lends it to the editor's `open` alone; it is not `Clone`, and
-        // nothing outside this crate can make one. The host keeps the window
-        // until it removes the editor, but may remove it from inside `open`
-        // and destroy the window before `open` returns. A window handle is
-        // not a pointer into this process: the system checks it at each use,
-        // so one destroyed makes a call fail and touches no memory, and
-        // `borrow_raw` asks its users to be ready for a window deleted or
-        // replaced. The exporter's own tests make one from a number that
-        // names no window, for stub editors that never borrow it.
+        // SAFETY: an exporter makes a `ParentWindow` only for the editor's
+        // `open` and lends it to that call alone; it is not `Clone`, and
+        // nothing outside this crate can make one. The VST3 exporter makes it
+        // from the non-null window a host handed it to attach an editor to,
+        // which the host keeps until it removes the editor; a host may do so
+        // from inside `open` and destroy the window, but a Win32 window handle
+        // is checked by the system at each use, so a destroyed one makes a
+        // call fail and touches no memory. The standalone exporter makes it
+        // from a window the app lends `StandaloneEditor::open` by reference,
+        // a borrow that lasts the whole call, so that window lives while
+        // `open` runs whatever the platform's handle is, a pointer into this
+        // process included. `borrow_raw` asks its users to be ready for a
+        // window deleted or replaced. The exporters' own tests make one from
+        // a number that names no window, for stub editors that never borrow
+        // it.
         Ok(unsafe { WindowHandle::borrow_raw(self.raw) })
     }
 }

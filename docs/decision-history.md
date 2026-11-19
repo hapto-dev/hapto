@@ -1082,6 +1082,70 @@ state flag alone in a call of its own with the header promising it, and an
 edit between a load and its assignment left as an open line rather than
 code, since the fix offered would lose a real edit in the same place.
 
+### D109. The plugin author's command
+
+[The decision](decisions.md#d109-the-plugin-authors-command)
+
+The implementer's choice, on 2026-11-18, from the owner's ask for a command
+like Tauri's (`cargo hapto init`, `dev`, `build`) in place of the xtask, tried
+on a branch first. xtask's `bundle` moved into it as `build`, and works on any
+workspace. `dev` came with the standalone app (D110), and `init` last, with
+its template a smaller plugin than the gain.
+
+On 2026-11-19, from the branch's audit, at the owner's call: `dev --host
+<exe>`, which installed the debug bundle and started a real host with the
+dev server set, ended the server as the host's process ended, so a host
+started through a launcher, which exits at once, lost its page. It is gone,
+and `serve` runs the dev server alone until Ctrl+C; the debug bundle comes
+from `build --debug --install`, and the author starts the host. `--host` now
+means the dev host alone.
+
+### D110. The standalone exporter and app
+
+[The decision](decisions.md#d110-the-standalone-exporter-and-app)
+
+The implementer's choice, on 2026-11-18, from the owner's ask that `cargo
+hapto dev` launch a standalone version of the plugin. It replaces the
+standalone app the JUCE adapter was to bring, which ARCHITECTURE.md listed as
+decided and not built, with one of Hapto's own. To confirm.
+
+On 2026-11-19, from the branch's audit, at the owner's call: a teardown
+leaked the instance when only an editor outlived the app, and leaked it
+silently. It now counts the editors, so only an audio side left alive leaks
+it, and that leak is a fault. The owner kept `audio()` over a `take_audio()`
+that would hand out one side alone: a second side's block finds the
+processor held and plays silence. `Standalone::load` answered a bool, so the
+app could not say why a block did not load; it now returns the reason, or a
+panic, and an activation that panicked no longer reads as a busy plugin. The
+owner kept an output's part past the block as it was, for now.
+
+The branch's second audit found the editor's drop, the plugin's own drop and
+the editor's catching up after its open running outside any guard, which the
+VST3 exporter guards each of; they are guarded now, so a panic in any of them
+is a fault and the app goes on.
+
+### D111. The dev host
+
+[The decision](decisions.md#d111-the-dev-host)
+
+The implementer's choice, on 2026-11-18, from the owner's ask for a host of
+Hapto's own that `cargo hapto dev` launches with the plugin loaded, cycling
+between the formats in the dev window. It runs the plugin in process
+through the test hosts, rather than loading a bundle, and switches format by
+starting again. To confirm.
+
+Later on 2026-11-18 the inspector became the settings window the owner
+designed: a tab each for the audio, MIDI, the parameters, the Activity log,
+the saved block, the faults and MIDI-CI, the log laid out as Windows MIDI
+Services' `midi endpoint monitor` at the owner's ask. Building it showed that
+a saved block the plugin refused was saved over with the plugin's defaults at
+the next keep, so the block is now kept for the next run.
+
+On 2026-11-19, from the branch's audit: the settings window drew each plan's
+picture from a copy of the player's cutting, which had drifted from it, and
+held its own copy of the log's length. Both now come from Rust, the pictures
+cut by the player's own code.
+
 ## Rules
 
 ### P7. The host write: sanitise, clamp, convert, snap, store, publish

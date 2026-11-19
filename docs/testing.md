@@ -33,6 +33,10 @@ cd page && npm ci && npm run typecheck && npm test                   # pull requ
 cd examples/gain/page && npm ci && npm run typecheck && npm run build   # pull request: the gain's page
 cargo test -p hapto-webview --test hidden_window -- --ignored          # by hand, Windows: the page in a real WebView2, in windows never shown
 cargo test -p hapto-example-gain --test page -- --ignored              # by hand, Windows, with the gain's page built: the same, for its page
+cargo hapto dev -p hapto-example-gain   # by hand, Windows: the gain standalone with its page from Vite, restarted with its saved block after a change to Rust
+cargo hapto dev -p hapto-example-gain --host   # by hand, Windows: the same through the dev host, in VST3 and, after its switch, the C interface
+cargo test -p cargo-hapto -- --ignored   # by hand: `cargo hapto init` writes a crate with this checkout's crates, which builds and passes its tests
+cargo hapto validate -p hapto-example-eq   # full run (the validator lane), Windows, with pluginval 1.0.4 on the PATH or in PLUGINVAL
 ```
 
 ## CI lanes
@@ -77,7 +81,7 @@ real-time sanitizer, which needs Linux.
 | `cross check` (aarch64 Linux, aarch64 Android) | The core, the bridge and the C interface type-check for those targets. Nothing is linked or run. |
 | `cargo deny` | Every dependency of the workspace has a licence `deny.toml` lists, no advisory applies (two, in the benchmark harness, are named there), no source is outside crates.io. It does not read `fuzz/`, which is outside the workspace and whose libFuzzer is under NCSA. |
 | `coverage` | Line coverage of the code Linux builds is at least 92 % (see [Coverage](#coverage)). |
-| `plugin validators (windows)`: pluginval | pluginval 1.0.4, pinned by hash, passes the example EQ's VST3 bundle at strictness level 5 without a GUI, run in the validator's own process. It does not show what a real host does with it. |
+| `plugin validators (windows)`: pluginval | pluginval 1.0.4, pinned by hash, passes the example EQ's VST3 bundle at strictness level 5 without a GUI, run in the validator's own process, through `cargo hapto validate`, which lays the bundle out as an author's is. It does not show what a real host does with it. |
 | `plugin validators (windows)`: The Steinberg validator | The Steinberg validator, built from the VST3 SDK at a pinned commit, passes the same bundle. It runs whether or not pluginval passed. |
 | `benchmarks` | On a pull request, no benchmark's instruction count grew more than 2 % against the base (see [Benchmarks](#benchmarks)). |
 | `core builds alone`: No window, WebView or host dependency | No core crate or `hapto-bridge` links a window, WebView, UI toolkit or plugin-format crate, and no crate depends on one of its own layer or above (see [Repository checks](#repository-checks)). |
@@ -88,7 +92,7 @@ real-time sanitizer, which needs Linux.
 | `core builds alone`: The decision index matches the record and the code | Every file and item `docs/decision-index.md` lists exists, and it has a heading for every id in the decision record. |
 | `core builds alone`: The check scripts' own tests | Each check script refuses the bad input it exists for (see [Repository checks](#repository-checks)). |
 | `core builds alone`: The fuzz crate's lockfile is current | `fuzz/Cargo.lock`, the lockfile of the fuzz crate outside the workspace, needs no change, as the nightly fuzz lane reads it `--locked`: a new dependency of a crate it fuzzes updates it in the same pull request. |
-| `core builds alone`: Build the core alone | Every workspace crate but the host, the WebView shell, the two example plugins, the test tools and xtask builds on a runner with no WebView or GTK libraries; a new crate is built there until it is excluded. |
+| `core builds alone`: Build the core alone | Every workspace crate but the host, the WebView shell, the standalone app, the two example plugins, the test tools and xtask builds on a runner with no WebView or GTK libraries; a new crate is built there until it is excluded. |
 | `protocol shape history` (pull requests) | `crates/bridge/protocol-shape.txt` only gains lines against the base revision (see [Repository checks](#repository-checks)). |
 | `loom models` | The lock-free hand-offs are correct under every interleaving their atomics allow, and `scripts/run-loom.py` fails unless every model ran (section 3). |
 | `page`: Typecheck, Test | The page compiles against the committed generated types, and its tests pass. |
@@ -162,10 +166,12 @@ on the main thread and never grown.
 
 Allocation is checked by test. Each crate with audio-thread code has a test
 target named `alloc_gate` (`tests/alloc_gate.rs`): `hapto-host`, `hapto-learn`,
-`hapto-params`, `hapto-ump`, and the example EQ and gain. `hapto-testkit` has
-one too, which checks the gate itself, and so does `hapto-bridge`, whose tick
-runs on every main-thread tick of an open editor and allocates nothing while
-nothing moved. Each:
+`hapto-params`, `hapto-ump`, `hapto-standalone`, and the example EQ and gain.
+`hapto-testkit` has one too, which checks the gate itself, and so does
+`hapto-bridge`, whose tick runs on every main-thread tick of an open editor and
+allocates nothing while nothing moved. `hapto-standalone`'s audio path is
+private to the crate, so its gate reaches it through `hapto_standalone::gate`,
+a hidden module open to the gate alone. Each:
 
 1. installs the counting allocator once: `hapto_testkit::install_alloc_gate!();`
 2. builds and activates what it tests outside the gate, where allocating is
@@ -233,6 +239,12 @@ hand a plugin no MIDI yet, so the matrix fills the event lists to capacity on
 the processor-driven side only. `matrix.rs`'s `soak` test, ignored in a normal
 run, plays the matrix at random for `HAPTO_SOAK_SECONDS` and prints the seed it
 used (`HAPTO_SOAK_SEED` repeats a run).
+
+The standalone exporter is left out of the matrix and of the engine's rules
+tests, which run each rule through the VST3 and C interface test hosts. It
+drives the same engine with no host writes and no automation, which most of
+their checks are about. Its own code around the engine is under `hapto-host`'s
+allocation gate.
 
 The example EQ's parity output must also equal its golden file. That test runs
 on Windows only.
@@ -407,14 +419,14 @@ alone (the `loom_` prefix). `loom` is pulled in only under `cfg(loom)`.
 
 ### Miri
 
-`miri` checks the `unsafe` code at the boundary: the exporters' tests drive host
-objects written in Rust, and the system timer and the denormal flush stand down
-under `cfg(miri)`. The host crate's tests pass under both of Rust's aliasing
-models:
+`miri` checks the `unsafe` code at the boundary: the exporters' tests, the
+standalone exporter's among them, drive host objects written in Rust, and the
+system timer and the denormal flush stand down under `cfg(miri)`. The host
+crate's tests pass under both of Rust's aliasing models:
 
 ```sh
-MIRIFLAGS="-Zmiri-ignore-leaks" cargo +nightly miri test -p hapto-host --features vst3,cabi,test-host --lib
-MIRIFLAGS="-Zmiri-ignore-leaks -Zmiri-tree-borrows" cargo +nightly miri test -p hapto-host --features vst3,cabi,test-host --lib
+MIRIFLAGS="-Zmiri-ignore-leaks" cargo +nightly miri test -p hapto-host --features vst3,cabi,standalone,test-host --lib
+MIRIFLAGS="-Zmiri-ignore-leaks -Zmiri-tree-borrows" cargo +nightly miri test -p hapto-host --features vst3,cabi,standalone,test-host --lib
 ```
 
 `-Zmiri-ignore-leaks` is needed because some tests leak an instance on purpose.

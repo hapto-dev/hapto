@@ -79,6 +79,12 @@ the top of the range (the `coarse` field of
 Every other final capture is fine, an NRPN whose low byte arrived included
 ([capture.rs](../crates/learn/src/capture.rs)).
 
+### Dev host
+
+The standalone app run with `--host`: the plugin through a plugin format by
+Hapto's own test hosts, in process, with a settings window of what the host
+sees ([hapto-standalone](../crates/standalone/src/dev_host/mod.rs)).
+
 ### Drain
 
 The one consumer of a queue, which hands each item out once; a second is refused
@@ -116,10 +122,10 @@ one step, or every step a [transaction](#transaction) recorded
 
 ### Exporter
 
-The code that turns one plugin format's calls into calls on a plugin: VST3, and
-the C interface the JUCE adapter drives; CLAP's is planned, not built. The
-exporters are thin shells over one core, the engine
-([hapto-host](../crates/host/src/lib.rs)).
+The code that turns one plugin format's calls into calls on a plugin: VST3, the
+C interface the JUCE adapter drives, and the standalone one, for a plugin as an
+app of its own with no host; CLAP's is planned, not built. The exporters are
+thin shells over one core, the engine ([hapto-host](../crates/host/src/lib.rs)).
 
 ### Fault
 

@@ -1,0 +1,116 @@
+//! {{name}}: a gain in dB and a bypass, with its page in the host's window.
+//!
+//! `cargo hapto dev` runs it as an app of its own while you edit it, and
+//! `cargo hapto build` lays out its VST3 bundle.
+
+#[cfg(feature = "vst3")]
+hapto_host::export_vst3!({{type}});
+
+mod page;
+
+pub use page::PAGE;
+
+use hapto_host::{
+    Block, Editor, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
+};
+use hapto_params::{Bool, Changes, Float, Params, UiParams};
+
+/// The parameters, in the order hosts list them, each declared where it is
+/// held. A parameter's key is its identity for good: rename the display name,
+/// never the key, once the plugin ships.
+#[derive(Debug, Clone, Params)]
+pub struct {{type}}Params {
+    #[param(
+        "gain", "Gain", -60.0..=12.0, 0.0,
+        step = 0.1, unit = "dB",
+    )]
+    gain: Float,
+    #[param("bypass", "Bypass", false, bypass)]
+    bypass: Bool,
+}
+
+/// The plugin, on the main thread.
+#[derive(Debug)]
+pub struct {{type}} {
+    parts: Parts,
+    params: {{type}}Params,
+}
+
+impl {{type}} {
+    /// The handle the editor writes the parameters through, as a user's.
+    pub fn ui(&self) -> &UiParams {
+        self.parts.ui()
+    }
+}
+
+impl Plugin for {{type}} {
+    const INFO: PluginInfo = hapto_host::manifest_info! {
+        layouts: &[Layout::STEREO],
+        midi_input: false,
+        midi_output: false,
+    };
+
+    type Params = {{type}}Params;
+
+    type Processor = {{type}}Processor;
+
+    fn new(params: {{type}}Params, parts: Parts) -> Self {
+        {{type}} { parts, params }
+    }
+
+    fn activate(&mut self, _setup: &ProcessSetup) -> {{type}}Processor {
+        {{type}}Processor::new(self.params.clone())
+    }
+
+    fn editor(&mut self) -> Option<Box<dyn Editor>> {
+        page::editor(self)
+    }
+}
+
+/// The audio thread's half: it reads the parameters again only when one
+/// moved.
+#[derive(Debug)]
+pub struct {{type}}Processor {
+    params: {{type}}Params,
+    changes: Changes,
+    gain: f32,
+    bypassed: bool,
+}
+
+impl {{type}}Processor {
+    fn new(params: {{type}}Params) -> Self {
+        let mut processor = {{type}}Processor {
+            params,
+            changes: Changes::new(),
+            gain: 1.0,
+            bypassed: false,
+        };
+        processor.retune();
+        processor
+    }
+
+    fn retune(&mut self) {
+        let {{type}}Params { gain, bypass } = &self.params;
+        if !self.changes.moved([gain, bypass]) {
+            return;
+        }
+        self.gain = 10.0_f32.powf(gain.get() / 20.0);
+        self.bypassed = bypass.get();
+    }
+}
+
+impl Processor for {{type}}Processor {
+    fn process(&mut self, block: Block<'_, '_>) -> Status {
+        self.retune();
+        if self.bypassed {
+            return Status::Continue;
+        }
+        let gain = self.gain;
+        for channel in block.channels.iter_mut() {
+            for sample in channel.iter_mut() {
+                *sample *= gain;
+            }
+        }
+        Status::Continue
+    }
+}

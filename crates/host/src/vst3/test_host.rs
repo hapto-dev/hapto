@@ -28,8 +28,12 @@ use super::text::copy_utf16;
 use crate::engine::timer::pump;
 use crate::{Layout, Plugin};
 
+#[cfg(windows)]
+mod child;
 mod view;
 
+#[cfg(windows)]
+pub use child::ChildWindow;
 #[cfg(windows)]
 pub use view::HiddenWindow;
 pub use view::TestView;

@@ -21,11 +21,13 @@
 
 #[cfg(all(test, feature = "vst3"))]
 pub(crate) use imp::detached;
+#[cfg(any(feature = "vst3", feature = "standalone"))]
+pub(crate) use imp::keep_module_loaded;
 #[cfg(all(any(test, feature = "test-host"), feature = "vst3"))]
 pub(crate) use imp::pump;
-pub(crate) use imp::{Handle, Timer, abandon};
 #[cfg(feature = "vst3")]
-pub(crate) use imp::{keep_module_loaded, unregister};
+pub(crate) use imp::unregister;
+pub(crate) use imp::{Handle, Timer, abandon};
 
 #[cfg(all(windows, feature = "vst3", not(miri)))]
 mod imp {
@@ -543,8 +545,8 @@ mod imp {
     pub(crate) fn unregister() {}
 
     /// Does nothing: the VST3 exporter builds no module for this platform,
-    /// and a test binary is never unloaded.
-    #[cfg(feature = "vst3")]
+    /// a test binary is never unloaded, and nor is a standalone app.
+    #[cfg(any(feature = "vst3", feature = "standalone"))]
     pub(crate) fn keep_module_loaded() {}
 
     /// Waits out `period`: there is no loop to run.

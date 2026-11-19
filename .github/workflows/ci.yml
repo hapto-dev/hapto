@@ -197,11 +197,11 @@ jobs:
           fi
       # And they build on a runner with no WebView or GTK development
       # libraries installed. Every workspace crate is built but the ones that
-      # may need them (the host, the WebView shell, the two example plugins),
-      # the test tools and xtask, so a new crate is built here until it is
-      # excluded.
+      # may need them (the host, the WebView shell, the standalone app, the
+      # two example plugins), the test tools and xtask, so a new crate is
+      # built here until it is excluded.
       - name: Build the core alone
-        run: cargo build --workspace --exclude hapto-host --exclude hapto-webview --exclude hapto-example-eq --exclude hapto-example-gain --exclude hapto-testkit --exclude xtask --locked
+        run: cargo build --workspace --exclude hapto-host --exclude hapto-webview --exclude hapto-standalone --exclude hapto-example-eq --exclude hapto-example-gain --exclude hapto-testkit --exclude xtask --locked
 
   loom:
     name: loom models
@@ -366,7 +366,7 @@ jobs:
           rustup show active-toolchain
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Core and bridge
-        run: cargo check --locked --target ${{ matrix.target }} --workspace --exclude hapto-host --exclude hapto-webview --exclude hapto-example-eq --exclude hapto-example-gain --exclude hapto-testkit --exclude xtask
+        run: cargo check --locked --target ${{ matrix.target }} --workspace --exclude hapto-host --exclude hapto-webview --exclude hapto-standalone --exclude hapto-example-eq --exclude hapto-example-gain --exclude hapto-testkit --exclude xtask
       - name: C interface and example EQ
         run: cargo check --locked --target ${{ matrix.target }} -p hapto-host -p hapto-example-eq --no-default-features --features hapto-host/cabi,hapto-example-eq/cabi
       - name: C interface alone
@@ -393,7 +393,9 @@ jobs:
     timeout-minutes: 20
     runs-on: ubuntu-24.04
     env:
-      PACKAGES: --workspace --exclude hapto-testkit --exclude xtask
+      # The repository's tools are not measured: xtask, and cargo-hapto, which
+      # runs Cargo, npm and Node as processes.
+      PACKAGES: --workspace --exclude hapto-testkit --exclude xtask --exclude cargo-hapto
       FEATURES: --no-default-features --features hapto-host/cabi,hapto-host/test-host,hapto-example-eq/cabi
       # Tests, benchmarks and the test hosts are not measured. Nor are the
       # VST3 editor view and the slot that drives an editor for it: Linux
@@ -426,10 +428,10 @@ jobs:
           if-no-files-found: ignore
 
   # Full run only.
-  # The example EQ's VST3 bundle, laid out by hand, through pluginval and then
-  # the Steinberg validator, built from the VST3 SDK at a pinned commit. One
-  # job, so the bundle is built once; the second validator runs whether or not
-  # the first passed.
+  # The example EQ's VST3 bundle, which `cargo hapto validate` builds, lays out
+  # as an author's is and runs pluginval on, then the Steinberg validator, built
+  # from the VST3 SDK at a pinned commit. One job, so the bundle is built once;
+  # the second validator runs whether or not the first passed.
   validators:
     name: plugin validators (windows)
     if: github.event_name == 'workflow_dispatch'
@@ -438,9 +440,6 @@ jobs:
     env:
       PLUGINVAL_VERSION: v1.0.4
       PLUGINVAL_SHA256: c08e61ce3b96db41636f8ec7e76f4c7e2c13ebdac7fa1b5a1f52b4f32ec715ab
-      # The highest strictness the module passes today; docs/testing.md says
-      # what it covers.
-      PLUGINVAL_STRICTNESS: "5"
       VST3_SDK_TAG: v3.8.1_build_84
       VST3_SDK_COMMIT: 3cdf9ca5d1f5b1b21e0a86832aa4abe55607bd96
     steps:
@@ -450,22 +449,18 @@ jobs:
           rustup toolchain install
           rustup show active-toolchain
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      - run: cargo build -p hapto-example-eq --release --locked
-      - name: Lay out the bundle
-        shell: bash
-        run: |
-          bundle="bundle/Hapto Example EQ.vst3"
-          mkdir -p "$bundle/Contents/x86_64-win"
-          cp target/release/hapto_example_eq.dll "$bundle/Contents/x86_64-win/Hapto Example EQ.vst3"
+      # cargo hapto passes Cargo no --locked, so the lockfile is checked here.
+      - run: cargo fetch --locked
       - name: Download pluginval
         shell: bash
         run: |
           curl -fsSL -o pluginval.zip "https://github.com/Tracktion/pluginval/releases/download/${PLUGINVAL_VERSION}/pluginval_Windows.zip"
           echo "${PLUGINVAL_SHA256}  pluginval.zip" | sha256sum -c -
           unzip -q pluginval.zip
+      # Its strictness and options are the command's: crates/cli/src/validate.rs.
       - name: pluginval
         shell: bash
-        run: ./pluginval.exe --strictness-level "${PLUGINVAL_STRICTNESS}" --validate-in-process --skip-gui-tests --output-dir pluginval-logs "bundle/Hapto Example EQ.vst3"
+        run: cargo hapto validate -p hapto-example-eq --pluginval ./pluginval.exe --logs pluginval-logs
       - name: Keep the logs
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -491,7 +486,7 @@ jobs:
       - name: The Steinberg validator
         if: ${{ !cancelled() }}
         shell: bash
-        run: vst3sdk-build/bin/Release/validator.exe "bundle/Hapto Example EQ.vst3"
+        run: vst3sdk-build/bin/Release/validator.exe "target/bundle/Hapto Example EQ.vst3"
 
   # Instruction counts of the EQ's block, a host write, learn's dispatch and
   # UMP decoding; on a pull request, compared with its base.

@@ -1,0 +1,41 @@
+//! The page: a slider on the gain, in the host's window. Its source is
+//! `page/`, a Vite and React app; `npm run build` there writes the files
+//! below, which the plugin is built with. A build that finds them missing
+//! offers no editor, unless a debug build loads the page from a dev server.
+
+use hapto_host::{Editor, Plugin, Size};
+use hapto_webview::{Asset, Page};
+
+use crate::{{type}};
+
+/// The page's built files, when they were there to build in.
+#[cfg(hapto_page)]
+pub const PAGE: Option<&[Asset]> = Some(&[
+    Asset {
+        path: "index.html",
+        bytes: include_bytes!("../page/dist/index.html"),
+    },
+    Asset {
+        path: "assets/index.js",
+        bytes: include_bytes!("../page/dist/assets/index.js"),
+    },
+    Asset {
+        path: "assets/index.css",
+        bytes: include_bytes!("../page/dist/assets/index.css"),
+    },
+]);
+
+/// The page's built files, when they were there to build in.
+#[cfg(not(hapto_page))]
+pub const PAGE: Option<&[Asset]> = None;
+
+/// The editor that shows the page: none when the page was not built in and
+/// no dev server serves it.
+pub(crate) fn editor(plugin: &{{type}}) -> Option<Box<dyn Editor>> {
+    Page::new(&{{type}}::INFO, plugin.ui().clone(), PAGE.unwrap_or_default())
+        .with_size(Size {
+            width: 420,
+            height: 160,
+        })
+        .into_editor()
+}

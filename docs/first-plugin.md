@@ -35,11 +35,15 @@ crate-type = ["cdylib", "rlib"]
 default = ["vst3"]
 # The VST3 module's entry points, through Hapto's exporter.
 vst3 = ["hapto-host/vst3"]
+# The gain as an app of its own, which `cargo hapto dev` runs; the module
+# never links it.
+standalone = ["dep:hapto-standalone"]
 
 [dependencies]
 hapto-host = { workspace = true, features = ["manifest"] }
 hapto-learn.workspace = true
 hapto-params = { workspace = true, features = ["derive"] }
+hapto-standalone = { workspace = true, optional = true }
 hapto-undo.workspace = true
 hapto-webview.workspace = true
 
@@ -53,9 +57,11 @@ turns the VST3 one on, and the tests add the test host. Its `manifest` feature
 gives `manifest_info!`, which [section 3](#3-the-plugin-and-its-parts) uses.
 `hapto-params`'s `derive` feature gives `#[derive(Params)]` and
 `#[derive(Choices)]`. `hapto-webview` shows the plugin's page in the host's
-window (section 9). Each `workspace = true` takes its value from the
-repository's root manifest; [your own crate](#your-own-crate) says what
-replaces it outside this repository.
+window (section 9). `hapto-standalone`, behind the crate's own `standalone`
+feature, runs the plugin as an app of its own while you work on it ([section
+11](#11-run-it-while-you-edit-it)). Each `workspace = true` takes its value
+from the repository's root manifest; [your own crate](#your-own-crate) says
+what replaces it outside this repository.
 
 ## 1. Declare the parameters
 
@@ -465,22 +471,27 @@ One command, in any shell, builds the page, then the module in release, lays
 out its bundle and installs it:
 
 ```sh
-cargo xtask bundle -p hapto-example-gain --install
+cargo hapto build -p hapto-example-gain --install
 ```
 
-It runs `npm ci` in `page/` when `node_modules` is missing or older than the
-lockfile, then `npm run typecheck`, when the page has that script, and `npm run
-build` every time. Vite's build strips the page's types without checking them,
-so the check is what stops a page whose keys disagree with its generated
-parameter map; neither that nor a stale page reaches the bundle.
+`cargo hapto` is the plugin author's command, the `cargo-hapto` crate in
+`crates/cli`; this repository runs it through an alias, and [your own
+crate](#your-own-crate) installs it. Run from inside a plugin crate's folder,
+or in a workspace with one plugin, it needs no `-p`. It runs `npm ci` in
+`page/` when `node_modules` is missing or older than the lockfile, or `npm
+install` when the page has no lockfile yet, then `npm run typecheck`, when the
+page has that script, and `npm run build` every time. Vite's build strips the
+page's types without checking them, so the check is what stops a page whose
+keys disagree with its generated parameter map; neither that nor a stale page
+reaches the bundle.
 `--no-page` skips the page for a Rust-only rebuild.
 
 `--debug` bundles the debug build instead, for working on the page in the
-host: run `npm run dev` in `page/`, and start the host with
-`HAPTO_PAGE_DEV_URL` set to the address it prints, and the page reloads as you
-edit it. From PowerShell, `$env:HAPTO_PAGE_DEV_URL = "http://localhost:5173"`,
-then the host's executable from that shell. The DSP runs unoptimised in that
-build, so listen to a release bundle. The bundle goes to
+host: run `cargo hapto serve`, and start the host with `HAPTO_PAGE_DEV_URL` set
+to the address it prints, and the page reloads as you edit it. From
+PowerShell, `$env:HAPTO_PAGE_DEV_URL = "http://127.0.0.1:5173"`, then the
+host's executable from that shell. The DSP runs unoptimised in that build, so
+listen to a release bundle. The bundle goes to
 `target/bundle/Hapto Example Gain.vst3`, named from `[package.metadata.hapto]`.
 `--install` copies it to the per-user VST3 folder,
 `%LOCALAPPDATA%\Programs\Common\VST3`, which needs no administrator;
@@ -515,6 +526,10 @@ pluginval --strictness-level 5 --validate-in-process --skip-gui-tests \
   "target/bundle/Hapto Example Gain.vst3"
 ```
 
+`cargo hapto validate -p hapto-example-gain` builds the release bundle and
+runs that, with the pluginval on the `PATH`, or the one `PLUGINVAL` or
+`--pluginval` names.
+
 Once a plugin's editor has opened, a host keeps the module's file in use until
 the host exits, so quit the host before installing the bundle again: the
 command's copy fails until then, and says so.
@@ -522,37 +537,114 @@ command's copy fails until then, and says so.
 Open: CI lays out and validates the EQ's Windows bundle only, not the gain's.
 The macOS bundle is not built yet, and the command refuses there.
 
+## 11. Run it while you edit it
+
+A host keeps a plugin's module loaded until it exits, so a change to Rust
+means quitting it and installing again. The gain also builds as an app of its
+own, with no host: a binary behind its `standalone` feature, at the end of its
+manifest,
+
+```toml
+[[bin]]
+name = "hapto-example-gain-standalone"
+path = "src/bin/standalone.rs"
+required-features = ["standalone"]
+```
+
+whose `main` is one call:
+
+```rust
+fn main() -> std::process::ExitCode {
+    hapto_standalone::main::<hapto_example_gain::Gain>()
+}
+```
+
+[`hapto_standalone::main`](../crates/standalone/src/lib.rs) runs the plugin
+through Hapto's standalone exporter, the same engine the VST3 exporter
+drives: it opens the plugin's editor in a window, plays a test signal through
+the plugin to the system's audio output, and ticks it as a host's timer
+would. One command runs it:
+
+```sh
+cargo hapto dev -p hapto-example-gain
+```
+
+It starts the page's dev server, writes the page's parameter map from the
+declarations through the `page_params` test, builds the binary in debug and
+runs it with the page from the server, so an edit to the page shows at once.
+An edit to any member's Rust rebuilds it while the app plays on, then asks
+the app to quit and starts the new build. The app keeps the plugin's saved
+block in `target/hapto/dev/hapto-example-gain/` as it quits and each second
+it changed, and loads it as it starts, so the gain, the mode and the label
+come back after each rebuild. Close the window to end it. The plugin's
+inputs hear silence unless you ask for a test signal: `--signal sine`, a 440
+Hz sine at -24 dBFS, or `--signal noise`, white noise at the same level.
+`--release` runs the optimised build, to listen to the DSP.
+
+`--host` alone runs the same binary through the dev host instead: the gain
+goes through a plugin format, as a host meets it, in process. In VST3 it is
+the exporter's own COM interfaces, ticked by the exporter's timer, with its
+editor as the exporter's view; in the C interface, the table the JUCE adapter
+drives, with no editor. The window is the gain's, as in a host, with a bar
+across the top that names the format and the audio. Its Settings button
+opens the settings window, a tab for each thing the host sees. Its header
+switches the format: the app quits keeping the saved block and the format,
+and the command starts it again in the other, so a block one format saved
+loads in the other. The Audio tab changes what a host changes: the sample
+rate, of those the device takes, and the most frames a block holds, each by
+reactivating the plugin as a host does, and how blocks are cut, as the
+device asks, at the maximum, at random, or at awkward lengths such as 1
+frame, none, and one past the maximum, which a graph of the last blocks
+shows. The sound is the same whatever the cut, so a click or a change in it
+is the plugin's. It also stops and starts processing, and picks the test
+signal. Parameters lists them as the host does, with a control for each.
+Activity logs what the plugin told the host, the gestures and restarts, and
+what the dev host did to the plugin. State shows the saved block and whether
+the plugin took it; a block it refused is kept for the next run rather than
+saved over. The binary needs nothing more for it: the command builds it with
+`hapto-standalone`'s `dev-host` feature.
+
+In a real host, the debug bundle loads its page from the dev server too.
+`cargo hapto build --debug --install` installs the bundle, `cargo hapto
+serve` runs the server until Ctrl+C, and the host, started with
+`HAPTO_PAGE_DEV_URL` set to the address `serve` prints, reloads the page as
+it changes. A change to Rust needs the bundle built and the host started
+again; the server goes on. The dev host stands in for none of these: a real
+host's quirks are what it cannot show.
+
+The app runs on Windows only, as the page does. No MIDI reaches the plugin,
+nor any automation: the app is the host, and an edit the page makes lands in
+the parameters with no one else to tell.
+
 ## Your own crate
 
-Hapto's crates are not published yet, so a plugin outside this repository takes
-them from git or from a checkout. Copy `examples/gain` to a folder of its own,
-delete `tests/guide.rs`, which checks this guide against the example, and
-change the manifest:
+Install the command from a checkout of Hapto, then let it write the crate:
 
-- In `[package]`, give each `.workspace = true` a value of your own: edition
-  2024 and a `rust-version` of 1.99 or later, as Hapto's.
-- Point each Hapto dependency, in `[dev-dependencies]` too, at where it lives:
-  `hapto-host = { git = "https://github.com/hapto-dev/hapto", rev = "..." }`,
-  or `hapto-host = { path = "../hapto/crates/host" }` for a checkout. Pin one
-  `rev` for every Hapto crate, since before 1.0 a minor version may break the
-  API. A dependency with `features`, `hapto-host`, `hapto-params` and the
-  dev-dependency on `hapto-host`, keeps them beside its source.
-- Give `[package.metadata.hapto]` a name, a vendor and ids of your own: a new
-  UUID for `vst3-class-id`, which `uuidgen` prints, and AU codes no other
-  plugin of yours has. With the example's ids, every host takes it for the
-  example.
-- Copy the root manifest's `[workspace.lints.rust]` and
-  `[workspace.lints.clippy]` tables in as `[lints.rust]` and `[lints.clippy]`,
-  or drop the `[lints]` table, and copy its `[profile.release]` for the same
-  release build.
+```sh
+cargo install --path hapto/crates/cli
+cargo hapto init my-plugin --vendor "My Company"
+cd my-plugin
+cargo hapto dev
+```
 
-The page takes `@hapto/page` from a checkout too, since the package is not on
-npm: in `page/package.json`, point it at the checkout's `page` folder by a
-path from the page's own folder, `"@hapto/page": "file:../../hapto/page"` for a
-checkout beside the crate. The gain's path leads into this repository, so
-`npm ci` in a copy fails until it is changed. `cargo xtask bundle` is this
-repository's and bundles its crates only; lay out your own crate's bundle with
-the steps in section 10.
+`init` writes a smaller plugin than the gain, in a folder of its own: a gain
+in dB and a bypass, its page with one slider, the standalone binary of
+section 11, the page's parameter map with the `page_params` test that keeps
+it, and a test through the VST3 exporter (section 8). The crate is a
+workspace of its own; delete its `[workspace]` table to make it a member of
+another. Its identity comes from the folder's name and the flags: the
+package, the type (`MyPlugin`), the name hosts show (`--name`, `My Plugin`
+by default), the vendor, a reverse-DNS id (`--id`, `com.mycompany.my-plugin`
+by default), a fresh UUID for `vst3-class-id`, a fresh AU subtype and a
+manufacturer code from the vendor. A host knows a plugin by its ids for good:
+a crate copied from another plugin, the gain among them, keeps that plugin's,
+and every host takes one for the other.
+
+Hapto's crates are not published yet, so the crate takes them, and its page
+takes `@hapto/page`, from a checkout by path: the one `--hapto` names, or the
+one the command was built from. Every Hapto crate comes from the same place,
+since before 1.0 a minor version may break the API, and the command warns
+when the crate's lockfile pins another `hapto-host` than its own version.
 
 ## Where to read on
 

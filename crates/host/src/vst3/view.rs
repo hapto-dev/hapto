@@ -402,7 +402,7 @@ impl<P: Plugin> IPlugViewContentScaleSupportTrait for View<P> {
     unsafe fn setContentScaleFactor(&self, factor: ScaleFactor) -> tresult {
         self.call_held(kInternalError, |state, slot| {
             let scale = f64::from(factor);
-            if !(scale.is_finite() && scale > 0.0) {
+            if !EditorSlot::takes_scale(scale) {
                 return kInvalidArgument;
             }
             if slot.set_scale(scale) && slot.is_open() {

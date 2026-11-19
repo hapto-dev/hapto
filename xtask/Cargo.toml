@@ -1,6 +1,6 @@
 [package]
 name = "xtask"
-description = "Hapto's repository tasks: `cargo xtask gen` rewrites every generated file, `cargo xtask bundle` builds a plugin's VST3 bundle"
+description = "Hapto's repository tasks: `cargo xtask gen` rewrites every generated file, and the checks of Rust source"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -15,9 +15,8 @@ publish.workspace = true
 [features]
 default = ["generate"]
 # `gen` and its drift gate need the crates whose files they write. The
-# checks of Rust source (`scan`, `defs`, `wrap`) and `bundle` need none of
-# them, so a lane that only reads source builds xtask with
-# `--no-default-features`.
+# checks of Rust source (`scan`, `defs`, `wrap`) need none of them, so a lane
+# that only reads source builds xtask with `--no-default-features`.
 generate = ["dep:hapto-bridge", "dep:hapto-example-eq", "dep:hapto-host", "dep:hapto-params"]
 
 [dependencies]
@@ -25,8 +24,6 @@ generate = ["dep:hapto-bridge", "dep:hapto-example-eq", "dep:hapto-host", "dep:h
 # between two tokens (the comments) is found.
 proc-macro2 = { version = "1", features = ["span-locations"] }
 quote = "1"
-# `bundle` reads `cargo metadata`.
-serde_json.workspace = true
 syn = { version = "2", features = ["full", "visit"] }
 hapto-bridge = { workspace = true, features = ["typescript"], optional = true }
 hapto-example-eq = { path = "../examples/eq", default-features = false, optional = true }

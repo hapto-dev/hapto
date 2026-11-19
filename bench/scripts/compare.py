@@ -8,8 +8,8 @@ and written up.
 
 Build A, A-native, A-port and C first, and A-port and C in a folder
 configured with clang-cl (bench/README.md). B's module is built here with
-cargo and put in a bundle under --out, which `cargo xtask bundle` will do
-once it exists.
+cargo and put in a bundle under --out, rather than by `cargo hapto build`,
+which lays its bundle out under target/bundle/.
 
 1. A, B, C and C-clang must first play the parity script bit for bit as the
    Rust EQ driven directly does (scripts/hosted.py); the timing waits on it.

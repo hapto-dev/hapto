@@ -273,6 +273,9 @@ move its line here; when a decision gains code, add one.
 [Record section](decisions.md#d27-what-runs-the-generator)
 
 - `xtask/src/lib.rs`: module
+- `crates/cli/src/page.rs`: `write_param_map`
+- `crates/cli/src/bundle.rs`: `build`
+- test `examples/gain/tests/page_params.rs`: module, `the_pages_parameter_map_matches_the_gains_declarations`
 
 ### D28. Threads that may make a program write
 
@@ -1205,6 +1208,106 @@ move its line here; when a decision gains code, add one.
 - test `crates/host/src/state/run_time/tests.rs`: `a_captured_mapping_that_differs_is_a_change_unless_a_load_holds_or_left_it`
 - test `crates/session/tests/changed.rs`: module
 - test `crates/params/tests/run_time.rs`: `an_edit_to_a_parameter_made_at_run_time_leaves_a_mark_and_no_other_write_does`
+
+### D109. The plugin author's command
+
+[Record section](decisions.md#d109-the-plugin-authors-command)
+
+- `crates/cli/src/main.rs`: module, `main`, `usage_of`
+- `crates/cli/src/args.rs`: `Args::port`, `wants_help`
+- test `crates/cli/src/args/tests.rs`: `a_port_is_one_to_listen_on`, `a_request_for_help_is_seen_wherever_it_stands`
+- `crates/cli/src/workspace.rs`: `Workspace::find`, `Workspace::plugin`, `Package::plugin`, `Workspace::warn_of_another_version`, `locked_version`
+- `crates/cli/src/bundle.rs`: module, `build`, `layout`, `file_name`, `arch_folder`, `windows_only`, `head`, `module_of`, `install`, `copy_error`
+- `crates/cli/src/tool.rs`: `Artifact`, `Artifact::read`, `build`
+- `crates/cli/src/page.rs`: `build`, `install`, `packages`, `scripts`
+- `crates/cli/src/validate.rs`: module, `PLUGINVAL_ARGS`, `pluginval_command`, `run_pluginval`
+- `.github/workflows/ci.yml`: `validators:`
+- `crates/cli/src/dev.rs`: module, `Options::parse`, `App::of`, `Copies`, `RELAUNCH`, `Ended`, `Ended::of`, `Seen`, `Build`, `Next`, `after_build`, `build_app`, `app_command`, `PageSource`, `page_source`, `in_app`, `Running::ended`, `Running::quit`
+- `crates/cli/src/serve.rs`: module, `Options::parse`, `run_command`
+- `crates/cli/src/watch.rs`: module, `Watch::fingerprint`, `TEMPORARY`, `WORKSPACE`, `walk`
+- `crates/cli/src/page.rs`: `DevServer::start`, `DevServer::wait`, `PAGE_DEV_URL`, `prepare`, `claim`, `write_param_map`, `param_map_test`, `linked`
+- `crates/cli/src/init.rs`: module, `Options::parse`, `Identity::new`, `folder_name`, `class_id`, `subtype`, `au_code`, `render`, `write`, `checkout`, `crate_name`, `FILES`, `MADE`, `TAKEN`, `KEYWORDS`, `CRATES`
+- `crates/cli/template/Cargo.toml.tmpl`: `[package.metadata.hapto]`
+- test `crates/cli/src/init/tests.rs`: `a_folders_name_gives_the_crate_its_type_and_its_names`, `names_the_template_cannot_take_are_refused`, `names_the_generated_code_could_not_compile_are_refused`, `a_folder_git_alone_holds_takes_the_new_crate`, `the_folder_s_name_is_read_from_a_dot_or_a_dot_dot_too`, `every_type_a_template_file_imports_is_taken`, `init_refuses_a_name_the_bundle_or_the_module_cannot_take`, `a_vendor_with_no_letters_cannot_make_the_default_id`, `the_au_subtype_is_drawn_at_random_and_the_manufacturer_is_the_vendor_s`, `each_init_writes_a_fresh_version_4_class_id`, `every_placeholder_of_every_file_is_filled`, `a_new_crate_is_written_only_into_a_new_or_empty_folder`, `a_new_crate_builds_and_passes_its_tests`
+- test `crates/cli/src/page/tests.rs`: `a_package_the_page_links_by_file_is_found`, `the_map_is_written_on_a_machine_and_checked_in_ci`, `a_port_something_listens_on_is_refused`, `a_held_port_is_refused_before_the_page_s_packages_are_installed`
+- test `crates/cli/src/dev/tests.rs`: `host_is_the_dev_host_and_names_no_host_of_its_own`, `the_app_reads_its_page_from_this_server_or_from_none`, `the_relaunch_code_and_the_page_variable_are_the_ones_the_app_uses`, `an_app_closed_while_it_rebuilt_ends_the_session`, `the_standalone_app_runs_with_its_dev_session`, `a_crate_with_no_standalone_binary_is_told_how_to_add_one`, `each_run_is_a_fresh_numbered_copy_of_the_build`, `only_a_clean_close_ends_the_session_and_a_crash_waits_for_a_build`, `a_debug_app_takes_its_page_from_the_server_and_a_release_one_built_in`, `copies_an_earlier_session_left_are_cleared_and_one_still_there_is_passed`
+- test `crates/cli/src/serve/tests.rs`: `with_no_arguments_it_serves_the_found_crate_on_the_dev_port`, `the_crate_and_port_are_read_and_bad_ones_refused`
+- test `crates/cli/src/watch/tests.rs`: `a_written_added_or_removed_source_changes_the_fingerprint`, `the_page_and_target_are_not_watched`, `an_editor_s_temporary_files_are_not_watched_but_an_included_one_is`, `a_file_swapped_for_one_as_old_changes_the_fingerprint`, `the_workspace_s_own_files_are_watched_too`
+- `.cargo/config.toml`: `hapto = "run --quiet --package cargo-hapto --"`
+- test `crates/cli/src/workspace/tests.rs`: `with_no_name_the_plugin_is_the_one_the_folder_is_in_or_the_only_one`, `a_crate_that_is_no_plugin_is_refused_by_name`, `the_locked_version_is_the_one_line_after_the_name`
+- test `crates/cli/src/page/tests.rs`: `packages_are_installed_only_when_missing_or_stale`, `a_page_with_no_lockfile_resolves_its_packages`, `a_page_is_type_checked_before_it_is_built`
+- test `crates/cli/src/bundle/tests.rs`: `the_bundle_holds_the_module_under_its_architecture`, `the_module_goes_under_the_architecture_it_was_built_for`, `a_module_built_here_reads_as_this_machine_s`, `the_module_is_the_one_cargo_wrote_for_the_cdylib`, `a_held_module_says_to_quit_the_host`, `a_name_no_file_can_hold_still_lays_the_bundle_out_in_its_folder`, `a_name_is_written_as_a_file_name_or_refused`
+- test `crates/cli/src/tool/tests.rs`: `a_binary_s_executable_and_freshness_are_read`, `a_library_s_files_are_read`, `a_message_that_names_no_artifact_is_passed_over`
+
+### D110. The standalone exporter and app
+
+[Record section](decisions.md#d110-the-standalone-exporter-and-app)
+
+- `crates/host/src/standalone.rs`: module, `Standalone`, `Standalone::activate`, `Standalone::tick`, `Standalone::editor`, `Standalone::load`, `LoadRefused`, `StandaloneAudio::process`, `StandaloneEditor::open`, `StandaloneEditor::set_scale`, `MAX_CHANNELS`, `Link`, `partly_overlapping`
+- `crates/host/src/engine/mod.rs`: `Engine::editor`, `Engine::tick_editors`
+- `crates/host/src/engine/editor.rs`: `EditorSlot::takes_scale`, `EditorSlot::set_scale`
+- test `crates/host/src/engine/editor/tests.rs`: `a_scale_that_is_no_positive_number_is_refused_by_the_slot_itself`
+- `crates/standalone/src/lib.rs`: module, `main`
+- `crates/standalone/src/app.rs`: `run`, `load_saved`, `App`, `App::check_audio`, `minimized`, `EditorShown`, `title`, `TICK`, `KEEP`, `quit_when_stdin_closes`
+- `crates/standalone/src/block.rs`: `Player`, `Player::play`, `Player::of_app`, `Render`
+- `crates/standalone/src/app.rs`: `BLOCK`
+- `crates/standalone/src/device.rs`: `Output::system_default`, `Output::start`, `Playing`, `Playing::ended`
+- `crates/standalone/src/session.rs`: module, `Session::open`, `Session::saved_block`, `Session::hold`, `Session::keep`, `Kept`, `write_whole`
+- `crates/standalone/src/signal.rs`: `Signal`, `Generator::fill`, `LEVEL`
+- `examples/gain/src/bin/standalone.rs`: `main`
+- test `crates/host/src/standalone/tests.rs`: `a_block_before_an_activation_is_silence_and_after_it_plays`, `channels_past_the_most_are_passed_over`, `inputs_that_are_one_buffer_play_and_ones_that_share_part_of_one_do_not`, `the_editor_opens_in_the_apps_window_ticks_with_the_app_and_closes_as_it_drops`, `a_teardown_frees_the_plugin_only_once_no_audio_side_is_left`, `an_editor_may_outlive_the_app_and_frees_the_plugin_as_it_drops`, `a_teardown_while_the_audio_thread_plays_leaks_the_engine_and_silences_it`, `a_migration_that_panics_refuses_the_load_and_counts_a_fault`, `an_activation_that_panics_is_refused_as_a_panic`, `an_editor_that_panics_as_it_drops_is_a_fault_and_the_app_goes_on`, `a_plugin_that_panics_as_it_drops_is_a_fault_and_the_app_goes_on`, `a_panic_while_the_editor_opens_is_refused_as_one`, `an_open_refused_while_the_editor_is_still_in_a_call_is_a_fault`, `a_scale_that_is_no_positive_number_is_passed_over`, `a_block_of_no_frames_does_not_play_and_its_outputs_are_silence`
+- test `crates/standalone/src/block/tests.rs`: `the_sound_is_the_same_whatever_the_cut`, `a_mono_plugin_plays_on_every_channel_and_a_missing_output_is_silent`
+- test `crates/standalone/src/session/tests.rs`: `a_kept_block_is_there_at_the_next_run`, `an_unchanged_block_is_not_written_again`, `a_held_session_writes_nothing_over_its_block`, `a_block_that_cannot_be_read_is_held_not_taken_for_none`
+- test `crates/standalone/src/app/tests.rs`: `a_block_the_plugin_refuses_is_kept_as_it_was`, `a_block_the_plugin_takes_is_kept_as_it_changes`, `a_minimized_window_s_size_is_none_to_hand_an_editor`, `the_window_s_title_says_what_it_shows_of_the_editor`
+
+### D111. The dev host
+
+[Record section](decisions.md#d111-the-dev-host)
+
+- `crates/standalone/src/dev_host/mod.rs`: module, `run`, `start_again`, `DevHost::tick`, `DevHost::handle`, `DevHost::show`, `DevHost::keep`, `DevHost::finish`
+- `crates/standalone/src/dev_host/hosted.rs`: module, `Hosted`, `Param`, `kind_text`, `Vst3`, `Vst3Audio`, `Cabi`, `CabiAudio`, `MAX_CHANGES`
+- `crates/standalone/src/dev_host/pending.rs`: module, `Pending::set`, `Pending::take`
+- `crates/standalone/src/dev_host/audio.rs`: module, `Device`, `Audio::open`, `Audio::with`, `Audio::start_first`, `Audio::start`, `Audio::play`, `Audio::check`, `Audio::running`, `Audio::change`, `Audio::reactivate`, `Audio::stop`, `Audio::resume`, `Audio::set_signal`, `Audio::restart`, `Audio::silence`, `Audio::events`
+- `crates/standalone/src/dev_host/mod.rs`: `DevHost::keep_audio`
+- test `crates/standalone/src/dev_host/audio/tests.rs`: `a_start_the_plugin_refuses_brings_back_the_settings_that_last_ran`, `kept_settings_the_plugin_refuses_fall_back_to_the_device_s_own`, `a_plugin_refused_even_at_the_device_s_own_settings_still_lets_the_dev_host_start`, `a_device_that_does_not_start_leaves_the_plugin_stopped`, `a_stream_that_ends_on_its_own_stops_processing_and_says_why`
+- `crates/standalone/src/dev_host/hosted.rs`: `Hosted::stop`
+- `crates/standalone/src/settings.rs`: module, `Settings`, `Blocks`, `offered`, `STANDARD_RATES`, `MAX_BLOCKS`
+- `crates/standalone/src/block.rs`: module, `Plan`, `Plan::recent`, `RECENT`, `Cut::next`, `preview`, `Player::play_block`
+- `crates/standalone/src/device.rs`: `Output::rates`, `Output::start`
+- `crates/standalone/src/session.rs`: `Session::audio`, `Session::set_audio`
+- `crates/standalone/src/dev_host/panel.rs`: module, `Panel::open`, `Panel::place`, `is_own_page`
+- test `crates/standalone/src/dev_host/panel/tests.rs`: `only_the_panel_s_own_page_is_navigated_to`
+- `crates/standalone/src/dev_host/layout.rs`: module, `lay_out`, `window_for`, `BAR`, `NO_EDITOR`, `SETTINGS`
+- `crates/standalone/src/dev_host/windows.rs`: module, `DevHost::open_window`, `DevHost::open_settings`, `DevHost::settings_event`, `DevHost::resized`, `DevHost::follow_the_view`, `fit`
+- `crates/standalone/src/dev_host/bar.html`: module
+- `crates/standalone/src/dev_host/message.rs`: `BarShown`, `BarShown::status`
+- `crates/standalone/src/dev_host/mod.rs`: `SettingsWindow`, `Told`, `PageState`
+- `crates/standalone/src/dev_host/settings.html`: module
+- `crates/standalone/src/dev_host/activity.rs`: module, `Activity`, `Entry`, `What`, `KEPT`
+- `crates/standalone/src/dev_host/saved.rs`: module, `FirstLoad`, `FirstLoad::of`, `FirstLoad::holds`
+- `crates/standalone/src/dev_host/learned.rs`: module, `learned`
+- `crates/standalone/src/signal.rs`: `Signal::index`, `Generator::set`
+- `crates/host/src/vst3/test_host/child.rs`: module, `ChildWindow`, `ChildWindow::new`, `ChildWindow::place`
+- test `crates/host/src/vst3/view/tests.rs`: `the_view_opens_in_a_child_window_a_host_places_in_its_own`
+- `crates/standalone/src/dev_host/message.rs`: `Message::read`, `Shown::script`, `AudioChange`, `AudioChange::apply`
+- `crates/standalone/src/dev_host/format.rs`: `Format`, `Call`
+- `crates/standalone/src/session.rs`: `RELAUNCH`, `Session::format`, `Session::set_format`
+- `crates/host/src/vst3/test_host/view.rs`: `TestView::attach_to`
+- `crates/cli/src/dev.rs`: `RELAUNCH`, `App::of`
+- test `crates/standalone/src/dev_host/pending/tests.rs`: `a_change_reaches_the_next_block_once_by_its_host_id`, `changes_past_the_room_wait_for_the_next_block`
+- test `crates/standalone/src/dev_host/message/tests.rs`: `a_set_and_a_switch_are_read`, `what_is_shown_reaches_the_page_as_one_update`
+- test `crates/standalone/src/dev_host/layout/tests.rs`: `the_view_fills_the_window_below_the_bar`, `with_no_view_the_bar_fills_the_window`, `the_window_fits_the_view_with_the_bar_above`
+- test `crates/standalone/src/dev_host/message/tests.rs`: `the_bar_shows_the_format_the_audio_and_the_faults`
+- test `crates/standalone/src/session/tests.rs`: `the_dev_hosts_format_is_kept`, `the_dev_hosts_audio_settings_are_kept`
+- test `crates/standalone/src/dev_host/hosted/tests.rs`: `a_change_of_rate_and_maximum_reactivates_the_plugin_in_each_format`, `awkward_blocks_play_with_no_fault_in_each_format`, `each_format_lists_the_parameters_by_kind_with_hapto_s_host_ids`, `a_block_that_is_not_a_saved_one_is_refused_in_each_format`, `a_plugin_stopped_twice_starts_again_with_no_fault_in_each_format`, `a_control_moved_while_processing_is_stopped_lands_in_each_format`
+- test `crates/standalone/src/settings/tests.rs`: `only_the_standard_rates_the_device_takes_are_offered`, `kept_settings_come_back_only_when_the_device_still_takes_them`
+- test `crates/standalone/src/block/tests.rs`: `the_sound_is_the_same_whatever_the_cut`, `the_preview_is_what_a_player_cuts`, `as_the_device_asks_cuts_each_buffer_at_the_maximum`, `awkward_blocks_hold_one_frame_none_and_one_past_the_maximum`, `a_plan_changed_while_blocks_play_cuts_the_next_ones`, `a_signal_changed_while_blocks_play_reaches_the_next_block`, `the_plan_keeps_the_latest_lengths_the_last_one_last`, `as_the_device_asks_cuts_at_a_maximum_past_the_part_size`, `awkward_blocks_stay_within_a_maximum_of_one_frame`
+- test `crates/standalone/src/dev_host/message/tests.rs`: `audio_settings_a_signal_and_processing_are_read`, `one_audio_setting_is_read_alone_and_changes_only_itself`, `a_page_says_when_it_is_ready`
+- test `crates/standalone/src/dev_host/activity/tests.rs`: `entries_are_stamped_from_the_start_and_numbered_in_order`, `the_log_keeps_the_latest_entries`
+- test `crates/standalone/src/dev_host/saved/tests.rs`: `a_session_with_no_block_loads_nothing`, `a_block_of_the_plugin_s_own_version_loads_as_it_is`, `an_older_block_is_upgraded_and_says_from_which_version`, `a_refused_block_is_held_as_it_was`, `a_block_that_could_not_be_read_is_held`
+- test `crates/standalone/src/dev_host/learned/tests.rs`: `each_mapping_reaches_the_parameter_its_key_names`, `a_block_with_no_mappings_learned_nothing`, `a_mapping_with_a_group_past_any_number_is_passed_over`
+- test `crates/standalone/src/dev_host/format/tests.rs`: `an_edit_carries_its_parameter_and_its_value`, `a_restart_names_the_flags_it_knows_and_shows_the_rest_in_hex`
+- test `crates/cli/src/dev/tests.rs`: `the_dev_host_is_the_same_binary_with_its_feature_and_flag`
 
 ## Parameters
 
