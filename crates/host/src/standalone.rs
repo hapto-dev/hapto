@@ -46,6 +46,8 @@ impl HostLink for Link {
     fn tell(&self, _set: &ParamSet, _event: HostEvent) {}
 
     fn restart(&self, _restart: Restart) {}
+
+    fn state_changed(&self) {}
 }
 
 /// One instance of a plugin, as a standalone app drives it.

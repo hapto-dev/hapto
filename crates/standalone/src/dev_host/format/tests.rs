@@ -28,6 +28,19 @@ fn an_edit_carries_its_parameter_and_its_value() {
 }
 
 #[test]
+fn a_dirty_call_says_whether_the_state_changed() {
+    assert_eq!(Call::dirty("setDirty", true).name, "setDirty");
+    assert_eq!(
+        Call::dirty("setDirty", true).fields,
+        [("State", "changed".to_owned())]
+    );
+    assert_eq!(
+        Call::dirty("setDirty", false).fields,
+        [("State", "unchanged".to_owned())]
+    );
+}
+
+#[test]
 fn a_restart_names_the_flags_it_knows_and_shows_the_rest_in_hex() {
     let known = [(1, "values"), (4, "latency")];
     let flags = |flags| Call::restart("restart", flags, &known).fields;

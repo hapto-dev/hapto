@@ -598,8 +598,9 @@ frame, none, and one past the maximum, which a graph of the last blocks
 shows. The sound is the same whatever the cut, so a click or a change in it
 is the plugin's. It also stops and starts processing, and picks the test
 signal. Parameters lists them as the host does, with a control for each.
-Activity logs what the plugin told the host, the gestures and restarts, and
-what the dev host did to the plugin. State shows the saved block and whether
+Activity logs what the plugin told the host, the gestures, the restarts and
+a change to state the host does not list, and what the dev host did to the
+plugin. State shows the saved block and whether
 the plugin took it; a block it refused is kept for the next run rather than
 saved over. The binary needs nothing more for it: the command builds it with
 `hapto-standalone`'s `dev-host` feature.

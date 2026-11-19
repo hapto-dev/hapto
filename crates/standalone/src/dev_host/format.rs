@@ -65,6 +65,16 @@ impl Call {
         Call { name, fields }
     }
 
+    /// A call that says whether state the host does not list changed since
+    /// the project was saved.
+    pub(crate) fn dirty(name: &'static str, state: bool) -> Call {
+        let state = if state { "changed" } else { "unchanged" };
+        Call {
+            name,
+            fields: vec![("State", state.to_owned())],
+        }
+    }
+
     /// A restart, with `flags` named as `known` names its bits, and any
     /// other bits in hex.
     pub(crate) fn restart(name: &'static str, flags: u64, known: &[(u64, &str)]) -> Call {

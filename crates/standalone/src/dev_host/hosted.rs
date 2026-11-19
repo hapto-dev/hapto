@@ -215,6 +215,7 @@ impl<P: Plugin> Hosted for Vst3<P> {
                     let flags = u64::from(flags.cast_unsigned());
                     Call::restart("restartComponent", flags, &known)
                 }
+                HostCall::Dirty(state) => Call::dirty("setDirty", state),
             })
             .collect()
     }
@@ -358,6 +359,7 @@ impl<P: Plugin> Hosted for Cabi<P> {
         let known = [
             (u64::from(cabi::RESTART_VALUES), "values"),
             (u64::from(cabi::RESTART_LATENCY), "latency"),
+            (u64::from(cabi::RESTART_STATE), "state"),
         ];
         self.host
             .calls()
