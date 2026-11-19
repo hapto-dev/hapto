@@ -201,6 +201,15 @@ impl Ticked {
                 }
             }
         }
+        // What learn holds now is what the load left, and the tick's
+        // capture compares with it: the load's own mappings are no change
+        // to tell the host of.
+        if let Some(learn) = learn.as_deref() {
+            self.saved
+                .run_time()
+                .settle_learned(learn.run_time_mappings());
+            self.learned_at.set(Some(learn.revision()));
+        }
     }
 
     /// At the end of a tick, when learn's mappings moved since the last

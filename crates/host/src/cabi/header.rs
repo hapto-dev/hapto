@@ -20,7 +20,7 @@ use super::abi::{self, CStruct};
 ///
 /// ```
 /// let header = hapto_host::cabi::header();
-/// assert!(header.contains("#define HAPTO_ABI_VERSION 1u"));
+/// assert!(header.contains("#define HAPTO_ABI_VERSION 2u"));
 /// assert!(header.contains("const HaptoPlugin* hapto_plugin(void);"));
 /// ```
 pub fn header() -> String {

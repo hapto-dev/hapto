@@ -1,7 +1,7 @@
 //! Parameters made at run time through the UI handle: the calls that name
 //! one parameter take a typed one, listed or made at run time, with a value
 //! of its type; a gesture on one made at run time has no id; and the host
-//! hears nothing of it.
+//! hears no edit of it, while the set keeps a mark of one for an exporter.
 
 use hapto_params::{
     Bool, BoolDecl, Choice, ChoiceDecl, Choices, Declaration, Declarer, Float, FloatDecl, Origin,
@@ -136,6 +136,44 @@ fn a_gesture_on_a_parameter_made_at_run_time_has_no_id_and_tells_the_host_nothin
     drop(drag);
     drain.drain(|event| heard.push(event));
     assert_eq!(heard.len(), 3, "a listed one is heard: {heard:?}");
+}
+
+#[test]
+fn an_edit_to_a_parameter_made_at_run_time_leaves_a_mark_and_no_other_write_does() {
+    let (set, listed) = ParamSet::declare::<Listed>().expect("valid");
+    let (made, erased) = Declarer::run_time::<Made>(&set, Box::new(|_| None));
+    let ui = set.take_ui().expect("the first UI handle");
+    assert!(!set.take_unlisted(), "nothing written yet");
+
+    // A user's gesture, at each write that changes the value.
+    let drag = ui.begin(&made.gain);
+    assert!(!set.take_unlisted(), "an open gesture wrote nothing");
+    assert!(drag.write(-12.0));
+    assert!(set.take_unlisted());
+    assert!(!set.take_unlisted(), "taking it cleared the mark");
+    assert!(!drag.write(-12.0));
+    drop(drag);
+    assert!(
+        !set.take_unlisted(),
+        "nor a write of the same, nor the close"
+    );
+
+    // The plugin's own edit, and an undo replay.
+    let mut edit = ui.edit();
+    assert!(edit.write(&made.on, true));
+    drop(edit);
+    assert!(set.take_unlisted());
+    assert!(ui.replay_run_time(&erased[0], -3.0));
+    assert!(set.take_unlisted());
+
+    // A restore and a learned controller's write leave none, and neither
+    // does anything written to a listed parameter, which the host hears of.
+    set.program().load().restore_run_time(&erased[0], 6.0);
+    erased[0].learned_write(0.0);
+    assert_eq!(made.gain.get(), -60.0, "both landed");
+    assert!(ui.write(&listed.gain, -6.0));
+    assert!(set.program().sync(listed.gain.id(), 3.0));
+    assert!(!set.take_unlisted());
 }
 
 #[test]

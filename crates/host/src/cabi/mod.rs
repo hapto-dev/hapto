@@ -41,8 +41,8 @@ use hapto_params::{Kind, ParamDecl, ParamId, audio_thread};
 pub use abi::{
     ABI_VERSION, CChar, HaptoHost, HaptoInstance, HaptoLayout, HaptoParamInfo, HaptoPlugin,
     HaptoProcess, HaptoStr, KIND_BOOL, KIND_CHOICE, KIND_CONTINUOUS, MAX_FRAMES, PARAM_BYPASS,
-    RESTART_LATENCY, RESTART_VALUES, STATUS_CONTINUE, STATUS_CONTINUE_IF_NOT_QUIET, STATUS_SLEEP,
-    STATUS_TAIL, TAIL_INFINITE, TAIL_NONE, WriteFn,
+    RESTART_LATENCY, RESTART_STATE, RESTART_VALUES, STATUS_CONTINUE, STATUS_CONTINUE_IF_NOT_QUIET,
+    STATUS_SLEEP, STATUS_TAIL, TAIL_INFINITE, TAIL_NONE, WriteFn,
 };
 pub use header::header;
 pub use juce::{juce_param_id, juce_settings};

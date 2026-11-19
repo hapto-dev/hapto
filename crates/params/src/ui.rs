@@ -224,7 +224,8 @@ impl UiState {
     ///
     /// A program edit or replay tells the host of its gesture here, at its
     /// first changing write. A parameter made at run time is listed to no
-    /// host, so the host hears nothing of it.
+    /// host, so the host hears no gesture and no value of it: the write
+    /// leaves the mark [`ParamSet::take_unlisted`] takes.
     fn write(&self, which: &Which, value: f32, writer: Writer) {
         debug_assert!(
             writer == Writer::Replay || !self.clock.applying(),
@@ -244,11 +245,12 @@ impl UiState {
             return;
         };
         let cell = which.cell(&self.set);
-        cell.store_then_publish(value, writer.origin(), || {
-            if let Which::Listed(id) = which {
+        cell.store_then_publish(value, writer.origin(), || match which {
+            Which::Listed(id) => {
                 self.tell_host_begin(which, &gesture);
                 self.set.host().value(*id, value);
             }
+            Which::RunTime(_) => self.set.host().mark_unlisted(),
         });
         if writer == Writer::User {
             if gesture.user_before.get().is_none() {
@@ -331,7 +333,8 @@ impl UiState {
 /// and otherwise stores, tells the host and publishes. A call that names one
 /// parameter takes a typed parameter, by reference, or a [`ParamId`], as
 /// [`Writable`] says. A typed parameter may be one the set lists or one the
-/// instance made at run time, which the host never hears of.
+/// instance made at run time, which the host is told no gesture and no value
+/// of.
 ///
 /// # Examples
 ///
@@ -520,8 +523,8 @@ impl UiParams {
     /// the host hears it when the exporter next drains the queue
     /// ([`HostEventDrain`](crate::HostEventDrain)), after the plugin's next
     /// idle. One end follows when the last token closes, however many
-    /// gestures overlap. A gesture on a parameter made at run time tells the
-    /// host nothing. [`UiParams`] shows a drag.
+    /// gestures overlap. A gesture on a parameter made at run time queues
+    /// neither. [`UiParams`] shows a drag.
     ///
     /// The gesture writes the value as a store holds it, an `f32` whatever
     /// the parameter's kind: real units for a float, 0 or 1 for a bool, the

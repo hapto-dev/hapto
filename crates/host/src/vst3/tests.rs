@@ -39,6 +39,8 @@ use crate::{
     Status, Tail,
 };
 
+mod told;
+
 const PARAMS: &[ParamDecl] = &[
     ParamDecl::new(
         "gain",

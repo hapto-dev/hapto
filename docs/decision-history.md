@@ -1053,6 +1053,27 @@ for. The full build passed his checklist in Cubase 16 the same day, and a
 bundle with a select added for the run showed how a select's arrow keys and
 open list behave, which the record now says. To confirm.
 
+### D108. The host is told of state it does not list
+
+[The decision](decisions.md#d108-the-host-is-told-of-state-it-does-not-list)
+
+Planned on 2026-11-10, when the owner decided that a saved value is captured
+at the tick and that Hapto tells the host after it has captured. The plan
+waited for parameters made at run time and for the page, and was built on
+2026-11-18. It named two flags, one on the parameter set and one where the
+session keeps a capture, and left comparing a capture with the one before it
+out, since a capture was taken only when something moved. That no longer
+held: a load assigns the learned mappings of parameters made at run time
+when its pass finishes, learn reports each to the session, and the capture
+the next tick takes saves the section it already had. So the build compares
+a capture with the section it replaces, gives those mappings a mark of their
+own beside the saved state, and has a load drop the marks from before it. The
+plan also put the telling on the restart request; it is a call of its own,
+since each call to the host reads the link again. The implementer's choices
+wait for the owner: the comparison, the load dropping what was not told,
+`HAPTO_ABI_VERSION` at 2, and the state flag in a restart call of its own.
+To confirm.
+
 ## Rules
 
 ### P7. The host write: sanitise, clamp, convert, snap, store, publish

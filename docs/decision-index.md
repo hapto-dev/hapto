@@ -1182,6 +1182,30 @@ move its line here; when a decision gains code, add one.
 - test `page/test/keys.test.ts`: module
 - test `page/test/webviewTransport.test.ts`: `the hand-back is the shell fixture's text`, `gives the keyboard back through ipc, before the snapshot too, never held by the client`, `watches nothing outside a plugin's window, with no ipc`, `the memory transport gives nothing back`
 
+### D108. The host is told of state it does not list
+
+[Record section](decisions.md#d108-the-host-is-told-of-state-it-does-not-list)
+
+- `crates/host/src/engine/mod.rs`: `Engine`, `HostLink::state_changed`, `Engine::tell_host`, `Engine::take_unlisted`, `Engine::linked`
+- `crates/host/src/vst3/component.rs`: `state_changed`
+- `crates/host/src/cabi/instance.rs`: `state_changed`
+- `crates/host/src/cabi/abi.rs`: `RESTART_STATE`, `ABI_VERSION`
+- `adapters/juce/HaptoPluginProcessor.cpp`: `PluginProcessor::onRestart`
+- `crates/host/src/state.rs`: `SavedState::take_changed`, `SavedState::load`
+- `crates/host/src/state/run_time.rs`: `RunTimeSaved::set_all_learned`, `RunTimeSaved::settle_learned`, `RunTimeSaved::take_learned_changed`, `RunTimeSaved::hold`
+- `crates/host/src/parts/run_time.rs`: `Ticked::assign_held`
+- `crates/session/src/session.rs`: `Session::take_changed`, `same`
+- `crates/session/src/ui.rs`: `UiState::capture`
+- `crates/params/src/host_events.rs`: `HostQueue::mark_unlisted`
+- `crates/params/src/set.rs`: `ParamSet::take_unlisted`
+- `crates/params/src/ui.rs`: `UiState::write`
+- test `crates/host/src/engine/tests/told.rs`: module
+- test `crates/host/src/vst3/tests/told.rs`: module
+- test `crates/host/src/cabi/tests/told.rs`: module
+- test `crates/host/src/state/run_time/tests.rs`: `a_captured_mapping_that_differs_is_a_change_unless_a_load_holds_or_left_it`
+- test `crates/session/tests/changed.rs`: module
+- test `crates/params/tests/run_time.rs`: `an_edit_to_a_parameter_made_at_run_time_leaves_a_mark_and_no_other_write_does`
+
 ## Parameters
 
 ### P1. One store per parameter

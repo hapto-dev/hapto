@@ -464,6 +464,17 @@ impl SavedState {
         &self.run_time
     }
 
+    /// Takes whether a save writes something else than it did at the last
+    /// call, in the session's sections or in the learned mappings of the
+    /// parameters made at run time, because the plugin or its user changed
+    /// it. A load is no such change, and drops the ones before it.
+    pub(crate) fn take_changed(&self) -> bool {
+        // Both taken, whatever the first says.
+        let sections = self.session.take_changed();
+        let learned = self.run_time.take_learned_changed();
+        sections || learned
+    }
+
     /// Returns the block as UTF-8 JSON with no byte-order mark:
     /// `{"seamStateVersion": 1, "pluginStateVersion": 0, "parameters": {...},
     /// "runTime": {...}, "extra": {...}}`.
@@ -661,6 +672,10 @@ impl SavedState {
             return Err(LoadError::TooLarge);
         }
         let load = self.set.program().load();
+        // An edit to a parameter made at run time before this load is
+        // replaced by it, so it is not left to tell the host of. The session
+        // and the entries held below drop theirs as they store.
+        let _ = self.set.take_unlisted();
         for (id, value) in self.set.ids().zip(declared) {
             let decl = self.set.decl(id);
             // A number outside f32's range becomes infinite here, and the

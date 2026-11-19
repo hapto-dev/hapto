@@ -405,6 +405,11 @@ void PluginProcessor::onRestart (void* context, std::uint32_t flags) noexcept
     if ((flags & HAPTO_RESTART_VALUES) != 0)
         for (auto* parameter : self.parameters_)
             parameter->tellIfMoved();
+
+    // State no parameter holds changed. JUCE's wrappers pass it on in the
+    // format's own way, where it has one, so the host offers to save.
+    if ((flags & HAPTO_RESTART_STATE) != 0)
+        self.updateHostDisplay (ChangeDetails().withNonParameterStateChanged (true));
 }
 
 } // namespace hapto

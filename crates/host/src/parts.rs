@@ -336,7 +336,9 @@ impl Parts {
     /// A change is captured at the next [tick](Driver::tick), not when it is
     /// written. So a save the host makes between the two, about one tick or
     /// 16 ms, still holds the value from before the change; a parameter is
-    /// never stale this way. [`sync`](Self::sync) captures at once.
+    /// never stale this way. [`sync`](Self::sync) captures at once. The host
+    /// lists no such value, so at the tick that captures a change an exporter
+    /// tells it that the project changed.
     ///
     /// The whole value is captured whenever it moved, so state that is large
     /// and changes a part at a time saves under several keys, one value each.
@@ -417,7 +419,8 @@ impl Parts {
     /// A parameter made here is written through [`ui`](Self::ui) as a listed
     /// one is, read with `get` from any thread, so the audio thread reads a
     /// write in its next block, and taken by undo and learn as a listed one
-    /// is. The host hears nothing of it.
+    /// is. The host is told no gesture and no value of it, only that the
+    /// project changed when one is edited.
     ///
     /// Each is saved under its path, `scope/key` (`group/17/volume`), its
     /// value read at the save, and its learned mapping beside it. A scope is

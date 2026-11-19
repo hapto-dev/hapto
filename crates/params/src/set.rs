@@ -699,6 +699,21 @@ impl ParamSet {
         self.host.take_rescan()
     }
 
+    /// Returns whether an edit has written a parameter this instance made at
+    /// run time since the last call, clearing the mark: a user's gesture,
+    /// the plugin's own [`Edit`](crate::Edit) or an undo replay, each of
+    /// which would have told the host of a listed parameter. A restore and a
+    /// learned controller's write leave no mark.
+    ///
+    /// Plumbing for an exporter, which tells the host that state it does not
+    /// list changed, and for the saved state, whose load drops the mark.
+    ///
+    /// Thread: any.
+    #[doc(hidden)]
+    pub fn take_unlisted(&self) -> bool {
+        self.host.take_unlisted()
+    }
+
     /// Returns the handle the audio thread holds, which can make only
     /// host-shaped writes.
     pub fn audio(self: &Arc<Self>) -> AudioParams {

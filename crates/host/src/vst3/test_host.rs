@@ -9,15 +9,17 @@ use std::time::{Duration, Instant};
 
 use ::vst3::Steinberg::Vst::{
     AudioBusBuffers, AudioBusBuffers__type0, BusDirection, BusDirections_, IAudioProcessor,
-    IAudioProcessorTrait, IComponent, IComponentHandler, IComponentHandlerTrait, IComponentTrait,
-    IEditController, IEditControllerTrait, IParamValueQueue, IParamValueQueueTrait,
-    IParameterChanges, IParameterChangesTrait, MediaTypes_, ParamID, ParamValue, ParameterInfo,
+    IAudioProcessorTrait, IComponent, IComponentHandler, IComponentHandler2,
+    IComponentHandler2Trait, IComponentHandlerTrait, IComponentTrait, IEditController,
+    IEditControllerTrait, IParamValueQueue, IParamValueQueueTrait, IParameterChanges,
+    IParameterChangesTrait, MediaTypes_, ParamID, ParamValue, ParameterInfo,
     ParameterInfo_::ParameterFlags_, ProcessData, ProcessModes_, ProcessSetup as VstSetup,
     SpeakerArr, SpeakerArrangement, String128, SymbolicSampleSizes_,
 };
 use ::vst3::Steinberg::{
-    IBStream, IBStreamTrait, IPluginBaseTrait, int32, int64, kInternalError, kInvalidArgument,
-    kNoInterface, kNotImplemented, kNotInitialized, kOutOfMemory, kResultFalse, kResultOk, tresult,
+    FIDString, IBStream, IBStreamTrait, IPluginBaseTrait, TBool, int32, int64, kInternalError,
+    kInvalidArgument, kNoInterface, kNotImplemented, kNotInitialized, kOutOfMemory, kResultFalse,
+    kResultOk, tresult,
 };
 use ::vst3::{Class, ComPtr, ComWrapper};
 
@@ -68,6 +70,9 @@ pub enum HostCall {
     /// `restartComponent`, with its flags ([`RESTART_VALUES`],
     /// [`RESTART_LATENCY`]).
     Restart(i32),
+    /// `IComponentHandler2::setDirty`, with its state: state the host does
+    /// not list changed, so its project counts as changed.
+    Dirty(bool),
 }
 
 /// A call the plugin refused, and the `tresult` it answered: anything but
@@ -1038,7 +1043,26 @@ pub(super) struct Recorder {
 }
 
 impl Class for Recorder {
-    type Interfaces = (IComponentHandler,);
+    type Interfaces = (IComponentHandler, IComponentHandler2);
+}
+
+impl IComponentHandler2Trait for Recorder {
+    unsafe fn setDirty(&self, state: TBool) -> tresult {
+        self.calls.borrow_mut().push(HostCall::Dirty(state != 0));
+        kResultOk
+    }
+
+    unsafe fn requestOpenEditor(&self, _: FIDString) -> tresult {
+        kNotImplemented
+    }
+
+    unsafe fn startGroupEdit(&self) -> tresult {
+        kNotImplemented
+    }
+
+    unsafe fn finishGroupEdit(&self) -> tresult {
+        kNotImplemented
+    }
 }
 
 impl IComponentHandlerTrait for Recorder {

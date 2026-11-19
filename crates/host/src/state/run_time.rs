@@ -60,6 +60,10 @@ pub(crate) struct RunTimeSaved {
     shared_path: AtomicBool,
     /// A save left entries out for want of room.
     no_room: AtomicBool,
+    /// A tick captured learned mappings that differ from the ones a save
+    /// wrote before it, with no load's entries held. Written under the
+    /// lock, so a load drops exactly the changes it replaces.
+    learned_changed: AtomicBool,
 }
 
 #[derive(Debug, Default)]
@@ -225,6 +229,7 @@ impl Default for RunTimeSaved {
             held_at: AtomicU64::new(NONE_HELD),
             shared_path: AtomicBool::new(false),
             no_room: AtomicBool::new(false),
+            learned_changed: AtomicBool::new(false),
         }
     }
 }
@@ -301,20 +306,40 @@ impl RunTimeSaved {
     }
 
     /// Replaces every learned mapping a save writes with `mappings`, those
-    /// of parameters declared last under their paths.
+    /// of parameters declared last under their paths, and marks them
+    /// changed when they differ from the ones before.
+    ///
+    /// Not while a load's entries are held: a save then writes the load's
+    /// mappings, and its pass assigns them over these when it finishes.
     pub(crate) fn set_all_learned<'a>(
         &self,
         mappings: impl Iterator<Item = (&'a ParamRef, &'a Mapping)>,
     ) {
         let mut inner = self.lock();
-        let learned = mappings
-            .filter_map(|(param, mapping)| {
-                let path = inner.path_of(param)?;
-                let entry = encode_mapping(&path, mapping);
-                Some((path, entry))
-            })
-            .collect();
+        let learned = inner.encoded(mappings);
+        if inner.held.is_none() && inner.learned != learned {
+            self.learned_changed.store(true, Ordering::Release);
+        }
         inner.learned = learned;
+    }
+
+    /// Replaces every learned mapping a save writes with `mappings`, as
+    /// learn holds them once a load's pass has assigned them: the load's
+    /// own, so no change is marked, and the ones captured for the
+    /// parameters the load replaced go.
+    pub(crate) fn settle_learned<'a>(
+        &self,
+        mappings: impl Iterator<Item = (&'a ParamRef, &'a Mapping)>,
+    ) {
+        let mut inner = self.lock();
+        let learned = inner.encoded(mappings);
+        inner.learned = learned;
+    }
+
+    /// Takes whether a tick's capture changed a learned mapping a save
+    /// writes since the last call, or the last load.
+    pub(crate) fn take_learned_changed(&self) -> bool {
+        self.learned_changed.swap(false, Ordering::AcqRel)
     }
 
     /// Holds `loaded`, replacing what an earlier load held, recorded at the
@@ -328,6 +353,8 @@ impl RunTimeSaved {
             entries: Arc::new(loaded.entries),
         });
         self.held_at.store(at, Ordering::Release);
+        // The load's mappings replace every one captured before it.
+        self.learned_changed.store(false, Ordering::Release);
     }
 
     /// Lets the held entries go once a pass that covers a count past theirs
@@ -506,6 +533,21 @@ impl Inner {
         let named = self.named.get(&param.serial())?;
         let current = self.paths.get(&named.path)?;
         (*current == param.serial()).then(|| Arc::clone(&named.path))
+    }
+
+    /// Each of `mappings` as a save writes it, under its parameter's path,
+    /// for those declared last under their paths.
+    fn encoded<'a>(
+        &self,
+        mappings: impl Iterator<Item = (&'a ParamRef, &'a Mapping)>,
+    ) -> HashMap<Arc<str>, Json> {
+        mappings
+            .filter_map(|(param, mapping)| {
+                let path = self.path_of(param)?;
+                let entry = encode_mapping(&path, mapping);
+                Some((path, entry))
+            })
+            .collect()
     }
 
     /// Drops every name whose parameter the plugin holds no longer, and

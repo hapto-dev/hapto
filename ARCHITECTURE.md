@@ -135,6 +135,12 @@ Read these in order to change what happens to a block.
 6. A write from the page or an editor goes the other way: `UiParams` stores into
    the same cell, and at the next tick the `HostEventDrain` (a
    [drain](docs/glossary.md#drain)) tells the host.
+7. State the host does not list has no edit to tell: a saved value, a learned
+   mapping, a parameter made at run time. When the plugin or its user changed
+   any of it, the same tick tells the host only that its project changed
+   (`Engine::tell_host`, `HostLink::state_changed`), after the parts captured
+   it, so a save made then holds it. A load is never told ([the host is told
+   of state it does not list][unlisted]).
 
 `HostLink` (`engine/mod.rs`) is how a shell tells the engine what its host is
 like. `QUEUES` says whether the host sends automation as queues with each block:
@@ -226,7 +232,8 @@ with `cargo doc -p hapto-host --features vst3,cabi,test-host
   at activation, with learn's audio side when the parts have learn on, and
   takes both back at deactivation. A tick, about 60 times a second, ticks the
   parts the plugin keeps, then calls `Plugin::idle`, then tells the host of
-  the plugin's [edits](docs/glossary.md#edit), then ticks each open editor
+  the plugin's [edits](docs/glossary.md#edit) and of state it does not list
+  that changed, then ticks each open editor
   ([a plugin's editor][editor]); no editor runs a timer of its own. A page's
   messages arrive on this thread too, from its message loop, outside any
   tick. A session
@@ -309,6 +316,7 @@ with `cargo doc -p hapto-host --features vst3,cabi,test-host
 [run-time]: docs/decisions.md#d96-parameters-made-at-run-time
 [send]: docs/decisions.md#d51-whether-a-plugin-must-be-send
 [tick]: docs/decisions.md#d53-what-ticks-a-plugin-with-no-editor-open
+[unlisted]: docs/decisions.md#d108-the-host-is-told-of-state-it-does-not-list
 [versions]: docs/decisions.md#d84-the-saved-blocks-two-versions
 [vst3]: docs/decisions.md#d59-the-shape-of-the-vst3-exporter
 [webview]: docs/decisions.md#d16-where-the-webview-pieces-live

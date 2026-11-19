@@ -49,6 +49,17 @@ fn kept(section: Section) -> Option<Kept> {
     })
 }
 
+/// Returns whether a save writes the same for `a` as for `b`: nothing for
+/// both, or equal sections. It may read both whole, so it runs outside the
+/// lock.
+pub(crate) fn same(a: Option<&Kept>, b: Option<&Kept>) -> bool {
+    match (a, b) {
+        (None, None) => true,
+        (Some(a), Some(b)) => a.bytes == b.bytes && a.section == b.section,
+        _ => false,
+    }
+}
+
 /// Counts the bytes handed to it, so a JSON text's length is known without
 /// building the text.
 struct Count(usize);
@@ -383,6 +394,10 @@ pub(crate) struct Shared {
     state: Mutex<State>,
     pub(crate) clock: RestoreWriter,
     ui_taken: AtomicBool,
+    /// A capture changed a saved section since the last restore, and
+    /// [`Session::take_changed`] has not taken it. Written under the lock,
+    /// so a restore drops exactly the changes it replaced.
+    changed: AtomicBool,
 }
 
 #[cfg(debug_assertions)]
@@ -427,6 +442,11 @@ impl Shared {
 
     pub(crate) fn release_ui(&self) {
         self.ui_taken.store(false, Ordering::Release);
+    }
+
+    /// Marks a saved section as changed. The caller holds the lock.
+    pub(crate) fn mark_changed(&self) {
+        self.changed.store(true, Ordering::Release);
     }
 }
 
@@ -480,6 +500,7 @@ impl Session {
                 state: Mutex::new(State::default()),
                 clock: set.clock().writer(),
                 ui_taken: AtomicBool::new(false),
+                changed: AtomicBool::new(false),
             }),
         }
     }
@@ -638,6 +659,8 @@ impl Session {
             }
             state.restores.0 += 1;
             state.owed = true;
+            // Every section is replaced, so no change from before is left.
+            self.shared.changed.store(false, Ordering::Release);
             old.reserve(state.claims.len());
             for claim in &mut state.claims {
                 let section = sections
@@ -653,6 +676,25 @@ impl Session {
         // Dropped after the unlock, so a section's destructor never runs under
         // it.
         drop((old, old_unclaimed));
+    }
+
+    /// Returns whether a participant's capture has changed a saved section
+    /// since the last call, clearing the mark.
+    ///
+    /// Only a change the participant reported counts: a capture
+    /// [`Registration::changed`](crate::Registration::changed) asked for, or
+    /// one a tick took for it, that was kept and differs from the section it
+    /// replaced. A registration's first capture and the capture that follows
+    /// an apply do not. A restore drops the mark, since it replaces every
+    /// section.
+    ///
+    /// Plumbing for an exporter, which tells the host that state it does not
+    /// list changed.
+    ///
+    /// Thread: any but audio.
+    #[doc(hidden)]
+    pub fn take_changed(&self) -> bool {
+        self.shared.changed.swap(false, Ordering::AcqRel)
     }
 
     /// Sets the most bytes the `extra` object a save returns may take: a

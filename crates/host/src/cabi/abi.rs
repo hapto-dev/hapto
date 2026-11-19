@@ -227,7 +227,7 @@ c_consts! {
     /// The interface's version: the adapter refuses a plugin built against
     /// another. The header and the plugin are built from one commit, so it
     /// moves only when the interface does.
-    pub const ABI_VERSION = 1 => "HAPTO_ABI_VERSION";
+    pub const ABI_VERSION = 2 => "HAPTO_ABI_VERSION";
     /// A parameter whose value is a number in a range, continuous or
     /// stepped; a stepped range stays continuous to the host.
     pub const KIND_CONTINUOUS = 0 => "HAPTO_KIND_CONTINUOUS";
@@ -242,6 +242,10 @@ c_consts! {
     pub const RESTART_VALUES = 1 => "HAPTO_RESTART_VALUES";
     /// The latency changed; read it again with `latency`.
     pub const RESTART_LATENCY = 2 => "HAPTO_RESTART_LATENCY";
+    /// State that `save` writes changed and no edit was told for it: a
+    /// value that is no parameter, or a parameter the plugin does not list.
+    /// Count the project as changed. `save` already writes the new state.
+    pub const RESTART_STATE = 4 => "HAPTO_RESTART_STATE";
     /// Keep processing, whatever the input.
     pub const STATUS_CONTINUE = 0 => "HAPTO_STATUS_CONTINUE";
     /// Keep processing while the input or the output is not silent.
@@ -570,7 +574,9 @@ c_structs! {
         /// The user finished changing the parameter at `index`.
         #[args(context, index)]
         pub end_edit: Option<unsafe extern "C" fn(*mut c_void, u32)>,
-        /// `HAPTO_RESTART_VALUES` and `HAPTO_RESTART_LATENCY`, or'd together.
+        /// `flags` holds `HAPTO_RESTART_VALUES`, `HAPTO_RESTART_LATENCY` and
+        /// `HAPTO_RESTART_STATE`, or'd together. One `idle` may call it more
+        /// than once.
         #[args(context, flags)]
         pub restart: Option<unsafe extern "C" fn(*mut c_void, u32)>,
     }

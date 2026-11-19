@@ -28,6 +28,8 @@ use crate::{
 };
 use hapto_testkit::sync::{Latch, PATIENCE, wait_until};
 
+mod told;
+
 const PARAMS: &[ParamDecl] = &[
     ParamDecl::new(
         "gain",
@@ -797,7 +799,7 @@ fn null_pointers_are_answered_not_followed() {
 fn the_header_declares_every_struct_and_asserts_its_layout() {
     let text = header();
     assert!(text.starts_with("// hapto.h"));
-    assert!(text.contains("#define HAPTO_ABI_VERSION 1u"));
+    assert!(text.contains("#define HAPTO_ABI_VERSION 2u"));
     assert!(text.contains("#define HAPTO_TAIL_INFINITE 4294967295u"));
     assert!(text.contains("const HaptoPlugin* hapto_plugin(void);"));
     for item in super::abi::structs() {
