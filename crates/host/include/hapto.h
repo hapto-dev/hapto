@@ -48,7 +48,7 @@ extern "C" {
 // The interface's version: the adapter refuses a plugin built against
 // another. The header and the plugin are built from one commit, so it
 // moves only when the interface does.
-#define HAPTO_ABI_VERSION 1u
+#define HAPTO_ABI_VERSION 2u
 
 // A parameter whose value is a number in a range, continuous or
 // stepped; a stepped range stays continuous to the host.
@@ -69,6 +69,12 @@ extern "C" {
 
 // The latency changed; read it again with `latency`.
 #define HAPTO_RESTART_LATENCY 2u
+
+// State that `save` writes changed and no edit was told for it: a
+// value that is no parameter, or a parameter the plugin does not list.
+// Count the project as changed. `save` already writes the new state.
+// It always comes alone, in a call of its own.
+#define HAPTO_RESTART_STATE 4u
 
 // Keep processing, whatever the input.
 #define HAPTO_STATUS_CONTINUE 0u
@@ -167,7 +173,9 @@ typedef struct HaptoHost {
     void (*perform_edit)(void* context, uint32_t index, double normalized);
     // The user finished changing the parameter at `index`.
     void (*end_edit)(void* context, uint32_t index);
-    // `HAPTO_RESTART_VALUES` and `HAPTO_RESTART_LATENCY`, or'd together.
+    // `flags` holds `HAPTO_RESTART_VALUES` and `HAPTO_RESTART_LATENCY`,
+    // or'd together, or `HAPTO_RESTART_STATE` alone. One `idle` calls it
+    // at most twice: with the first two, then with the third.
     void (*restart)(void* context, uint32_t flags);
 } HaptoHost;
 

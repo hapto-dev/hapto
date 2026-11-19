@@ -46,6 +46,9 @@ pub(crate) struct HostQueue {
     /// that finds it clear.
     dirty: AtomicBool,
     rescan: AtomicBool,
+    /// A parameter the set does not list was written as an edit, which no
+    /// entry here tells the host.
+    unlisted: AtomicBool,
     /// Whether a [`HostEventDrain`] is alive: there is one per set, so a
     /// second take gives `None` until it drops.
     drain_alive: AtomicBool,
@@ -58,6 +61,7 @@ impl HostQueue {
             values: (0..len).map(|_| AtomicU32::new(0)).collect(),
             dirty: AtomicBool::new(false),
             rescan: AtomicBool::new(false),
+            unlisted: AtomicBool::new(false),
             drain_alive: AtomicBool::new(false),
         }
     }
@@ -103,6 +107,17 @@ impl HostQueue {
 
     pub(crate) fn take_rescan(&self) -> bool {
         self.rescan.swap(false, Ordering::AcqRel)
+    }
+
+    /// An edit wrote a parameter the set does not list. Called after the
+    /// edit's store, as a rescan is asked for, so a reader that takes the
+    /// mark and then saves writes the value.
+    pub(crate) fn mark_unlisted(&self) {
+        self.unlisted.store(true, Ordering::Release);
+    }
+
+    pub(crate) fn take_unlisted(&self) -> bool {
+        self.unlisted.swap(false, Ordering::AcqRel)
     }
 }
 

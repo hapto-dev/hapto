@@ -150,6 +150,11 @@ pub(crate) trait HostLink: Clone + 'static {
 
     /// Asks the host to re-read what `restart` names.
     fn restart(&self, restart: Restart);
+
+    /// Tells the host that state a save writes changed with no edit told
+    /// for it, so its project counts as changed. A host with no call for
+    /// it is told nothing.
+    fn state_changed(&self);
 }
 
 /// What a shell does with the engine after [`Engine::release`].
@@ -326,6 +331,17 @@ impl<P: Plugin, H> Main<P, H> {
 /// - **Latency** is told at a tick when it moved since the host last read
 ///   it. Whether an activation counts as read is the shell's
 ///   [`HostLink::ACTIVATION_TELLS_LATENCY`].
+/// - **Unlisted state.** A host counts its project as changed from the
+///   edits it is told, and those name listed parameters only. So when
+///   anything else a save writes changed because the plugin or its user
+///   changed it, a tick tells the host so, once
+///   ([`HostLink::state_changed`]): a saved section a participant reported
+///   changed, an edit to a parameter made at run time, a learned mapping of
+///   one. It tells after the plugin's parts and its idle ran, so a host
+///   that saves as it is told saves the new state. A load is no such
+///   change, and drops the ones before it; neither is a learned
+///   controller's write, which tells the host nothing for a listed
+///   parameter either.
 /// - **Faults** are counted and reported as the [`faults`](crate::faults)
 ///   module says. An instance's are reported in [`idle`](Self::idle) and
 ///   [`release`](Self::release).
@@ -865,17 +881,18 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
         self.faults.record(Fault::Panic);
     }
 
-    /// Tells the host of the edits the plugin made since the last call, and
-    /// of a sync's request to re-read every value or a latency that moved.
+    /// Tells the host of the edits the plugin made since the last call, of
+    /// a sync's request to re-read every value or a latency that moved, and
+    /// then of state it does not list that changed (the **Unlisted state**
+    /// rule above).
     fn tell_host(&self, main: &Main<P, H>) {
         if let Ok(mut drain) = main.drain.try_borrow_mut() {
             drain.drain(|event| self.emit(main, event));
         }
-        let host = main.host.borrow().clone();
+        // Taken only for a host to tell: with none linked yet, the request
+        // waits for the tick after one is.
         let mut restart = Restart {
-            // Taken only for a host to tell: with none linked yet, the
-            // request waits for the tick after one is.
-            values: host.is_some() && self.set.take_rescan(),
+            values: Self::linked(main).is_some() && self.set.take_rescan(),
             latency: false,
         };
         if let Ok(plugin) = main.plugin.try_borrow() {
@@ -885,11 +902,29 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
                 restart.latency = true;
             }
         }
-        if let Some(host) = host
-            && restart != Restart::default()
+        if restart != Restart::default()
+            && let Some(host) = Self::linked(main)
         {
             host.restart(restart);
         }
+        // Taken as it is told, not before the restart: a load the host
+        // makes inside that call drops it, and a host unlinked there leaves
+        // it for the next one.
+        if let Some(host) = Self::linked(main)
+            && self.take_unlisted()
+        {
+            host.state_changed();
+        }
+    }
+
+    /// Takes whether state a save writes changed, since the last call, with
+    /// no edit told to the host for it: an edit to a parameter made at run
+    /// time, or a change the saved state took.
+    fn take_unlisted(&self) -> bool {
+        // Both taken, whatever the first says.
+        let params = self.set.take_unlisted();
+        let saved = self.saved.take_changed();
+        params || saved
     }
 
     /// Ends every gesture the host still has open, as it stops listening.
@@ -901,10 +936,15 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
 
     /// One host event, to the host linked now.
     fn emit(&self, main: &Main<P, H>, event: HostEvent) {
-        let host = main.host.borrow().clone();
-        if let Some(host) = host {
+        if let Some(host) = Self::linked(main) {
             host.tell(&self.set, event);
         }
+    }
+
+    /// The host linked now, cloned, so no borrow is held while it runs. Read
+    /// for each call to it: a release from inside one unlinks it.
+    fn linked(main: &Main<P, H>) -> Option<H> {
+        main.host.borrow().clone()
     }
 
     /// Ends the instance as its shell is released or destroyed, and says

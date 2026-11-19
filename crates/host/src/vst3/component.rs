@@ -16,11 +16,12 @@ use std::sync::OnceLock;
 
 use ::vst3::Steinberg::Vst::{
     BusDirection, BusDirections_, BusInfo, BusInfo_::BusFlags_, BusType, BusTypes_,
-    IAudioProcessor, IAudioProcessorTrait, IComponent, IComponentHandler, IComponentHandlerTrait,
-    IComponentTrait, IEditController, IParamValueQueueTrait, IParameterChanges,
-    IParameterChangesTrait, IProcessContextRequirements, IProcessContextRequirementsTrait, IoMode,
-    MediaType, MediaTypes_, ParamID, ProcessData, ProcessSetup as VstSetup, RestartFlags_,
-    RoutingInfo, SpeakerArrangement, SymbolicSampleSizes_, kInfiniteTail, kNoTail,
+    IAudioProcessor, IAudioProcessorTrait, IComponent, IComponentHandler, IComponentHandler2,
+    IComponentHandler2Trait, IComponentHandlerTrait, IComponentTrait, IEditController,
+    IParamValueQueueTrait, IParameterChanges, IParameterChangesTrait, IProcessContextRequirements,
+    IProcessContextRequirementsTrait, IoMode, MediaType, MediaTypes_, ParamID, ProcessData,
+    ProcessSetup as VstSetup, RestartFlags_, RoutingInfo, SpeakerArrangement, SymbolicSampleSizes_,
+    kInfiniteTail, kNoTail,
 };
 use ::vst3::Steinberg::{
     FIDString, FUnknown, IBStream, IPluginBaseTrait, TBool, TUID, int32, kInternalError,
@@ -86,6 +87,16 @@ impl HostLink for Handler {
         // SAFETY: as in `tell`: a live handler, called on the main thread
         // inside a tick, with no borrow held.
         unsafe { self.restartComponent(flags) };
+    }
+
+    /// `IComponentHandler2::setDirty`, for a host whose handler has it.
+    fn state_changed(&self) {
+        if let Some(handler) = self.cast::<IComponentHandler2>() {
+            // SAFETY: as in `tell`: the handler the cast answered is live
+            // while `handler` holds its reference, and this is the main
+            // thread, inside a tick, with no borrow held.
+            unsafe { handler.setDirty(1) };
+        }
     }
 }
 

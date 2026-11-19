@@ -144,6 +144,7 @@ comments never cite an id: they state the reason in words, and
 | D105 | [What keeps valid what an editor leaves with the host, when the host unloads the module? (D59, D101)](#d105-the-module-stays-loaded-once-an-editor-has-opened) | Once any editor has opened, the module stays loaded until the process ends: one call at every open, before the editor is told its size or opened, for every editor of every plugin. The plugin's file then stays in use until the host exits. | to confirm |
 | D106 | [How does a page show and write plugin state that is not a parameter? (B1, B2, D99)](#d106-page-bound-values) | As a value the plugin binds by key (`Values::value`, `Page::value`): the snapshot carries it, a `value` message brings each change at the tick whatever made it, and a `setValue` is the user's write through `Value::set`, stored when it decodes to the value's type and answered either way. | to confirm |
 | D107 | [How do keys reach the host while a page is in its window? (D104)](#d107-the-keyboard-goes-back-to-the-host) | The page gives the keyboard back whenever nothing in it needs keys: after a click, a drag or a blur, decided in the next task, the WebView transport posts one fixed text below the protocol, and the editor focuses the host's window. A field, a `select` until a pick, editable content and a control marked `data-hapto-keys` keep it. | to confirm |
+| D108 | [Is the host told when state it does not list changed? (D1, D53, D92, D96)](#d108-the-host-is-told-of-state-it-does-not-list) | Yes, once at the tick that follows, after the parts' tick and the plugin's idle: a saved section a participant reported changed, an edit to a parameter made at run time, a learned mapping of one. Never for a load, a learned controller's write or a listed parameter. VST3 calls `IComponentHandler2::setDirty`; the C interface passes `HAPTO_RESTART_STATE`. | to confirm |
 
 **Open.** D25 is held until `hapto-ci` needs it. It keeps its recommendation
 until decided, and no rule depends on it.
@@ -1432,7 +1433,9 @@ which stores what the store already holds unless a host write landed since. JUCE
 has no "re-read every value" for a plugin with one program, so a sync (D1)
 reaches the host as a value notification for each parameter that moved, which
 JUCE sends on as an edit outside any gesture; a host in latch mode may record
-those, to check with AU in Logic and Pro Tools (C4).
+those, to check with AU in Logic and Pro Tools (C4). A change to state no
+parameter holds (D108) reaches JUCE's VST3 wrapper, which tells the host; its
+AU wrapper tells an AU host nothing.
 
 The host's state is Hapto's block followed by JUCE's own trailer, so a state
 saved through JUCE does not load into Hapto's native build (H2). A text that
@@ -2453,9 +2456,11 @@ one. `Gesture::id` returns an `Option`. `watch`, `sync` and the set's reads
 take only a `ParamId`, so none can be handed one.
 
 A write through `UiParams` takes the path a listed parameter's takes, and
-tells the host nothing. Its gesture state lives only while a gesture is open
-on it. A closed user gesture queues a record that carries its store, numbered
-from the clock listed ones are, so a history merges the two in order. Its
+tells the host no gesture and no value: it leaves a mark, and the host is told
+only that state it does not list changed (D108). Its gesture state lives only
+while a gesture is open on it. A closed user gesture queues a record that
+carries its store, numbered from the clock listed ones are, so a history
+merges the two in order. Its
 steps need no enrolment and are recorded whenever undo is on. An edit step
 holds its parameter weakly, and replays as nothing once the plugin holds it no
 longer. Learn takes one as `TargetId::RunTime`, an opaque `RunTimeId`, keeps
@@ -2970,6 +2975,89 @@ and which the client would hold until the snapshot; and a command Hapto
 registers, which waits in the same queue and answers a reply nobody reads.
 
 [History](decision-history.md#d107-the-keyboard-goes-back-to-the-host)
+
+### D108. The host is told of state it does not list
+
+**Question and C++ Seam.** Is the host told when state it does not list
+changed? (D1, D53, D92, D96) A host counts its project as changed from the
+edits a plugin tells it, and those name listed parameters. A user who only
+renames a label, learns a controller or moves a parameter made at run time
+has changed what a save writes, and may close the project without being asked
+to save. Not checked against C++.
+
+**Rust.** Yes: a tick tells the host that such state changed, once, whatever
+changed and however often since the last tick.
+
+- **What counts** is a change the plugin or its user made to what a save
+  writes, with no edit told for it:
+  - A saved section: a capture a participant asked for with
+    `Registration::changed`, or one a tick took for it, that the session kept
+    and that differs from the section it replaced. A saved plain value (D92),
+    learn's mappings of listed parameters and of its own targets, and a
+    plugin's own participants are all sections.
+  - An edit to a parameter made at run time (D96): a user's gesture, the
+    plugin's own `Edit`, or an undo's replay, each of which tells the host of
+    a listed parameter.
+  - A learned mapping of a parameter made at run time, which is saved beside
+    its value: the mappings a tick captured differ from the ones before.
+- **What does not.** A load: neither the restore, nor the capture after an
+  apply, nor the values and mappings a load assigns to parameters made at run
+  time. A registration's first capture. A capture that saves what was saved
+  already, or that is refused. A learned controller's write, which tells the
+  host nothing for a listed parameter either. Anything written to a listed
+  parameter, since its edit or its sync (D1) reaches the host already.
+- **A load drops what was not told before it.** It replaces the state, so a
+  change that no tick had told yet is not told after it. Otherwise a plugin
+  that changes anything as it is made would open every project as changed.
+- **When.** At the end of a tick: after the parts' tick, which captures, and
+  after `Plugin::idle`, and after the tick's edits and its restart. So a host
+  that saves from inside the call saves the new state. It is taken only for a
+  host to tell: with none linked, it waits for the tick after one is.
+- **How.** VST3 asks the host's handler for `IComponentHandler2` and calls
+  `setDirty(true)`; a host whose handler lacks it is told nothing, and that
+  is no fault. The C interface calls the restart callback with
+  `HAPTO_RESTART_STATE` alone, in a call of its own, after the call that
+  carries the other flags, and the header promises so. The JUCE adapter
+  passes it on as `updateHostDisplay` with `withNonParameterStateChanged`.
+  The mark is taken as it is told, after the restart call, and each call to
+  the host reads the link again: a host that released the instance inside
+  the restart is not told, a load it made there drops the mark, and a
+  handler it unlinked there leaves the change for the next one.
+- **Not told either**, since none is a change the plugin reported: a
+  parameter made at run time being declared, a registration's first
+  capture, and a section a lowered budget drops. A tree of parameters made
+  at run time reports a change to its structure through its own
+  participant's `changed()`.
+
+`HAPTO_ABI_VERSION` moved to 2 with the flag: the header gave an adapter no
+rule for a flag it does not know, so an adapter built before it refuses a
+plugin built after.
+
+Through the JUCE adapter, JUCE 9's VST3 wrapper passes the change on as
+`setDirty`, then a restart with no flags. Its AU wrapper does nothing with
+it, so an AU host is told nothing through the adapter.
+
+Open: no host has been seen to act on it; the run in Cubase renames the
+gain's label and closes the project. Open: a plugin that writes unlisted
+state as it is made tells a new instance changed once, before the project's
+load in VST3, whose timer ticks from `initialize`; the gain writes nothing
+then. Open: an edit to a parameter made at run time between a load and the
+tick that assigns the load is told, though the load's value replaces it; a
+saved value in that place is not. Open: a participant's apply that writes
+another participant's saved value leaves that value differing from the
+loaded block, and it is told as a change. Open: the JUCE adapter's line is
+checked against JUCE's source, not in a host.
+
+**Alternatives.** The alternatives were telling the host as each change is
+made, before the tick captures it, where a host that saves at once saves the
+state from before the change; counting every kept capture as a change, with
+no comparison, which told the host one tick after every load that assigns a
+learned mapping to a parameter made at run time, since learn reports that to
+the session although its section does not hold it; and one flag on the
+restart request, which in VST3 is a second call to the host made after a
+call the host may have released the instance in.
+
+[History](decision-history.md#d108-the-host-is-told-of-state-it-does-not-list)
 
 ## How to read this
 

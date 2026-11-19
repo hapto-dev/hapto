@@ -137,6 +137,15 @@ impl Plugin for Probe {
     }
 }
 
+/// What a shell's host heard from the plugin since it was last asked.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct Heard {
+    /// How many times it was told that state it does not list changed.
+    state: usize,
+    /// Every other call: an edit's begin, value or end, and a restart.
+    other: usize,
+}
+
 /// A shell's test host, as the shared bodies drive it.
 trait Shell {
     /// What the shell's host was answered when the plugin refused a call.
@@ -163,6 +172,8 @@ trait Shell {
     fn gain(&self) -> f64;
     /// One main-thread tick.
     fn tick(&mut self);
+    /// What the plugin told the host since the last call.
+    fn heard(&self) -> Heard;
     /// The tail the host reads.
     fn tail(&self) -> u32;
     /// The saved block, through the host's save.
@@ -249,6 +260,18 @@ impl<P: Plugin> Shell for crate::vst3::TestHost<P> {
         crate::vst3::TestHost::tick(self);
     }
 
+    fn heard(&self) -> Heard {
+        let calls = self.calls();
+        let state = calls
+            .iter()
+            .filter(|call| **call == crate::vst3::HostCall::Dirty(true))
+            .count();
+        Heard {
+            state,
+            other: calls.len() - state,
+        }
+    }
+
     fn tail(&self) -> u32 {
         crate::vst3::TestHost::tail(self)
     }
@@ -330,6 +353,21 @@ impl<P: Plugin> Shell for crate::cabi::TestHost<P> {
         self.idle();
     }
 
+    fn heard(&self) -> Heard {
+        use crate::cabi::{HostCall, RESTART_STATE};
+        let mut heard = Heard::default();
+        for call in self.calls() {
+            match call {
+                HostCall::Restart(flags) => {
+                    heard.state += usize::from(flags & RESTART_STATE != 0);
+                    heard.other += usize::from(flags & !RESTART_STATE != 0);
+                }
+                _ => heard.other += 1,
+            }
+        }
+        heard
+    }
+
     fn tail(&self) -> u32 {
         crate::cabi::TestHost::tail(self)
     }
@@ -390,6 +428,9 @@ macro_rules! through_every_shell {
         )*
     };
 }
+
+// After the macro, which its bodies run through.
+mod told;
 
 through_every_shell!(
     Probe:

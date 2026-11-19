@@ -150,6 +150,15 @@ exporter.
   each piece of a block's channels in place, and a model of every way a host may
   hand its buffers checks that. Test hosts drive a plugin through either
   exporter, and answer a refused call with what the host was told.
+- `hapto-host`: the host is told when state it does not list changed, so it
+  counts the project as changed: a saved value, a session participant's
+  section, a learned mapping, or an edit to a parameter made at run time. A
+  tick tells it once, after the change is captured, and never for a load. The
+  VST3 exporter calls `IComponentHandler2::setDirty`, which its test host
+  records as `HostCall::Dirty`. The C interface passes `HAPTO_RESTART_STATE`
+  to the restart callback, in a call of its own, and `HAPTO_ABI_VERSION` is
+  now 2. The JUCE adapter passes it on as a change to state that is no
+  parameter.
 - `hapto-host`: a plugin's editor. `Plugin::editor` hands out an `Editor`,
   `None` by default, which the VST3 exporter opens in the host's window on
   Windows, as a resizable view that follows the screen's scale; elsewhere it

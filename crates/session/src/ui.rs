@@ -48,7 +48,7 @@ use std::sync::Arc;
 
 use hapto_params::ParamSet;
 
-use crate::session::{Id, Kept, Refused, Saved, Shared, Stamp, accept};
+use crate::session::{Id, Kept, Refused, Saved, Shared, Stamp, accept, same};
 use crate::{Participant, Section, SessionError};
 
 /// What a capture does with an entry, as the module overview's table says.
@@ -252,7 +252,9 @@ impl UiState {
         drop(unused);
     }
 
-    /// Re-captures `entry`'s participant into the session.
+    /// Re-captures `entry`'s participant into the session, and marks the
+    /// session changed when the capture is kept and differs from the section
+    /// it replaces.
     ///
     /// A section pending for it stays the saved one until its apply
     /// re-captures. When the participant's own code holds it, marks the entry
@@ -263,7 +265,7 @@ impl UiState {
             Status::Ended | Status::Faulted => return,
             Status::Current | Status::HeldUp => {}
         }
-        let stamp = {
+        let (stamp, before) = {
             let state = self.shared.lock();
             let Some(claim) = state.claim(entry.id) else {
                 return;
@@ -272,7 +274,7 @@ impl UiState {
                 entry.status.set(Status::Current);
                 return;
             }
-            state.restores
+            (state.restores, claim.saved.section().cloned())
         };
         let Some(participant) = entry.participant.upgrade() else {
             entry.status.set(Status::Current);
@@ -290,6 +292,9 @@ impl UiState {
             self.shared.lock().refuse(entry.id);
             return;
         };
+        // A capture is asked for more often than the section moves: one that
+        // saves what was saved already is no change to report.
+        let moved = !same(before.as_ref(), capture.as_ref());
         let unused = {
             let mut state = self.shared.lock();
             let restores = state.restores;
@@ -297,13 +302,21 @@ impl UiState {
                 claim.id == entry.id && !claim.saved.is_pending() && restores == stamp
             });
             match index {
-                Some(index) => state.keep(index, capture),
+                Some(index) => {
+                    let unused = state.keep(index, capture);
+                    if moved && !state.claims[index].refused {
+                        self.shared.mark_changed();
+                    }
+                    unused
+                }
                 // A newer restore's section waits: the section saved before
                 // stays saved.
                 None => capture,
             }
         };
+        // Both after the unlock, the section read before last.
         drop(unused);
+        drop(before);
     }
 }
 

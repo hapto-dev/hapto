@@ -1,8 +1,8 @@
 //! The run-time section's room: a save writes the entries that fit, in path
 //! order, and flags the rest; a load counts its entries at least as long as
 //! a save writes them back. The room is passed in, since a block at the
-//! real limit is too slow to build in a debug test. And which takeover of a
-//! path is the shared path fault.
+//! real limit is too slow to build in a debug test. Which takeover of a
+//! path is the shared path fault. And which captured mapping is a change.
 
 use hapto_learn::{Control, Curve, Mapping, Source, encode_mapping};
 use hapto_params::{AnyParam, Declarer, Float, FloatDecl, ParamSet};
@@ -156,4 +156,39 @@ fn nothing_named_or_held_writes_no_section_and_counts_nothing() {
     assert!(block.is_empty());
     assert_eq!(Loaded::read(None).bytes(), 0);
     assert_eq!(Loaded::read(Some(json!({}))).bytes(), 0);
+}
+
+#[test]
+fn a_captured_mapping_that_differs_is_a_change_unless_a_load_holds_or_left_it() {
+    let set = ParamSet::from_decls([]).expect("empty");
+    let saved = RunTimeSaved::default();
+    let a = named(&saved, &set, "g/1").erased();
+    let b = named(&saved, &set, "g/2").erased();
+    let mapping = Mapping::new(Source::any(Control::Cc(7)));
+
+    saved.set_all_learned(std::iter::empty());
+    assert!(!saved.take_learned_changed(), "none before, none now");
+    saved.set_all_learned([(&a, &mapping)].into_iter());
+    assert!(saved.take_learned_changed());
+    assert!(!saved.take_learned_changed(), "taking it cleared the mark");
+    saved.set_all_learned([(&a, &mapping)].into_iter());
+    assert!(!saved.take_learned_changed(), "the same mappings again");
+
+    // A load drops a change not taken yet. While its entries are held a
+    // capture is none either, since a save writes the load's mappings.
+    saved.set_all_learned([(&b, &mapping)].into_iter());
+    saved.hold(Loaded::read(None), 0);
+    assert!(!saved.take_learned_changed());
+    saved.set_all_learned([(&a, &mapping)].into_iter());
+    assert!(!saved.take_learned_changed());
+
+    // Once its pass finished, what learn holds is the load's own: no
+    // change, and what the next capture is compared with.
+    assert!(saved.settle(1).is_some());
+    saved.settle_learned([(&b, &mapping)].into_iter());
+    assert!(!saved.take_learned_changed());
+    saved.set_all_learned([(&b, &mapping)].into_iter());
+    assert!(!saved.take_learned_changed());
+    saved.set_all_learned(std::iter::empty());
+    assert!(saved.take_learned_changed(), "one removed after the load");
 }
