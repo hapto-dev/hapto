@@ -2940,7 +2940,16 @@ own windows while a field has the focus leaves the keyboard in the field, as
 a native editor's field does; a drag of the plug-in window by its title
 leaves it there too, where a native editor's field gives it up. The browser
 tells the page of neither, and the native side would need the host's window
-messages, which `hapto-webview` cannot read without `unsafe`.
+messages, which `hapto-webview` cannot read without `unsafe`. An open
+`select` list is the same: a click on the host's windows leaves it open, with
+the keyboard.
+
+A `select`'s pick is its `change`, so three ways out of one keep the keys
+until the next click: Escape, a click away, and a pick of the option already
+chosen. An arrow key on a closed `select` is a pick, so the keyboard goes back
+after one step, except at the end of the list, where nothing changes. A page
+that steps a `select` with the arrow keys marks it `data-hapto-keys`, and the
+keyboard then goes back at the next click elsewhere on the page.
 
 Open: a hand-back sent as the user clicks into a field may land after the
 click and send the typing to the host, which needs the host's main thread

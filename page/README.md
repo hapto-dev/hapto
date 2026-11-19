@@ -59,9 +59,11 @@ What keeps it is the focused element (`needsKeys` in `src/keys.ts`): an
 `input` that takes typing and is not read-only, a `textarea` that is not
 read-only, editable content, a `select` until a pick, and anything inside an
 element marked `data-hapto-keys`. A slider, a button, a link and the page's
-background do not, so a focused slider's arrow keys are the host's. Mark a
-control of your own that takes keys, or `body` for a page that wants every
-key while it has the focus:
+background do not, so a focused slider's arrow keys are the host's. A
+`select`'s pick is its `change`, and an arrow key on a closed one is a pick,
+so the keyboard goes back after one step; mark a `select` stepped with the
+arrow keys. Mark a control of your own that takes keys, or `body` for a page
+that wants every key while it has the focus:
 
 ```tsx
 <canvas tabIndex={0} data-hapto-keys />
