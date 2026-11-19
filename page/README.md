@@ -45,6 +45,41 @@ a control ends on the store, and every `setValue` with the value the plugin
 holds, stored or not. `useValue` gives `undefined` until the snapshot arrives,
 and after a `set` shows the value set until that answer.
 
+## The keyboard
+
+In a plugin's window the page takes the keyboard when it is clicked, as
+WebView2 does, and the host sees no key until it has it back.
+`webviewTransport()` gives it back whenever nothing in the page needs keys:
+after a pointer's release, a focus that left, or a key pressed while nothing
+holds the keyboard, it decides in the next task and posts one fixed text
+through `ipc`, outside the protocol, and the native side focuses the host's
+window. The next click takes the keyboard again.
+
+What keeps it is the focused element (`needsKeys` in `src/keys.ts`): an
+`input` that takes typing and is not read-only, a `textarea` that is not
+read-only, editable content, a `select` until a pick, and anything inside an
+element marked `data-hapto-keys`. A slider, a button, a link and the page's
+background do not, so a focused slider's arrow keys are the host's. A
+`select`'s pick is its `change`, and an arrow key on a closed one is a pick,
+so the keyboard goes back after one step; mark a `select` stepped with the
+arrow keys. Mark a control of your own that takes keys, or `body` for a page
+that wants every key while it has the focus:
+
+```tsx
+<canvas tabIndex={0} data-hapto-keys />
+```
+
+In a field every key is the page's, Ctrl+Z and Ctrl+S included. Escape is the
+control's to handle. A control that reads a modifier while dragged takes it
+from the pointer's event (`event.shiftKey`): a key let go after the keyboard
+went back never reaches the page. A key pressed while nothing holds the
+keyboard still reaches the page's own listeners, its default prevented, and
+the keys after it are the host's: a page with a shortcut of its own on the
+window marks `body`. Only the WebView transport does any of this; the memory
+transport, and a scope with no `ipc` or no document, watch nothing. Make the
+transport once per page, at module scope: each one adds a watcher, and none
+is removed.
+
 ## Not built yet
 
 Each needs a protocol message the Rust side does not have today.

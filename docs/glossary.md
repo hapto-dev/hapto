@@ -138,6 +138,14 @@ one parameter nest and count, so the host hears one begin and one end and undo
 records one step. A plain [`Value`](../crates/params/src/value.rs) has gestures
 of its own, with no host to tell.
 
+### Hand-back
+
+The page's message that gives the keyboard back to the host's window, sent
+whenever nothing in the page needs keys. It is one fixed text below the
+protocol, which only the WebView transport sends and only the editor reads
+([keys.ts](../page/src/keys.ts), [the
+decision](decisions.md#d107-the-keyboard-goes-back-to-the-host)).
+
 ### Held
 
 Several senses:

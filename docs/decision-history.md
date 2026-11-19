@@ -1024,6 +1024,28 @@ write with no value decodes as null, as a call's absent arguments do, and
 `useValue` shows a value set until the native side's answer, as `useParam`
 does. To confirm.
 
+### D107. The keyboard goes back to the host
+
+[The decision](decisions.md#d107-the-keyboard-goes-back-to-the-host)
+
+Found on 2026-11-14, in the owner's first Cubase run of a page in the plugin's
+window: once the page was clicked, the space bar no longer reached Cubase's
+transport. A plan weighed three ways, handing the focus back, forwarding the
+keys and WebView2's own option, and an audit the next day moved the decision
+to the task after the event, since a click on the gain's "Label" focuses the
+field after the release, and cut the watcher to three triggers. The owner
+took its five decisions on 2026-11-17. A proof build with the shell's half
+and a stand-in on the gain's page ran in Cubase 16 on 2026-11-18: the space
+bar played after a click on the page's background and after a drag, a field
+kept its keys, and a click on a field's label kept them. A click on Cubase's
+project window with the field focused left the keyboard in the field; a
+native plug-in's field did the same, so the check had expected more than a
+native editor gives. A drag of the plug-in window by its title gives a native
+field's keys up and not the page's; the owner judged it too rare to build
+for. The full build passed his checklist in Cubase 16 the same day, and a
+bundle with a select added for the run showed how a select's arrow keys and
+open list behave, which the record now says. To confirm.
+
 ## Rules
 
 ### P7. The host write: sanitise, clamp, convert, snap, store, publish

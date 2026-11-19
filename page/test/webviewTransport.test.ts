@@ -1,8 +1,11 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+import shell from "../../crates/webview/tests/fixtures/shell.json";
 import { createClient } from "../src/client";
 import { PROTOCOL_VERSION, type NativeMessage } from "../src/generated/protocol";
-import { webviewTransport, type WebViewGlobals } from "../src/transport";
+import { HAND_BACK } from "../src/keys";
+import { memoryTransport, webviewTransport, type WebViewGlobals } from "../src/transport";
+import { testKeyScope, type TestKeyScope } from "./keyScope";
 
 // A fake of what a plugin window's WebView gives the page: `ipc`, which keeps
 // what the page posts, and the `__hapto` the transport installs, which the
@@ -74,6 +77,65 @@ describe("webviewTransport", () => {
     expect(gain.current()?.text).toBe("-24 dB");
     gain.set(0.75);
     expect(JSON.parse(posted.at(-1) ?? "")).toEqual({ type: "set", param: "gain", normalized: 0.75 });
+    client.dispose();
+  });
+});
+
+describe("webviewTransport and the keyboard", () => {
+  let keys: TestKeyScope;
+
+  const click = () => {
+    for (const type of ["pointerdown", "pointerup"]) {
+      document.body.dispatchEvent(new PointerEvent(type, { bubbles: true }));
+    }
+    // The next task, and not the client's resend of `ready` a second later.
+    vi.advanceTimersByTime(1);
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    keys = testKeyScope();
+  });
+
+  afterEach(() => {
+    keys.dispose();
+    vi.useRealTimers();
+  });
+
+  test("the hand-back is the shell fixture's text", () => {
+    expect(JSON.stringify(shell)).toBe(HAND_BACK);
+  });
+
+  test("gives the keyboard back through ipc, before the snapshot too, never held by the client", () => {
+    const posted: string[] = [];
+    const scope: WebViewGlobals = { ...keys.scope, ipc: { postMessage: (text) => posted.push(text) } };
+    const client = createClient(webviewTransport(scope));
+    client.bindParam("gain", () => {}).set(0.5);
+    click();
+    expect(posted).toEqual([JSON.stringify({ type: "ready", protocol: PROTOCOL_VERSION }), HAND_BACK]);
+    scope.__hapto?.receive(
+      JSON.stringify({ type: "snapshot", protocol: PROTOCOL_VERSION, params: [], values: [] } satisfies NativeMessage),
+    );
+    expect(posted.filter((text) => text === HAND_BACK)).toHaveLength(1);
+    client.dispose();
+  });
+
+  test("watches nothing outside a plugin's window, with no ipc", () => {
+    const scope: WebViewGlobals = { ...keys.scope };
+    webviewTransport(scope);
+    const key = new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true });
+    document.body.dispatchEvent(key);
+    expect(key.defaultPrevented).toBe(false);
+  });
+
+  test("the memory transport gives nothing back", () => {
+    const t = memoryTransport();
+    const client = createClient(t.page);
+    click();
+    const key = new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true });
+    document.body.dispatchEvent(key);
+    expect(key.defaultPrevented).toBe(false);
+    expect(t.native.received).toEqual([{ type: "ready", protocol: PROTOCOL_VERSION }]);
     client.dispose();
   });
 });

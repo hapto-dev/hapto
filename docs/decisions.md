@@ -143,6 +143,7 @@ comments never cite an id: they state the reason in words, and
 | D104 | [How do the page's messages cross the WebView, and what does the WebView take from the host? (D16, B1)](#d104-the-webviews-messages-and-what-it-takes) | The page posts through the WebView's IPC and the native side answers with a script, in order; a panic in a WebView callback is caught. The WebView takes no focus as it opens, and a release build shows no browser menu or shortcut. | to confirm |
 | D105 | [What keeps valid what an editor leaves with the host, when the host unloads the module? (D59, D101)](#d105-the-module-stays-loaded-once-an-editor-has-opened) | Once any editor has opened, the module stays loaded until the process ends: one call at every open, before the editor is told its size or opened, for every editor of every plugin. The plugin's file then stays in use until the host exits. | to confirm |
 | D106 | [How does a page show and write plugin state that is not a parameter? (B1, B2, D99)](#d106-page-bound-values) | As a value the plugin binds by key (`Values::value`, `Page::value`): the snapshot carries it, a `value` message brings each change at the tick whatever made it, and a `setValue` is the user's write through `Value::set`, stored when it decodes to the value's type and answered either way. | to confirm |
+| D107 | [How do keys reach the host while a page is in its window? (D104)](#d107-the-keyboard-goes-back-to-the-host) | The page gives the keyboard back whenever nothing in it needs keys: after a click, a drag or a blur, decided in the next task, the WebView transport posts one fixed text below the protocol, and the editor focuses the host's window. A field, a `select` until a pick, editable content and a control marked `data-hapto-keys` keep it. | to confirm |
 
 **Open.** D25 is held until `hapto-ci` needs it. It keeps its recommendation
 until decided, and no rule depends on it.
@@ -2781,7 +2782,8 @@ to nothing, where WebView2 would open it in the page's place, a file a user
 drags from a DAW's browser among them. Taking drops also turns off HTML drag
 and drop inside the page, since wry's handler replaces WebView2's.
 The WebView takes no keyboard focus as it opens, so the host keeps it until
-the page is clicked. It is made hidden and shown once it started: wry leaves
+the page is clicked, and the page gives it back whenever nothing in it needs
+keys (D107). It is made hidden and shown once it started: wry leaves
 its window in the host's when the WebView fails to start, and hidden, that
 window shows nothing until the host's goes. A release build turns off the
 browser's context menu and its shortcuts, such as a reload; a debug build
@@ -2891,6 +2893,81 @@ writes; and a revisioned update, which a container changed in part needs and
 a value replaced whole does not.
 
 [History](decision-history.md#d106-page-bound-values)
+
+### D107. The keyboard goes back to the host
+
+**Question and C++ Seam.** How do keys reach the host while a page is in its
+window? (D104) Once the page is clicked, WebView2 has the keyboard focus, in a
+window of its own process, and the host's message loop sees no key until the
+user clicks the host: in Cubase the space bar no longer starts the transport.
+A native editor keeps the keys only where a control takes them, and passes
+the rest to the host. The C++ Seam's WebView did nothing about it.
+
+**Rust.** The page gives the keyboard back whenever nothing in it needs keys.
+
+- **What needs keys** is the focused element: an `input` that takes typing
+  and is not read-only, which is every type but range, checkbox, radio,
+  button, submit, reset, color, file and image, a type the browser does not
+  know reading as text; a `textarea` that is not read-only; editable
+  content; a `select`, until a pick; and anything inside an element marked
+  `data-hapto-keys`, a control of the author's own. A slider's arrow keys are
+  the host's: a slider is dragged, and the host's arrow keys are worth more.
+  In a field every key is the page's, a modifier shortcut included, so
+  Ctrl+Z is the field's undo and Ctrl+S does not reach the host.
+- **When.** The `@hapto/page` WebView transport installs a watcher that
+  hears a pointer's release, a focus that left, and a key pressed while
+  nothing holds the keyboard, in the capture phase. Each is decided in the
+  next task, since a click on a field's label, or a control that makes and
+  focuses a field on a click, moves the focus after the release: while the
+  page has the keyboard (`document.hasFocus()`), no pointer is down and the
+  focused element needs no keys, it sends one hand-back. A drag keeps the
+  keyboard until its release. The key in the third case is dropped, its
+  default prevented, so it presses no button and scrolls nothing; the keys
+  after it are the host's.
+- **The message** is one fixed text, `{"shell":"releaseKeys"}`, below the
+  protocol: no protocol message has a `shell` tag, the protocol stays at
+  version 3, and the dispatcher never sees it. The transport posts it through
+  `ipc` directly, never through the client, so it is not held for the
+  snapshot. The editor gives the keyboard to the window the host gave it;
+  while a command runs it drops the hand-back, since a dialog's message loop
+  may have the keyboard then. A shared fixture pins the text on both sides.
+  A transport with no host window sends nothing.
+- **The next click** on the page takes the keyboard again, as WebView2 does.
+  Escape is the control's: the package does nothing with it.
+
+Where it differs from a native editor, in Cubase 16: a click on the host's
+own windows while a field has the focus leaves the keyboard in the field, as
+a native editor's field does; a drag of the plug-in window by its title
+leaves it there too, where a native editor's field gives it up. The browser
+tells the page of neither, and the native side would need the host's window
+messages, which `hapto-webview` cannot read without `unsafe`. An open
+`select` list is the same: a click on the host's windows leaves it open, with
+the keyboard.
+
+A `select`'s pick is its `change`, so three ways out of one keep the keys
+until the next click: Escape, a click away, and a pick of the option already
+chosen. An arrow key on a closed `select` is a pick, so the keyboard goes back
+after one step, except at the end of the list, where nothing changes. A page
+that steps a `select` with the arrow keys marks it `data-hapto-keys`, and the
+keyboard then goes back at the next click elsewhere on the page.
+
+Open: a hand-back sent as the user clicks into a field may land after the
+click and send the typing to the host, which needs the host's main thread
+held up across two quick clicks. A field inside a shadow root or an
+`iframe` reads as needing no keys; a page built of web components marks
+them `data-hapto-keys`. macOS has no editor yet, so the shell's half there
+is not built.
+
+**Alternatives.** The alternatives were keeping the focus with the page and
+forwarding the keys it does not use, rebuilt as window messages to the host,
+which needs `unsafe` in `hapto-webview` and gives a host keys it may not take
+as real; WebView2's option for host keys, which wry cannot reach and which
+works only where the host asks the view about a key before it acts; a
+protocol message, which the dispatcher, knowing no window, could not act on,
+and which the client would hold until the snapshot; and a command Hapto
+registers, which waits in the same queue and answers a reply nobody reads.
+
+[History](decision-history.md#d107-the-keyboard-goes-back-to-the-host)
 
 ## How to read this
 

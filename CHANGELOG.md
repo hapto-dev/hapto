@@ -194,6 +194,11 @@ exporter.
   the host's window. A command may run a dialog: the page's messages keep their
   order around it. Elsewhere `into_editor` gives `None`.
 - `page`: `webviewTransport`, the transport of a page in a plugin's window.
+- `page` and `hapto-webview`: the keyboard goes back to the host. After a
+  click, a drag or a blur on a page in a plugin's window, the host's window
+  gets the keyboard again unless a field, editable content, a `select` until
+  a pick or a control marked `data-hapto-keys` has the focus, so the space
+  bar reaches the host's transport.
 - `page`: React hooks (`useParam`, `useValue`, `useEvent`, `useCommand`) over
   a pluggable transport, typed by the page's four maps. A held queue keeps the
   writes made before the native side answers and sends them in the order the
@@ -205,9 +210,9 @@ exporter.
 - `examples/gain`: a gain in dB with a bypass, a mode of three names, an
   undoable label saved with the plugin, and a gain MIDI learn can drive, as a
   VST3 module. Its page, a Vite and React app, shows a slider on the gain, a
-  field for the label, which shows a load or an undo at once, and the
-  version, in the host's window on Windows, when it was built in.
-  [docs/first-plugin.md](docs/first-plugin.md) walks through it.
+  field for the label, which shows a load or an undo at once and drops an
+  edit on Escape, and the version, in the host's window on Windows, when it
+  was built in. [docs/first-plugin.md](docs/first-plugin.md) walks through it.
 - `examples/eq`: an EQ of six biquad bands and an output gain, as a VST3 module
   or a static library for the adapter.
 - `xtask`: `cargo xtask gen` writes every generated file, and CI fails when one

@@ -2,7 +2,7 @@
 // field for the plugin's label, a value the plugin binds, and the plugin's
 // version, through a command.
 
-import { StrictMode, useEffect, useState } from "react";
+import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { createClient, createHooks, webviewTransport } from "@hapto/page";
 
@@ -49,10 +49,13 @@ function LabelField() {
   // the focus; null otherwise, when the field shows the label as the plugin
   // holds it, so a load or an undo shows at once.
   const [draft, setDraft] = useState<string | null>(null);
+  // Set by Escape, so the blur it causes drops the draft.
+  const dropping = useRef(false);
   // Stores only text that differs from the label, so a click into the field
   // and out stores nothing.
   const commit = () => {
-    if (draft !== null && draft !== label.value) label.set(draft);
+    if (!dropping.current && draft !== null && draft !== label.value) label.set(draft);
+    dropping.current = false;
     setDraft(null);
   };
   return (
@@ -64,9 +67,12 @@ function LabelField() {
         onChange={(event) => setDraft(event.currentTarget.value)}
         onBlur={commit}
         onKeyDown={(event) => {
-          // Enter ends the edit: the blur stores it, once. Not while an input
-          // method composes, where Enter picks the text being composed.
-          if (event.key === "Enter" && !event.nativeEvent.isComposing) event.currentTarget.blur();
+          // Enter ends the edit and the blur stores it, once; Escape ends it
+          // and drops it. Neither while an input method composes, where Enter
+          // picks the text being composed and Escape cancels it.
+          if (event.nativeEvent.isComposing) return;
+          if (event.key === "Escape") dropping.current = true;
+          if (event.key === "Enter" || event.key === "Escape") event.currentTarget.blur();
         }}
       />
     </label>

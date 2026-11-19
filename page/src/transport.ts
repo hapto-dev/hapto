@@ -7,6 +7,7 @@
 // (`hapto-webview`). The transport for a standalone app is planned.
 
 import type { NativeMessage, PageMessage } from "./generated/protocol";
+import { HAND_BACK, type KeyScope, watchKeys } from "./keys";
 
 /** Carries messages between the page and the native side, in the order they
     were sent, both ways: the client's order and gesture guarantees rest on it. */
@@ -64,9 +65,11 @@ export function memoryTransport(): MemoryTransport {
 }
 
 /** What a page in a plugin's window finds on `window`: `ipc`, which the
-    WebView provides to post to the native side, and `__hapto`, which
-    `webviewTransport` installs for the native side to deliver through. */
-export interface WebViewGlobals {
+    WebView provides to post to the native side, `__hapto`, which
+    `webviewTransport` installs for the native side to deliver through, and
+    the document, the window's events and its timers, which the keyboard's
+    watcher reads. */
+export interface WebViewGlobals extends Partial<KeyScope> {
   ipc?: { postMessage(text: string): void };
   __hapto?: { receive(text: string): void };
 }
@@ -79,9 +82,15 @@ export interface WebViewGlobals {
     `scope` is where the two live, `globalThis` in a page; a test passes a
     fake. Outside a plugin's window, with no `ipc`, sends are dropped. A
     native message that is not JSON is dropped too: the client checks the
-    shape of every message that is. */
+    shape of every message that is.
+
+    In a plugin's window, with `ipc` and a document, it also gives the
+    keyboard back to the host whenever nothing in the page needs keys
+    (`watchKeys`). The hand-back goes straight through `ipc`, never through
+    the client, so it is never held for the snapshot. */
 export function webviewTransport(scope: WebViewGlobals = globalThis as WebViewGlobals): Transport {
   const listeners = new Set<(message: NativeMessage) => void>();
+  if (scope.ipc && isKeyScope(scope)) watchKeys(scope, () => scope.ipc?.postMessage(HAND_BACK));
   scope.__hapto = {
     receive(text) {
       let message: NativeMessage;
@@ -102,4 +111,16 @@ export function webviewTransport(scope: WebViewGlobals = globalThis as WebViewGl
       return () => listeners.delete(handler);
     },
   };
+}
+
+/** Whether `scope` carries all the keyboard's watcher reads: a window does,
+    a test's plain object may not. */
+function isKeyScope(scope: WebViewGlobals): scope is WebViewGlobals & KeyScope {
+  return (
+    scope.document !== undefined &&
+    typeof scope.addEventListener === "function" &&
+    typeof scope.removeEventListener === "function" &&
+    typeof scope.setTimeout === "function" &&
+    typeof scope.clearTimeout === "function"
+  );
 }
