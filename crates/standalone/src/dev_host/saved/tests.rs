@@ -4,6 +4,7 @@
 
 use std::error::Error;
 
+use anyhow::anyhow;
 use hapto_host::{
     AuCodes, Block, Category, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
 };
@@ -132,7 +133,7 @@ fn a_refused_block_is_held_as_it_was() {
 #[test]
 fn a_block_that_could_not_be_read_is_held() {
     let hosted = host::<Migrating>(Format::Cabi);
-    let load = FirstLoad::of(Err("saved.json: denied".into()), &*hosted);
+    let load = FirstLoad::of(Err(anyhow!("saved.json: denied")), &*hosted);
     let unreadable = FirstLoad::Unreadable {
         reason: "saved.json: denied".into(),
     };

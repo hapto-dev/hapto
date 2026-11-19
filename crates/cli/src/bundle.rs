@@ -14,6 +14,8 @@ use std::fs;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
+use anyhow::{Context as _, Result, anyhow, bail, ensure};
+
 use crate::page::{self, PAGE_DEV_URL};
 use crate::tool::{self, Artifact, cargo};
 use crate::workspace::{Plugin, Workspace};
@@ -113,12 +115,12 @@ impl Folder {
     /// # Errors
     ///
     /// Returns which variable is not set.
-    pub(crate) fn path(self) -> Result<PathBuf, String> {
+    pub(crate) fn path(self) -> Result<PathBuf> {
         let (variable, under) = match self {
             Folder::User => ("LOCALAPPDATA", ["Programs", "Common", "VST3"].as_slice()),
             Folder::System => ("CommonProgramFiles", ["VST3"].as_slice()),
         };
-        let base = std::env::var_os(variable).ok_or(format!("{variable} is not set"))?;
+        let base = std::env::var_os(variable).with_context(|| format!("{variable} is not set"))?;
         Ok(under
             .iter()
             .fold(PathBuf::from(base), |path, part| path.join(part)))
@@ -141,7 +143,7 @@ impl Folder {
 /// # Errors
 ///
 /// Says the bytes are no DLL, or name a machine no folder is known for.
-pub(crate) fn arch_folder(module: &[u8]) -> Result<&'static str, String> {
+pub(crate) fn arch_folder(module: &[u8]) -> Result<&'static str> {
     let at = module
         .get(0x3c..0x40)
         .filter(|_| module.starts_with(b"MZ"))
@@ -152,14 +154,14 @@ pub(crate) fn arch_folder(module: &[u8]) -> Result<&'static str, String> {
             let machine = module.get(at.checked_add(4)?..at.checked_add(6)?)?;
             (pe == b"PE\0\0").then(|| u16::from_le_bytes([machine[0], machine[1]]))
         })
-        .ok_or("the built module is no Windows DLL")?;
+        .context("the built module is no Windows DLL")?;
     match machine {
         0x8664 => Ok("x86_64-win"),
         0xaa64 => Ok("arm64-win"),
-        other => Err(format!(
+        other => bail!(
             "no VST3 bundle folder is known for the machine {other:#06x} the module is \
              built for"
-        )),
+        ),
     }
 }
 
@@ -168,15 +170,13 @@ pub(crate) fn arch_folder(module: &[u8]) -> Result<&'static str, String> {
 /// # Errors
 ///
 /// Says the bundle's layout on `os` is not built yet.
-pub(crate) fn windows_only(os: &str) -> Result<(), String> {
-    if os == "windows" {
-        Ok(())
-    } else {
-        Err(format!(
-            "build lays out a Windows bundle only; on {os} a VST3 bundle has another \
-             layout, which is not built yet"
-        ))
-    }
+pub(crate) fn windows_only(os: &str) -> Result<()> {
+    ensure!(
+        os == "windows",
+        "build lays out a Windows bundle only; on {os} a VST3 bundle has another \
+         layout, which is not built yet"
+    );
+    Ok(())
 }
 
 /// Returns the first bytes of the file at `path`, enough to hold a DLL's
@@ -185,11 +185,11 @@ pub(crate) fn windows_only(os: &str) -> Result<(), String> {
 /// # Errors
 ///
 /// Returns why it could not be read.
-pub(crate) fn head(path: &Path) -> Result<Vec<u8>, String> {
+pub(crate) fn head(path: &Path) -> Result<Vec<u8>> {
     let mut head = Vec::new();
     fs::File::open(path)
         .and_then(|file| file.take(64 * 1024).read_to_end(&mut head))
-        .map_err(|e| format!("{}: {e}", path.display()))?;
+        .with_context(|| path.display().to_string())?;
     Ok(head)
 }
 
@@ -199,7 +199,7 @@ pub(crate) fn head(path: &Path) -> Result<Vec<u8>, String> {
 /// # Errors
 ///
 /// Returns why `name` names no file.
-pub(crate) fn layout(root: &Path, name: &str, arch: &str) -> Result<(PathBuf, PathBuf), String> {
+pub(crate) fn layout(root: &Path, name: &str, arch: &str) -> Result<(PathBuf, PathBuf)> {
     let file = format!("{}.vst3", file_name(name)?);
     let bundle = root.join(&file);
     let module = bundle.join("Contents").join(arch).join(&file);
@@ -255,7 +255,7 @@ const DEVICES: &[&str] = &[
 ///
 /// Returns why the name names no file: nothing is left of it, or it is a
 /// device name Windows keeps.
-pub(crate) fn file_name(name: &str) -> Result<String, String> {
+pub(crate) fn file_name(name: &str) -> Result<String> {
     let mapped: String = name
         .chars()
         .map(|c| {
@@ -268,9 +268,7 @@ pub(crate) fn file_name(name: &str) -> Result<String, String> {
         .collect();
     let mapped = mapped.trim_end_matches(['.', ' ']).to_owned();
     if mapped.trim().is_empty() {
-        return Err(format!(
-            "the plugin's name {name:?} leaves no file name for its bundle"
-        ));
+        bail!("the plugin's name {name:?} leaves no file name for its bundle");
     }
     // Windows takes a device's name with anything after a dot for the
     // device, and spaces before the dot with it.
@@ -279,10 +277,10 @@ pub(crate) fn file_name(name: &str) -> Result<String, String> {
         .iter()
         .any(|device| base.eq_ignore_ascii_case(device))
     {
-        return Err(format!(
+        bail!(
             "the plugin's name {name:?} is a device name Windows keeps, so it cannot name \
              its bundle"
-        ));
+        );
     }
     Ok(mapped)
 }
@@ -311,7 +309,7 @@ pub(crate) fn copy_error(error: &io::Error, path: &Path, folder: Folder) -> Stri
 /// # Errors
 ///
 /// Returns the step that failed and why.
-pub(crate) fn run(options: &Options) -> Result<(), String> {
+pub(crate) fn run(options: &Options) -> Result<()> {
     let (workspace, plugin) = Workspace::find(options.package.as_deref())?;
     let bundle = build(&workspace, &plugin, options.page, options.profile)?;
     if let Some(folder) = options.install {
@@ -338,7 +336,7 @@ pub(crate) fn build(
     plugin: &Plugin,
     page: bool,
     profile: Profile,
-) -> Result<PathBuf, String> {
+) -> Result<PathBuf> {
     windows_only(std::env::consts::OS)?;
     // Before the builds, which take minutes, so a name no file can take is
     // refused at once.
@@ -374,7 +372,7 @@ pub(crate) fn build(
 /// # Errors
 ///
 /// Says the build named none.
-pub(crate) fn module_of(artifacts: &[Artifact], plugin: &Plugin) -> Result<PathBuf, String> {
+pub(crate) fn module_of(artifacts: &[Artifact], plugin: &Plugin) -> Result<PathBuf> {
     let file = format!(
         "{}{}{}",
         std::env::consts::DLL_PREFIX,
@@ -387,16 +385,16 @@ pub(crate) fn module_of(artifacts: &[Artifact], plugin: &Plugin) -> Result<PathB
         .flat_map(|a| &a.files)
         .find(|path| path.file_name().is_some_and(|name| *name == *file))
         .cloned()
-        .ok_or_else(|| format!("cargo build of {} wrote no {file}", plugin.package))
+        .with_context(|| format!("cargo build of {} wrote no {file}", plugin.package))
 }
 
-fn lay_out(built: &Path, bundle: &Path, module: &Path) -> Result<(), String> {
+fn lay_out(built: &Path, bundle: &Path, module: &Path) -> Result<()> {
     if bundle.exists() {
-        fs::remove_dir_all(bundle).map_err(|e| format!("{}: {e}", bundle.display()))?;
+        fs::remove_dir_all(bundle).with_context(|| bundle.display().to_string())?;
     }
-    let contents = module.parent().ok_or("a module path has no folder")?;
-    fs::create_dir_all(contents).map_err(|e| format!("{}: {e}", contents.display()))?;
-    fs::copy(built, module).map_err(|e| format!("{}: {e}", built.display()))?;
+    let contents = module.parent().context("a module path has no folder")?;
+    fs::create_dir_all(contents).with_context(|| contents.display().to_string())?;
+    fs::copy(built, module).with_context(|| built.display().to_string())?;
     Ok(())
 }
 
@@ -406,10 +404,10 @@ fn lay_out(built: &Path, bundle: &Path, module: &Path) -> Result<(), String> {
 /// # Errors
 ///
 /// Returns the copy's failure, worded by [`copy_error`].
-pub(crate) fn install(bundle: &Path, name: &str, folder: Folder) -> Result<(), String> {
+pub(crate) fn install(bundle: &Path, name: &str, folder: Folder) -> Result<()> {
     let name = file_name(name)?;
     let into = folder.path()?.join(format!("{name}.vst3"));
-    copy_tree(bundle, &into).map_err(|(path, e)| copy_error(&e, &path, folder))?;
+    copy_tree(bundle, &into).map_err(|(path, e)| anyhow!(copy_error(&e, &path, folder)))?;
     println!("installed {}", into.display());
     let other = folder.other().path()?.join(format!("{name}.vst3"));
     if other.exists() {

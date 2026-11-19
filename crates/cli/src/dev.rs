@@ -21,6 +21,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::time::{Duration, Instant};
 
+use anyhow::{Context as _, Result};
+
 use crate::bundle::Profile;
 use crate::page::{self, DEV_PORT, DevServer, PAGE_DEV_URL, write_param_map};
 use crate::tool::{self, cargo};
@@ -216,7 +218,7 @@ pub(crate) struct Options {
 /// # Errors
 ///
 /// Returns the step that failed and why.
-pub(crate) fn run(options: &Options) -> Result<(), String> {
+pub(crate) fn run(options: &Options) -> Result<()> {
     let (workspace, plugin) = Workspace::find(options.package.as_deref())?;
     // A crate with no standalone binary is told so before the page's
     // packages and server, which take time.
@@ -264,8 +266,8 @@ impl App {
     /// # Errors
     ///
     /// Says how to give the crate a standalone binary, when it has none.
-    pub(crate) fn of(plugin: &Plugin, options: &Options, session: &Path) -> Result<App, String> {
-        let bin = plugin.standalone.clone().ok_or_else(|| {
+    pub(crate) fn of(plugin: &Plugin, options: &Options, session: &Path) -> Result<App> {
+        let bin = plugin.standalone.clone().with_context(|| {
             format!(
                 "{} has no standalone binary: a [[bin]] whose required-features are \
                  [\"standalone\"], calling hapto_standalone::main (docs/first-plugin.md, \
@@ -297,7 +299,7 @@ fn in_app(
     app: &App,
     session: &Path,
     url: Option<&str>,
-) -> Result<(), String> {
+) -> Result<()> {
     let watch = Watch::new(&workspace.root, workspace.member_dirs());
     // Taken before the first build, which can take minutes, so a change
     // saved while it runs starts the next.
@@ -339,7 +341,7 @@ fn in_app(
                 build
             }
             Err(error) => {
-                eprintln!("{error}");
+                eprintln!("{error:#}");
                 Build::Failed
             }
         };
@@ -390,7 +392,7 @@ fn build_app(
     plugin: &Plugin,
     app: &App,
     profile: Profile,
-) -> Result<(PathBuf, Build), String> {
+) -> Result<(PathBuf, Build)> {
     write_param_map(workspace, plugin)?;
     let artifacts = tool::build(
         cargo()
@@ -410,7 +412,7 @@ fn build_app(
             };
             Some((a.executable?, build))
         })
-        .ok_or_else(|| format!("cargo build wrote no {}", app.bin))
+        .with_context(|| format!("cargo build wrote no {}", app.bin))
 }
 
 /// The command that runs the app at `exe` with `args`, its stdin piped,
@@ -452,7 +454,7 @@ impl Copies {
     /// # Errors
     ///
     /// Returns why the copy could not be made.
-    pub(crate) fn next(&mut self, built: &Path) -> Result<PathBuf, String> {
+    pub(crate) fn next(&mut self, built: &Path) -> Result<PathBuf> {
         let stem = built.file_stem().unwrap_or_default().to_string_lossy();
         let copy = loop {
             self.count += 1;
@@ -465,9 +467,9 @@ impl Copies {
                 break copy;
             }
         };
-        std::fs::create_dir_all(&self.dir).map_err(|e| format!("{}: {e}", self.dir.display()))?;
+        std::fs::create_dir_all(&self.dir).with_context(|| self.dir.display().to_string())?;
         std::fs::copy(built, &copy)
-            .map_err(|e| format!("copying {} to {}: {e}", built.display(), copy.display()))?;
+            .with_context(|| format!("copying {} to {}", built.display(), copy.display()))?;
         Ok(copy)
     }
 }
@@ -482,10 +484,10 @@ struct Running {
 }
 
 impl Running {
-    fn start(exe: &Path, args: &[String], url: Option<&str>) -> Result<Running, String> {
+    fn start(exe: &Path, args: &[String], url: Option<&str>) -> Result<Running> {
         let mut child = app_command(exe, args, url)
             .spawn()
-            .map_err(|e| format!("{}: {e}", exe.display()))?;
+            .with_context(|| exe.display().to_string())?;
         let stdin = child.stdin.take();
         Ok(Running {
             child,
@@ -495,8 +497,8 @@ impl Running {
     }
 
     /// Returns how the app ended, once it has; `None` while it runs.
-    fn ended(&mut self) -> Result<Option<Ended>, String> {
-        let status = self.child.try_wait().map_err(|e| format!("the app: {e}"))?;
+    fn ended(&mut self) -> Result<Option<Ended>> {
+        let status = self.child.try_wait().context("the app")?;
         Ok(status.map(|status| Ended::of(status.code())))
     }
 

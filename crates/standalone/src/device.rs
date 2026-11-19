@@ -2,6 +2,7 @@
 
 use std::sync::{Arc, OnceLock};
 
+use anyhow::{Context as _, Result, bail};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
 use crate::block::{Player, Render};
@@ -20,18 +21,18 @@ impl Output {
     ///
     /// Returns why there is none to play to: no device, or one that does not
     /// take 32-bit floats, which shared-mode devices on Windows do.
-    pub(crate) fn system_default() -> Result<Output, String> {
+    pub(crate) fn system_default() -> Result<Output> {
         let device = cpal::default_host()
             .default_output_device()
-            .ok_or("there is no audio output device")?;
+            .context("there is no audio output device")?;
         let supported = device
             .default_output_config()
-            .map_err(|e| format!("the audio output device: {e}"))?;
+            .context("the audio output device")?;
         if supported.sample_format() != cpal::SampleFormat::F32 {
-            return Err(format!(
+            bail!(
                 "the audio output device takes {:?} samples, and the app plays 32-bit floats",
                 supported.sample_format()
-            ));
+            );
         }
         Ok(Output {
             device,
@@ -83,11 +84,7 @@ impl Output {
     /// # Errors
     ///
     /// Returns why the device did not start.
-    pub(crate) fn start<R: Render>(
-        &self,
-        rate: u32,
-        mut player: Player<R>,
-    ) -> Result<Playing, String> {
+    pub(crate) fn start<R: Render>(&self, rate: u32, mut player: Player<R>) -> Result<Playing> {
         let config = cpal::StreamConfig {
             sample_rate: rate,
             ..self.config
@@ -106,10 +103,8 @@ impl Output {
                 },
                 None,
             )
-            .map_err(|e| format!("the audio output device at {rate} Hz: {e}"))?;
-        stream
-            .play()
-            .map_err(|e| format!("the audio output device: {e}"))?;
+            .with_context(|| format!("the audio output device at {rate} Hz"))?;
+        stream.play().context("the audio output device")?;
         Ok(Playing {
             _stream: stream,
             ended,

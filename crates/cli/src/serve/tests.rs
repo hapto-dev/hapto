@@ -4,7 +4,7 @@
 use super::Options;
 use crate::page::DEV_PORT;
 
-fn parse(args: &[&str]) -> Result<Options, String> {
+fn parse(args: &[&str]) -> Result<Options, clap::Error> {
     crate::parse_as::<Options>(args)
 }
 

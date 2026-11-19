@@ -5,6 +5,8 @@ mod tests;
 
 use std::path::PathBuf;
 
+use anyhow::{Context as _, Result, bail};
+
 use crate::signal::Signal;
 
 /// What the app prints when its arguments are wrong.
@@ -35,7 +37,7 @@ impl Options {
     /// # Errors
     ///
     /// Returns what is wrong with them, and the usage.
-    pub(crate) fn parse(args: impl IntoIterator<Item = String>) -> Result<Options, String> {
+    pub(crate) fn parse(args: impl IntoIterator<Item = String>) -> Result<Options> {
         let mut options = Options {
             signal: Signal::Silence,
             dev: None,
@@ -45,17 +47,17 @@ impl Options {
         while let Some(arg) = args.next() {
             let mut value = || {
                 args.next()
-                    .ok_or_else(|| format!("{arg} wants a value\n\n{USAGE}"))
+                    .with_context(|| format!("{arg} wants a value\n\n{USAGE}"))
             };
             match arg.as_str() {
                 "--signal" => {
                     let name = value()?;
                     options.signal = Signal::named(&name)
-                        .ok_or_else(|| format!("no signal is named {name:?}\n\n{USAGE}"))?;
+                        .with_context(|| format!("no signal is named {name:?}\n\n{USAGE}"))?;
                 }
                 "--dev" => options.dev = Some(value()?.into()),
                 "--host" => options.host = true,
-                _ => return Err(format!("the app does not take {arg:?}\n\n{USAGE}")),
+                _ => bail!("the app does not take {arg:?}\n\n{USAGE}"),
             }
         }
         Ok(options)

@@ -98,7 +98,7 @@ pub mod dev {
             device_channels: usize,
             sample_rate: f64,
             max: usize,
-        ) -> Result<DevHost, String> {
+        ) -> anyhow::Result<DevHost> {
             let hosted = host::<P>(format);
             let layout = crate::app::first_layout::<P>();
             let render = hosted.start(sample_rate, max, layout)?;

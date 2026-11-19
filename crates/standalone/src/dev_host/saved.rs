@@ -6,6 +6,8 @@
 #[cfg(test)]
 mod tests;
 
+use anyhow::Result;
+
 use super::hosted::Hosted;
 
 /// How the run's first load of the saved block went.
@@ -37,14 +39,21 @@ pub(crate) enum FirstLoad {
 impl FirstLoad {
     /// Loads `saved`, the session's block as it was read, into `hosted`,
     /// and returns how it went.
-    pub(crate) fn of(saved: Result<Option<Vec<u8>>, String>, hosted: &dyn Hosted) -> FirstLoad {
+    pub(crate) fn of(saved: Result<Option<Vec<u8>>>, hosted: &dyn Hosted) -> FirstLoad {
         let block = match saved {
             Ok(Some(block)) => block,
             Ok(None) => return FirstLoad::Nothing,
-            Err(reason) => return FirstLoad::Unreadable { reason },
+            Err(reason) => {
+                return FirstLoad::Unreadable {
+                    reason: format!("{reason:#}"),
+                };
+            }
         };
         if let Err(reason) = hosted.load(&block) {
-            return FirstLoad::Refused { reason, block };
+            return FirstLoad::Refused {
+                reason: format!("{reason:#}"),
+                block,
+            };
         }
         let before = plugin_version(&block);
         let after = hosted.save().as_deref().and_then(plugin_version);

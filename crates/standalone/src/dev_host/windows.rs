@@ -2,6 +2,7 @@
 //! plugin's view below, and the settings window beside it, which a close
 //! hides, so it opens again as it was.
 
+use anyhow::{Context as _, Result};
 use hapto_host::vst3::ChildWindow;
 use winit::dpi::{LogicalSize, PhysicalPosition, PhysicalSize};
 use winit::event::WindowEvent;
@@ -17,15 +18,13 @@ impl DevHost {
     /// Opens the main window: the plugin's view, sized as it asks, below the
     /// bar. With no view, the bar fills it, and the settings window opens
     /// too, since it holds the plugin's parameters.
-    pub(super) fn open_window(&mut self, event_loop: &ActiveEventLoop) -> Result<(), String> {
+    pub(super) fn open_window(&mut self, event_loop: &ActiveEventLoop) -> Result<()> {
         let (width, height) = layout::NO_EDITOR;
         let attributes = Window::default_attributes()
             .with_title(format!("{} - dev host", self.about.name))
             .with_inner_size(LogicalSize::new(width, height))
             .with_visible(false);
-        let window = event_loop
-            .create_window(attributes)
-            .map_err(|e| format!("the window: {e}"))?;
+        let window = event_loop.create_window(attributes).context("the window")?;
         let scale = window.scale_factor();
         let mut view = self.hosted.view();
         if let Some(view) = &view {
@@ -47,7 +46,7 @@ impl DevHost {
         if let (Some(shown), Some(rect)) = (&view, placed.view) {
             let (x, y, width, height) = rect.pixels(scale);
             let frame = ChildWindow::new(&window, x, y, width, height)
-                .ok_or("the system refused the view's window")?;
+                .context("the system refused the view's window")?;
             match shown.attach_to(&frame) {
                 Ok(()) => self.frame = Some(frame),
                 // As if the plugin had none, so the bar says so, the window
@@ -77,7 +76,7 @@ impl DevHost {
 
     /// Opens the settings window beside the main one, or shows it and
     /// brings it to the front when it is open already.
-    pub(super) fn open_settings(&mut self, event_loop: &ActiveEventLoop) -> Result<(), String> {
+    pub(super) fn open_settings(&mut self, event_loop: &ActiveEventLoop) -> Result<()> {
         if let Some(settings) = &self.settings {
             settings.window.set_visible(true);
             settings.window.focus_window();
@@ -95,7 +94,7 @@ impl DevHost {
         }
         let window = event_loop
             .create_window(attributes)
-            .map_err(|e| format!("the settings window: {e}"))?;
+            .context("the settings window")?;
         let size = logical(window.inner_size(), window.scale_factor());
         let page = include_str!("settings.html");
         let rect = Rect::whole(size.width, size.height);

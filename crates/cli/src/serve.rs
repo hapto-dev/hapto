@@ -6,6 +6,8 @@
 #[cfg(test)]
 mod tests;
 
+use anyhow::{Context as _, Result};
+
 use crate::page::{DEV_PORT, DevServer, PAGE_DEV_URL};
 use crate::workspace::Workspace;
 
@@ -26,11 +28,11 @@ pub(crate) struct Options {
 /// # Errors
 ///
 /// Returns why the server did not start, or how it stopped on its own.
-pub(crate) fn run(options: &Options) -> Result<(), String> {
+pub(crate) fn run(options: &Options) -> Result<()> {
     let (_, plugin) = Workspace::find(options.package.as_deref())?;
     let page = plugin
         .page()
-        .ok_or_else(|| format!("{} has no page to serve", plugin.package))?;
+        .with_context(|| format!("{} has no page to serve", plugin.package))?;
     let server = DevServer::start(&page, options.port)?;
     println!(
         "the page is served from {url}: start the host with {PAGE_DEV_URL}={url} and \

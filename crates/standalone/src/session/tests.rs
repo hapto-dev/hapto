@@ -18,7 +18,11 @@ fn folder(name: &str) -> PathBuf {
 fn a_kept_block_is_there_at_the_next_run() {
     let dir = folder("kept");
     let mut first = Session::in_dir(dir.clone()).expect("made");
-    assert_eq!(first.saved_block(), Ok(None), "a new session holds none");
+    assert_eq!(
+        first.saved_block().unwrap(),
+        None,
+        "a new session holds none"
+    );
     first.keep(b"{\"one\":1}".to_vec()).expect("written");
     let mut second = Session::in_dir(dir.clone()).expect("opened");
     assert_eq!(
@@ -50,7 +54,7 @@ fn a_held_session_writes_nothing_over_its_block() {
     let dir = folder("held");
     let mut session = Session::in_dir(dir.clone()).expect("made");
     std::fs::write(dir.join("saved.json"), b"refused").expect("written");
-    assert_eq!(session.saved_block(), Ok(Some(b"refused".to_vec())));
+    assert_eq!(session.saved_block().unwrap(), Some(b"refused".to_vec()));
     session.hold();
     session
         .keep(b"defaults".to_vec())

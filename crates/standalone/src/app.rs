@@ -10,6 +10,7 @@ use std::io::Read;
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
+use anyhow::{Context as _, Result};
 use hapto_host::standalone::{Standalone, StandaloneEditor};
 use hapto_host::{Plugin, Size};
 use winit::application::ApplicationHandler;
@@ -55,10 +56,10 @@ pub(crate) enum Wake {
 ///
 /// Returns why it could not run: no audio device, an activation refused, no
 /// window.
-pub(crate) fn run<P: Plugin>(options: &Options) -> Result<ExitCode, String> {
+pub(crate) fn run<P: Plugin>(options: &Options) -> Result<ExitCode> {
     let event_loop = EventLoop::<Wake>::with_user_event()
         .build()
-        .map_err(|e| format!("the window's event loop: {e}"))?;
+        .context("the window's event loop")?;
     if options.dev.is_some() {
         quit_when_stdin_closes(event_loop.create_proxy());
     }
@@ -69,7 +70,7 @@ pub(crate) fn run<P: Plugin>(options: &Options) -> Result<ExitCode, String> {
     let (rate, layout) = (output.sample_rate(), first_layout::<P>());
     plugin
         .activate(f64::from(rate), BLOCK, layout)
-        .map_err(|e| format!("{}: {e}", P::INFO.name))?;
+        .context(P::INFO.name)?;
     let player = Player::of_app(
         &plugin,
         layout,
@@ -92,7 +93,7 @@ pub(crate) fn run<P: Plugin>(options: &Options) -> Result<ExitCode, String> {
     };
     let ran = event_loop.run_app(&mut app);
     app.finish();
-    ran.map_err(|e| format!("the window's event loop: {e}"))?;
+    ran.context("the window's event loop")?;
     match app.failed {
         Some(reason) => Err(reason),
         None => Ok(ExitCode::SUCCESS),
@@ -120,7 +121,7 @@ fn load_saved<P: Plugin>(session: &mut Session, plugin: &Standalone<P>) {
             }
         }
         Err(error) => eprintln!(
-            "{}: the saved block could not be read ({error}); it is kept as it is",
+            "{}: the saved block could not be read ({error:#}); it is kept as it is",
             P::INFO.name
         ),
     }
@@ -181,7 +182,7 @@ struct App<P: Plugin> {
     editor: Option<StandaloneEditor<P>>,
     window: Option<Window>,
     /// Why the app could not go on, once its loop ends.
-    failed: Option<String>,
+    failed: Option<anyhow::Error>,
     dev: bool,
     next_tick: Instant,
     next_keep: Instant,
@@ -190,7 +191,7 @@ struct App<P: Plugin> {
 }
 
 impl<P: Plugin> App<P> {
-    fn open_window(&mut self, event_loop: &ActiveEventLoop) -> Result<(), String> {
+    fn open_window(&mut self, event_loop: &ActiveEventLoop) -> Result<()> {
         let editor = self.plugin.editor();
         let size = editor.as_ref().map_or(NO_EDITOR, StandaloneEditor::size);
         let shown = match editor {
@@ -200,9 +201,7 @@ impl<P: Plugin> App<P> {
         let attributes = Window::default_attributes()
             .with_title(title(P::INFO.name, shown))
             .with_inner_size(LogicalSize::new(size.width, size.height));
-        let window = event_loop
-            .create_window(attributes)
-            .map_err(|e| format!("the window: {e}"))?;
+        let window = event_loop.create_window(attributes).context("the window")?;
         // An editor that did not open goes, so nothing takes it for an open
         // one, and the title says so.
         let editor = editor.filter(|editor| {
@@ -234,7 +233,7 @@ impl<P: Plugin> App<P> {
 
     fn keep(&mut self) {
         if let Err(error) = self.session.keep(self.plugin.save()) {
-            eprintln!("the saved block: {error}");
+            eprintln!("the saved block: {error:#}");
         }
     }
 

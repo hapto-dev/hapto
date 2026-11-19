@@ -10,7 +10,7 @@ use super::{
 use crate::tool::Artifact;
 use crate::workspace::Plugin;
 
-fn parse(args: &[&str]) -> Result<Options, String> {
+fn parse(args: &[&str]) -> Result<Options, clap::Error> {
     crate::parse_as::<super::Line>(args).map(Options::from)
 }
 
@@ -72,15 +72,16 @@ fn a_name_no_file_can_hold_still_lays_the_bundle_out_in_its_folder() {
 
 #[test]
 fn a_name_is_written_as_a_file_name_or_refused() {
-    assert_eq!(
-        file_name("Hapto Example Gain").as_deref(),
-        Ok("Hapto Example Gain")
-    );
-    assert_eq!(file_name("A/B Gain").as_deref(), Ok("A-B Gain"));
-    assert_eq!(file_name("EQ: Pro").as_deref(), Ok("EQ- Pro"));
-    assert_eq!(file_name("C:\\elsewhere").as_deref(), Ok("C--elsewhere"));
-    assert_eq!(file_name("Gain...").as_deref(), Ok("Gain"));
-    assert_eq!(file_name("Bell\u{7}").as_deref(), Ok("Bell-"));
+    for (name, file) in [
+        ("Hapto Example Gain", "Hapto Example Gain"),
+        ("A/B Gain", "A-B Gain"),
+        ("EQ: Pro", "EQ- Pro"),
+        ("C:\\elsewhere", "C--elsewhere"),
+        ("Gain...", "Gain"),
+        ("Bell\u{7}", "Bell-"),
+    ] {
+        assert_eq!(file_name(name).unwrap(), file, "{name:?}");
+    }
     for name in ["", "   ", "...", "CON", "nul", "Com1"] {
         assert!(file_name(name).is_err(), "{name:?}");
     }
@@ -96,7 +97,7 @@ fn a_name_is_written_as_a_file_name_or_refused() {
 
 #[test]
 fn only_windows_has_a_bundle_layout_yet() {
-    assert_eq!(windows_only("windows"), Ok(()));
+    assert!(windows_only("windows").is_ok());
     assert!(windows_only("macos").is_err());
     assert!(windows_only("linux").is_err());
 }
@@ -114,10 +115,10 @@ fn module_for(machine: u16) -> Vec<u8> {
 
 #[test]
 fn the_module_goes_under_the_architecture_it_was_built_for() {
-    assert_eq!(arch_folder(&module_for(0x8664)), Ok("x86_64-win"));
-    assert_eq!(arch_folder(&module_for(0xaa64)), Ok("arm64-win"));
+    assert_eq!(arch_folder(&module_for(0x8664)).unwrap(), "x86_64-win");
+    assert_eq!(arch_folder(&module_for(0xaa64)).unwrap(), "arm64-win");
     let x86 = arch_folder(&module_for(0x014c)).expect_err("32-bit x86");
-    assert!(x86.contains("0x014c"), "{x86}");
+    assert!(x86.to_string().contains("0x014c"), "{x86}");
     assert!(arch_folder(b"not a module").is_err());
     assert!(
         arch_folder(&module_for(0x8664)[..0x84]).is_err(),
@@ -134,7 +135,7 @@ fn a_module_built_here_reads_as_this_machine_s() {
         "aarch64" => "arm64-win",
         _ => "x86_64-win",
     };
-    assert_eq!(arch_folder(&head), Ok(expected));
+    assert_eq!(arch_folder(&head).unwrap(), expected);
 }
 
 #[test]
@@ -196,6 +197,6 @@ fn the_module_is_the_one_cargo_wrote_for_the_cdylib() {
             vec![under.join(format!("{dll}.lib")), under.join(&dll)],
         ),
     ];
-    assert_eq!(module_of(&built, &plugin), Ok(under.join(&dll)));
+    assert_eq!(module_of(&built, &plugin).unwrap(), under.join(&dll));
     assert!(module_of(&built[..1], &plugin).is_err(), "no cdylib built");
 }

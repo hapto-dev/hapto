@@ -6,6 +6,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
+use anyhow::{Result, anyhow};
 use hapto_host::{
     AuCodes, Block, Category, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
 };
@@ -44,7 +45,7 @@ impl Device for Silent {
         vec![44_100, 48_000, 96_000, 192_000]
     }
 
-    fn start(&self, rate: u32, player: Player<Box<dyn Render>>) -> Result<(), String> {
+    fn start(&self, rate: u32, player: Player<Box<dyn Render>>) -> Result<()> {
         drop(player);
         self.starts.borrow_mut().push(rate);
         Ok(())
@@ -77,8 +78,8 @@ impl Device for Broken {
         vec![48_000]
     }
 
-    fn start(&self, _rate: u32, _player: Player<Box<dyn Render>>) -> Result<(), String> {
-        Err("the device is in use by another app".to_owned())
+    fn start(&self, _rate: u32, _player: Player<Box<dyn Render>>) -> Result<()> {
+        Err(anyhow!("the device is in use by another app"))
     }
 
     fn ended((): &()) -> Option<String> {
@@ -120,7 +121,7 @@ impl Device for Unpluggable {
         vec![48_000]
     }
 
-    fn start(&self, _rate: u32, _player: Player<Box<dyn Render>>) -> Result<Self::Stream, String> {
+    fn start(&self, _rate: u32, _player: Player<Box<dyn Render>>) -> Result<Self::Stream> {
         let stream = Rc::new(RefCell::new(None));
         *self.stream.borrow_mut() = Some(Rc::clone(&stream));
         Ok(stream)

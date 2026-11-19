@@ -3,10 +3,12 @@
 
 use std::path::PathBuf;
 
+use anyhow::Result;
+
 use super::Options;
 use crate::signal::Signal;
 
-fn parse(args: &[&str]) -> Result<Options, String> {
+fn parse(args: &[&str]) -> Result<Options> {
     Options::parse(args.iter().map(|a| (*a).to_owned()))
 }
 
@@ -45,6 +47,9 @@ fn what_it_does_not_take_is_refused_with_the_usage() {
         &["--loud"],
     ] {
         let refused = parse(args).expect_err("refused");
-        assert!(refused.contains("usage:"), "{args:?}: {refused}");
+        assert!(
+            refused.to_string().contains("usage:"),
+            "{args:?}: {refused}"
+        );
     }
 }

@@ -115,13 +115,13 @@ use hapto_host::Plugin;
 /// ```
 pub fn main<P: Plugin>() -> ExitCode {
     run::<P>().unwrap_or_else(|reason| {
-        eprintln!("{reason}");
+        eprintln!("{reason:#}");
         ExitCode::FAILURE
     })
 }
 
 #[cfg(windows)]
-fn run<P: Plugin>() -> Result<ExitCode, String> {
+fn run<P: Plugin>() -> anyhow::Result<ExitCode> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|a| a == "--help" || a == "-h") {
         println!("{}", options::USAGE);
@@ -132,14 +132,14 @@ fn run<P: Plugin>() -> Result<ExitCode, String> {
         #[cfg(feature = "dev-host")]
         return dev_host::run::<P>(&options);
         #[cfg(not(feature = "dev-host"))]
-        return Err("--host needs hapto-standalone's dev-host feature".into());
+        anyhow::bail!("--host needs hapto-standalone's dev-host feature");
     }
     app::run::<P>(&options)
 }
 
 #[cfg(not(windows))]
-fn run<P: Plugin>() -> Result<ExitCode, String> {
-    Err(format!(
+fn run<P: Plugin>() -> anyhow::Result<ExitCode> {
+    Err(anyhow::anyhow!(
         "{}: the standalone app runs on Windows only for now",
         P::INFO.name
     ))

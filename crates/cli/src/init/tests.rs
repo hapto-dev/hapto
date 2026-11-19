@@ -83,7 +83,7 @@ fn names_the_template_cannot_take_are_refused() {
             "{id}"
         );
     }
-    assert_eq!(crate_name("Über Gain").as_deref(), Ok("ber-gain"));
+    assert_eq!(crate_name("Über Gain").unwrap(), "ber-gain");
 }
 
 #[test]
@@ -234,12 +234,12 @@ fn a_folder_git_alone_holds_takes_the_new_crate() {
 #[test]
 fn the_folder_s_name_is_read_from_a_dot_or_a_dot_dot_too() {
     // Tests run in the crate's own folder, `crates/cli`.
-    assert_eq!(folder_name(Path::new(".")).as_deref(), Ok("cli"));
-    assert_eq!(folder_name(Path::new("./")).as_deref(), Ok("cli"));
-    assert_eq!(folder_name(Path::new("..")).as_deref(), Ok("crates"));
+    assert_eq!(folder_name(Path::new(".")).unwrap(), "cli");
+    assert_eq!(folder_name(Path::new("./")).unwrap(), "cli");
+    assert_eq!(folder_name(Path::new("..")).unwrap(), "crates");
     assert_eq!(
-        folder_name(Path::new("new/my-plugin")).as_deref(),
-        Ok("my-plugin"),
+        folder_name(Path::new("new/my-plugin")).unwrap(),
+        "my-plugin",
         "a folder not made yet"
     );
 }
@@ -250,7 +250,10 @@ fn init_refuses_a_name_the_bundle_or_the_module_cannot_take() {
     // Windows, and a name that leaves no file cannot name the bundle.
     for folder in ["con", "com1", "aux"] {
         let refused = Identity::new(folder, None, None, None, [0; 16]).expect_err(folder);
-        assert!(refused.contains("device"), "{folder}: {refused}");
+        assert!(
+            format!("{refused:#}").contains("device"),
+            "{folder}: {refused}"
+        );
     }
     let refused = Identity::new("tone", Some("..."), None, None, [0; 16]);
     assert!(refused.is_err(), "no file name is left of it");
@@ -261,7 +264,10 @@ fn init_refuses_a_name_the_bundle_or_the_module_cannot_take() {
 #[test]
 fn a_vendor_with_no_letters_cannot_make_the_default_id() {
     let refused = Identity::new("tone", None, Some("_"), None, [0; 16]).expect_err("com..tone");
-    assert!(refused.contains("--id"), "says to give one: {refused}");
+    assert!(
+        format!("{refused:#}").contains("--id"),
+        "says to give one: {refused}"
+    );
     let given = Identity::new("tone", None, Some("_"), Some("io.acme.tone"), [0; 16]);
     assert!(given.is_ok(), "an id given needs no vendor's letters");
 }

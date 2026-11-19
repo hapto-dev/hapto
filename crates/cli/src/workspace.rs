@@ -6,6 +6,8 @@ mod tests;
 
 use std::path::{Path, PathBuf};
 
+use anyhow::{Context as _, Result, bail};
+
 use crate::tool::{cargo, output};
 
 /// The workspace around the folder a command started in.
@@ -84,14 +86,14 @@ impl Workspace {
     ///
     /// Returns what Cargo said when it read none, such as no manifest above
     /// `dir`.
-    pub(crate) fn read(dir: &Path) -> Result<Workspace, String> {
+    pub(crate) fn read(dir: &Path) -> Result<Workspace> {
         let stdout = output(
             cargo()
                 .args(["metadata", "--format-version", "1", "--no-deps"])
                 .current_dir(dir),
             "cargo metadata",
         )?;
-        let metadata = serde_json::from_str(&stdout).map_err(|e| format!("cargo metadata: {e}"))?;
+        let metadata = serde_json::from_str(&stdout).context("cargo metadata")?;
         let workspace = Workspace::from_metadata(&metadata)?;
         workspace.warn_of_another_version();
         Ok(workspace)
@@ -121,16 +123,16 @@ impl Workspace {
     /// # Errors
     ///
     /// Returns which field the output lacks.
-    pub(crate) fn from_metadata(metadata: &serde_json::Value) -> Result<Workspace, String> {
+    pub(crate) fn from_metadata(metadata: &serde_json::Value) -> Result<Workspace> {
         let text = |key: &str| {
             metadata[key]
                 .as_str()
                 .map(PathBuf::from)
-                .ok_or_else(|| format!("cargo metadata gave no {key}"))
+                .with_context(|| format!("cargo metadata gave no {key}"))
         };
         let packages = metadata["packages"]
             .as_array()
-            .ok_or("cargo metadata gave no packages")?
+            .context("cargo metadata gave no packages")?
             .iter()
             .map(package)
             .collect::<Result<_, _>>()?;
@@ -152,8 +154,8 @@ impl Workspace {
     /// # Errors
     ///
     /// Returns why there is no workspace, or no plugin to work on.
-    pub(crate) fn find(package: Option<&str>) -> Result<(Workspace, Plugin), String> {
-        let dir = std::env::current_dir().map_err(|e| format!("the current folder: {e}"))?;
+    pub(crate) fn find(package: Option<&str>) -> Result<(Workspace, Plugin)> {
+        let dir = std::env::current_dir().context("the current folder")?;
         let workspace = Workspace::read(&dir)?;
         let plugin = workspace.plugin(package, &dir)?;
         Ok((workspace, plugin))
@@ -166,13 +168,13 @@ impl Workspace {
     ///
     /// Returns why there is no plugin to work on, or which ones there are to
     /// choose from with `-p`.
-    pub(crate) fn plugin(&self, package: Option<&str>, dir: &Path) -> Result<Plugin, String> {
+    pub(crate) fn plugin(&self, package: Option<&str>, dir: &Path) -> Result<Plugin> {
         if let Some(name) = package {
             let found = self
                 .packages
                 .iter()
                 .find(|p| p.name == name)
-                .ok_or_else(|| format!("{name} is not a crate of this workspace"))?;
+                .with_context(|| format!("{name} is not a crate of this workspace"))?;
             return found.plugin();
         }
         let plugins: Vec<Plugin> = self
@@ -191,18 +193,17 @@ impl Workspace {
         }
         match plugins.as_slice() {
             [only] => Ok(only.clone()),
-            [] => Err(
+            [] => bail!(
                 "this workspace has no plugin crate: a crate that builds a cdylib \
                  and names the plugin in [package.metadata.hapto]"
-                    .into(),
             ),
             many => {
                 let names: Vec<&str> = many.iter().map(|p| p.package.as_str()).collect();
-                Err(format!(
+                bail!(
                     "this workspace has {} plugin crates; pick one with -p: {}",
                     many.len(),
                     names.join(", ")
-                ))
+                )
             }
         }
     }
@@ -215,16 +216,16 @@ impl Package {
     ///
     /// Returns why it is none: no `cdylib`, or no name in
     /// `[package.metadata.hapto]`.
-    pub(crate) fn plugin(&self) -> Result<Plugin, String> {
+    pub(crate) fn plugin(&self) -> Result<Plugin> {
         let lib = self
             .targets
             .iter()
             .find(|t| t.is("cdylib"))
-            .ok_or_else(|| format!("{} builds no cdylib, so it has no module", self.name))?;
+            .with_context(|| format!("{} builds no cdylib, so it has no module", self.name))?;
         let name = self
             .hapto_name
             .clone()
-            .ok_or_else(|| format!("{} has no name in [package.metadata.hapto]", self.name))?;
+            .with_context(|| format!("{} has no name in [package.metadata.hapto]", self.name))?;
         let standalone = self
             .targets
             .iter()
@@ -264,16 +265,16 @@ pub(crate) fn locked_version<'a>(lockfile: &'a str, package: &str) -> Option<&'a
     found
 }
 
-fn package(value: &serde_json::Value) -> Result<Package, String> {
+fn package(value: &serde_json::Value) -> Result<Package> {
     let name = value["name"]
         .as_str()
-        .ok_or("cargo metadata gave a package no name")?;
+        .context("cargo metadata gave a package no name")?;
     let manifest = value["manifest_path"]
         .as_str()
-        .ok_or_else(|| format!("cargo metadata gave {name} no manifest_path"))?;
+        .with_context(|| format!("cargo metadata gave {name} no manifest_path"))?;
     let dir = Path::new(manifest)
         .parent()
-        .ok_or("a manifest path has no folder")?;
+        .context("a manifest path has no folder")?;
     let strings = |value: &serde_json::Value| -> Vec<String> {
         value
             .as_array()

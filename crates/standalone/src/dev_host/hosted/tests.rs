@@ -198,9 +198,12 @@ fn a_block_that_is_not_a_saved_one_is_refused_in_each_format() {
     for format in Format::ALL {
         let hosted = host::<Knobs>(format);
         let refused = hosted.load(b"not a block").expect_err("refused");
-        assert!(refused.contains("answered"), "{format:?}: {refused}");
+        assert!(
+            format!("{refused:#}").contains("answered"),
+            "{format:?}: {refused:#}"
+        );
         let saved = hosted.save().expect("saved");
-        assert_eq!(hosted.load(&saved), Ok(()), "{format:?}");
+        assert!(hosted.load(&saved).is_ok(), "{format:?}");
         assert_eq!(hosted.faults(), 0, "{format:?}");
     }
 }

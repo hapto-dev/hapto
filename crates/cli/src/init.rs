@@ -18,6 +18,8 @@ mod tests;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
+use anyhow::{Context as _, Result, bail};
+
 use crate::bundle;
 
 /// Each file the template writes: where it goes in the new crate, and its
@@ -195,22 +197,22 @@ impl Identity {
         vendor: Option<&str>,
         id: Option<&str>,
         random: [u8; 16],
-    ) -> Result<Identity, String> {
+    ) -> Result<Identity> {
         let crate_name = crate_name(folder)?;
         let type_name: String = crate_name.split('-').map(capitalized).collect();
         let made = MADE.map(|suffix| format!("{type_name}{suffix}"));
         if let Some(taken) = made.iter().find(|made| TAKEN.contains(&made.as_str())) {
-            return Err(format!(
+            bail!(
                 "a plugin named from {folder:?} would make the type {taken}, which the \
                  template's code uses already: pick another folder name"
-            ));
+            );
         }
         let lib = crate_name.replace('-', "_");
         if bundle::file_name(&lib).is_err() {
-            return Err(format!(
+            bail!(
                 "a plugin named from {folder:?} would build the module {lib}, a device name \
                  Windows keeps, which does not link there: pick another folder name"
-            ));
+            );
         }
         let default_name: Vec<String> = crate_name.split('-').map(capitalized).collect();
         let name = shown(name.unwrap_or(&default_name.join(" ")), "--name")?;
@@ -225,9 +227,7 @@ impl Identity {
         let id = match id {
             Some(id) => reverse_dns(id)?,
             None if slug.is_empty() => {
-                return Err(format!(
-                    "--vendor {vendor:?} has no letter or digit to make the id from: pass --id"
-                ));
+                bail!("--vendor {vendor:?} has no letter or digit to make the id from: pass --id");
             }
             None => format!("com.{slug}.{crate_name}"),
         };
@@ -247,7 +247,7 @@ impl Identity {
 
 /// Returns the package name a folder named `folder` gives: lower case, with
 /// `-` between words.
-fn crate_name(folder: &str) -> Result<String, String> {
+fn crate_name(folder: &str) -> Result<String> {
     let name: String = folder
         .chars()
         .map(|c| match c {
@@ -259,22 +259,22 @@ fn crate_name(folder: &str) -> Result<String, String> {
     let words: Vec<&str> = name.split('-').filter(|w| !w.is_empty()).collect();
     let name = words.join("-");
     if !name.starts_with(|c: char| c.is_ascii_lowercase()) {
-        return Err(format!(
+        bail!(
             "{folder:?} gives no crate name: it starts with a letter and holds letters, digits \
              and hyphens"
-        ));
+        );
     }
     if KEYWORDS.contains(&name.as_str()) {
-        return Err(format!(
+        bail!(
             "{folder:?} gives the crate name {name}, a Rust keyword, which its code cannot \
              name its library by: pick another folder name"
-        ));
+        );
     }
     if CRATES.contains(&name.as_str()) {
-        return Err(format!(
+        bail!(
             "{folder:?} gives the crate name {name}, which a crate it builds with has: pick \
              another folder name"
-        ));
+        );
     }
     Ok(name)
 }
@@ -288,28 +288,24 @@ fn capitalized(word: &str) -> String {
 
 /// Checks a name hosts show: letters, digits, spaces and `-_.'`, which every
 /// file of the template takes as written.
-fn shown(text: &str, flag: &str) -> Result<String, String> {
+fn shown(text: &str, flag: &str) -> Result<String> {
     let fine = |c: char| c.is_ascii_alphanumeric() || " -_.'".contains(c);
     if text.trim().is_empty() || !text.chars().all(fine) {
-        return Err(format!(
-            "{flag} {text:?}: a name of letters, digits, spaces and -_.' only"
-        ));
+        bail!("{flag} {text:?}: a name of letters, digits, spaces and -_.' only");
     }
     Ok(text.trim().to_owned())
 }
 
 /// Checks a reverse-DNS id: lower-case labels of letters, digits and `-`,
 /// two or more, joined by dots.
-fn reverse_dns(id: &str) -> Result<String, String> {
+fn reverse_dns(id: &str) -> Result<String> {
     let label = |l: &str| {
         !l.is_empty()
             && l.chars()
                 .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
     };
     if id.split('.').count() < 2 || !id.split('.').all(label) {
-        return Err(format!(
-            "--id {id:?}: a reverse-DNS id, com.vendor.product, in lower case"
-        ));
+        bail!("--id {id:?}: a reverse-DNS id, com.vendor.product, in lower case");
     }
     Ok(id.to_owned())
 }
@@ -389,10 +385,10 @@ pub(crate) fn render(text: &str, identity: &Identity, hapto: &str) -> String {
 ///
 /// Returns why it wrote nothing: a folder that is not empty, a name it
 /// cannot use, no checkout.
-pub(crate) fn run(options: &Options) -> Result<(), String> {
+pub(crate) fn run(options: &Options) -> Result<()> {
     let folder_name = folder_name(&options.folder)?;
     let mut random = [0_u8; 16];
-    getrandom::fill(&mut random).map_err(|e| format!("random bytes for the class id: {e}"))?;
+    getrandom::fill(&mut random).context("random bytes for the class id")?;
     let identity = Identity::new(
         &folder_name,
         options.name.as_deref(),
@@ -428,18 +424,18 @@ pub(crate) fn run(options: &Options) -> Result<(), String> {
 /// # Errors
 ///
 /// Says it names no folder: the root, or a `.` that cannot be read.
-fn folder_name(folder: &Path) -> Result<String, String> {
+fn folder_name(folder: &Path) -> Result<String> {
     let named = match folder.file_name() {
         Some(_) => folder.to_path_buf(),
         None => folder
             .canonicalize()
-            .map_err(|e| format!("{}: {e}", folder.display()))?,
+            .with_context(|| folder.display().to_string())?,
     };
     named
         .file_name()
         .and_then(|name| name.to_str())
         .map(str::to_owned)
-        .ok_or_else(|| format!("{} names no folder", folder.display()))
+        .with_context(|| format!("{} names no folder", folder.display()))
 }
 
 /// Returns the Hapto checkout to take the crates from, as the template
@@ -448,18 +444,18 @@ fn folder_name(folder: &Path) -> Result<String, String> {
 /// # Errors
 ///
 /// Returns why it is no checkout.
-fn checkout(checkout: Option<&Path>) -> Result<String, String> {
+fn checkout(checkout: Option<&Path>) -> Result<String> {
     let built_from = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let dir = checkout.unwrap_or(&built_from);
-    let dir = std::path::absolute(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let dir = std::path::absolute(dir).with_context(|| dir.display().to_string())?;
     let is_checkout =
         dir.join("crates/host/Cargo.toml").is_file() && dir.join("page/package.json").is_file();
     if !is_checkout {
-        return Err(format!(
+        bail!(
             "{} is no Hapto checkout: name one with --hapto, since Hapto's crates are not \
              published yet",
             dir.display()
-        ));
+        );
     }
     Ok(dir.to_string_lossy().replace('\\', "/"))
 }
@@ -470,23 +466,23 @@ fn checkout(checkout: Option<&Path>) -> Result<String, String> {
 ///
 /// Returns why it did not: a folder with something in it, or a write that
 /// failed.
-fn write(folder: &Path, identity: &Identity, hapto: &str) -> Result<(), String> {
+fn write(folder: &Path, identity: &Identity, hapto: &str) -> Result<()> {
     // A folder with only `.git` in it is empty still, as after `git init`.
     let has_files = fs::read_dir(folder)
         .is_ok_and(|mut entries| entries.any(|e| e.is_ok_and(|e| e.file_name() != ".git")));
     if has_files {
-        return Err(format!(
+        bail!(
             "{} is not empty: init writes a new crate only",
             folder.display()
-        ));
+        );
     }
     for (path, text) in FILES {
         let file = folder.join(path);
         if let Some(parent) = file.parent() {
-            fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+            fs::create_dir_all(parent).with_context(|| parent.display().to_string())?;
         }
         fs::write(&file, render(text, identity, hapto))
-            .map_err(|e| format!("{}: {e}", file.display()))?;
+            .with_context(|| file.display().to_string())?;
     }
     Ok(())
 }

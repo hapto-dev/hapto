@@ -7,6 +7,7 @@ use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
+use anyhow::{Context as _, Result, bail, ensure};
 use serde_json::Value as Json;
 
 /// What `cargo build` made of one target, as its JSON messages say.
@@ -62,13 +63,13 @@ impl Artifact {
 ///
 /// Returns that the build failed, and how, when it could not start or did
 /// not succeed.
-pub(crate) fn build(command: &mut Command) -> Result<Vec<Artifact>, String> {
+pub(crate) fn build(command: &mut Command) -> Result<Vec<Artifact>> {
     println!("running cargo build");
     let mut child = command
         .arg("--message-format=json-render-diagnostics")
         .stdout(Stdio::piped())
         .spawn()
-        .map_err(|e| format!("cargo build: {e}"))?;
+        .context("cargo build")?;
     let mut artifacts = Vec::new();
     let mut unread = None;
     if let Some(stdout) = child.stdout.take() {
@@ -76,18 +77,18 @@ pub(crate) fn build(command: &mut Command) -> Result<Vec<Artifact>, String> {
             match line {
                 Ok(line) => artifacts.extend(Artifact::read(&line)),
                 Err(e) => {
-                    unread = Some(format!("cargo build's messages: {e}"));
+                    unread = Some(anyhow::Error::new(e).context("cargo build's messages"));
                     let _ = child.kill();
                     break;
                 }
             }
         }
     }
-    let status = child.wait().map_err(|e| format!("cargo build: {e}"))?;
+    let status = child.wait().context("cargo build")?;
     match unread {
         Some(error) => Err(error),
         None if status.success() => Ok(artifacts),
-        None => Err(format!("cargo build failed: {status}")),
+        None => bail!("cargo build failed: {status}"),
     }
 }
 
@@ -109,14 +110,11 @@ pub(crate) fn npm() -> Command {
 ///
 /// Returns `what` failed, and how, when it could not start or did not
 /// succeed.
-pub(crate) fn run(command: &mut Command, what: &str) -> Result<(), String> {
+pub(crate) fn run(command: &mut Command, what: &str) -> Result<()> {
     println!("running {what}");
-    let status = command.status().map_err(|e| format!("{what}: {e}"))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format!("{what} failed: {status}"))
-    }
+    let status = command.status().with_context(|| what.to_owned())?;
+    ensure!(status.success(), "{what} failed: {status}");
+    Ok(())
 }
 
 /// Runs `command` and returns what it wrote to stdout.
@@ -125,13 +123,12 @@ pub(crate) fn run(command: &mut Command, what: &str) -> Result<(), String> {
 ///
 /// Returns `what` failed and its stderr, when it could not start or did not
 /// succeed.
-pub(crate) fn output(command: &mut Command, what: &str) -> Result<String, String> {
-    let output = command.output().map_err(|e| format!("{what}: {e}"))?;
-    if !output.status.success() {
-        return Err(format!(
-            "{what}: {}",
-            String::from_utf8_lossy(&output.stderr).trim_end()
-        ));
-    }
-    String::from_utf8(output.stdout).map_err(|e| format!("{what}: {e}"))
+pub(crate) fn output(command: &mut Command, what: &str) -> Result<String> {
+    let output = command.output().with_context(|| what.to_owned())?;
+    ensure!(
+        output.status.success(),
+        "{what}: {}",
+        String::from_utf8_lossy(&output.stderr).trim_end()
+    );
+    String::from_utf8(output.stdout).with_context(|| what.to_owned())
 }

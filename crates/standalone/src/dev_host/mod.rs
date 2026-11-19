@@ -37,6 +37,7 @@ mod windows;
 use std::process::ExitCode;
 use std::time::{Duration, Instant, SystemTime};
 
+use anyhow::{Context as _, Result};
 use hapto_host::Plugin;
 use hapto_host::vst3::{ChildWindow, TestView};
 use winit::application::ApplicationHandler;
@@ -65,10 +66,10 @@ const SHOW: Duration = Duration::from_millis(100);
 ///
 /// Returns why it could not run: no audio device, a call the plugin
 /// refused, no window.
-pub(crate) fn run<P: Plugin>(options: &Options) -> Result<ExitCode, String> {
+pub(crate) fn run<P: Plugin>(options: &Options) -> Result<ExitCode> {
     let event_loop = EventLoop::<Wake>::with_user_event()
         .build()
-        .map_err(|e| format!("the window's event loop: {e}"))?;
+        .context("the window's event loop")?;
     if options.dev.is_some() {
         quit_when_stdin_closes(event_loop.create_proxy());
     }
@@ -94,7 +95,7 @@ pub(crate) fn run<P: Plugin>(options: &Options) -> Result<ExitCode, String> {
     if let Some(running) = audio.running()
         && let Err(error) = session.set_audio(&running.write())
     {
-        eprintln!("the audio settings: {error}");
+        eprintln!("the audio settings: {error:#}");
     }
     let mut activity = Activity::new(now);
     activity.note(
@@ -132,7 +133,7 @@ pub(crate) fn run<P: Plugin>(options: &Options) -> Result<ExitCode, String> {
     };
     let ran = event_loop.run_app(&mut app);
     app.finish();
-    ran.map_err(|e| format!("the window's event loop: {e}"))?;
+    ran.context("the window's event loop")?;
     if let Some(reason) = app.failed {
         return Err(reason);
     }
@@ -145,12 +146,12 @@ pub(crate) fn run<P: Plugin>(options: &Options) -> Result<ExitCode, String> {
 
 /// Starts this app again with the same command line, for a switch of format
 /// with no `cargo hapto dev` to do it.
-fn start_again() -> Result<ExitCode, String> {
-    let exe = std::env::current_exe().map_err(|e| format!("the app's own path: {e}"))?;
+fn start_again() -> Result<ExitCode> {
+    let exe = std::env::current_exe().context("the app's own path")?;
     std::process::Command::new(&exe)
         .args(std::env::args_os().skip(1))
         .spawn()
-        .map_err(|e| format!("{}: {e}", exe.display()))?;
+        .with_context(|| exe.display().to_string())?;
     Ok(ExitCode::SUCCESS)
 }
 
@@ -221,7 +222,7 @@ struct DevHost {
     shown: Told,
     /// The format to start again in.
     switch: Option<Format>,
-    failed: Option<String>,
+    failed: Option<anyhow::Error>,
 }
 
 impl DevHost {
@@ -265,7 +266,7 @@ impl DevHost {
             Message::Processing(false) => self.audio.stop(hosted),
             Message::Settings => {
                 if let Err(error) = self.open_settings(event_loop) {
-                    eprintln!("{}: {error}", self.about.name);
+                    eprintln!("{}: {error:#}", self.about.name);
                 }
             }
             Message::Ready => {
@@ -339,7 +340,7 @@ impl DevHost {
             return;
         };
         if let Err(error) = self.session.set_audio(&running.write()) {
-            eprintln!("the audio settings: {error}");
+            eprintln!("the audio settings: {error:#}");
         }
     }
 
@@ -350,7 +351,7 @@ impl DevHost {
             return;
         };
         if let Err(error) = self.session.keep(block) {
-            eprintln!("the saved block: {error}");
+            eprintln!("the saved block: {error:#}");
         }
     }
 
@@ -361,7 +362,7 @@ impl DevHost {
         if let Some(format) = self.switch
             && let Err(error) = self.session.set_format(format.name())
         {
-            eprintln!("the format: {error}");
+            eprintln!("the format: {error:#}");
         }
         self.audio.silence();
         drop(self.settings.take());

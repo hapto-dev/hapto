@@ -11,7 +11,7 @@ use crate::bundle::Profile;
 use crate::page::{DEV_PORT, PAGE_DEV_URL};
 use crate::workspace::Plugin;
 
-fn parse(args: &[&str]) -> Result<Options, String> {
+fn parse(args: &[&str]) -> Result<Options, clap::Error> {
     crate::parse_as::<super::Line>(args).map(Options::from)
 }
 
@@ -51,7 +51,10 @@ fn host_is_the_dev_host_and_names_no_host_of_its_own() {
     assert_eq!(options.profile, Profile::Release);
     // A real host takes the debug bundle, and its page from `serve`.
     let refused = parse(&["--host", "C:/Hosts/Host.exe"]).expect_err("no host of its own");
-    assert!(refused.contains("C:/Hosts/Host.exe"), "{refused}");
+    assert!(
+        format!("{refused:#}").contains("C:/Hosts/Host.exe"),
+        "{refused}"
+    );
 }
 
 #[test]
@@ -92,7 +95,10 @@ fn the_dev_host_is_the_same_binary_with_its_feature_and_flag() {
 fn a_crate_with_no_standalone_binary_is_told_how_to_add_one() {
     let refused =
         App::of(&gain(None), &parse(&[]).expect("valid"), Path::new("s")).expect_err("none");
-    assert!(refused.contains("required-features"), "{refused}");
+    assert!(
+        format!("{refused:#}").contains("required-features"),
+        "{refused}"
+    );
 }
 
 #[test]
@@ -145,7 +151,10 @@ fn copies_an_earlier_session_left_are_cleared_and_one_still_there_is_passed() {
     );
     std::fs::remove_file(&built).expect("removed");
     let failed = copies.next(&built).expect_err("no build to copy");
-    assert!(failed.contains("app-3"), "names the copy: {failed}");
+    assert!(
+        format!("{failed:#}").contains("app-3"),
+        "names the copy: {failed}"
+    );
     let _ = std::fs::remove_dir_all(dir);
 }
 

@@ -9,6 +9,7 @@ use std::io;
 use std::path::Path;
 use std::process::Command;
 
+use anyhow::{Result, bail};
 use clap::ArgAction;
 
 use crate::bundle::{self, Profile};
@@ -49,7 +50,7 @@ pub(crate) struct Options {
 ///
 /// Returns the step that failed: the build, or pluginval, which fails when
 /// the bundle does not pass.
-pub(crate) fn run(options: Options) -> Result<(), String> {
+pub(crate) fn run(options: Options) -> Result<()> {
     let (workspace, plugin) = Workspace::find(options.package.as_deref())?;
     let bundle = bundle::build(&workspace, &plugin, options.page, Profile::Release)?;
     let pluginval = options
@@ -69,16 +70,16 @@ pub(crate) fn run(options: Options) -> Result<(), String> {
 /// # Errors
 ///
 /// Returns that pluginval failed, or could not start, and why.
-fn run_pluginval(command: &mut Command) -> Result<(), String> {
+fn run_pluginval(command: &mut Command) -> Result<()> {
     println!("running pluginval");
     match command.status() {
         Ok(status) if status.success() => Ok(()),
-        Ok(status) => Err(format!("pluginval failed: {status}")),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Err(format!(
+        Ok(status) => bail!("pluginval failed: {status}"),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => bail!(
             "pluginval: {e}\npluginval is at https://github.com/Tracktion/pluginval: pass \
              --pluginval, set PLUGINVAL, or put it on the PATH"
-        )),
-        Err(e) => Err(format!("pluginval: {e}")),
+        ),
+        Err(e) => Err(anyhow::Error::new(e).context("pluginval")),
     }
 }
 

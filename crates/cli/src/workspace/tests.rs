@@ -75,7 +75,12 @@ fn a_crate_that_is_no_plugin_is_refused_by_name() {
     let no_name = package("no-name", "/w/no-name", &["cdylib"], None);
     let workspace = workspace(&[gain(), tool, no_name]);
     let dir = Path::new("/w");
-    let refused = |name| workspace.plugin(Some(name), dir).expect_err("refused");
+    let refused = |name| {
+        format!(
+            "{:#}",
+            workspace.plugin(Some(name), dir).expect_err("refused")
+        )
+    };
     assert!(refused("hapto-example-eq").contains("not a crate of this workspace"));
     assert!(refused("tool").contains("no cdylib"));
     assert!(refused("no-name").contains("[package.metadata.hapto]"));
@@ -93,7 +98,7 @@ fn with_no_name_the_plugin_is_the_one_the_folder_is_in_or_the_only_one() {
         .plugin(None, Path::new("/w"))
         .expect_err("two to pick from");
     assert!(
-        refused.contains("hapto-example-gain, hapto-example-eq"),
+        format!("{refused:#}").contains("hapto-example-gain, hapto-example-eq"),
         "{refused}"
     );
     let only = workspace(&[gain(), package("tool", "/w/tool", &["bin"], None)]);

@@ -27,6 +27,8 @@ dev-host = [
 ]
 
 [dependencies]
+# Errors, each with the step that failed.
+anyhow.workspace = true
 hapto-host = { workspace = true, features = ["standalone"] }
 # The dev host's Parameters tab: which parameter a MIDI learn mapping in the
 # saved block names, by the host id its key hashes to.

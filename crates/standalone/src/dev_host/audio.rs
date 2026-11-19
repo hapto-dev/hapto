@@ -15,6 +15,7 @@ mod tests;
 
 use std::sync::Arc;
 
+use anyhow::Result;
 use hapto_host::Layout;
 
 use super::hosted::Hosted;
@@ -43,7 +44,7 @@ pub(crate) trait Device {
     /// # Errors
     ///
     /// Returns why it did not start.
-    fn start(&self, rate: u32, player: Player<Box<dyn Render>>) -> Result<Self::Stream, String>;
+    fn start(&self, rate: u32, player: Player<Box<dyn Render>>) -> Result<Self::Stream>;
     /// Returns why `stream` stopped playing on its own, once it has: the
     /// device unplugged, say.
     fn ended(stream: &Self::Stream) -> Option<String>;
@@ -68,7 +69,7 @@ impl Device for Output {
         Output::rates(self)
     }
 
-    fn start(&self, rate: u32, player: Player<Box<dyn Render>>) -> Result<Playing, String> {
+    fn start(&self, rate: u32, player: Player<Box<dyn Render>>) -> Result<Playing> {
         Output::start(self, rate, player)
     }
 
@@ -105,11 +106,7 @@ impl Audio {
     /// # Errors
     ///
     /// Returns why there is no device to play to.
-    pub(crate) fn open(
-        layout: Layout,
-        signal: Signal,
-        kept: Option<&str>,
-    ) -> Result<Audio, String> {
+    pub(crate) fn open(layout: Layout, signal: Signal, kept: Option<&str>) -> Result<Audio> {
         Ok(Audio::with(Output::system_default()?, layout, signal, kept))
     }
 }
@@ -162,14 +159,14 @@ impl<D: Device> Audio<D> {
         };
         let own = Settings::starting(self.output.sample_rate());
         let note = if self.settings == own {
-            format!("{error}: processing is stopped")
+            format!("{error:#}: processing is stopped")
         } else {
             self.settings = own;
             self.plan.set(own.blocks);
             match self.start(hosted) {
-                Ok(()) => format!("{error}: the device's own settings are used instead"),
+                Ok(()) => format!("{error:#}: the device's own settings are used instead"),
                 Err(again) => format!(
-                    "{error}; the device's own settings did not start either: {again}: \
+                    "{error:#}; the device's own settings did not start either: {again:#}: \
                      processing is stopped"
                 ),
             }
@@ -185,7 +182,7 @@ impl<D: Device> Audio<D> {
     /// # Errors
     ///
     /// Returns the call the plugin refused, or why the device did not start.
-    fn start(&mut self, hosted: &dyn Hosted) -> Result<(), String> {
+    fn start(&mut self, hosted: &dyn Hosted) -> Result<()> {
         let started = self.play(hosted);
         if started.is_err() {
             hosted.stop();
@@ -195,7 +192,7 @@ impl<D: Device> Audio<D> {
 
     /// Activates the plugin and starts the device playing it, as
     /// [`start`](Self::start) does, but for the undoing.
-    fn play(&mut self, hosted: &dyn Hosted) -> Result<(), String> {
+    fn play(&mut self, hosted: &dyn Hosted) -> Result<()> {
         let Settings { rate, max, .. } = self.settings;
         let render = hosted.start(f64::from(rate), max, self.layout)?;
         let channels = self.output.channels();
@@ -277,15 +274,16 @@ impl<D: Device> Audio<D> {
             return;
         };
         let Some(before) = before else {
-            self.events.push(format!("refused: {error}"));
-            self.note = Some(error);
+            let note = format!("{error:#}");
+            self.events.push(format!("refused: {note}"));
+            self.note = Some(note);
             return;
         };
         self.settings = before;
         self.plan.set(before.blocks);
         let note = match self.start(hosted) {
-            Ok(()) => format!("{error}: the settings before are back"),
-            Err(again) => format!("{error}; the settings before did not start either: {again}"),
+            Ok(()) => format!("{error:#}: the settings before are back"),
+            Err(again) => format!("{error:#}; the settings before did not start either: {again:#}"),
         };
         self.events.push(format!("refused: {note}"));
         self.note = Some(note);

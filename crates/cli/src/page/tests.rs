@@ -82,9 +82,12 @@ fn a_port_something_listens_on_is_refused() {
     let held = std::net::TcpListener::bind("127.0.0.1:0").expect("a free port");
     let port = held.local_addr().expect("bound").port();
     let refused = claim(port).expect_err("taken");
-    assert!(refused.contains(&port.to_string()), "{refused}");
+    assert!(
+        format!("{refused:#}").contains(&port.to_string()),
+        "{refused}"
+    );
     drop(held);
-    assert_eq!(claim(port), Ok(()), "free again");
+    assert!(claim(port).is_ok(), "free again");
 }
 
 #[test]
@@ -99,7 +102,10 @@ fn a_held_port_is_refused_before_the_page_s_packages_are_installed() {
     let held = std::net::TcpListener::bind("127.0.0.1:0").expect("a free port");
     let port = held.local_addr().expect("bound").port();
     let refused = DevServer::start(&page, port).expect_err("taken");
-    assert!(refused.contains(&format!("port {port}")), "{refused}");
+    assert!(
+        format!("{refused:#}").contains(&format!("port {port}")),
+        "{refused}"
+    );
     drop(held);
     let _ = std::fs::remove_dir_all(page);
 }

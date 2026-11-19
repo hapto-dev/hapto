@@ -14,6 +14,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant, SystemTime};
 
+use anyhow::{Context as _, Result, anyhow, bail};
+
 use crate::tool::{cargo, npm, run};
 use crate::workspace::{Plugin, Workspace};
 
@@ -32,7 +34,7 @@ const DEV_START: Duration = Duration::from_secs(20);
 ///
 /// Returns the test's failure: a declaration it refused, or in CI a map that
 /// does not match the declarations.
-pub(crate) fn write_param_map(workspace: &Workspace, plugin: &Plugin) -> Result<(), String> {
+pub(crate) fn write_param_map(workspace: &Workspace, plugin: &Plugin) -> Result<()> {
     if !plugin.has_param_map_test || plugin.page().is_none() {
         return Ok(());
     }
@@ -65,7 +67,7 @@ fn param_map_test(package: &str, root: &Path, ci: Option<&OsStr>) -> Command {
 /// # Errors
 ///
 /// Returns the step that failed.
-pub(crate) fn prepare(workspace: &Workspace, plugin: &Plugin, page: &Path) -> Result<(), String> {
+pub(crate) fn prepare(workspace: &Workspace, plugin: &Plugin, page: &Path) -> Result<()> {
     write_param_map(workspace, plugin)?;
     build(page)
 }
@@ -76,7 +78,7 @@ pub(crate) fn prepare(workspace: &Workspace, plugin: &Plugin, page: &Path) -> Re
 /// # Errors
 ///
 /// Returns the step that failed.
-pub(crate) fn build(page: &Path) -> Result<(), String> {
+pub(crate) fn build(page: &Path) -> Result<()> {
     install(page)?;
     let package = read_package(page)?;
     // TypeScript checks a linked package's source with that package's own
@@ -102,7 +104,7 @@ pub(crate) fn build(page: &Path) -> Result<(), String> {
 /// # Errors
 ///
 /// Returns the npm step that failed.
-pub(crate) fn install(page: &Path) -> Result<(), String> {
+pub(crate) fn install(page: &Path) -> Result<()> {
     let modified = |path: PathBuf| fs::metadata(path).and_then(|m| m.modified()).ok();
     let installed = modified(page.join("node_modules").join(".package-lock.json"));
     let lockfile = modified(page.join("package-lock.json"));
@@ -158,10 +160,10 @@ pub(crate) fn linked(page: &Path, package: &serde_json::Value) -> Vec<PathBuf> {
         .collect()
 }
 
-fn read_package(page: &Path) -> Result<serde_json::Value, String> {
+fn read_package(page: &Path) -> Result<serde_json::Value> {
     let manifest = page.join("package.json");
-    let bytes = fs::read(&manifest).map_err(|e| format!("{}: {e}", manifest.display()))?;
-    serde_json::from_slice(&bytes).map_err(|e| format!("{}: {e}", manifest.display()))
+    let bytes = fs::read(&manifest).with_context(|| manifest.display().to_string())?;
+    serde_json::from_slice(&bytes).with_context(|| manifest.display().to_string())
 }
 
 /// The variable a debug build reads its page's dev server from:
@@ -179,11 +181,11 @@ pub(crate) struct DevServer {
 /// Refuses `port` when something on the loopback address listens on it
 /// already: the start's check would take that for Vite, which `--strictPort`
 /// ends, and the plugin would load another project's page.
-fn claim(port: u16) -> Result<(), String> {
+fn claim(port: u16) -> Result<()> {
     TcpListener::bind((Ipv4Addr::LOCALHOST, port))
         .map(drop)
         .map_err(|e| {
-            format!(
+            anyhow!(
                 "port {port} on 127.0.0.1 is taken ({e}): another dev server holds it; \
                  stop that one, or pass --port"
             )
@@ -203,7 +205,7 @@ impl DevServer {
     ///
     /// Returns why it did not start: no Vite in the page's packages, no
     /// Node, or no server listening in time.
-    pub(crate) fn start(page: &Path, port: u16) -> Result<DevServer, String> {
+    pub(crate) fn start(page: &Path, port: u16) -> Result<DevServer> {
         // First, so a port held already is refused before an install that
         // can take minutes.
         claim(port)?;
@@ -214,10 +216,10 @@ impl DevServer {
             .join("bin")
             .join("vite.js");
         if !vite.is_file() {
-            return Err(format!(
+            bail!(
                 "{} has no Vite in its packages, and the dev server is Vite",
                 page.display()
-            ));
+            );
         }
         let child = Command::new("node")
             .arg(&vite)
@@ -231,7 +233,7 @@ impl DevServer {
             .current_dir(page)
             .stdin(Stdio::null())
             .spawn()
-            .map_err(|e| format!("node, for the page's dev server: {e}"))?;
+            .context("node, for the page's dev server")?;
         let mut server = DevServer {
             child,
             url: format!("http://127.0.0.1:{port}"),
@@ -240,23 +242,23 @@ impl DevServer {
         Ok(server)
     }
 
-    fn wait_until_listening(&mut self, port: u16) -> Result<(), String> {
+    fn wait_until_listening(&mut self, port: u16) -> Result<()> {
         let address = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
         let end = Instant::now() + DEV_START;
         while Instant::now() < end {
             if let Ok(Some(status)) = self.child.try_wait() {
-                return Err(format!("the page's dev server stopped: {status}"));
+                bail!("the page's dev server stopped: {status}");
             }
             if TcpStream::connect_timeout(&address, Duration::from_millis(200)).is_ok() {
                 // What answered is this server only while it runs.
                 return match self.child.try_wait() {
-                    Ok(Some(status)) => Err(format!("the page's dev server stopped: {status}")),
+                    Ok(Some(status)) => Err(anyhow!("the page's dev server stopped: {status}")),
                     _ => Ok(()),
                 };
             }
             std::thread::sleep(Duration::from_millis(100));
         }
-        Err(format!(
+        Err(anyhow!(
             "the page's dev server did not listen on {address} within {} seconds",
             DEV_START.as_secs()
         ))
@@ -264,10 +266,10 @@ impl DevServer {
 
     /// Waits until the server stops, which only a fault or Ctrl+C does, and
     /// returns how it stopped. Ctrl+C ends this command with it.
-    pub(crate) fn wait(mut self) -> String {
+    pub(crate) fn wait(mut self) -> anyhow::Error {
         match self.child.wait() {
-            Ok(status) => format!("the page's dev server stopped: {status}"),
-            Err(e) => format!("the page's dev server: {e}"),
+            Ok(status) => anyhow!("the page's dev server stopped: {status}"),
+            Err(e) => anyhow::Error::new(e).context("the page's dev server"),
         }
     }
 }

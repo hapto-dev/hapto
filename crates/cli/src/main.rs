@@ -97,8 +97,10 @@ fn main() -> ExitCode {
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
-        Err(message) => {
-            eprintln!("{message}");
+        Err(error) => {
+            // The alternate form prints the whole chain: the step, then
+            // each cause.
+            eprintln!("{error:#}");
             ExitCode::FAILURE
         }
     }
@@ -107,7 +109,7 @@ fn main() -> ExitCode {
 /// Reads `args` as one command's flags, its name left out: for the
 /// commands' own tests.
 #[cfg(test)]
-fn parse_as<T: clap::Args>(args: &[&str]) -> Result<T, String> {
+fn parse_as<T: clap::Args>(args: &[&str]) -> Result<T, clap::Error> {
     /// One command's flags alone.
     #[derive(Debug, Parser)]
     #[command(no_binary_name = true)]
@@ -115,7 +117,5 @@ fn parse_as<T: clap::Args>(args: &[&str]) -> Result<T, String> {
         #[command(flatten)]
         flags: T,
     }
-    One::<T>::try_parse_from(args)
-        .map(|one| one.flags)
-        .map_err(|e| e.to_string())
+    One::<T>::try_parse_from(args).map(|one| one.flags)
 }

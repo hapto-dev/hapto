@@ -9,6 +9,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use anyhow::{Context as _, Result};
 use winit::window::Window;
 use wry::dpi::{LogicalPosition, LogicalSize};
 use wry::{NewWindowResponse, WebContext, WebView, WebViewBuilder};
@@ -33,12 +34,7 @@ impl Panel {
     /// # Errors
     ///
     /// Returns why the WebView did not open: no WebView2 runtime, say.
-    pub(crate) fn open(
-        window: &Window,
-        page: &str,
-        rect: Rect,
-        data: PathBuf,
-    ) -> Result<Panel, String> {
+    pub(crate) fn open(window: &Window, page: &str, rect: Rect, data: PathBuf) -> Result<Panel> {
         let inbox = Rc::new(RefCell::new(Vec::new()));
         let posted = Rc::clone(&inbox);
         let mut context = WebContext::new(Some(data));
@@ -53,7 +49,7 @@ impl Panel {
             .with_drag_drop_handler(|_| true)
             .with_new_window_req_handler(|_, _| NewWindowResponse::Deny)
             .build_as_child(window)
-            .map_err(|e| format!("the dev host's page: {e}"))?;
+            .context("the dev host's page")?;
         Ok(Panel {
             webview,
             inbox,

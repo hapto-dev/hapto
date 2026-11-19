@@ -40,6 +40,8 @@ hapto-standalone = { path = "crates/standalone" }
 # Tests only.
 hapto-testkit = { path = "crates/testkit" }
 
+# The command's and the app's errors, each with the step that failed.
+anyhow = "1.0.104"
 serde = { version = "1.0.229", features = ["derive"] }
 # `float_roundtrip` parses every f64 to the nearest value, so a save, a load
 # and a save write the same digits; without it about one in ten drifts a bit.

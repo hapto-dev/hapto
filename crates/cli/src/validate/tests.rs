@@ -6,7 +6,7 @@ use std::path::Path;
 
 use super::{Options, pluginval_command, run_pluginval};
 
-fn parse(args: &[&str]) -> Result<Options, String> {
+fn parse(args: &[&str]) -> Result<Options, clap::Error> {
     crate::parse_as::<Options>(args)
 }
 
@@ -53,7 +53,7 @@ fn where_to_find_pluginval_is_said_only_when_it_is_not_found() {
     ))
     .expect_err("not found");
     assert!(
-        missing.contains("github.com/Tracktion/pluginval"),
+        format!("{missing:#}").contains("github.com/Tracktion/pluginval"),
         "{missing}"
     );
     // A program that runs and fails, as pluginval does for a bundle that
@@ -64,6 +64,9 @@ fn where_to_find_pluginval_is_said_only_when_it_is_not_found() {
             .stderr(std::process::Stdio::null()),
     )
     .expect_err("it fails");
-    assert!(failed.contains("failed"), "{failed}");
-    assert!(!failed.contains("github.com"), "it was found: {failed}");
+    assert!(format!("{failed:#}").contains("failed"), "{failed}");
+    assert!(
+        !format!("{failed:#}").contains("github.com"),
+        "it was found: {failed}"
+    );
 }

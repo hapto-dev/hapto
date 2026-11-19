@@ -12,6 +12,8 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use anyhow::{Context as _, Result};
+
 /// The exit code that asks `cargo hapto dev` to start the app again at once,
 /// as a switch of the dev host's format does. `cargo-hapto` reads it as its
 /// own `RELAUNCH`, which a test of its holds to this line.
@@ -56,12 +58,12 @@ impl Session {
     /// # Errors
     ///
     /// Returns why the folder could not be made.
-    pub(crate) fn open(id: &str, dev: Option<&Path>) -> Result<Session, String> {
+    pub(crate) fn open(id: &str, dev: Option<&Path>) -> Result<Session> {
         let dir = match dev {
             Some(dir) => dir.to_path_buf(),
             None => std::env::var_os("LOCALAPPDATA")
                 .map(PathBuf::from)
-                .ok_or("LOCALAPPDATA is not set")?
+                .context("LOCALAPPDATA is not set")?
                 .join(id)
                 .join("Standalone"),
         };
@@ -73,8 +75,8 @@ impl Session {
     /// # Errors
     ///
     /// Returns why the folder could not be made.
-    pub(crate) fn in_dir(dir: PathBuf) -> Result<Session, String> {
-        fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    pub(crate) fn in_dir(dir: PathBuf) -> Result<Session> {
+        fs::create_dir_all(&dir).with_context(|| dir.display().to_string())?;
         Ok(Session {
             dir,
             kept: Kept::Nothing,
@@ -87,7 +89,7 @@ impl Session {
     ///
     /// Returns why a block that is there could not be read. The session then
     /// [holds](Self::hold) it.
-    pub(crate) fn saved_block(&mut self) -> Result<Option<Vec<u8>>, String> {
+    pub(crate) fn saved_block(&mut self) -> Result<Option<Vec<u8>>> {
         let path = self.dir.join(SAVED);
         match fs::read(&path) {
             Ok(block) => {
@@ -97,7 +99,7 @@ impl Session {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(error) => {
                 self.hold();
-                Err(format!("{}: {error}", path.display()))
+                Err(anyhow::Error::new(error).context(path.display().to_string()))
             }
         }
     }
@@ -115,7 +117,7 @@ impl Session {
     /// # Errors
     ///
     /// Returns why it could not be written.
-    pub(crate) fn keep(&mut self, block: Vec<u8>) -> Result<(), String> {
+    pub(crate) fn keep(&mut self, block: Vec<u8>) -> Result<()> {
         match &self.kept {
             Kept::Held => return Ok(()),
             Kept::Block(kept) if *kept == block => return Ok(()),
@@ -145,7 +147,7 @@ impl Session {
     ///
     /// Returns why it could not be written.
     #[cfg(feature = "dev-host")]
-    pub(crate) fn set_format(&self, name: &str) -> Result<(), String> {
+    pub(crate) fn set_format(&self, name: &str) -> Result<()> {
         write_whole(&self.dir, FORMAT, name.as_bytes())
     }
 
@@ -161,7 +163,7 @@ impl Session {
     ///
     /// Returns why they could not be written.
     #[cfg(feature = "dev-host")]
-    pub(crate) fn set_audio(&self, text: &str) -> Result<(), String> {
+    pub(crate) fn set_audio(&self, text: &str) -> Result<()> {
         write_whole(&self.dir, AUDIO, text.as_bytes())
     }
 }
@@ -173,7 +175,7 @@ impl Session {
 /// # Errors
 ///
 /// Returns why it could not be written.
-fn write_whole(dir: &Path, name: &str, bytes: &[u8]) -> Result<(), String> {
+fn write_whole(dir: &Path, name: &str, bytes: &[u8]) -> Result<()> {
     let path = dir.join(name);
     let fresh = dir.join(format!("{name}.new"));
     let written = (|| {
@@ -182,5 +184,5 @@ fn write_whole(dir: &Path, name: &str, bytes: &[u8]) -> Result<(), String> {
         file.sync_all()?;
         fs::rename(&fresh, &path)
     })();
-    written.map_err(|e| format!("{}: {e}", path.display()))
+    written.with_context(|| path.display().to_string())
 }

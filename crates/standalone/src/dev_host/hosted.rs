@@ -13,6 +13,7 @@ mod tests;
 use std::cell::Cell;
 use std::sync::Arc;
 
+use anyhow::{Context as _, Result};
 use hapto_host::vst3::{HostCall, RESTART_LATENCY, RESTART_VALUES, TestView};
 use hapto_host::{Layout, Plugin, cabi, vst3};
 
@@ -91,7 +92,7 @@ pub(crate) trait Hosted {
     ///
     /// Returns the format's answer when the plugin refused it, which in
     /// either format says no more than that it was refused.
-    fn load(&self, block: &[u8]) -> Result<(), String>;
+    fn load(&self, block: &[u8]) -> Result<()>;
     /// Returns the editor's view, where the format has one.
     fn view(&self) -> Option<TestView>;
     /// Stops processing and deactivates, as a host does before it changes the
@@ -104,12 +105,8 @@ pub(crate) trait Hosted {
     /// # Errors
     ///
     /// Returns which call the plugin refused.
-    fn start(
-        &self,
-        sample_rate: f64,
-        max_frames: usize,
-        layout: Layout,
-    ) -> Result<Box<dyn Render>, String>;
+    fn start(&self, sample_rate: f64, max_frames: usize, layout: Layout)
+    -> Result<Box<dyn Render>>;
 }
 
 /// Makes the plugin in `format`.
@@ -234,10 +231,8 @@ impl<P: Plugin> Hosted for Vst3<P> {
         self.host.save().ok()
     }
 
-    fn load(&self, block: &[u8]) -> Result<(), String> {
-        self.host
-            .load(block)
-            .map_err(|e| format!("VST3 setState: {e}"))
+    fn load(&self, block: &[u8]) -> Result<()> {
+        self.host.load(block).context("VST3 setState")
     }
 
     fn view(&self) -> Option<TestView> {
@@ -257,18 +252,15 @@ impl<P: Plugin> Hosted for Vst3<P> {
         sample_rate: f64,
         max_frames: usize,
         layout: Layout,
-    ) -> Result<Box<dyn Render>, String> {
-        fn refused(call: &'static str) -> impl Fn(vst3::Refused) -> String {
-            move |e| format!("VST3 {call}: {e}")
-        }
+    ) -> Result<Box<dyn Render>> {
         self.host
             .arrange(layout)
-            .map_err(refused("setBusArrangements"))?;
+            .context("VST3 setBusArrangements")?;
         self.host
             .setup(sample_rate, max_frames)
-            .map_err(refused("setupProcessing"))?;
-        self.host.activate().map_err(refused("setActive"))?;
-        self.host.start().map_err(refused("setProcessing"))?;
+            .context("VST3 setupProcessing")?;
+        self.host.activate().context("VST3 setActive")?;
+        self.host.start().context("VST3 setProcessing")?;
         self.processing.set(true);
         Ok(Box::new(Vst3Audio {
             side: self.host.audio_side(),
@@ -395,10 +387,8 @@ impl<P: Plugin> Hosted for Cabi<P> {
         self.host.save().ok()
     }
 
-    fn load(&self, block: &[u8]) -> Result<(), String> {
-        self.host
-            .load(block)
-            .map_err(|e| format!("the C interface's load: {e}"))
+    fn load(&self, block: &[u8]) -> Result<()> {
+        self.host.load(block).context("the C interface's load")
     }
 
     fn view(&self) -> Option<TestView> {
@@ -414,11 +404,11 @@ impl<P: Plugin> Hosted for Cabi<P> {
         sample_rate: f64,
         max_frames: usize,
         layout: Layout,
-    ) -> Result<Box<dyn Render>, String> {
+    ) -> Result<Box<dyn Render>> {
         let frames = u32::try_from(max_frames).unwrap_or(u32::MAX);
         self.host
             .activate(sample_rate, frames, layout)
-            .map_err(|e| format!("the C interface's activate: {e}"))?;
+            .context("the C interface's activate")?;
         Ok(Box::new(CabiAudio {
             side: self.host.audio_side(),
         }))
