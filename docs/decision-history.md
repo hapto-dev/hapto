@@ -1042,7 +1042,9 @@ project window with the field focused left the keyboard in the field; a
 native plug-in's field did the same, so the check had expected more than a
 native editor gives. A drag of the plug-in window by its title gives a native
 field's keys up and not the page's; the owner judged it too rare to build
-for. To confirm.
+for. The full build passed his checklist in Cubase 16 the same day, and a
+bundle with a select added for the run showed how a select's arrow keys and
+open list behave, which the record now says. To confirm.
 
 ## Rules
 
