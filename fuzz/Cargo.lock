@@ -73,6 +73,81 @@ dependencies = [
 ]
 
 [[package]]
+name = "hapto-bridge"
+version = "0.1.0"
+dependencies = [
+ "hapto-params",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "hapto-fuzz"
+version = "0.0.0"
+dependencies = [
+ "hapto-bridge",
+ "hapto-host",
+ "hapto-params",
+ "hapto-session",
+ "hapto-ump",
+ "libfuzzer-sys",
+ "serde_json",
+]
+
+[[package]]
+name = "hapto-host"
+version = "0.1.0"
+dependencies = [
+ "hapto-learn",
+ "hapto-params",
+ "hapto-session",
+ "hapto-ump",
+ "hapto-undo",
+ "loom",
+ "raw-window-handle",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "hapto-learn"
+version = "0.1.0"
+dependencies = [
+ "hapto-params",
+ "hapto-session",
+ "hapto-ump",
+ "loom",
+ "serde_json",
+ "triple_buffer",
+]
+
+[[package]]
+name = "hapto-params"
+version = "0.1.0"
+dependencies = [
+ "loom",
+]
+
+[[package]]
+name = "hapto-session"
+version = "0.1.0"
+dependencies = [
+ "hapto-params",
+ "serde_json",
+]
+
+[[package]]
+name = "hapto-ump"
+version = "0.1.0"
+
+[[package]]
+name = "hapto-undo"
+version = "0.1.0"
+dependencies = [
+ "hapto-params",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -190,6 +265,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
+name = "raw-window-handle"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "20675572f6f24e9e76ef639bc5552774ed45f1c30e2951e1e99c59888861c539"
+
+[[package]]
 name = "regex-automata"
 version = "0.4.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -217,80 +298,6 @@ name = "scoped-tls"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e1cf6437eb19a8f4a6cc0f7dca544973b0b78843adbfeb3683d1a94a0024a294"
-
-[[package]]
-name = "hapto-bridge"
-version = "0.1.0"
-dependencies = [
- "hapto-params",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "hapto-fuzz"
-version = "0.0.0"
-dependencies = [
- "libfuzzer-sys",
- "hapto-bridge",
- "hapto-host",
- "hapto-params",
- "hapto-session",
- "hapto-ump",
- "serde_json",
-]
-
-[[package]]
-name = "hapto-host"
-version = "0.1.0"
-dependencies = [
- "loom",
- "hapto-learn",
- "hapto-params",
- "hapto-session",
- "hapto-ump",
- "hapto-undo",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "hapto-learn"
-version = "0.1.0"
-dependencies = [
- "loom",
- "hapto-params",
- "hapto-session",
- "hapto-ump",
- "serde_json",
- "triple_buffer",
-]
-
-[[package]]
-name = "hapto-params"
-version = "0.1.0"
-dependencies = [
- "loom",
-]
-
-[[package]]
-name = "hapto-session"
-version = "0.1.0"
-dependencies = [
- "hapto-params",
- "serde_json",
-]
-
-[[package]]
-name = "hapto-ump"
-version = "0.1.0"
-
-[[package]]
-name = "hapto-undo"
-version = "0.1.0"
-dependencies = [
- "hapto-params",
-]
 
 [[package]]
 name = "serde"
