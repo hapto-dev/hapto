@@ -185,6 +185,16 @@ jobs:
         run: python3 scripts/test-checks.py
         env:
           HAPTO_XTASK: target/debug/xtask
+      # The fuzz crate is outside the workspace, with a lockfile of its own,
+      # which a new dependency of a crate it fuzzes changes. The nightly fuzz
+      # lane reads it --locked, so a stale one is caught here, where the
+      # change that made it stale is.
+      - name: The fuzz crate's lockfile is current
+        run: |
+          if ! cargo metadata --locked --format-version 1 --manifest-path fuzz/Cargo.toml > /dev/null; then
+            echo "::error::fuzz/Cargo.lock is stale: run cargo metadata --format-version 1 --manifest-path fuzz/Cargo.toml once, and commit the lockfile it writes."
+            exit 1
+          fi
       # And they build on a runner with no WebView or GTK development
       # libraries installed. Every workspace crate is built but the ones that
       # may need them (the host, the WebView shell, the two example plugins),
