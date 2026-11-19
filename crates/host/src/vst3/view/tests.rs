@@ -688,8 +688,11 @@ fn an_attach_after_a_removal_inside_a_tick_is_refused_and_counted() {
     assert_eq!(view.attach_raw(2), Ok(()), "until the editor opens again");
 }
 
+/// The view is not freed under its own call, which Rust's aliasing rules
+/// forbid and Miri refuses: what it holds goes after the call, and its own few
+/// bytes leak.
 #[test]
-fn a_view_the_host_releases_from_inside_open_is_freed_after_it() {
+fn a_view_the_host_releases_from_inside_open_lets_its_editor_go_after_it() {
     let (_host, view) = viewed();
     // The host's only reference, as a raw pointer the host releases from
     // inside `open`.

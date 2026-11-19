@@ -948,6 +948,13 @@ guard, since that panic unwound past the step that takes the editor from the
 view, so a second panic, in its drop, aborted the host; the release now
 catches the first on its own and drops the editor inside the guard.
 
+On 2026-11-19: Miri run on Windows found that a view the host released from
+inside one of its calls was freed as the call ended, while the call still
+borrowed it, which both aliasing models refuse. The view's tests build on
+Windows alone, and the nightly lane runs Miri on Linux, so they had never
+run under it. The view now lets what it holds go then, and leaks its own few
+bytes.
+
 ### D102. A page's files and a build without them
 
 [The decision](decisions.md#d102-a-pages-files-and-a-build-without-them)

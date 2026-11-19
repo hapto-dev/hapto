@@ -2683,11 +2683,13 @@ and answers null for none and on any other platform. The view
   resizable and takes any size the host offers. A new scale while open asks
   the host's frame for the editor's size at that scale.
 - **Calls inside calls.** A toolkit may run the message loop inside `open`, so
-  the host's calls arrive inside it. The editor is never called while in a
-  call: a tick passes it over, a size or scale is told when the call returns,
-  and a removal closes it then. A call that may reach the host holds a
-  reference to the view, so a host that releases the view from inside one
-  frees it only as the call ends.
+  the host's calls arrive inside it. The editor is never called while in a call:
+  a tick passes it over, a size or scale is told when the call returns, and a
+  removal closes it then. A call that may reach the host holds a reference to
+  the view, so a host that releases the view from inside one cannot free it
+  under the call. Freeing it as the call ends would free it under the call
+  too, which Rust's aliasing rules forbid, so the view lets its editor, its
+  frame and its component go then, and its own few bytes leak.
 - **A failed open** answers `attached` with `kResultFalse` and is a fault of
   the instance; the first writes a line with the editor's reason. It leaves
   nothing shown in the host's window: what an editor made there and cannot
