@@ -87,6 +87,7 @@ real-time sanitizer, which needs Linux.
 | `core builds alone`: No decision ids in comments or docs | No comment or doc in a tracked file cites a decision id, an audit finding id or a stage, and no code comment points at the record (see [Repository checks](#repository-checks)). |
 | `core builds alone`: The decision index matches the record and the code | Every file and item `docs/decision-index.md` lists exists, and it has a heading for every id in the decision record. |
 | `core builds alone`: The check scripts' own tests | Each check script refuses the bad input it exists for (see [Repository checks](#repository-checks)). |
+| `core builds alone`: The fuzz crate's lockfile is current | `fuzz/Cargo.lock`, the lockfile of the fuzz crate outside the workspace, needs no change, as the nightly fuzz lane reads it `--locked`: a new dependency of a crate it fuzzes updates it in the same pull request. |
 | `core builds alone`: Build the core alone | Every workspace crate but the host, the WebView shell, the two example plugins, the test tools and xtask builds on a runner with no WebView or GTK libraries; a new crate is built there until it is excluded. |
 | `protocol shape history` (pull requests) | `crates/bridge/protocol-shape.txt` only gains lines against the base revision (see [Repository checks](#repository-checks)). |
 | `loom models` | The lock-free hand-offs are correct under every interleaving their atomics allow, and `scripts/run-loom.py` fails unless every model ran (section 3). |
