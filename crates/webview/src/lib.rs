@@ -26,6 +26,13 @@
 //!   message from any other document, and takes a file dropped on it from
 //!   outside to nothing, where WebView2 would open it in the page's place.
 //!   On Windows that also turns off HTML drag and drop inside the page.
+//! - **The keyboard.** The WebView takes it when the page is clicked, not as
+//!   it opens. Whenever nothing in the page needs keys, after a click, a drag
+//!   or a field's blur, the page's `webviewTransport` asks, and the editor
+//!   gives the keyboard back to the host's window, so a key such as the space
+//!   bar reaches the host again. A field, a `select` and a control marked
+//!   `data-hapto-keys` keep it while they have the focus. The ask is not a
+//!   protocol message, and the dispatcher never sees it.
 //! - **Its data folder** is the plugin's own, below the user's local
 //!   application data, named by the plugin's
 //!   [`id`](hapto_host::PluginInfo::id): the WebView's default, beside the

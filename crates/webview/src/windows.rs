@@ -308,10 +308,11 @@ fn from_page(
         deliver(name, native, message);
         return;
     }
-    let handed = hand_back(native, target);
-    // Each hand-back is reported while hosts are tried; a failure is
-    // otherwise ignored, as a failed `set_bounds` is.
-    hapto_host::report_line(&format!("hapto: {name}: keyboard hand-back: {handed:?}."));
+    if hand_back(native, target) == HandBack::Panicked {
+        hapto_host::report_line(&format!(
+            "hapto: {name}: giving the keyboard back panicked and was dropped."
+        ));
+    }
 }
 
 /// What a hand-back did.
@@ -323,8 +324,9 @@ enum HandBack {
     InCall,
     /// No WebView is open.
     Closed,
-    /// wry could not focus the host's window, for this reason.
-    Failed(String),
+    /// wry could not focus the host's window. Ignored, as a failed
+    /// `set_bounds` is: the next click on the page asks again.
+    Failed,
     /// It panicked, and was dropped.
     Panicked,
 }
@@ -342,7 +344,7 @@ fn hand_back(native: &Native, target: &RefCell<Weak<WebView>>) -> HandBack {
         };
         match webview.focus_parent() {
             Ok(()) => HandBack::Handed,
-            Err(error) => HandBack::Failed(error.to_string()),
+            Err(_) => HandBack::Failed,
         }
     }));
     handed.unwrap_or(HandBack::Panicked)

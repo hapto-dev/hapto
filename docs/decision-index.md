@@ -1168,6 +1168,20 @@ move its line here; when a decision gains code, add one.
 - test `page/test/client.test.ts`: `caches the snapshot's values and later value messages`, `onValue fires for each later value of its key only, never a parameter's of the same name`, `writes before the snapshot wait, the latest of a key replacing the rest until a held call`
 - test `page/test/held.test.ts`: `held writes and calls keep their order, gestures, values at each call and bound`, `a value's key never meets a parameter's of the same name`
 
+### D107. The keyboard goes back to the host
+
+[Record section](decisions.md#d107-the-keyboard-goes-back-to-the-host)
+
+- `page/src/keys.ts`: module, `HAND_BACK`, `needsKeys`, `watchKeys`, `KeyScope`, `POINTER_INPUTS`
+- `page/src/transport.ts`: `webviewTransport`, `WebViewGlobals`, `isKeyScope`
+- `crates/webview/src/windows.rs`: module, `HAND_BACK`, `from_page`, `hand_back`, `HandBack`, `Native::in_call`, `PageEditor::open`
+- `crates/webview/src/lib.rs`: module
+- `crates/webview/tests/fixtures/shell.json`: module
+- `examples/gain/page/src/main.tsx`: `LabelField`
+- test `crates/webview/src/windows.rs`: `the_hand_back_is_the_fixtures_text`, `the_hand_back_reaches_no_dispatcher_and_any_other_text_does`, `a_hand_back_with_no_webview_open_does_nothing`, `a_hand_back_while_a_command_runs_is_dropped`
+- test `page/test/keys.test.ts`: module
+- test `page/test/webviewTransport.test.ts`: `the hand-back is the shell fixture's text`, `gives the keyboard back through ipc, before the snapshot too, never held by the client`, `watches nothing outside a plugin's window, with no ipc`, `the memory transport gives nothing back`
+
 ## Parameters
 
 ### P1. One store per parameter

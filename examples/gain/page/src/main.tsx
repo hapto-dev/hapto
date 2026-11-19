@@ -2,7 +2,7 @@
 // field for the plugin's label, a value the plugin binds, and the plugin's
 // version, through a command.
 
-import { StrictMode, useEffect, useState } from "react";
+import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { createClient, createHooks, webviewTransport } from "@hapto/page";
 
@@ -20,43 +20,6 @@ interface Values {
 }
 
 const client = createClient(webviewTransport());
-
-// A stand-in for the keyboard watcher `@hapto/page` will install, to be
-// replaced by it: after a click, a drag or a blur, in the next task, the
-// keyboard goes back to the host unless the label field has it.
-let pointerDown = false;
-let asked = false;
-const ask = () => {
-  if (asked) return;
-  asked = true;
-  setTimeout(() => {
-    asked = false;
-    const field = document.activeElement?.matches('input[type="text"]') ?? false;
-    if (document.hasFocus() && !pointerDown && !field) {
-      (window as { ipc?: { postMessage(text: string): void } }).ipc?.postMessage('{"shell":"releaseKeys"}');
-    }
-  }, 0);
-};
-window.addEventListener("pointerdown", () => (pointerDown = true), true);
-for (const type of ["pointerup", "pointercancel"]) {
-  window.addEventListener(type, () => ((pointerDown = false), ask()), true);
-}
-window.addEventListener("focusout", ask, true);
-
-/** Who has the keyboard, as `document.hasFocus()` says: part of the stand-in. */
-function KeyboardLine() {
-  const [page, setPage] = useState(document.hasFocus());
-  useEffect(() => {
-    const read = () => setTimeout(() => setPage(document.hasFocus()), 0);
-    window.addEventListener("focus", read);
-    window.addEventListener("blur", read);
-    return () => {
-      window.removeEventListener("focus", read);
-      window.removeEventListener("blur", read);
-    };
-  }, []);
-  return <p className="version">keyboard: {page ? "page" : "host"}</p>;
-}
 const { useParam, useValue, useCommand } = createHooks<Params, Record<string, never>, Commands, Values>(client);
 
 function GainSlider() {
@@ -86,10 +49,13 @@ function LabelField() {
   // the focus; null otherwise, when the field shows the label as the plugin
   // holds it, so a load or an undo shows at once.
   const [draft, setDraft] = useState<string | null>(null);
+  // Set by Escape, so the blur it causes drops the draft.
+  const dropping = useRef(false);
   // Stores only text that differs from the label, so a click into the field
   // and out stores nothing.
   const commit = () => {
-    if (draft !== null && draft !== label.value) label.set(draft);
+    if (!dropping.current && draft !== null && draft !== label.value) label.set(draft);
+    dropping.current = false;
     setDraft(null);
   };
   return (
@@ -101,9 +67,12 @@ function LabelField() {
         onChange={(event) => setDraft(event.currentTarget.value)}
         onBlur={commit}
         onKeyDown={(event) => {
-          // Enter ends the edit: the blur stores it, once. Not while an input
-          // method composes, where Enter picks the text being composed.
-          if (event.key === "Enter" && !event.nativeEvent.isComposing) event.currentTarget.blur();
+          // Enter ends the edit and the blur stores it, once; Escape ends it
+          // and drops it. Neither while an input method composes, where Enter
+          // picks the text being composed and Escape cancels it.
+          if (event.nativeEvent.isComposing) return;
+          if (event.key === "Escape") dropping.current = true;
+          if (event.key === "Enter" || event.key === "Escape") event.currentTarget.blur();
         }}
       />
     </label>
@@ -129,7 +98,6 @@ function Gain() {
       </header>
       <GainSlider />
       <LabelField />
-      <KeyboardLine />
     </main>
   );
 }

@@ -427,7 +427,8 @@ serde writes for its type, and the page's `Values` map, written by hand,
 gives each key that type. The field keeps the text being typed only until
 Enter or the field loses the focus, and stores it only when it differs from
 the label, so a load while the field is idle shows at once and a click into
-the field and out stores nothing. A command is for what is not state, such
+the field and out stores nothing. Escape drops the text typed and shows the
+label again. A command is for what is not state, such
 as the version the page asks for once and shows beside its title, or a write
 the plugin must check or refuse.
 
@@ -439,6 +440,18 @@ shows its own controls. A debug build loads the page from Vite's dev server,
 with hot reload, when `HAPTO_PAGE_DEV_URL` holds the address `npm run dev`
 prints, whether or not the page was built in; with no files and no dev
 server, `into_editor` gives `None`.
+
+The page takes the keyboard when it is clicked, and gives it back to the host
+once nothing on it needs keys: after a click on the background or a drag of
+the slider, the space bar starts the host's transport again, and while the
+label field has the focus, every key is the field's. A field, a `select` and
+editable content keep the keys with no code of the gain's. A control of a
+page's own that takes keys, such as a knob on a canvas that turns with the
+arrow keys, says so with an attribute, on itself or on any element around it:
+
+```tsx
+<canvas tabIndex={0} data-hapto-keys />
+```
 
 ## 10. Build and bundle the module
 
