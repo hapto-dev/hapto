@@ -10,8 +10,10 @@
 //!   included. Every fault counts for the process ([`boundary_faults`]),
 //!   and an instance's for the instance too.
 //! - **Reporting** writes a line: to an attached debugger on Windows, to
-//!   stderr elsewhere. Writing is a system call, so Hapto never writes on the
-//!   audio thread.
+//!   stderr elsewhere. With the `standalone` feature it goes to stderr on
+//!   Windows too, the terminal an app runs in, which a module in a host has
+//!   no use for. Writing is a system call, so Hapto never writes on the audio
+//!   thread.
 //! - **An instance's fault** is only recorded where it happens. The first
 //!   of each kind is reported from the instance's next tick, on the main
 //!   thread, or from its release; later ones are counted, not reported.
@@ -69,7 +71,7 @@ static REPORTED: AtomicU16 = AtomicU16::new(0);
 /// first thing to check when a plugin goes quiet or a project does not come
 /// back as it was saved. Each instance also writes the first fault of each
 /// kind as a line of text, to an attached debugger on Windows and to stderr
-/// elsewhere.
+/// elsewhere, and with the `standalone` feature to stderr on Windows too.
 ///
 /// # Examples
 ///
@@ -373,14 +375,15 @@ pub fn report_line(line: &str) {
 }
 
 /// Writes one diagnostic line where a developer looks: an attached
-/// debugger on Windows, stderr elsewhere. In this crate's tests, a list the
-/// test reads.
+/// debugger on Windows, stderr elsewhere, and with the `standalone` feature
+/// stderr on Windows too, for an app's terminal. In this crate's tests, a
+/// list the test reads.
 fn write_line(line: &str) {
     #[cfg(test)]
     tests::wrote(line);
     #[cfg(all(not(test), windows, not(miri)))]
     debugger::write(line);
-    #[cfg(all(not(test), not(all(windows, not(miri)))))]
+    #[cfg(all(not(test), any(not(all(windows, not(miri))), feature = "standalone")))]
     {
         use std::io::Write as _;
         // No other place to report a failed write, and a panic here would
