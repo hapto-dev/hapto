@@ -295,7 +295,7 @@
       </div>
       <section class="tab" style="gap: 10px" aria-labelledby="midi-own-h">
         <h3 id="midi-own-h">This dev host's device</h3>
-        <div class="empty">This dev host was built without virtual UMP endpoint support.</div>
+        <div class="empty">The dev host has no virtual MIDI endpoint yet.</div>
       </section>
       <section class="tab" style="gap: 10px" aria-labelledby="midi-in-h">
         <div class="row">
@@ -480,7 +480,7 @@
     buildParams(state.params);
     log.build();
     $("ci-who").textContent = state.format === "vst3"
-      ? "In VST3 a host speaks MIDI-CI for the plugin, from what the plugin declares; here the dev host does, as such a host would."
+      ? "In VST3 a host speaks MIDI-CI for the plugin, from what the plugin declares; the dev host does not yet."
       : "In the C interface no host speaks for the plugin: hapto-ci answers for it, with UMP in and out.";
     $("params-help").textContent = state.format === "vst3"
       ? "A move here reaches the processor with the next block, as a host's own control does."
