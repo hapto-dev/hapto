@@ -115,12 +115,15 @@ fn the_workspace_s_own_files_are_watched_too() {
     let watch = Watch::new(&root, [plugin.as_path()]);
     let before = watch.fingerprint();
     std::fs::write(root.join("Cargo.lock"), "").expect("written");
-    let locked = watch.fingerprint();
-    assert_ne!(locked, before, "the lockfile");
+    assert_eq!(
+        watch.fingerprint(),
+        before,
+        "the lockfile, which a build writes"
+    );
     std::fs::create_dir_all(root.join(".cargo")).expect("made");
     std::fs::write(root.join(".cargo/config.toml"), "").expect("written");
     let configured = watch.fingerprint();
-    assert_ne!(configured, locked, "Cargo's configuration");
+    assert_ne!(configured, before, "Cargo's configuration");
     touch(&root.join("Cargo.toml"), 10);
     assert_ne!(watch.fingerprint(), configured, "the workspace's manifest");
     let _ = std::fs::remove_dir_all(root);

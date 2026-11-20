@@ -38,13 +38,9 @@ pub(crate) struct Watch {
 }
 
 /// The workspace's own files a build reads, by their paths below its root:
-/// a virtual workspace's manifest is no member's.
-const WORKSPACE: [&str; 4] = [
-    "Cargo.toml",
-    "Cargo.lock",
-    ".cargo/config.toml",
-    ".cargo/config",
-];
+/// a virtual workspace's manifest is no member's. Not its lockfile, which a
+/// build writes: the manifest that changes it is watched.
+const WORKSPACE: [&str; 3] = ["Cargo.toml", ".cargo/config.toml", ".cargo/config"];
 
 impl Watch {
     /// Watches the workspace at `root`, and its members whose folders are

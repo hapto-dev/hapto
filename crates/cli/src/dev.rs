@@ -31,8 +31,9 @@ use crate::workspace::{Plugin, Workspace};
 
 /// The exit code with which the app asks to be started again at once, as a
 /// switch of the dev host's format does: `hapto-standalone`'s own, which a
-/// test reads, since this command links no Hapto crate.
-pub(crate) const RELAUNCH: i32 = 3;
+/// test reads, since this command links no Hapto crate. Not 3, which the C
+/// runtime's `abort` can exit with, nor 101, a panic's.
+pub(crate) const RELAUNCH: i32 = 75;
 
 /// How often the app and the sources are looked at.
 const POLL: Duration = Duration::from_millis(400);

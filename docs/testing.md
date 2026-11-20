@@ -479,8 +479,9 @@ cargo xtask gen
 ```
 
 Running a failing gate with `HAPTO_BLESS=1` set (empty or `0` counts as unset)
-rewrites its file too. With `CI` set the gate refuses to rewrite and fails, so a
-pipeline cannot bless its own output.
+rewrites its file too, unless the file already holds the text. With `CI` set
+the gate refuses to rewrite and fails, so a pipeline cannot bless its own
+output.
 
 CI then type-checks the page against the committed file, so a Rust change that
 breaks the page fails in the same pull request. `.gitattributes` keeps text

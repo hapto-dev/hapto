@@ -163,6 +163,7 @@ fn only_a_clean_close_ends_the_session_and_a_crash_waits_for_a_build() {
     assert_eq!(Ended::of(Some(RELAUNCH)), Ended::Relaunch);
     assert_eq!(Ended::of(Some(0)), Ended::Closed);
     assert_eq!(Ended::of(Some(101)), Ended::Failed(Some(101)), "a panic");
+    assert_eq!(Ended::of(Some(3)), Ended::Failed(Some(3)), "a C abort");
     assert_eq!(Ended::of(None), Ended::Failed(None), "ended with no code");
 }
 

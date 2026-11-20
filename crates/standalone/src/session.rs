@@ -18,7 +18,7 @@ use anyhow::{Context as _, Result};
 /// as a switch of the dev host's format does. `cargo-hapto` reads it as its
 /// own `RELAUNCH`, which a test of its holds to this line.
 #[cfg(all(windows, feature = "dev-host"))]
-pub(crate) const RELAUNCH: u8 = 3;
+pub(crate) const RELAUNCH: u8 = 75;
 
 /// The saved block's file: the block is JSON.
 const SAVED: &str = "saved.json";
