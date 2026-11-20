@@ -569,6 +569,10 @@ have.
 
 The throttled line per instance and kind was the second audit's suggestion.
 
+On 2026-11-20, from the standalone app's review (D110): with `hapto-host`'s
+`standalone` feature the line goes to stderr on Windows too, since a panicking
+processor in the app played silence with no line where its author looks.
+
 ### D76. A panic while edits are told to the host
 
 [The decision](decisions.md#d76-a-panic-while-edits-are-told-to-the-host)
@@ -1112,6 +1116,19 @@ writes it and so built twice; and a rewrite of a generated file leaves one
 that already holds the text, since the map written before each build moved
 its time and rebuilt a crate whose build script watches `page`.
 
+On 2026-11-20, from the pull request's second review, with the owner's
+decisions of that day: `dev` refuses any system but Windows at once, as
+`build` does, where it installed the page's packages, built, and started an
+app that ended at once, after every build. The map's test shows Cargo's
+progress, since a new crate's first `dev` printed nothing while hundreds of
+crates compiled. The owner accepted that a crate with a page map restarts the
+app after a save that changed nothing, since the map's test builds the
+library with other features; giving the test its own target folder would
+double a new crate's first build, and the app writing the map itself is
+left for later. The template's build script warns of a release build with no
+page, as its comment said it did; `init` quotes a folder with a space in its
+next step; and the template's test runs in the full CI run.
+
 ### D110. The standalone exporter and app
 
 [The decision](decisions.md#d110-the-standalone-exporter-and-app)
@@ -1144,6 +1161,19 @@ as long as a title bar was held or the window's menu was open. A device now
 counts as stopped only once no block follows the error for a second, and a
 thread wakes the loop for each tick.
 
+On 2026-11-20, from the pull request's second review and the owner's run:
+cpal never moves a stream to a new default output on Windows. It reports
+the change and goes on playing to the old device, so the second's watch said
+the app played on while nothing was heard, and an unplugged default stopped
+the audio though another device was there. An error is now judged by its
+kind, and each kind but a glitch, a refused priority and a route the device
+followed opens the default output again, at most once a second. At the
+owner's call the audio thread takes real-time priority, through cpal's
+`realtime` feature. A fault's line reaches the terminal, where only a
+debugger saw it before, which D75 now says too, and the window's title counts
+the faults; a held block's line says where it is; and a plugin with inputs
+says at start that they hear silence.
+
 ### D111. The dev host
 
 [The decision](decisions.md#d111-the-dev-host)
@@ -1165,6 +1195,14 @@ On 2026-11-19, from the branch's audit: the settings window drew each plan's
 picture from a copy of the player's cutting, which had drifted from it, and
 held its own copy of the log's length. Both now come from Rust, the pictures
 cut by the player's own code.
+
+On 2026-11-20, from the pull request's second review: the dev host follows a
+new default output as the app does (D110); it stops and deactivates the
+plugin at the close, which no host leaves undone; the plugin saves at most
+once a second, for the session and the settings window together, where a
+save it faulted on counted ten faults a second while the window showed; and
+the settings page no longer says the dev host speaks MIDI-CI, or that it was
+built without a virtual MIDI endpoint.
 
 ## Rules
 

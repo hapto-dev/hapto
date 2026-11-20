@@ -241,21 +241,24 @@ exporter.
   command's `--help` says its flags.
 - `hapto-host`: the standalone exporter, behind the `standalone` feature: a
   plugin driven by an app of its own with no host, through the same engine.
+  With the feature, a fault's line goes to stderr on Windows too, the app's
+  terminal.
 - `hapto-standalone`: a plugin as an app of its own, on Windows, which a plugin
   crate's binary runs: its editor in a window, a test signal through it to the
-  system's audio output, and its saved block kept between runs. Its dev host,
-  `cargo hapto dev --host`, runs the plugin through the VST3 exporter or the
-  C interface in process, in a window of the plugin's own with a bar that
+  system's audio output, which it follows to a new default output, and its
+  saved block kept between runs. Its title counts the plugin's faults. Its dev
+  host, `cargo hapto dev --host`, runs the plugin through the VST3 exporter or
+  the C interface in process, in a window of the plugin's own with a bar that
   names the format, and a settings window of what the host sees, a tab each,
-  which switches between the two formats keeping the saved block. It changes
-  the audio as a host does: the sample rate, of those the device takes, and
-  the most frames a block holds, each by reactivating the plugin, blocks cut
-  as the device asks, at the maximum, at random or at awkward lengths, and
-  the test signal; it stops and starts processing. It lists the parameters
-  as the host does, each with its kind and the MIDI learn mappings that name
-  it, logs what the plugin tells the host and what the dev host does to the
-  plugin, and shows the saved block and how its first load went. A block the
-  plugin refused is kept for the next run rather than saved over.
+  which switches between the two formats keeping the saved block. It changes the
+  audio as a host does: the sample rate, of those the device takes, and the most
+  frames a block holds, each by reactivating the plugin, blocks cut as the
+  device asks, at the maximum, at random or at awkward lengths, and the test
+  signal; it stops and starts processing. It lists the parameters as the host
+  does, each with its kind and the MIDI learn mappings that name it, logs what
+  the plugin tells the host and what the dev host does to the plugin, and shows
+  the saved block and how its first load went. A block the plugin refused is
+  kept for the next run rather than saved over.
 - `hapto-host`: `vst3::TestView::attach_to` attaches a test host's view to a
   window of the caller's, and `vst3::ChildWindow` is a window inside one of
   the caller's for it, placed where a host wants the view.

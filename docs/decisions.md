@@ -1718,7 +1718,8 @@ outside a test? (D60) Not applicable: C++ caught nothing at the boundary (D60).
 faults from every thread, wait-free, the audio thread included, and
 `hapto_host::boundary_faults` counts the process's. The first fault of each kind
 in an instance is written as one line naming the plugin and the instance, to an
-attached debugger on Windows and to stderr elsewhere, at the times and on the
+attached debugger on Windows and to stderr elsewhere, and with the `standalone`
+feature to stderr on Windows too, an app's terminal, at the times and on the
 threads `crates/host/src/faults.rs` states, never on the audio thread; later
 faults of that kind are counted, not written.
 
@@ -3098,14 +3099,17 @@ lockfile pins the crates it builds.
   vendor with no letter or digit asks for `--id`, since the default id is made
   from it. Its Hapto crates and `@hapto/page` come by path from a checkout,
   `--hapto` or the one the command was built from, until they are published. A
-  test, run by hand, writes a crate with this checkout's crates and builds and
-  tests it.
+  test, in the full CI run on Windows, writes a crate with this checkout's
+  crates and builds and tests it.
 - **`dev`** runs the plugin while its author edits it (D110): its standalone
   binary, a `bin` target that needs the crate's `standalone` feature, in debug
-  by default. It serves the page from Vite on the loopback address, on a port
-  nothing else listens on there, writes the page's parameter map through the
-  crate's `page_params` test, and builds; with `--release`, which reads no dev
-  server, it builds the page into the app instead. It runs a numbered copy of
+  by default. Off Windows, where the app does not run yet, it refuses at once,
+  as `build` does. It serves the page from Vite on the loopback address, on a
+  port nothing else listens on there, writes the page's parameter map through
+  the crate's `page_params` test, with Cargo's progress shown, since a new
+  crate's first run compiles hundreds of crates there, and builds; with
+  `--release`, which reads no dev server, it builds the page into the app
+  instead. It runs a numbered copy of
   the build, since on Windows a running executable cannot be replaced, clearing
   at start the copies a session ended by Ctrl+C left, and watches each member's
   `src`, manifest and build script, and the workspace's own manifest and Cargo
@@ -3114,12 +3118,17 @@ lockfile pins the crates it builds.
   own swap, backup, autosave and safe-write files. A change rebuilds while the
   app plays on; a build that writes a new binary, as Cargo's messages say,
   closes the app's stdin, which asks it to quit keeping its saved block, and
-  starts the new copy. The app's exit code 75 asks to be started again at once,
-  and a close, exit code 0, ends the command and the dev server with it, during
-  a build too. Any other exit is a crash: the command says so, goes on watching,
-  and starts the app again after the next build that succeeds. `--host` builds
-  the binary with `hapto-standalone`'s `dev-host` feature and runs it in the dev
-  host (D111).
+  starts the new copy. For a crate with a page map that is every build: the
+  map's test builds the plugin's library with other features in the same
+  target folder, and a path crate's `cdylib` has no hash in its name, so the
+  app's build after it always finds the features changed, and a save that
+  changed nothing still restarts the app. Open: the app writing the map itself
+  in dev mode, one build per edit. The app's exit code 75 asks to be started
+  again at once, and a close, exit code 0, ends the command and the dev server
+  with it, during a build too. Any other exit is a crash: the command says so,
+  goes on watching, and starts the app again after the next build that succeeds.
+  `--host` builds the binary with `hapto-standalone`'s `dev-host` feature and
+  runs it in the dev host (D111).
 - **`serve`** runs the page's dev server alone, as `dev` starts it, until
   Ctrl+C, for the debug bundle in a real host, which loads its page from the
   address `HAPTO_PAGE_DEV_URL` gives (D26). A host keeps the module loaded, so
@@ -3197,11 +3206,20 @@ against C++.
   configuration, at 32-bit floats and blocks of up to 1024 frames, and plays
   into every input what `--signal` asks for: silence by default, so nothing
   sounds until its author asks, or a 440 Hz sine at -24 dBFS, or white noise at
-  -24 dBFS. A plugin with one output plays it on every channel. Each error the
-  device reports is judged by the second after it. With no block in it, the
-  device stopped on its own: that is said in a line and in the window's title.
-  With blocks, it plays on, as cpal reports a changed or unplugged default
-  output and does: that is said in a line and the app goes on. It ticks the
+  -24 dBFS. A plugin with one output plays it on every channel, and a plugin
+  with inputs says at start that they hear silence, when they do. An error the
+  device reports is judged by its kind. A glitch, a refused rise in the audio
+  thread's priority, or a change of route the device followed itself plays on,
+  and is said in a line. Any other opens the system's default output again,
+  since cpal never moves a stream to a new default: it reports the change and
+  goes on playing to the old device. The stream is dropped first, so no block
+  runs, the plugin is deactivated and activated at the new device's rate, and
+  a line says where the app plays now. A device that does not open, or a
+  second such error within a second of opening it, stops the audio, which a
+  line and the window's title say. The audio thread runs at real-time
+  priority, through cpal's `realtime` feature, so a build on every core does
+  not break up the tone. A fault's line goes to the terminal as well as to a
+  debugger, and the window's title counts the faults. It ticks the
   plugin every 16 ms from the window's event loop, woken by a thread of its
   own, since the loop's deadline is not served while a title bar is held or a
   window menu is open.
@@ -3210,7 +3228,8 @@ against C++.
   where it is also kept each second it changed and the app quits, keeping it,
   when its stdin closes. A block the plugin refuses, or one that cannot be read,
   is held: the session writes nothing over it, so the plugin's defaults never
-  replace the author's state, and the next run tries it again.
+  replace the author's state, and the next run tries it again. Its line says
+  where the block is, and that deleting it starts from the plugin's defaults.
 
 Windows only, as the page in a window is: elsewhere `main` says so and ends.
 Open: the app takes no audio input from a device, and the shipped app has no
@@ -3218,8 +3237,9 @@ settings for its device. Past a block, which is as long as its shortest
 channel, an output keeps what it held, so an app that hands a shorter input
 than output plays its own stale samples there: whether that part should be
 silence, or the outputs set the block's length, is still to discuss. A
-shipped app carries cpal and winit, under the Apache License 2.0 alone, and
-tracing, under MIT, which a plugin's module never links; THIRD-PARTY-NOTICES
+shipped app carries cpal and winit, under the Apache License 2.0 alone,
+tracing, under MIT, and audio_thread_priority, under MPL-2.0, which a plugin's
+module never links; THIRD-PARTY-NOTICES
 holds their notices apart from a plugin's, and nothing ships that file with
 an app or a bundle yet.
 
@@ -3280,10 +3300,12 @@ hosts, in process, linked into the app.
   as a reactivation, a new cut or processing stopped, each stamped with the
   time since the run began, up to the last 1,000. While it follows, it snaps
   to the newest entry; scrolled up, it stays where it is.
-- **The saved block** shows as the plugin saves it now, with how the run's
+- **The saved block** shows as the plugin last saved it, with how the run's
   first load went: loaded, upgraded from an older `pluginStateVersion`,
-  refused, unreadable, or none to load. A refused or unreadable block is held
-  as the app holds one (D110).
+  refused, unreadable, or none to load. The plugin saves at most once a
+  second, for the session and the settings window together, and afresh as
+  the window opens, so a save it faults on counts once a second, not at every
+  show. A refused or unreadable block is held as the app holds one (D110).
 - **The audio** is changed as a host changes it. The settings window offers the
   standard rates, 44.1 to 192 kHz, that the system's default output takes
   through cpal, and the device's own, which it marks: on Windows the system
@@ -3298,11 +3320,17 @@ hosts, in process, linked into the app.
   brings back the settings it last ran with, and at a run's first start, kept
   settings it refuses give way to the device's own; one it refuses even then
   leaves processing stopped with its reason, so no refusal keeps the dev host
-  from starting. A start the device refuses stops the plugin again, and a device
-  that stops playing on its own, unplugged say, stops processing with its
-  reason, as a host stops. The test signal changes at the next block, with no
-  reactivation. The settings are kept in the session once the plugin runs with
-  them.
+  from starting. A start the device refuses stops the plugin again. An error
+  the device reports is judged by its kind, as the app judges it (D110): one
+  it plays on after goes in the Activity log, and any other stops processing
+  and the plugin, opens the system's default output again and starts there,
+  as a host follows a change of device, with the settings the plugin had
+  where the new device offers their rate, and else at the device's own. The
+  log, the note and the Audio tab name the new device. One that does not
+  open, or a second such error within a second of opening it, leaves
+  processing stopped with its reason. The test signal changes at the next
+  block, with no reactivation. The settings are kept in the session once the
+  plugin runs with them.
 - **Blocks** are cut from the device's buffers by a plan the audio thread
   reads at each block, changed with no reactivation: as the device asks, cut
   at the maximum; always the maximum; random lengths from 1 to the maximum;
@@ -3318,13 +3346,15 @@ hosts, in process, linked into the app.
   side, so each run makes its test host once and keeps it for the run.
 
 Open: the plugin is linked in, so the module's loading and its factory are
-not the ones a host meets, and the instance is never released at the end of
-a run. A call of the host is stamped when the dev host takes it from its
-test host, at the next tick, so the time between two calls is good to 16 ms.
-Neither format passes on why a load was refused, so the settings window shows
-the format's answer, and the plugin's reason goes to an attached debugger. A
-real host's quirks, such as Cubase asking `IMidiMapping2` alone, are what the
-dev host cannot show, so a real host still comes before a release.
+not the ones a host meets, and the instance is stopped and deactivated at the
+end of a run, as a host does before it releases one, but never released. A
+call of the host is stamped when the dev host takes it from its test host, at
+the next tick, so the time between two calls is good to 16 ms. Neither format
+passes on why a load was refused, so the settings window shows the format's
+answer, and the plugin's reason goes to the terminal and to an attached
+debugger. A real host's quirks, such as Cubase asking `IMidiMapping2` alone,
+are what the dev host cannot show, so a real host still comes before a
+release.
 
 **Alternatives.** The alternatives were a host app that loads a built bundle
 from disk, which meets the module's loading but is a host of its own to
