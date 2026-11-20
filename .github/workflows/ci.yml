@@ -488,6 +488,27 @@ jobs:
         shell: bash
         run: vst3sdk-build/bin/Release/validator.exe "target/bundle/Hapto Example EQ.vst3"
 
+  # Full run only.
+  # `cargo hapto init` writes a crate with this checkout's crates, and its
+  # ignored test builds and tests that crate, so a change on main that breaks
+  # the template fails here. It builds a whole plugin crate in a target folder
+  # of its own, minutes, so the full run alone takes it. Windows, where the
+  # template's standalone app builds.
+  template:
+    name: cargo hapto init (windows)
+    if: github.event_name == 'workflow_dispatch'
+    timeout-minutes: 30
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Toolchain
+        run: |
+          rustup toolchain install
+          rustup show active-toolchain
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: A new crate builds and passes its tests
+        run: cargo test -p cargo-hapto -- --ignored
+
   # Instruction counts of the EQ's block, a host write, learn's dispatch and
   # UMP decoding; on a pull request, compared with its base.
   bench:

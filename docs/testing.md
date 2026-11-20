@@ -35,7 +35,7 @@ cargo test -p hapto-webview --test hidden_window -- --ignored          # by hand
 cargo test -p hapto-example-gain --test page -- --ignored              # by hand, Windows, with the gain's page built: the same, for its page
 cargo hapto dev -p hapto-example-gain   # by hand, Windows: the gain standalone with its page from Vite, restarted with its saved block after a change to Rust
 cargo hapto dev -p hapto-example-gain --host   # by hand, Windows: the same through the dev host, in VST3 and, after its switch, the C interface
-cargo test -p cargo-hapto -- --ignored   # by hand: `cargo hapto init` writes a crate with this checkout's crates, which builds and passes its tests
+cargo test -p cargo-hapto -- --ignored   # full run, Windows: `cargo hapto init` writes a crate with this checkout's crates, which builds and passes its tests
 cargo hapto validate -p hapto-example-eq   # full run (the validator lane), Windows, with pluginval 1.0.4 on the PATH or in PLUGINVAL
 ```
 
@@ -83,6 +83,7 @@ real-time sanitizer, which needs Linux.
 | `coverage` | Line coverage of the code Linux builds is at least 92 % (see [Coverage](#coverage)). |
 | `plugin validators (windows)`: pluginval | pluginval 1.0.4, pinned by hash, passes the example EQ's VST3 bundle at strictness level 5 without a GUI, run in the validator's own process, through `cargo hapto validate`, which lays the bundle out as an author's is. It does not show what a real host does with it. |
 | `plugin validators (windows)`: The Steinberg validator | The Steinberg validator, built from the VST3 SDK at a pinned commit, passes the same bundle. It runs whether or not pluginval passed. |
+| `cargo hapto init (windows)` | A crate `cargo hapto init` writes, with this checkout's crates, builds and passes its own tests, its page map matching its declarations, so a change to the crates cannot break the template unseen. |
 | `benchmarks` | On a pull request, no benchmark's instruction count grew more than 2 % against the base (see [Benchmarks](#benchmarks)). |
 | `core builds alone`: No window, WebView or host dependency | No core crate or `hapto-bridge` links a window, WebView, UI toolkit or plugin-format crate, and no crate depends on one of its own layer or above (see [Repository checks](#repository-checks)). |
 | `core builds alone`: The Rust reader's tests | `cargo xtask scan`, `defs` and `wrap` read comments, string literals, `fn` names and item definitions as the language does (see [Repository checks](#repository-checks)). |
