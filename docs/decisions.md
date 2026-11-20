@@ -3108,12 +3108,13 @@ lockfile pins the crates it builds.
   server, it builds the page into the app instead. It runs a numbered copy of
   the build, since on Windows a running executable cannot be replaced, clearing
   at start the copies a session ended by Ctrl+C left, and watches each member's
-  `src`, manifest and build script, and the workspace's own manifest, lockfile
-  and Cargo configuration, each file by its path and time, but for an editor's
+  `src`, manifest and build script, and the workspace's own manifest and Cargo
+  configuration, not its lockfile, which a build writes, each file by its path
+  and time, but for an editor's
   own swap, backup, autosave and safe-write files. A change rebuilds while the
   app plays on; a build that writes a new binary, as Cargo's messages say,
   closes the app's stdin, which asks it to quit keeping its saved block, and
-  starts the new copy. The app's exit code 3 asks to be started again at once,
+  starts the new copy. The app's exit code 75 asks to be started again at once,
   and a close, exit code 0, ends the command and the dev server with it, during
   a build too. Any other exit is a crash: the command says so, goes on watching,
   and starts the app again after the next build that succeeds. `--host` builds
@@ -3196,9 +3197,14 @@ against C++.
   configuration, at 32-bit floats and blocks of up to 1024 frames, and plays
   into every input what `--signal` asks for: silence by default, so nothing
   sounds until its author asks, or a 440 Hz sine at -24 dBFS, or white noise at
-  -24 dBFS. A plugin with one output plays it on every channel. A device that
-  stops playing on its own, unplugged say, is named in a line and in the
-  window's title. It ticks the plugin from the window's event loop every 16 ms.
+  -24 dBFS. A plugin with one output plays it on every channel. A device has
+  stopped playing on its own once it reported an error and then played no
+  block for a second: it is named in a line and in the window's title. An
+  error alone does not say so, since cpal reports a changed default output and
+  plays on; that is said in a line and the app goes on. It ticks the plugin
+  every 16 ms from the window's event loop, woken by a thread of its own, since
+  the loop's deadline is not served while a title bar is held or a window menu
+  is open.
   The saved block is kept in a session folder, the plugin's own below the user's
   local application data, or under `cargo hapto dev` the one `--dev` names,
   where it is also kept each second it changed and the app quits, keeping it,
@@ -3306,7 +3312,7 @@ hosts, in process, linked into the app.
   same whatever the cut, at most a block late. The standalone app cuts as
   the device asks, at 1,024 frames.
 - **A switch of format** keeps the saved block and the format in the
-  session, then ends the app with exit code 3, which `cargo hapto dev` takes
+  session, then ends the app with exit code 75, which `cargo hapto dev` takes
   to start it again; run on its own, the app starts itself again. A test
   host's audio side borrows the host and the device's callback owns that
   side, so each run makes its test host once and keeps it for the run.

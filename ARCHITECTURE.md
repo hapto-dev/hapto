@@ -340,4 +340,4 @@ with `cargo doc -p hapto-host --features vst3,cabi,test-host
 [versions]: docs/decisions.md#d84-the-saved-blocks-two-versions
 [vst3]: docs/decisions.md#d59-the-shape-of-the-vst3-exporter
 [webview]: docs/decisions.md#d16-where-the-webview-pieces-live
-[standalone]: docs/decisions.md#d109-the-standalone-exporter-and-app
+[standalone]: docs/decisions.md#d110-the-standalone-exporter-and-app

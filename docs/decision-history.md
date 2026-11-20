@@ -1105,6 +1105,13 @@ parser of the command's own, whose help was written by hand beside each
 command's flags. A flag given twice, which that parser took, is refused, as
 Cargo refuses its own.
 
+On 2026-11-19, from the pull request's review: the app asks to be started
+again with exit code 75, not 3, which the C runtime's `abort` can exit with;
+the lockfile left the watched files, since the first build of a new crate
+writes it and so built twice; and a rewrite of a generated file leaves one
+that already holds the text, since the map written before each build moved
+its time and rebuilt a crate whose build script watches `page`.
+
 ### D110. The standalone exporter and app
 
 [The decision](decisions.md#d110-the-standalone-exporter-and-app)
@@ -1128,6 +1135,14 @@ The branch's second audit found the editor's drop, the plugin's own drop and
 the editor's catching up after its open running outside any guard, which the
 VST3 exporter guards each of; they are guarded now, so a panic in any of them
 is a fault and the app goes on.
+
+On 2026-11-19, from the pull request's review, each seen in a run on
+Windows: the app took any error cpal reported for the device's end and
+dropped a stream that still played, as after a change of the system's default
+output, and made the error's text beside the blocks; and the tick stopped for
+as long as a title bar was held or the window's menu was open. A device now
+counts as stopped only once no block follows the error for a second, and a
+thread wakes the loop for each tick.
 
 ### D111. The dev host
 

@@ -1247,10 +1247,10 @@ move its line here; when a decision gains code, add one.
 - `crates/host/src/engine/editor.rs`: `EditorSlot::takes_scale`, `EditorSlot::set_scale`
 - test `crates/host/src/engine/editor/tests.rs`: `a_scale_that_is_no_positive_number_is_refused_by_the_slot_itself`
 - `crates/standalone/src/lib.rs`: module, `main`
-- `crates/standalone/src/app.rs`: `run`, `load_saved`, `App`, `App::check_audio`, `minimized`, `EditorShown`, `title`, `TICK`, `KEEP`, `quit_when_stdin_closes`
+- `crates/standalone/src/app.rs`: `run`, `load_saved`, `App`, `App::check_audio`, `minimized`, `EditorShown`, `title`, `TICK`, `KEEP`, `quit_when_stdin_closes`, `tick_from_a_thread`, `Wake`, `App::periodic`
 - `crates/standalone/src/block.rs`: `Player`, `Player::play`, `Player::of_app`, `Render`
 - `crates/standalone/src/app.rs`: `BLOCK`
-- `crates/standalone/src/device.rs`: `Output::system_default`, `Output::start`, `Playing`, `Playing::ended`
+- `crates/standalone/src/device.rs`: `Output::system_default`, `Output::start`, `Playing`, `Playing::ended`, `stopped`, `STALLED`
 - `crates/standalone/src/session.rs`: module, `Session::open`, `Session::saved_block`, `Session::hold`, `Session::keep`, `Kept`, `write_whole`
 - `crates/standalone/src/signal.rs`: `Signal`, `Generator::fill`, `LEVEL`
 - `examples/gain/src/bin/standalone.rs`: `main`
@@ -1305,7 +1305,7 @@ move its line here; when a decision gains code, add one.
 - test `crates/standalone/src/dev_host/activity/tests.rs`: `entries_are_stamped_from_the_start_and_numbered_in_order`, `the_log_keeps_the_latest_entries`
 - test `crates/standalone/src/dev_host/saved/tests.rs`: `a_session_with_no_block_loads_nothing`, `a_block_of_the_plugin_s_own_version_loads_as_it_is`, `an_older_block_is_upgraded_and_says_from_which_version`, `a_refused_block_is_held_as_it_was`, `a_block_that_could_not_be_read_is_held`
 - test `crates/standalone/src/dev_host/learned/tests.rs`: `each_mapping_reaches_the_parameter_its_key_names`, `a_block_with_no_mappings_learned_nothing`, `a_mapping_with_a_group_past_any_number_is_passed_over`
-- test `crates/standalone/src/dev_host/format/tests.rs`: `an_edit_carries_its_parameter_and_its_value`, `a_restart_names_the_flags_it_knows_and_shows_the_rest_in_hex`
+- test `crates/standalone/src/dev_host/format/tests.rs`: `an_edit_carries_its_parameter_and_its_value`, `a_dirty_call_says_whether_the_state_changed`, `a_restart_names_the_flags_it_knows_and_shows_the_rest_in_hex`
 - test `crates/cli/src/dev/tests.rs`: `the_dev_host_is_the_same_binary_with_its_feature_and_flag`
 
 ## Parameters
