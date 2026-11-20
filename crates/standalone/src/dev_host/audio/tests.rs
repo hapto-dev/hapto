@@ -1,12 +1,15 @@
 //! In each format, a start the plugin refuses brings back the settings that
 //! last ran, so the settings a session keeps are always ones that ran, and
 //! kept settings the plugin refuses at the first start fall back to the
-//! device's own.
+//! device's own. A device error the device plays on after is logged, and
+//! any other opens the default output again and starts the plugin there.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::time::{Duration, Instant};
 
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, bail};
+use cpal::ErrorKind;
 use hapto_host::{
     AuCodes, Block, Category, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
 };
@@ -16,7 +19,7 @@ use super::{Audio, Device};
 use crate::block::{Player, Render};
 use crate::dev_host::format::Format;
 use crate::dev_host::hosted::host;
-use crate::device::Report;
+use crate::device::{DeviceError, SETTLE};
 use crate::settings::Settings;
 use crate::signal::Signal;
 
@@ -52,8 +55,12 @@ impl Device for Silent {
         Ok(())
     }
 
-    fn poll((): &mut ()) -> Report {
-        Report::Quiet
+    fn error((): &mut ()) -> Option<DeviceError> {
+        None
+    }
+
+    fn reopen(&self) -> Result<Silent> {
+        Ok(Silent::default())
     }
 }
 
@@ -83,35 +90,65 @@ impl Device for Broken {
         Err(anyhow!("the device is in use by another app"))
     }
 
-    fn poll((): &mut ()) -> Report {
-        Report::Quiet
+    fn error((): &mut ()) -> Option<DeviceError> {
+        None
+    }
+
+    fn reopen(&self) -> Result<Broken> {
+        Ok(Broken)
     }
 }
 
-/// A device at 48 kHz whose stream a test can end, as unplugging it does.
-#[derive(Default)]
-struct Unpluggable {
-    stream: RefCell<Option<Rc<RefCell<Option<String>>>>>,
+/// A device whose stream a test can have report an error, as a change of
+/// the system's default output does. It opens again as a fresh copy of
+/// itself, numbered one on, at `next_rate`, unless it is told none is left.
+struct Changing {
+    number: u32,
+    rate: u32,
+    /// The rate the next copy plays at.
+    next_rate: Cell<u32>,
+    /// Whether no default output is left to open.
+    none_left: Cell<bool>,
+    stream: RefCell<Option<Rc<RefCell<Option<DeviceError>>>>>,
 }
 
-impl Unpluggable {
-    /// Ends the stream playing now, for `why`.
-    fn unplug(&self, why: &str) {
+impl Default for Changing {
+    fn default() -> Self {
+        Changing::numbered(1, 48_000)
+    }
+}
+
+impl Changing {
+    fn numbered(number: u32, rate: u32) -> Changing {
+        Changing {
+            number,
+            rate,
+            next_rate: Cell::new(rate),
+            none_left: Cell::new(false),
+            stream: RefCell::new(None),
+        }
+    }
+
+    /// Has the stream playing now report an error of `kind`.
+    fn report(&self, kind: ErrorKind) {
         if let Some(stream) = &*self.stream.borrow() {
-            *stream.borrow_mut() = Some(why.to_owned());
+            *stream.borrow_mut() = Some(DeviceError {
+                kind,
+                text: format!("{kind:?}"),
+            });
         }
     }
 }
 
-impl Device for Unpluggable {
-    type Stream = Rc<RefCell<Option<String>>>;
+impl Device for Changing {
+    type Stream = Rc<RefCell<Option<DeviceError>>>;
 
     fn name(&self) -> String {
-        "Unpluggable".to_owned()
+        format!("Device {}", self.number)
     }
 
     fn sample_rate(&self) -> u32 {
-        48_000
+        self.rate
     }
 
     fn channels(&self) -> usize {
@@ -119,7 +156,7 @@ impl Device for Unpluggable {
     }
 
     fn rates(&self) -> Vec<u32> {
-        vec![48_000]
+        vec![self.rate]
     }
 
     fn start(&self, _rate: u32, _player: Player<Box<dyn Render>>) -> Result<Self::Stream> {
@@ -128,9 +165,15 @@ impl Device for Unpluggable {
         Ok(stream)
     }
 
-    fn poll(stream: &mut Self::Stream) -> Report {
-        let why = stream.borrow().clone();
-        why.map_or(Report::Quiet, Report::Stopped)
+    fn error(stream: &mut Self::Stream) -> Option<DeviceError> {
+        stream.borrow_mut().take()
+    }
+
+    fn reopen(&self) -> Result<Changing> {
+        if self.none_left.get() {
+            bail!("there is no audio output device");
+        }
+        Ok(Changing::numbered(self.number + 1, self.next_rate.get()))
     }
 }
 
@@ -301,32 +344,92 @@ fn a_device_that_does_not_start_leaves_the_plugin_stopped() {
     }
 }
 
+/// Whether any of `events` holds `text`.
+fn logged(events: &[String], text: &str) -> bool {
+    events.iter().any(|event| event.contains(text))
+}
+
 #[test]
-fn a_stream_that_ends_on_its_own_stops_processing_and_says_why() {
+fn an_error_the_device_plays_on_after_is_only_logged() {
     for format in Format::ALL {
         let hosted = host::<Watched>(format);
-        let mut audio = Audio::with(
-            Unpluggable::default(),
-            Layout::STEREO,
-            Signal::Silence,
-            None,
-        );
+        let mut audio = Audio::with(Changing::default(), Layout::STEREO, Signal::Silence, None);
         audio.start_first(&*hosted);
-        assert_eq!(audio.running(), Some(OWN), "{format:?}");
-        audio.check(&*hosted);
-        assert_eq!(audio.running(), Some(OWN), "{format:?}: still playing");
-        audio.output().unplug("the device was unplugged");
-        audio.check(&*hosted);
+        let _started = audio.events();
+        for kind in [ErrorKind::Xrun, ErrorKind::RealtimeDenied] {
+            audio.output().report(kind);
+            audio.check(&*hosted, Instant::now());
+            assert_eq!(audio.running(), Some(OWN), "{format:?}: plays on");
+            assert!(ACTIVE.get(), "{format:?}: still active");
+            assert_eq!(audio.shown().device, "Device 1", "{format:?}");
+            let events = audio.events();
+            assert!(logged(&events, "plays on"), "{format:?}: {events:?}");
+        }
+    }
+}
+
+#[test]
+fn a_new_default_output_reopens_and_reactivates_the_plugin_there() {
+    for format in Format::ALL {
+        let hosted = host::<Watched>(format);
+        let mut audio = Audio::with(Changing::default(), Layout::STEREO, Signal::Silence, None);
+        audio.start_first(&*hosted);
+        let _started = audio.events();
+        audio.output().next_rate.set(44_100);
+        audio.output().report(ErrorKind::StreamInvalidated);
+        audio.check(&*hosted, Instant::now());
+        let at_its_own = Settings {
+            rate: 44_100,
+            ..OWN
+        };
+        assert_eq!(audio.running(), Some(at_its_own), "{format:?}: its rate");
+        assert!(ACTIVE.get(), "{format:?}: active again");
+        assert_eq!(audio.shown().device, "Device 2", "{format:?}");
+        let note = audio.shown().note.map(str::to_owned).unwrap_or_default();
+        assert!(note.contains("Device 2"), "{format:?}: {note}");
+        let events = audio.events();
+        assert!(logged(&events, "now Device 2"), "{format:?}: {events:?}");
+        assert!(logged(&events, "activated at"), "{format:?}: {events:?}");
+    }
+}
+
+#[test]
+fn a_default_output_that_does_not_open_again_stops_processing_with_the_note() {
+    for format in Format::ALL {
+        let hosted = host::<Watched>(format);
+        let mut audio = Audio::with(Changing::default(), Layout::STEREO, Signal::Silence, None);
+        audio.start_first(&*hosted);
+        audio.output().none_left.set(true);
+        audio.output().report(ErrorKind::DeviceNotAvailable);
+        audio.check(&*hosted, Instant::now());
         assert_eq!(audio.running(), None, "{format:?}: stopped");
         assert!(!ACTIVE.get(), "{format:?}: deactivated");
         let note = audio.shown().note.map(str::to_owned).unwrap_or_default();
-        assert!(note.contains("unplugged"), "{format:?}: {note}");
         assert!(
-            audio
-                .events()
-                .iter()
-                .any(|event| event.contains("unplugged")),
-            "{format:?}: in the log"
+            note.contains("no audio output device"),
+            "{format:?}: {note}"
         );
+        assert!(note.contains("processing is stopped"), "{format:?}: {note}");
+        assert!(logged(&audio.events(), "did not open again"), "{format:?}");
+    }
+}
+
+#[test]
+fn a_device_that_fails_again_at_once_is_not_opened_again() {
+    for format in Format::ALL {
+        let hosted = host::<Watched>(format);
+        let mut audio = Audio::with(Changing::default(), Layout::STEREO, Signal::Silence, None);
+        audio.start_first(&*hosted);
+        let start = Instant::now();
+        audio.output().report(ErrorKind::StreamInvalidated);
+        audio.check(&*hosted, start);
+        assert_eq!(audio.shown().device, "Device 2", "{format:?}");
+        audio.output().report(ErrorKind::StreamInvalidated);
+        audio.check(&*hosted, start + SETTLE - Duration::from_millis(1));
+        assert_eq!(audio.running(), None, "{format:?}: stopped");
+        assert!(!ACTIVE.get(), "{format:?}: deactivated");
+        assert_eq!(audio.shown().device, "Device 2", "{format:?}: not opened");
+        let note = audio.shown().note.map(str::to_owned).unwrap_or_default();
+        assert!(note.contains("within a second"), "{format:?}: {note}");
     }
 }

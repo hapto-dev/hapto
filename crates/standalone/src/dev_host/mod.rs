@@ -19,8 +19,9 @@
 //! command to, and otherwise by starting itself.
 //!
 //! Open: the plugin is linked in, so neither the module's loading nor its
-//! factory is the one a host meets; and the instance is never released, so
-//! a run's teardown is not the one a host meets either.
+//! factory is the one a host meets; and the instance is stopped and
+//! deactivated at the close but never released, so a run's teardown is not
+//! the one a host meets either.
 
 mod activity;
 mod audio;
@@ -46,7 +47,8 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
 use crate::app::{
-    EditorShown, KEEP, TICK, Wake, first_layout, quit_when_stdin_closes, tick_from_a_thread,
+    EditorShown, KEEP, TICK, Wake, first_layout, quit_when_stdin_closes, silence_note,
+    tick_from_a_thread,
 };
 use crate::options::Options;
 use crate::session::{RELAUNCH, Session};
@@ -56,7 +58,7 @@ pub use format::Format;
 pub(crate) use hosted::{Hosted, host};
 use message::{About, BarShown, Message, Shown};
 use panel::Panel;
-use saved::FirstLoad;
+use saved::{FirstLoad, LastSave};
 
 /// How often the bar and the settings window show what changed.
 const SHOW: Duration = Duration::from_millis(100);
@@ -87,10 +89,14 @@ pub(crate) fn run<P: Plugin>(options: &Options) -> Result<ExitCode> {
     if first_load.holds() {
         session.hold();
         eprintln!(
-            "{}: {}; it is kept for the next run",
+            "{}: {}; {}",
             P::INFO.name,
-            first_load.note()
+            first_load.note(),
+            session.held_note()
         );
+    }
+    if let Some(line) = silence_note(P::INFO.name, first_layout::<P>(), options.signal) {
+        eprintln!("{line}");
     }
     let kept = session.audio();
     let mut audio = Audio::open(first_layout::<P>(), options.signal, kept.as_deref())?;
@@ -129,6 +135,7 @@ pub(crate) fn run<P: Plugin>(options: &Options) -> Result<ExitCode> {
         next_keep: now + KEEP,
         started: since_1970(SystemTime::now()),
         first_load,
+        last_save: LastSave::default(),
         activity,
         shown: Told::default(),
         switch: None,
@@ -221,6 +228,7 @@ struct DevHost {
     /// When the run started, in milliseconds since 1970.
     started: u64,
     first_load: FirstLoad,
+    last_save: LastSave,
     activity: Activity,
     shown: Told,
     /// The format to start again in.
@@ -229,21 +237,22 @@ struct DevHost {
 }
 
 impl DevHost {
-    /// Ticks the plugin, shows what the host sees and keeps the saved block,
-    /// each when it is due, and ends the loop for a switch of format.
+    /// Ticks the plugin, keeps the saved block and shows what the host sees,
+    /// each when it is due, and ends the loop for a switch of format. The
+    /// block is kept before it is shown, so the two take the same save.
     fn periodic(&mut self, event_loop: &ActiveEventLoop) {
         let now = Instant::now();
         if now >= self.next_tick {
             self.tick(event_loop);
             self.next_tick = now + TICK;
         }
-        if now >= self.next_show {
-            self.show();
-            self.next_show = now + SHOW;
-        }
         if self.dev && now >= self.next_keep {
-            self.keep();
+            self.keep(now);
             self.next_keep = now + KEEP;
+        }
+        if now >= self.next_show {
+            self.show(now);
+            self.next_show = now + SHOW;
         }
         if self.switch.is_some() {
             event_loop.exit();
@@ -262,7 +271,7 @@ impl DevHost {
         for message in messages {
             self.handle(message, event_loop);
         }
-        self.audio.check(&*self.hosted);
+        self.audio.check(&*self.hosted, now);
         for event in self.audio.events() {
             self.activity.note(event, now);
         }
@@ -301,7 +310,7 @@ impl DevHost {
         }
     }
 
-    fn show(&mut self) {
+    fn show(&mut self, now: Instant) {
         let faults = self.hosted.faults();
         if let Some(bar) = &self.bar {
             let shown = BarShown {
@@ -323,7 +332,14 @@ impl DevHost {
         }
         let opened = settings.page == PageState::Ready;
         let told = &mut self.shown;
-        let saved = self.hosted.save();
+        // A page just opened takes a fresh block, and else the last one
+        // saved, which is less than a second old.
+        let hosted = &*self.hosted;
+        let saved = if opened {
+            self.last_save.fresh(now, || hosted.save())
+        } else {
+            self.last_save.recent(now, || hosted.save())
+        };
         let changed = saved.is_some() && (opened || saved != told.saved);
         if changed {
             let block = saved.as_deref().unwrap_or_default();
@@ -368,10 +384,11 @@ impl DevHost {
         }
     }
 
-    /// Keeps the plugin's saved block for the next run, unless the session
-    /// holds its own.
-    fn keep(&mut self) {
-        let Some(block) = self.hosted.save() else {
+    /// Keeps the plugin's saved block for the next run, saved at `now`,
+    /// unless the session holds its own.
+    fn keep(&mut self, now: Instant) {
+        let hosted = &*self.hosted;
+        let Some(block) = self.last_save.fresh(now, || hosted.save()) else {
             return;
         };
         if let Err(error) = self.session.keep(block) {
@@ -380,9 +397,10 @@ impl DevHost {
     }
 
     /// Keeps the saved block and the format to start in, and tears down in
-    /// order.
+    /// order: once the view is removed, the plugin is stopped and
+    /// deactivated, as a host does before it releases one.
     fn finish(&mut self) {
-        self.keep();
+        self.keep(Instant::now());
         if let Some(format) = self.switch
             && let Err(error) = self.session.set_format(format.name())
         {
@@ -393,6 +411,7 @@ impl DevHost {
         if let Some(view) = self.view.take() {
             let _removed = view.remove();
         }
+        self.hosted.stop();
         drop(self.frame.take());
         drop(self.bar.take());
         drop(self.window.take());

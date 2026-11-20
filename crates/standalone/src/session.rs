@@ -90,7 +90,7 @@ impl Session {
     /// Returns why a block that is there could not be read. The session then
     /// [holds](Self::hold) it.
     pub(crate) fn saved_block(&mut self) -> Result<Option<Vec<u8>>> {
-        let path = self.dir.join(SAVED);
+        let path = self.saved_path();
         match fs::read(&path) {
             Ok(block) => {
                 self.kept = Kept::Block(block.clone());
@@ -102,6 +102,24 @@ impl Session {
                 Err(anyhow::Error::new(error).context(path.display().to_string()))
             }
         }
+    }
+
+    /// Returns the path of the session's saved block, there or not.
+    pub(crate) fn saved_path(&self) -> PathBuf {
+        self.dir.join(SAVED)
+    }
+
+    /// Returns what a line about a [held](Self::hold) block ends with: that
+    /// nothing is saved over it, where it is, and how to start from the
+    /// plugin's defaults instead, since otherwise none of the plugin's state
+    /// is kept, run after run.
+    #[cfg(windows)]
+    pub(crate) fn held_note(&self) -> String {
+        format!(
+            "it is kept, and nothing is saved over it; delete {} to start from the plugin's \
+             defaults",
+            self.saved_path().display()
+        )
     }
 
     /// Keeps the session's saved block as it is from now on, for a plugin

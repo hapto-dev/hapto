@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, Result};
 use hapto_host::standalone::{Standalone, StandaloneEditor};
-use hapto_host::{Plugin, Size};
+use hapto_host::{Layout, Plugin, Size};
 use winit::application::ApplicationHandler;
 use winit::dpi::{LogicalSize, PhysicalSize};
 use winit::event::WindowEvent;
@@ -20,10 +20,11 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy}
 use winit::window::{Window, WindowId};
 
 use crate::block::{Plan, Player};
-use crate::device::{Output, Playing, Report};
+use crate::device::{Answer, Output, Playing, Reopens, answer};
 use crate::options::Options;
 use crate::session::Session;
 use crate::settings::Blocks;
+use crate::signal::Signal;
 
 /// The most frames a block holds in the standalone app, which the plugin is
 /// activated for: the device's buffers are cut at it.
@@ -70,27 +71,26 @@ pub(crate) fn run<P: Plugin>(options: &Options) -> Result<ExitCode> {
     tick_from_a_thread(event_loop.create_proxy());
     let mut session = Session::open(P::INFO.id, options.dev.as_deref())?;
     let plugin = Standalone::<P>::new();
-    load_saved(&mut session, &plugin);
-    let output = Output::system_default()?;
-    let (rate, layout) = (output.sample_rate(), first_layout::<P>());
-    plugin
-        .activate(f64::from(rate), BLOCK, layout)
-        .context(P::INFO.name)?;
-    let player = Player::of_app(
-        &plugin,
-        layout,
-        output.channels(),
-        f64::from(rate),
-        BLOCK,
-        Plan::new(Blocks::Device, options.signal),
-    );
-    let stream = output.start(rate, player)?;
+    if let Some(line) = load_saved(&mut session, &plugin) {
+        eprintln!("{line}");
+    }
+    if let Some(line) = silence_note(P::INFO.name, first_layout::<P>(), options.signal) {
+        eprintln!("{line}");
+    }
+    let (stream, _device) = start_audio(&plugin, options.signal)?;
     let mut app = App {
         stream: Some(stream),
         editor: None,
         window: None,
         failed: None,
         dev: options.dev.is_some(),
+        signal: options.signal,
+        reopens: Reopens::default(),
+        shows: TitleShows {
+            editor: EditorShown::None,
+            audio_stopped: false,
+            faults: 0,
+        },
         next_tick: Instant::now(),
         next_keep: Instant::now() + KEEP,
         session,
@@ -105,30 +105,64 @@ pub(crate) fn run<P: Plugin>(options: &Options) -> Result<ExitCode> {
     }
 }
 
+/// Opens the system's default output, activates `plugin` at its rate in its
+/// first layout, and starts the output playing it, with `signal` on its
+/// inputs. Returns the stream, and the device's name and rate in words.
+///
+/// # Errors
+///
+/// Returns why it did not start: no device, an activation refused, or a
+/// device that did not start.
+fn start_audio<P: Plugin>(plugin: &Standalone<P>, signal: Signal) -> Result<(Playing, String)> {
+    let output = Output::system_default()?;
+    let (rate, layout) = (output.sample_rate(), first_layout::<P>());
+    plugin
+        .activate(f64::from(rate), BLOCK, layout)
+        .context(P::INFO.name)?;
+    let player = Player::of_app(
+        plugin,
+        layout,
+        output.channels(),
+        f64::from(rate),
+        BLOCK,
+        Plan::new(Blocks::Device, signal),
+    );
+    let stream = output.start(rate, player)?;
+    Ok((stream, format!("{} at {rate} Hz", output.name())))
+}
+
+/// Returns the line that tells the author of the plugin `name`, laid out as
+/// `layout`, that its inputs hear silence, when `signal` is silence: the
+/// first run of an effect is silent otherwise, with no word of why. An
+/// instrument, with no inputs, gets none.
+pub(crate) fn silence_note(name: &str, layout: Layout, signal: Signal) -> Option<String> {
+    (signal == Signal::Silence && layout.inputs > 0)
+        .then(|| format!("{name}: its inputs hear silence; --signal sine plays a tone into them"))
+}
+
 /// Loads the session's saved block into `plugin`. A block the plugin
 /// refuses, or one that cannot be read, is held: the session keeps it as it
-/// is, rather than the plugin's defaults, for a build that loads it.
-fn load_saved<P: Plugin>(session: &mut Session, plugin: &Standalone<P>) {
+/// is, rather than the plugin's defaults, for a build that loads it. Returns
+/// the line that says so, and where the block is.
+fn load_saved<P: Plugin>(session: &mut Session, plugin: &Standalone<P>) -> Option<String> {
+    let name = P::INFO.name;
     match session.saved_block() {
-        Ok(None) => {}
+        Ok(None) => None,
         Ok(Some(block)) => {
-            if let Err(refused) = plugin.load(&block) {
-                session.hold();
-                let causes: String =
-                    std::iter::successors(refused.source(), |&cause| cause.source())
-                        .map(|cause| format!(": {cause}"))
-                        .collect();
-                eprintln!(
-                    "{}: the saved block did not load ({refused}{causes}); it is kept for the \
-                     next run",
-                    P::INFO.name
-                );
-            }
+            let refused = plugin.load(&block).err()?;
+            session.hold();
+            let causes: String = std::iter::successors(refused.source(), |&cause| cause.source())
+                .map(|cause| format!(": {cause}"))
+                .collect();
+            let held = session.held_note();
+            Some(format!(
+                "{name}: the saved block did not load ({refused}{causes}); {held}"
+            ))
         }
-        Err(error) => eprintln!(
-            "{}: the saved block could not be read ({error:#}); it is kept as it is",
-            P::INFO.name
-        ),
+        Err(error) => Some(format!(
+            "{name}: the saved block could not be read ({error:#}); {}",
+            session.held_note()
+        )),
     }
 }
 
@@ -143,12 +177,38 @@ pub(crate) enum EditorShown {
     Failed,
 }
 
-/// The title of the window the plugin `name` runs in, as it shows `editor`.
-pub(crate) fn title(name: &str, editor: EditorShown) -> String {
-    match editor {
-        EditorShown::Open => name.to_owned(),
-        EditorShown::None => format!("{name} (no editor)"),
-        EditorShown::Failed => format!("{name} (its editor did not open)"),
+/// What the window's title says beside the plugin's name.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct TitleShows {
+    /// What the window shows of the editor.
+    pub(crate) editor: EditorShown,
+    /// Whether the audio output stopped and did not open again.
+    pub(crate) audio_stopped: bool,
+    /// How many faults the plugin has had, each kind's first written to the
+    /// terminal.
+    pub(crate) faults: u64,
+}
+
+/// The title of the window the plugin `name` runs in, as `shows` says.
+pub(crate) fn title(name: &str, shows: TitleShows) -> String {
+    let mut notes = Vec::new();
+    match shows.editor {
+        EditorShown::Open => {}
+        EditorShown::None => notes.push("no editor".to_owned()),
+        EditorShown::Failed => notes.push("its editor did not open".to_owned()),
+    }
+    if shows.audio_stopped {
+        notes.push("audio stopped".to_owned());
+    }
+    match shows.faults {
+        0 => {}
+        1 => notes.push("1 fault, see the terminal".to_owned()),
+        faults => notes.push(format!("{faults} faults, see the terminal")),
+    }
+    if notes.is_empty() {
+        name.to_owned()
+    } else {
+        format!("{name} ({})", notes.join("; "))
     }
 }
 
@@ -160,12 +220,8 @@ pub(crate) fn minimized(size: PhysicalSize<u32>) -> bool {
 }
 
 /// The layout the app plays: the plugin's first.
-pub(crate) fn first_layout<P: Plugin>() -> hapto_host::Layout {
-    P::INFO
-        .layouts
-        .first()
-        .copied()
-        .unwrap_or(hapto_host::Layout::STEREO)
+pub(crate) fn first_layout<P: Plugin>() -> Layout {
+    P::INFO.layouts.first().copied().unwrap_or(Layout::STEREO)
 }
 
 /// Wakes the event loop to quit once stdin closes, as `cargo hapto dev` does
@@ -202,6 +258,10 @@ struct App<P: Plugin> {
     /// Why the app could not go on, once its loop ends.
     failed: Option<anyhow::Error>,
     dev: bool,
+    /// What plays into the plugin's inputs, kept for a reopened output.
+    signal: Signal,
+    reopens: Reopens,
+    shows: TitleShows,
     next_tick: Instant,
     next_keep: Instant,
     session: Session,
@@ -212,12 +272,12 @@ impl<P: Plugin> App<P> {
     fn open_window(&mut self, event_loop: &ActiveEventLoop) -> Result<()> {
         let editor = self.plugin.editor();
         let size = editor.as_ref().map_or(NO_EDITOR, StandaloneEditor::size);
-        let shown = match editor {
+        self.shows.editor = match editor {
             Some(_) => EditorShown::Open,
             None => EditorShown::None,
         };
         let attributes = Window::default_attributes()
-            .with_title(title(P::INFO.name, shown))
+            .with_title(title(P::INFO.name, self.shows))
             .with_inner_size(LogicalSize::new(size.width, size.height));
         let window = event_loop.create_window(attributes).context("the window")?;
         // An editor that did not open goes, so nothing takes it for an open
@@ -228,12 +288,22 @@ impl<P: Plugin> App<P> {
                 return true;
             };
             eprintln!("{}: {error}", P::INFO.name);
-            window.set_title(&title(P::INFO.name, EditorShown::Failed));
             false
         });
+        if editor.is_none() && self.shows.editor == EditorShown::Open {
+            self.shows.editor = EditorShown::Failed;
+        }
         self.editor = editor;
         self.window = Some(window);
+        self.retitle();
         Ok(())
+    }
+
+    /// Sets the window's title to what it shows now.
+    fn retitle(&self) {
+        if let Some(window) = &self.window {
+            window.set_title(&title(P::INFO.name, self.shows));
+        }
     }
 
     fn resized(&self, size: PhysicalSize<u32>) {
@@ -255,33 +325,74 @@ impl<P: Plugin> App<P> {
         }
     }
 
-    /// Polls the device. An error it plays on after is said in a line. One
-    /// that stopped playing on its own is said in a line and in the window's
-    /// title: the plugin stays as it is, its blocks over, until the app
-    /// starts again.
+    /// Reads the device's newest error. One it plays on after is said in a
+    /// line; any other [reopens](Self::reopen) the system's default output.
     fn check_audio(&mut self) {
+        let Some(error) = self.stream.as_mut().and_then(Playing::error) else {
+            return;
+        };
+        match answer(error.kind) {
+            Answer::PlaysOn => eprintln!(
+                "{}: the audio output reported an error and plays on: {}",
+                P::INFO.name,
+                error.text
+            ),
+            Answer::Reopen => self.reopen(&error.text),
+        }
+    }
+
+    /// Drops the stream, so its blocks end before the plugin is touched, and
+    /// starts the audio again on the system's default output, saying in a
+    /// line where it plays now. One that does not start, or a second error
+    /// within [`SETTLE`](crate::device::SETTLE) of the last reopen, stops
+    /// the audio: that is said in a line and in the window's title, and the
+    /// plugin stays as it is until the app starts again.
+    fn reopen(&mut self, why: &str) {
         let name = P::INFO.name;
-        match self.stream.as_mut().map_or(Report::Quiet, Playing::poll) {
-            Report::Quiet => {}
-            Report::PlaysOn(why) => {
-                eprintln!("{name}: the audio output reported an error and plays on: {why}");
+        drop(self.stream.take());
+        if !self.reopens.may(Instant::now()) {
+            eprintln!(
+                "{name}: the audio output stopped, after an error within a second of opening \
+                 it again: {why}"
+            );
+            self.audio_stopped();
+            return;
+        }
+        // As a host does for a new device: deactivate, then activate again.
+        self.plugin.deactivate();
+        match start_audio(&self.plugin, self.signal) {
+            Ok((stream, device)) => {
+                eprintln!("{name}: the audio output now plays on {device}, after an error: {why}");
+                self.stream = Some(stream);
             }
-            Report::Stopped(why) => {
-                eprintln!("{name}: the audio output stopped: {why}");
-                drop(self.stream.take());
-                if let Some(window) = &self.window {
-                    window.set_title(&format!("{name} (audio stopped)"));
-                }
+            Err(error) => {
+                eprintln!(
+                    "{name}: the audio output stopped: the default output did not open again \
+                     ({error:#}) after an error: {why}"
+                );
+                self.audio_stopped();
             }
         }
     }
 
-    /// Ticks the plugin and keeps the saved block, each when it is due.
+    fn audio_stopped(&mut self) {
+        self.shows.audio_stopped = true;
+        self.retitle();
+    }
+
+    /// Ticks the plugin, reads the device and the faults, and keeps the
+    /// saved block, each when it is due. A fault's line goes to the
+    /// terminal, and the title counts them.
     fn periodic(&mut self) {
         let now = Instant::now();
         if now >= self.next_tick {
             self.plugin.tick();
             self.check_audio();
+            let faults = self.plugin.faults();
+            if faults != self.shows.faults {
+                self.shows.faults = faults;
+                self.retitle();
+            }
             self.next_tick = now + TICK;
         }
         if self.dev && now >= self.next_keep {

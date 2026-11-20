@@ -9,11 +9,17 @@
 //! the audio thread at once, with no reactivation, as a host's own cut
 //! varies from block to block. Stopped, the plugin is deactivated and no
 //! block runs; a change of settings then waits for the start.
+//!
+//! An error from the device that it does not play on after, a new default
+//! output among them, opens the system's default output again, as a host
+//! follows a change of device: the plugin is stopped, then started on the
+//! new device.
 
 #[cfg(test)]
 mod tests;
 
 use std::sync::Arc;
+use std::time::Instant;
 
 use anyhow::Result;
 use hapto_host::Layout;
@@ -21,7 +27,7 @@ use hapto_host::Layout;
 use super::hosted::Hosted;
 use super::message::AudioShown;
 use crate::block::{Plan, Player, Render};
-use crate::device::{Output, Playing, Report};
+use crate::device::{Answer, DeviceError, Output, Playing, Reopens, answer};
 use crate::settings::{MAX_BLOCKS, Settings};
 use crate::signal::Signal;
 
@@ -45,9 +51,17 @@ pub(crate) trait Device {
     ///
     /// Returns why it did not start.
     fn start(&self, rate: u32, player: Player<Box<dyn Render>>) -> Result<Self::Stream>;
-    /// Polls `stream`: whether an error it reported was followed by blocks
-    /// or by none.
-    fn poll(stream: &mut Self::Stream) -> Report;
+    /// Returns the newest error `stream` reported since the last call.
+    fn error(stream: &mut Self::Stream) -> Option<DeviceError>;
+    /// Opens the system's default output again, which may be another
+    /// device now.
+    ///
+    /// # Errors
+    ///
+    /// Returns why there is none to play to.
+    fn reopen(&self) -> Result<Self>
+    where
+        Self: Sized;
 }
 
 impl Device for Output {
@@ -73,8 +87,12 @@ impl Device for Output {
         Output::start(self, rate, player)
     }
 
-    fn poll(stream: &mut Playing) -> Report {
-        stream.poll()
+    fn error(stream: &mut Playing) -> Option<DeviceError> {
+        stream.error()
+    }
+
+    fn reopen(&self) -> Result<Output> {
+        Output::system_default()
     }
 }
 
@@ -96,6 +114,7 @@ pub(crate) struct Audio<D: Device = Output> {
     note: Option<String>,
     /// What changed since the last look, for the Activity log.
     events: Vec<String>,
+    reopens: Reopens,
 }
 
 impl Audio {
@@ -129,6 +148,7 @@ impl<D: Device> Audio<D> {
             stream: None,
             note: None,
             events: Vec::new(),
+            reopens: Reopens::default(),
         }
     }
 
@@ -289,23 +309,68 @@ impl<D: Device> Audio<D> {
         self.note = Some(note);
     }
 
-    /// Polls the device's stream. An error it plays on after goes in the
-    /// log. One that stopped on its own stops processing, as a host stops:
-    /// the plugin is deactivated, and the note and the log say why.
-    /// Reactivating starts it again.
-    pub(crate) fn check(&mut self, hosted: &dyn Hosted) {
-        let why = match self.stream.as_mut().map_or(Report::Quiet, D::poll) {
-            Report::Quiet => return,
-            Report::PlaysOn(why) => {
-                let note = format!("the audio device reported an error and plays on: {why}");
-                self.events.push(note);
-                return;
-            }
-            Report::Stopped(why) => why,
+    /// Reads the device's newest error at `now`. One it plays on after goes
+    /// in the log; any other [reopens](Self::reopen) the system's default
+    /// output.
+    pub(crate) fn check(&mut self, hosted: &dyn Hosted, now: Instant) {
+        let Some(error) = self.stream.as_mut().and_then(D::error) else {
+            return;
         };
+        match answer(error.kind) {
+            Answer::PlaysOn => self.events.push(format!(
+                "the audio device reported an error and plays on: {}",
+                error.text
+            )),
+            Answer::Reopen => self.reopen(hosted, &error.text, now),
+        }
+    }
+
+    /// Stops processing, as a host stops for a change of device, and starts
+    /// it again on the system's default output, with the settings it has
+    /// where the device offers their rate, and else at the device's own.
+    /// A device that does not open, or a second error within
+    /// [`SETTLE`](crate::device::SETTLE) of the last reopen, leaves
+    /// processing stopped, and the note and the log say why.
+    fn reopen(&mut self, hosted: &dyn Hosted, why: &str, now: Instant) {
         self.silence();
         hosted.stop();
-        let note = format!("the audio device stopped: {why}: processing is stopped");
+        if !self.reopens.may(now) {
+            self.stopped(format!(
+                "processing is stopped: the audio device failed again within a second of \
+                 opening it, after an error: {why}"
+            ));
+            return;
+        }
+        let output = match self.output.reopen() {
+            Ok(output) => output,
+            Err(error) => {
+                self.stopped(format!(
+                    "processing is stopped: the default output did not open again ({error:#}) \
+                     after an error: {why}"
+                ));
+                return;
+            }
+        };
+        self.rates = output.rates();
+        self.device = output.name();
+        if !self.rates.contains(&self.settings.rate) {
+            self.settings.rate = output.sample_rate();
+        }
+        self.output = output;
+        let note = format!(
+            "the audio device is now {}, after an error: {why}",
+            self.device
+        );
+        self.events.push(note.clone());
+        self.note = Some(note);
+        self.start_first(hosted);
+        if self.is_processing() {
+            self.events.push(format!("activated at {}", self.shape()));
+        }
+    }
+
+    /// Says why processing is stopped, in the note and the log.
+    fn stopped(&mut self, note: String) {
         self.events.push(note.clone());
         self.note = Some(note);
     }

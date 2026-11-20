@@ -113,13 +113,77 @@ fn a_minimized_window_s_size_is_none_to_hand_an_editor() {
     assert!(!super::minimized(PhysicalSize::new(800, 600)));
 }
 
+/// What the title shows with the editor `editor` and nothing else to say.
+fn showing(editor: super::EditorShown) -> super::TitleShows {
+    super::TitleShows {
+        editor,
+        audio_stopped: false,
+        faults: 0,
+    }
+}
+
 #[test]
 fn the_window_s_title_says_what_it_shows_of_the_editor() {
     use super::{EditorShown, title};
-    assert_eq!(title("Gain", EditorShown::Open), "Gain");
-    assert_eq!(title("Gain", EditorShown::None), "Gain (no editor)");
+    assert_eq!(title("Gain", showing(EditorShown::Open)), "Gain");
     assert_eq!(
-        title("Gain", EditorShown::Failed),
+        title("Gain", showing(EditorShown::None)),
+        "Gain (no editor)"
+    );
+    assert_eq!(
+        title("Gain", showing(EditorShown::Failed)),
         "Gain (its editor did not open)"
     );
+}
+
+#[test]
+fn the_window_s_title_counts_the_faults_beside_what_else_it_says() {
+    use super::{EditorShown, TitleShows, title};
+    let one = TitleShows {
+        faults: 1,
+        ..showing(EditorShown::Open)
+    };
+    assert_eq!(title("Gain", one), "Gain (1 fault, see the terminal)");
+    let all = TitleShows {
+        editor: EditorShown::Failed,
+        audio_stopped: true,
+        faults: 3,
+    };
+    assert_eq!(
+        title("Gain", all),
+        "Gain (its editor did not open; audio stopped; 3 faults, see the terminal)"
+    );
+}
+
+#[test]
+fn an_effect_s_inputs_are_said_to_hear_silence_and_an_instrument_s_are_not() {
+    use super::silence_note;
+    use crate::signal::Signal;
+    let note = silence_note("Gain", Layout::STEREO, Signal::Silence).unwrap_or_default();
+    assert!(note.contains("--signal sine"), "{note}");
+    assert_eq!(silence_note("Gain", Layout::STEREO, Signal::Sine), None);
+    let instrument = Layout::new(0, 2);
+    assert_eq!(silence_note("Synth", instrument, Signal::Silence), None);
+}
+
+#[test]
+fn a_refused_block_s_line_says_where_it_is_and_how_to_start_afresh() {
+    let dir = session_with("where", b"not a block");
+    let mut session = Session::in_dir(dir.clone()).expect("opened");
+    let plugin = Standalone::<Quiet>::new();
+    let line = load_saved(&mut session, &plugin).unwrap_or_default();
+    let path = dir.join("saved.json").display().to_string();
+    assert!(line.contains(&format!("delete {path}")), "{line}");
+    assert!(line.contains("plugin's defaults"), "{line}");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_block_the_plugin_takes_says_nothing() {
+    let own = Standalone::<Quiet>::new().save();
+    let dir = session_with("quiet", &own);
+    let mut session = Session::in_dir(dir.clone()).expect("opened");
+    let plugin = Standalone::<Quiet>::new();
+    assert_eq!(load_saved(&mut session, &plugin), None);
+    let _ = std::fs::remove_dir_all(dir);
 }

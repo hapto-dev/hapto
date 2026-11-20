@@ -1,14 +1,18 @@
 //! The saved block a run starts with, and what the plugin made of it: the
 //! settings window's State tab shows it, and a block the plugin refused, or
 //! one that could not be read, is held as it was, for the next run to try,
-//! rather than replaced by the plugin's defaults.
+//! rather than replaced by the plugin's defaults. And the block as the
+//! plugin last saved it, which the session and the settings window share.
 
 #[cfg(test)]
 mod tests;
 
+use std::time::Instant;
+
 use anyhow::Result;
 
 use super::hosted::Hosted;
+use crate::app::KEEP;
 
 /// How the run's first load of the saved block went.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -99,4 +103,39 @@ fn plugin_version(block: &[u8]) -> Option<u64> {
             .and_then(serde_json::Value::as_u64)
             .unwrap_or(0),
     )
+}
+
+/// The plugin's saved block as it last saved it, and when, which keeping it
+/// in the session and showing it in the settings window share. So the
+/// plugin saves at most once a [`KEEP`], as a host saves once a project
+/// save: a save it faults on is counted once, not at every show.
+#[derive(Debug, Default)]
+pub(crate) struct LastSave {
+    taken: Option<(Instant, Option<Vec<u8>>)>,
+}
+
+impl LastSave {
+    /// Saves the block at `now` with `save`, and keeps it as the last.
+    pub(crate) fn fresh(
+        &mut self,
+        now: Instant,
+        save: impl FnOnce() -> Option<Vec<u8>>,
+    ) -> Option<Vec<u8>> {
+        let block = save();
+        self.taken = Some((now, block.clone()));
+        block
+    }
+
+    /// Returns the last block saved, when it was saved less than a
+    /// [`KEEP`] before `now`, and else a [fresh](Self::fresh) one.
+    pub(crate) fn recent(
+        &mut self,
+        now: Instant,
+        save: impl FnOnce() -> Option<Vec<u8>>,
+    ) -> Option<Vec<u8>> {
+        match &self.taken {
+            Some((at, block)) if now.saturating_duration_since(*at) < KEEP => block.clone(),
+            _ => self.fresh(now, save),
+        }
+    }
 }

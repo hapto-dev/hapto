@@ -1,8 +1,11 @@
 //! The run's first load says whether the plugin took the session's block,
 //! upgraded it or refused it, and a refused block is the one the session
-//! holds on to.
+//! holds on to; and the plugin saves its block at most once a second for
+//! the session and the settings window together.
 
+use std::cell::Cell;
 use std::error::Error;
+use std::time::Instant;
 
 use anyhow::anyhow;
 use hapto_host::{
@@ -11,7 +14,8 @@ use hapto_host::{
 use hapto_params::{Declarer, Params};
 use serde_json::{Map, Value as Json};
 
-use super::FirstLoad;
+use super::{FirstLoad, LastSave};
+use crate::app::KEEP;
 use crate::dev_host::format::Format;
 use crate::dev_host::hosted::host;
 
@@ -139,4 +143,20 @@ fn a_block_that_could_not_be_read_is_held() {
     };
     assert_eq!(load, unreadable);
     assert!(load.holds());
+}
+
+#[test]
+fn the_block_is_saved_at_most_once_a_keep_unless_asked_afresh() {
+    let saves = Cell::new(0_u8);
+    let save = || {
+        saves.set(saves.get() + 1);
+        Some(vec![saves.get()])
+    };
+    let (mut last, start) = (LastSave::default(), Instant::now());
+    assert_eq!(last.recent(start, save), Some(vec![1]), "none yet");
+    let soon = start + KEEP / 2;
+    assert_eq!(last.recent(soon, save), Some(vec![1]), "the last");
+    assert_eq!(last.fresh(soon, save), Some(vec![2]), "asked afresh");
+    assert_eq!(last.recent(soon + KEEP, save), Some(vec![3]), "a keep on");
+    assert_eq!(saves.get(), 3);
 }

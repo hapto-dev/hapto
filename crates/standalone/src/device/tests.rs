@@ -1,72 +1,46 @@
 use std::time::{Duration, Instant};
 
-use super::{Report, STALLED, Watch};
+use cpal::ErrorKind;
 
-/// A text for an error, for a watch that asks for one.
-fn text(why: &'static str) -> impl FnOnce() -> String {
-    move || why.to_owned()
+use super::{Answer, KINDS, Reopens, SETTLE, answer, kind_at, kind_index};
+
+#[test]
+fn each_kind_of_error_either_plays_on_or_opens_the_default_again() {
+    let answers = [
+        (ErrorKind::DeviceBusy, Answer::Reopen),
+        (ErrorKind::DeviceChanged, Answer::PlaysOn),
+        (ErrorKind::DeviceNotAvailable, Answer::Reopen),
+        (ErrorKind::HostUnavailable, Answer::Reopen),
+        (ErrorKind::InvalidInput, Answer::Reopen),
+        (ErrorKind::PermissionDenied, Answer::Reopen),
+        (ErrorKind::RealtimeDenied, Answer::PlaysOn),
+        (ErrorKind::ResourceExhausted, Answer::Reopen),
+        (ErrorKind::StreamInvalidated, Answer::Reopen),
+        (ErrorKind::UnsupportedConfig, Answer::Reopen),
+        (ErrorKind::UnsupportedOperation, Answer::Reopen),
+        (ErrorKind::Xrun, Answer::PlaysOn),
+        (ErrorKind::BackendError, Answer::Reopen),
+        (ErrorKind::Other, Answer::Reopen),
+    ];
+    for (kind, expected) in answers {
+        assert_eq!(answer(kind), expected, "{kind:?}");
+    }
+    assert_eq!(answers.len(), KINDS.len(), "every kind cpal names");
 }
 
 #[test]
-fn an_error_followed_by_blocks_plays_on_and_is_said_once() {
-    let (mut watch, start) = (Watch::default(), Instant::now());
-    assert_eq!(watch.look(start, 1, 10, text("changed")), Report::Quiet);
-    assert_eq!(
-        watch.look(start + STALLED, 1, 90, text("unasked")),
-        Report::PlaysOn("changed".to_owned())
-    );
-    assert_eq!(
-        watch.look(start + STALLED * 2, 1, 180, text("unasked")),
-        Report::Quiet
-    );
+fn each_kind_survives_the_atomic_and_an_unknown_place_reads_as_other() {
+    for kind in KINDS {
+        assert_eq!(kind_at(kind_index(kind)), kind, "{kind:?}");
+    }
+    assert_eq!(kind_at(u8::MAX), ErrorKind::Other);
 }
 
 #[test]
-fn an_error_followed_by_no_block_is_a_device_that_stopped() {
-    let (mut watch, start) = (Watch::default(), Instant::now());
-    assert_eq!(watch.look(start, 1, 10, text("gone")), Report::Quiet);
-    assert_eq!(
-        watch.look(start + STALLED, 1, 10, text("unasked")),
-        Report::Stopped("gone".to_owned())
-    );
-}
-
-#[test]
-fn an_error_is_not_judged_before_its_second_is_up() {
-    let (mut watch, start) = (Watch::default(), Instant::now());
-    let early = start + STALLED - Duration::from_millis(1);
-    assert_eq!(watch.look(start, 1, 10, text("gone")), Report::Quiet);
-    assert_eq!(watch.look(early, 1, 10, text("unasked")), Report::Quiet);
-}
-
-#[test]
-fn blocks_that_stop_with_no_error_say_nothing_however_long() {
-    let (mut watch, start) = (Watch::default(), Instant::now());
-    assert_eq!(watch.look(start, 0, 10, text("unasked")), Report::Quiet);
-    assert_eq!(
-        watch.look(start + STALLED * 60, 0, 10, text("unasked")),
-        Report::Quiet
-    );
-    // Nor after an error the device played on from: a pause is no stop.
-    assert_eq!(watch.look(start, 1, 10, text("changed")), Report::Quiet);
-    let played_on = watch.look(start + STALLED, 1, 90, text("unasked"));
-    assert_eq!(played_on, Report::PlaysOn("changed".to_owned()));
-    assert_eq!(
-        watch.look(start + STALLED * 60, 1, 90, text("unasked")),
-        Report::Quiet
-    );
-}
-
-#[test]
-fn a_later_error_is_judged_afresh_with_its_own_text() {
-    let (mut watch, start) = (Watch::default(), Instant::now());
-    assert_eq!(watch.look(start, 1, 10, text("changed")), Report::Quiet);
-    let played_on = watch.look(start + STALLED, 1, 90, text("unasked"));
-    assert_eq!(played_on, Report::PlaysOn("changed".to_owned()));
-    let later = start + STALLED * 30;
-    assert_eq!(watch.look(later, 2, 500, text("gone")), Report::Quiet);
-    assert_eq!(
-        watch.look(later + STALLED, 2, 500, text("unasked")),
-        Report::Stopped("gone".to_owned())
-    );
+fn the_default_is_opened_again_at_most_once_a_second() {
+    let (mut reopens, start) = (Reopens::default(), Instant::now());
+    assert!(reopens.may(start), "the first");
+    let early = start + SETTLE - Duration::from_millis(1);
+    assert!(!reopens.may(early), "a device that failed at once");
+    assert!(reopens.may(start + SETTLE), "a second later");
 }

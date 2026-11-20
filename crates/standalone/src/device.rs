@@ -3,11 +3,12 @@
 #[cfg(test)]
 mod tests;
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, Result, bail};
+use cpal::ErrorKind;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
 use crate::block::{Player, Render};
@@ -56,7 +57,6 @@ impl Output {
     }
 
     /// Returns the device's name, as the system shows it.
-    #[cfg(feature = "dev-host")]
     pub(crate) fn name(&self) -> String {
         self.device
             .description()
@@ -95,24 +95,22 @@ impl Output {
             ..self.config
         };
         let heard = Arc::new(Heard::default());
-        let (told, played) = (Arc::clone(&heard), Arc::clone(&heard));
+        let told = Arc::clone(&heard);
         let stream = self
             .device
             .build_output_stream(
                 config,
-                move |data: &mut [f32], _| {
-                    played.blocks.fetch_add(1, Ordering::Relaxed);
-                    player.play(data);
-                },
-                // cpal reports some errors and plays on, a changed or
-                // unplugged default output among them, so this may run
-                // beside the blocks: it never waits for the lock, and the
-                // error's text is made by whoever polls.
+                move |data: &mut [f32], _| player.play(data),
+                // On cpal's own thread, which may be the one that plays the
+                // blocks: it never waits for the lock, and the error's text
+                // is made by whoever reads it.
                 move |error| {
+                    let kind = kind_index(error.kind());
                     if let Ok(mut last) = told.last.try_lock() {
                         *last = Some(error);
                     }
-                    told.errors.fetch_add(1, Ordering::Relaxed);
+                    told.kind.store(kind, Ordering::Relaxed);
+                    told.errors.fetch_add(1, Ordering::Release);
                 },
                 None,
             )
@@ -121,104 +119,144 @@ impl Output {
         Ok(Playing {
             _stream: stream,
             heard,
-            watch: Watch::default(),
+            read: 0,
         })
     }
 }
 
-/// How long after an error a device is watched before it is said to play on
-/// or to have stopped.
-const STALLED: Duration = Duration::from_secs(1);
+/// What a device's error asks of the app.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Answer {
+    /// The device plays on: a glitch, a refused rise in the thread's
+    /// priority, or a change of route it followed itself.
+    PlaysOn,
+    /// The stream has ended, or plays to a device that is no longer the
+    /// default output: the default is opened again.
+    Reopen,
+}
 
-/// What cpal's callbacks tell the thread that polls. The counts are atomics.
-/// The error is behind a lock because cpal hands it over by value on its own
-/// thread and no atomic holds one; that thread only tries the lock, and the
-/// count says an error came even when its text was not kept.
+/// Returns what an error of `kind` asks of the app. On Windows every other
+/// error either ends cpal's thread or says the stream must be built again,
+/// since cpal never moves a stream to a new default output: it reports the
+/// change and goes on playing to the old one.
+pub(crate) fn answer(kind: ErrorKind) -> Answer {
+    match kind {
+        ErrorKind::Xrun | ErrorKind::RealtimeDenied | ErrorKind::DeviceChanged => Answer::PlaysOn,
+        _ => Answer::Reopen,
+    }
+}
+
+/// How long after the default output is opened again a second error that
+/// asks for it stops the audio instead, so a device that fails at once is
+/// not opened again at every tick.
+pub(crate) const SETTLE: Duration = Duration::from_secs(1);
+
+/// When the default output was last opened again after an error.
+#[derive(Debug, Default)]
+pub(crate) struct Reopens {
+    last: Option<Instant>,
+}
+
+impl Reopens {
+    /// Whether an error at `now` that asks for the default output may open
+    /// it again: not within [`SETTLE`] of the last time. One that may is
+    /// counted as made.
+    pub(crate) fn may(&mut self, now: Instant) -> bool {
+        if self
+            .last
+            .is_some_and(|last| now.duration_since(last) < SETTLE)
+        {
+            return false;
+        }
+        self.last = Some(now);
+        true
+    }
+}
+
+/// An error a device reported.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DeviceError {
+    /// What kind it is, which says what it asks of the app.
+    pub(crate) kind: ErrorKind,
+    /// Its text: cpal's own, or its kind's when cpal's was not kept.
+    pub(crate) text: String,
+}
+
+/// Every kind of error cpal names, so the error callback keeps one as its
+/// place here, in an atomic. A kind a later cpal adds reads as `Other`.
+const KINDS: [ErrorKind; 14] = [
+    ErrorKind::DeviceBusy,
+    ErrorKind::DeviceChanged,
+    ErrorKind::DeviceNotAvailable,
+    ErrorKind::HostUnavailable,
+    ErrorKind::InvalidInput,
+    ErrorKind::PermissionDenied,
+    ErrorKind::RealtimeDenied,
+    ErrorKind::ResourceExhausted,
+    ErrorKind::StreamInvalidated,
+    ErrorKind::UnsupportedConfig,
+    ErrorKind::UnsupportedOperation,
+    ErrorKind::Xrun,
+    ErrorKind::BackendError,
+    ErrorKind::Other,
+];
+
+/// Returns `kind`'s place in [`KINDS`], or past its end for a kind it does
+/// not hold.
+fn kind_index(kind: ErrorKind) -> u8 {
+    KINDS
+        .iter()
+        .position(|known| *known == kind)
+        .and_then(|place| u8::try_from(place).ok())
+        .unwrap_or(u8::MAX)
+}
+
+/// Returns the kind at `index` in [`KINDS`], `Other` past its end.
+fn kind_at(index: u8) -> ErrorKind {
+    KINDS
+        .get(usize::from(index))
+        .copied()
+        .unwrap_or(ErrorKind::Other)
+}
+
+/// What cpal's error callback tells the thread that reads it: how many
+/// errors came, and the newest one's kind, in atomics, so neither is ever
+/// lost. The error is behind a lock because cpal hands it over by value on
+/// its own thread and no atomic holds one; that thread only tries the lock,
+/// so its text may be lost, never its kind.
 #[derive(Default)]
 struct Heard {
-    blocks: AtomicU64,
     errors: AtomicU64,
+    kind: AtomicU8,
     last: Mutex<Option<cpal::Error>>,
-}
-
-/// What a poll of a playing device found.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Report {
-    /// Nothing to say.
-    Quiet,
-    /// It reported this error and played on for a second after.
-    PlaysOn(String),
-    /// It reported this error and played no block for a second after: it
-    /// stopped on its own.
-    Stopped(String),
-}
-
-/// Judges each error a device reports by what follows it. An error alone
-/// does not say the device stopped, since cpal reports a changed default
-/// output and plays on: the blocks of the next second say which it was.
-#[derive(Default)]
-struct Watch {
-    /// How many errors were reported at the last look.
-    errors: u64,
-    /// The error being judged: its text, the blocks played when it was
-    /// seen, and when that was.
-    judging: Option<(String, u64, Instant)>,
-}
-
-impl Watch {
-    /// Looks at the counts at `now`. A new error starts a second's watch,
-    /// with the text `why` makes; a watch that has run its second ends in
-    /// [`Report::PlaysOn`] if a block was played in it, and in
-    /// [`Report::Stopped`] if none was. Blocks that stop with no error
-    /// reported say nothing.
-    fn look(
-        &mut self,
-        now: Instant,
-        errors: u64,
-        blocks: u64,
-        why: impl FnOnce() -> String,
-    ) -> Report {
-        if errors != self.errors {
-            self.errors = errors;
-            self.judging = Some((why(), blocks, now));
-        }
-        let Some((why, seen, since)) = self.judging.take() else {
-            return Report::Quiet;
-        };
-        if now.duration_since(since) < STALLED {
-            self.judging = Some((why, seen, since));
-            Report::Quiet
-        } else if blocks == seen {
-            Report::Stopped(why)
-        } else {
-            Report::PlaysOn(why)
-        }
-    }
 }
 
 /// The device playing a player's blocks, until it drops.
 pub(crate) struct Playing {
     _stream: cpal::Stream,
     heard: Arc<Heard>,
-    watch: Watch,
+    /// How many errors had come at the last read.
+    read: u64,
 }
 
 impl Playing {
-    /// Polls the device: whether an error it reported was followed by a
-    /// second of blocks or by none.
-    pub(crate) fn poll(&mut self) -> Report {
+    /// Returns the newest error the device reported since the last call,
+    /// and clears it.
+    pub(crate) fn error(&mut self) -> Option<DeviceError> {
         let heard = &self.heard;
-        self.watch.look(
-            Instant::now(),
-            heard.errors.load(Ordering::Relaxed),
-            heard.blocks.load(Ordering::Relaxed),
-            || {
-                let last = heard.last.lock().ok().and_then(|mut last| last.take());
-                last.map_or_else(
-                    || "an error whose text was not kept".to_owned(),
-                    |error| error.to_string(),
-                )
-            },
-        )
+        // Pairs with the error callback's count, so the kind is at least the
+        // counted error's.
+        let errors = heard.errors.load(Ordering::Acquire);
+        if errors == self.read {
+            return None;
+        }
+        self.read = errors;
+        let kind = kind_at(heard.kind.load(Ordering::Relaxed));
+        let last = heard.last.lock().ok().and_then(|mut last| last.take());
+        // A text kept from an older error than the newest is not its text.
+        let text = last
+            .filter(|error| error.kind() == kind)
+            .map_or_else(|| kind.to_string(), |error| error.to_string());
+        Some(DeviceError { kind, text })
     }
 }
