@@ -378,6 +378,21 @@ word but for the brackets around the placeholders of its appendix. It has no
 `NOTICE` file.
 
 -------------------------------------------------------------------------------
+audio_thread_priority (Paul Adenot), version 0.35.1
+-------------------------------------------------------------------------------
+
+`cpal` raises the priority of the app's audio thread through the
+`audio_thread_priority` crate, version 0.35.1, unmodified. Its source is
+available from crates.io
+(https://crates.io/crates/audio_thread_priority/0.35.1) and from
+https://github.com/padenot/audio_thread_priority. Its notice, from Exhibit A
+of the licence its `LICENSE` file carries:
+
+  This Source Code Form is subject to the terms of the Mozilla Public
+  License, v. 2.0. If a copy of the MPL was not distributed with this
+  file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+-------------------------------------------------------------------------------
 winit (the winit project), version 0.30.13
 -------------------------------------------------------------------------------
 

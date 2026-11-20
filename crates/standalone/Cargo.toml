@@ -38,7 +38,7 @@ hapto-params = { workspace = true, optional = true }
 # The window and the audio device, on Windows alone for now: the page shows
 # there only, and elsewhere `main` says so and ends.
 [target.'cfg(windows)'.dependencies]
-cpal = "0.18.2"
+cpal = { version = "0.18.2", features = ["realtime"] }
 winit = { version = "0.30.13", default-features = false, features = ["rwh_06"] }
 # The dev host's bar and settings window: their pages, and the JSON they
 # speak.
