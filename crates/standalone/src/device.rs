@@ -1,6 +1,12 @@
 //! The audio device: the system's default output, through cpal.
 
+#[cfg(test)]
+mod tests;
+
+use std::cell::Cell;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
+use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, Result, bail};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -89,17 +95,23 @@ impl Output {
             sample_rate: rate,
             ..self.config
         };
-        let ended = Arc::new(OnceLock::new());
-        let told = Arc::clone(&ended);
+        let reported = Arc::new(OnceLock::new());
+        let blocks = Arc::new(AtomicU64::new(0));
+        let (told, played) = (Arc::clone(&reported), Arc::clone(&blocks));
         let stream = self
             .device
             .build_output_stream(
                 config,
-                move |data: &mut [f32], _| player.play(data),
-                // On Windows cpal's stream ends once it reports an error, so
-                // its blocks are over by then, and the text may be made here.
+                move |data: &mut [f32], _| {
+                    played.fetch_add(1, Ordering::Relaxed);
+                    player.play(data);
+                },
+                // cpal reports some errors and plays on, a change of the
+                // system's default output among them, so this may run beside
+                // the blocks: the error is kept as it is, and its text is
+                // made by whoever asks.
                 move |error| {
-                    let _first = told.set(error.to_string());
+                    let _first = told.set(error);
                 },
                 None,
             )
@@ -107,22 +119,58 @@ impl Output {
         stream.play().context("the audio output device")?;
         Ok(Playing {
             _stream: stream,
-            ended,
+            reported,
+            blocks,
+            last: Cell::new((0, Instant::now())),
+            said: Cell::new(false),
         })
     }
+}
+
+/// How long a device that reported an error may play no block before it is
+/// taken to have stopped.
+const STALLED: Duration = Duration::from_secs(1);
+
+/// Whether a device has stopped playing on its own: it reported an error,
+/// and has played no block for `quiet`. An error alone does not say so,
+/// since cpal reports a changed default output and plays on.
+fn stopped(reported: bool, quiet: Duration) -> bool {
+    reported && quiet >= STALLED
 }
 
 /// The device playing a player's blocks, until it drops.
 pub(crate) struct Playing {
     _stream: cpal::Stream,
-    /// Why the device stopped playing on its own, set once as it stops.
-    ended: Arc<OnceLock<String>>,
+    /// The first error the device reported.
+    reported: Arc<OnceLock<cpal::Error>>,
+    /// How many blocks it has played.
+    blocks: Arc<AtomicU64>,
+    /// The count [`ended`](Self::ended) last saw move, and when.
+    last: Cell<(u64, Instant)>,
+    /// Whether the error was said in a line.
+    said: Cell<bool>,
 }
 
 impl Playing {
-    /// Returns why the device stopped playing on its own, once it has: the
-    /// device unplugged, say.
-    pub(crate) fn ended(&self) -> Option<&str> {
-        self.ended.get().map(String::as_str)
+    /// Returns why the device stopped playing on its own, once it has: it
+    /// reported an error and then played no block for a second. An error it
+    /// plays on after is said once in a line, and the app goes on.
+    pub(crate) fn ended(&self) -> Option<String> {
+        let now = Instant::now();
+        let blocks = self.blocks.load(Ordering::Relaxed);
+        let (seen, since) = self.last.get();
+        if blocks != seen {
+            self.last.set((blocks, now));
+        }
+        let error = self.reported.get()?;
+        if !self.said.replace(true) {
+            eprintln!("the audio output reported an error and plays on: {error}");
+        }
+        let quiet = if blocks == seen {
+            now.duration_since(since)
+        } else {
+            Duration::ZERO
+        };
+        stopped(true, quiet).then(|| error.to_string())
     }
 }

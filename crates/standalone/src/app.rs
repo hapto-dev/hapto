@@ -48,6 +48,10 @@ pub(crate) const NO_EDITOR: Size = Size {
 pub(crate) enum Wake {
     /// `cargo hapto dev` closed the app's stdin: save and quit.
     Quit,
+    /// A tick is due. The loop's own deadline is not served while the system
+    /// runs a loop of its own, a held title bar's or an open window menu's,
+    /// and an event from another thread is.
+    Tick,
 }
 
 /// Runs `P` standalone until its window closes.
@@ -63,6 +67,7 @@ pub(crate) fn run<P: Plugin>(options: &Options) -> Result<ExitCode> {
     if options.dev.is_some() {
         quit_when_stdin_closes(event_loop.create_proxy());
     }
+    tick_from_a_thread(event_loop.create_proxy());
     let mut session = Session::open(P::INFO.id, options.dev.as_deref())?;
     let plugin = Standalone::<P>::new();
     load_saved(&mut session, &plugin);
@@ -174,6 +179,19 @@ pub(crate) fn quit_when_stdin_closes(proxy: EventLoopProxy<Wake>) {
     });
 }
 
+/// Wakes the event loop every [`TICK`] from a thread of its own, until the
+/// loop is gone.
+pub(crate) fn tick_from_a_thread(proxy: EventLoopProxy<Wake>) {
+    std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(TICK);
+            if proxy.send_event(Wake::Tick).is_err() {
+                break;
+            }
+        }
+    });
+}
+
 /// The app's state while its window is open. The fields drop in the order a
 /// teardown must take: the device first, so no audio side outlives the
 /// plugin, then the editor, then the window it is in, then the plugin.
@@ -251,6 +269,20 @@ impl<P: Plugin> App<P> {
         }
     }
 
+    /// Ticks the plugin and keeps the saved block, each when it is due.
+    fn periodic(&mut self) {
+        let now = Instant::now();
+        if now >= self.next_tick {
+            self.plugin.tick();
+            self.check_audio();
+            self.next_tick = now + TICK;
+        }
+        if self.dev && now >= self.next_keep {
+            self.keep();
+            self.next_keep = now + KEEP;
+        }
+    }
+
     /// Keeps the saved block and tears down in order.
     fn finish(&mut self) {
         self.keep();
@@ -286,20 +318,12 @@ impl<P: Plugin> ApplicationHandler<Wake> for App<P> {
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Wake) {
         match event {
             Wake::Quit => event_loop.exit(),
+            Wake::Tick => self.periodic(),
         }
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        let now = Instant::now();
-        if now >= self.next_tick {
-            self.plugin.tick();
-            self.check_audio();
-            self.next_tick = now + TICK;
-        }
-        if self.dev && now >= self.next_keep {
-            self.keep();
-            self.next_keep = now + KEEP;
-        }
+        self.periodic();
         event_loop.set_control_flow(ControlFlow::WaitUntil(self.next_tick));
     }
 }

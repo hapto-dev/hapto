@@ -45,7 +45,9 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
-use crate::app::{EditorShown, KEEP, TICK, Wake, first_layout, quit_when_stdin_closes};
+use crate::app::{
+    EditorShown, KEEP, TICK, Wake, first_layout, quit_when_stdin_closes, tick_from_a_thread,
+};
 use crate::options::Options;
 use crate::session::{RELAUNCH, Session};
 use activity::Activity;
@@ -73,6 +75,7 @@ pub(crate) fn run<P: Plugin>(options: &Options) -> Result<ExitCode> {
     if options.dev.is_some() {
         quit_when_stdin_closes(event_loop.create_proxy());
     }
+    tick_from_a_thread(event_loop.create_proxy());
     let now = Instant::now();
     let mut session = Session::open(P::INFO.id, options.dev.as_deref())?;
     let format = session
@@ -226,6 +229,27 @@ struct DevHost {
 }
 
 impl DevHost {
+    /// Ticks the plugin, shows what the host sees and keeps the saved block,
+    /// each when it is due, and ends the loop for a switch of format.
+    fn periodic(&mut self, event_loop: &ActiveEventLoop) {
+        let now = Instant::now();
+        if now >= self.next_tick {
+            self.tick(event_loop);
+            self.next_tick = now + TICK;
+        }
+        if now >= self.next_show {
+            self.show();
+            self.next_show = now + SHOW;
+        }
+        if self.dev && now >= self.next_keep {
+            self.keep();
+            self.next_keep = now + KEEP;
+        }
+        if self.switch.is_some() {
+            event_loop.exit();
+        }
+    }
+
     fn tick(&mut self, event_loop: &ActiveEventLoop) {
         self.hosted.tick();
         let now = Instant::now();
@@ -405,26 +429,12 @@ impl ApplicationHandler<Wake> for DevHost {
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Wake) {
         match event {
             Wake::Quit => event_loop.exit(),
+            Wake::Tick => self.periodic(event_loop),
         }
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        let now = Instant::now();
-        if now >= self.next_tick {
-            self.tick(event_loop);
-            self.next_tick = now + TICK;
-        }
-        if now >= self.next_show {
-            self.show();
-            self.next_show = now + SHOW;
-        }
-        if self.dev && now >= self.next_keep {
-            self.keep();
-            self.next_keep = now + KEEP;
-        }
-        if self.switch.is_some() {
-            event_loop.exit();
-        }
+        self.periodic(event_loop);
         event_loop.set_control_flow(ControlFlow::WaitUntil(self.next_tick.min(self.next_show)));
     }
 }

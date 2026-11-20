@@ -74,7 +74,7 @@ impl Device for Output {
     }
 
     fn ended(stream: &Playing) -> Option<String> {
-        stream.ended().map(str::to_owned)
+        stream.ended()
     }
 }
 
