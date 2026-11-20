@@ -3,9 +3,8 @@
 #[cfg(test)]
 mod tests;
 
-use std::cell::Cell;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, Result, bail};
@@ -95,23 +94,25 @@ impl Output {
             sample_rate: rate,
             ..self.config
         };
-        let reported = Arc::new(OnceLock::new());
-        let blocks = Arc::new(AtomicU64::new(0));
-        let (told, played) = (Arc::clone(&reported), Arc::clone(&blocks));
+        let heard = Arc::new(Heard::default());
+        let (told, played) = (Arc::clone(&heard), Arc::clone(&heard));
         let stream = self
             .device
             .build_output_stream(
                 config,
                 move |data: &mut [f32], _| {
-                    played.fetch_add(1, Ordering::Relaxed);
+                    played.blocks.fetch_add(1, Ordering::Relaxed);
                     player.play(data);
                 },
-                // cpal reports some errors and plays on, a change of the
-                // system's default output among them, so this may run beside
-                // the blocks: the error is kept as it is, and its text is
-                // made by whoever asks.
+                // cpal reports some errors and plays on, a changed or
+                // unplugged default output among them, so this may run
+                // beside the blocks: it never waits for the lock, and the
+                // error's text is made by whoever polls.
                 move |error| {
-                    let _first = told.set(error);
+                    if let Ok(mut last) = told.last.try_lock() {
+                        *last = Some(error);
+                    }
+                    told.errors.fetch_add(1, Ordering::Relaxed);
                 },
                 None,
             )
@@ -119,58 +120,105 @@ impl Output {
         stream.play().context("the audio output device")?;
         Ok(Playing {
             _stream: stream,
-            reported,
-            blocks,
-            last: Cell::new((0, Instant::now())),
-            said: Cell::new(false),
+            heard,
+            watch: Watch::default(),
         })
     }
 }
 
-/// How long a device that reported an error may play no block before it is
-/// taken to have stopped.
+/// How long after an error a device is watched before it is said to play on
+/// or to have stopped.
 const STALLED: Duration = Duration::from_secs(1);
 
-/// Whether a device has stopped playing on its own: it reported an error,
-/// and has played no block for `quiet`. An error alone does not say so,
-/// since cpal reports a changed default output and plays on.
-fn stopped(reported: bool, quiet: Duration) -> bool {
-    reported && quiet >= STALLED
+/// What cpal's callbacks tell the thread that polls. The counts are atomics.
+/// The error is behind a lock because cpal hands it over by value on its own
+/// thread and no atomic holds one; that thread only tries the lock, and the
+/// count says an error came even when its text was not kept.
+#[derive(Default)]
+struct Heard {
+    blocks: AtomicU64,
+    errors: AtomicU64,
+    last: Mutex<Option<cpal::Error>>,
+}
+
+/// What a poll of a playing device found.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Report {
+    /// Nothing to say.
+    Quiet,
+    /// It reported this error and played on for a second after.
+    PlaysOn(String),
+    /// It reported this error and played no block for a second after: it
+    /// stopped on its own.
+    Stopped(String),
+}
+
+/// Judges each error a device reports by what follows it. An error alone
+/// does not say the device stopped, since cpal reports a changed default
+/// output and plays on: the blocks of the next second say which it was.
+#[derive(Default)]
+struct Watch {
+    /// How many errors were reported at the last look.
+    errors: u64,
+    /// The error being judged: its text, the blocks played when it was
+    /// seen, and when that was.
+    judging: Option<(String, u64, Instant)>,
+}
+
+impl Watch {
+    /// Looks at the counts at `now`. A new error starts a second's watch,
+    /// with the text `why` makes; a watch that has run its second ends in
+    /// [`Report::PlaysOn`] if a block was played in it, and in
+    /// [`Report::Stopped`] if none was. Blocks that stop with no error
+    /// reported say nothing.
+    fn look(
+        &mut self,
+        now: Instant,
+        errors: u64,
+        blocks: u64,
+        why: impl FnOnce() -> String,
+    ) -> Report {
+        if errors != self.errors {
+            self.errors = errors;
+            self.judging = Some((why(), blocks, now));
+        }
+        let Some((why, seen, since)) = self.judging.take() else {
+            return Report::Quiet;
+        };
+        if now.duration_since(since) < STALLED {
+            self.judging = Some((why, seen, since));
+            Report::Quiet
+        } else if blocks == seen {
+            Report::Stopped(why)
+        } else {
+            Report::PlaysOn(why)
+        }
+    }
 }
 
 /// The device playing a player's blocks, until it drops.
 pub(crate) struct Playing {
     _stream: cpal::Stream,
-    /// The first error the device reported.
-    reported: Arc<OnceLock<cpal::Error>>,
-    /// How many blocks it has played.
-    blocks: Arc<AtomicU64>,
-    /// The count [`ended`](Self::ended) last saw move, and when.
-    last: Cell<(u64, Instant)>,
-    /// Whether the error was said in a line.
-    said: Cell<bool>,
+    heard: Arc<Heard>,
+    watch: Watch,
 }
 
 impl Playing {
-    /// Returns why the device stopped playing on its own, once it has: it
-    /// reported an error and then played no block for a second. An error it
-    /// plays on after is said once in a line, and the app goes on.
-    pub(crate) fn ended(&self) -> Option<String> {
-        let now = Instant::now();
-        let blocks = self.blocks.load(Ordering::Relaxed);
-        let (seen, since) = self.last.get();
-        if blocks != seen {
-            self.last.set((blocks, now));
-        }
-        let error = self.reported.get()?;
-        if !self.said.replace(true) {
-            eprintln!("the audio output reported an error and plays on: {error}");
-        }
-        let quiet = if blocks == seen {
-            now.duration_since(since)
-        } else {
-            Duration::ZERO
-        };
-        stopped(true, quiet).then(|| error.to_string())
+    /// Polls the device: whether an error it reported was followed by a
+    /// second of blocks or by none.
+    pub(crate) fn poll(&mut self) -> Report {
+        let heard = &self.heard;
+        self.watch.look(
+            Instant::now(),
+            heard.errors.load(Ordering::Relaxed),
+            heard.blocks.load(Ordering::Relaxed),
+            || {
+                let last = heard.last.lock().ok().and_then(|mut last| last.take());
+                last.map_or_else(
+                    || "an error whose text was not kept".to_owned(),
+                    |error| error.to_string(),
+                )
+            },
+        )
     }
 }

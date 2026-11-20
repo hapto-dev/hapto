@@ -3197,14 +3197,14 @@ against C++.
   configuration, at 32-bit floats and blocks of up to 1024 frames, and plays
   into every input what `--signal` asks for: silence by default, so nothing
   sounds until its author asks, or a 440 Hz sine at -24 dBFS, or white noise at
-  -24 dBFS. A plugin with one output plays it on every channel. A device has
-  stopped playing on its own once it reported an error and then played no
-  block for a second: it is named in a line and in the window's title. An
-  error alone does not say so, since cpal reports a changed default output and
-  plays on; that is said in a line and the app goes on. It ticks the plugin
-  every 16 ms from the window's event loop, woken by a thread of its own, since
-  the loop's deadline is not served while a title bar is held or a window menu
-  is open.
+  -24 dBFS. A plugin with one output plays it on every channel. Each error the
+  device reports is judged by the second after it. With no block in it, the
+  device stopped on its own: that is said in a line and in the window's title.
+  With blocks, it plays on, as cpal reports a changed or unplugged default
+  output and does: that is said in a line and the app goes on. It ticks the
+  plugin every 16 ms from the window's event loop, woken by a thread of its
+  own, since the loop's deadline is not served while a title bar is held or a
+  window menu is open.
   The saved block is kept in a session folder, the plugin's own below the user's
   local application data, or under `cargo hapto dev` the one `--dev` names,
   where it is also kept each second it changed and the app quits, keeping it,

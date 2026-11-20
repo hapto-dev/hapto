@@ -20,7 +20,7 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy}
 use winit::window::{Window, WindowId};
 
 use crate::block::{Plan, Player};
-use crate::device::{Output, Playing};
+use crate::device::{Output, Playing, Report};
 use crate::options::Options;
 use crate::session::Session;
 use crate::settings::Blocks;
@@ -255,17 +255,24 @@ impl<P: Plugin> App<P> {
         }
     }
 
-    /// Says so once the device stopped playing on its own, an unplugged one
-    /// say: in a line and in the window's title. The plugin stays as it is,
-    /// its blocks over, until the app starts again.
+    /// Polls the device. An error it plays on after is said in a line. One
+    /// that stopped playing on its own is said in a line and in the window's
+    /// title: the plugin stays as it is, its blocks over, until the app
+    /// starts again.
     fn check_audio(&mut self) {
-        let Some(why) = self.stream.as_ref().and_then(Playing::ended) else {
-            return;
-        };
-        eprintln!("{}: the audio output stopped: {why}", P::INFO.name);
-        drop(self.stream.take());
-        if let Some(window) = &self.window {
-            window.set_title(&format!("{} (audio stopped)", P::INFO.name));
+        let name = P::INFO.name;
+        match self.stream.as_mut().map_or(Report::Quiet, Playing::poll) {
+            Report::Quiet => {}
+            Report::PlaysOn(why) => {
+                eprintln!("{name}: the audio output reported an error and plays on: {why}");
+            }
+            Report::Stopped(why) => {
+                eprintln!("{name}: the audio output stopped: {why}");
+                drop(self.stream.take());
+                if let Some(window) = &self.window {
+                    window.set_title(&format!("{name} (audio stopped)"));
+                }
+            }
         }
     }
 

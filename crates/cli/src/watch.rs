@@ -1,7 +1,6 @@
 //! What `dev` watches for a rebuild: each member's `src`, manifest and build
-//! script, and the workspace's own manifest, lockfile and Cargo
-//! configuration. The page is its dev server's to watch, and `target` is
-//! never read.
+//! script, and the workspace's own manifest and Cargo configuration. The
+//! page is its dev server's to watch, and `target` is never read.
 
 #[cfg(test)]
 mod tests;

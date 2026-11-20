@@ -16,6 +16,7 @@ use super::{Audio, Device};
 use crate::block::{Player, Render};
 use crate::dev_host::format::Format;
 use crate::dev_host::hosted::host;
+use crate::device::Report;
 use crate::settings::Settings;
 use crate::signal::Signal;
 
@@ -51,8 +52,8 @@ impl Device for Silent {
         Ok(())
     }
 
-    fn ended((): &()) -> Option<String> {
-        None
+    fn poll((): &mut ()) -> Report {
+        Report::Quiet
     }
 }
 
@@ -82,8 +83,8 @@ impl Device for Broken {
         Err(anyhow!("the device is in use by another app"))
     }
 
-    fn ended((): &()) -> Option<String> {
-        None
+    fn poll((): &mut ()) -> Report {
+        Report::Quiet
     }
 }
 
@@ -127,8 +128,9 @@ impl Device for Unpluggable {
         Ok(stream)
     }
 
-    fn ended(stream: &Self::Stream) -> Option<String> {
-        stream.borrow().clone()
+    fn poll(stream: &mut Self::Stream) -> Report {
+        let why = stream.borrow().clone();
+        why.map_or(Report::Quiet, Report::Stopped)
     }
 }
 

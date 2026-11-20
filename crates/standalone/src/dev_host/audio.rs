@@ -21,7 +21,7 @@ use hapto_host::Layout;
 use super::hosted::Hosted;
 use super::message::AudioShown;
 use crate::block::{Plan, Player, Render};
-use crate::device::{Output, Playing};
+use crate::device::{Output, Playing, Report};
 use crate::settings::{MAX_BLOCKS, Settings};
 use crate::signal::Signal;
 
@@ -45,9 +45,9 @@ pub(crate) trait Device {
     ///
     /// Returns why it did not start.
     fn start(&self, rate: u32, player: Player<Box<dyn Render>>) -> Result<Self::Stream>;
-    /// Returns why `stream` stopped playing on its own, once it has: the
-    /// device unplugged, say.
-    fn ended(stream: &Self::Stream) -> Option<String>;
+    /// Polls `stream`: whether an error it reported was followed by blocks
+    /// or by none.
+    fn poll(stream: &mut Self::Stream) -> Report;
 }
 
 impl Device for Output {
@@ -73,8 +73,8 @@ impl Device for Output {
         Output::start(self, rate, player)
     }
 
-    fn ended(stream: &Playing) -> Option<String> {
-        stream.ended()
+    fn poll(stream: &mut Playing) -> Report {
+        stream.poll()
     }
 }
 
@@ -289,12 +289,19 @@ impl<D: Device> Audio<D> {
         self.note = Some(note);
     }
 
-    /// Stops processing when the device's stream ended on its own, a device
-    /// unplugged say, as a host stops: the plugin is deactivated, and the
-    /// note and the log say why. Reactivating starts it again.
+    /// Polls the device's stream. An error it plays on after goes in the
+    /// log. One that stopped on its own stops processing, as a host stops:
+    /// the plugin is deactivated, and the note and the log say why.
+    /// Reactivating starts it again.
     pub(crate) fn check(&mut self, hosted: &dyn Hosted) {
-        let Some(why) = self.stream.as_ref().and_then(D::ended) else {
-            return;
+        let why = match self.stream.as_mut().map_or(Report::Quiet, D::poll) {
+            Report::Quiet => return,
+            Report::PlaysOn(why) => {
+                let note = format!("the audio device reported an error and plays on: {why}");
+                self.events.push(note);
+                return;
+            }
+            Report::Stopped(why) => why,
         };
         self.silence();
         hosted.stop();

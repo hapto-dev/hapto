@@ -1250,20 +1250,21 @@ move its line here; when a decision gains code, add one.
 - `crates/standalone/src/app.rs`: `run`, `load_saved`, `App`, `App::check_audio`, `minimized`, `EditorShown`, `title`, `TICK`, `KEEP`, `quit_when_stdin_closes`, `tick_from_a_thread`, `Wake`, `App::periodic`
 - `crates/standalone/src/block.rs`: `Player`, `Player::play`, `Player::of_app`, `Render`
 - `crates/standalone/src/app.rs`: `BLOCK`
-- `crates/standalone/src/device.rs`: `Output::system_default`, `Output::start`, `Playing`, `Playing::ended`, `stopped`, `STALLED`
+- `crates/standalone/src/device.rs`: `Output::system_default`, `Output::start`, `Playing`, `Playing::poll`, `Report`, `Watch`, `Heard`, `STALLED`
 - `crates/standalone/src/session.rs`: module, `Session::open`, `Session::saved_block`, `Session::hold`, `Session::keep`, `Kept`, `write_whole`
 - `crates/standalone/src/signal.rs`: `Signal`, `Generator::fill`, `LEVEL`
 - `examples/gain/src/bin/standalone.rs`: `main`
 - test `crates/host/src/standalone/tests.rs`: `a_block_before_an_activation_is_silence_and_after_it_plays`, `channels_past_the_most_are_passed_over`, `inputs_that_are_one_buffer_play_and_ones_that_share_part_of_one_do_not`, `the_editor_opens_in_the_apps_window_ticks_with_the_app_and_closes_as_it_drops`, `a_teardown_frees_the_plugin_only_once_no_audio_side_is_left`, `an_editor_may_outlive_the_app_and_frees_the_plugin_as_it_drops`, `a_teardown_while_the_audio_thread_plays_leaks_the_engine_and_silences_it`, `a_migration_that_panics_refuses_the_load_and_counts_a_fault`, `an_activation_that_panics_is_refused_as_a_panic`, `an_editor_that_panics_as_it_drops_is_a_fault_and_the_app_goes_on`, `a_plugin_that_panics_as_it_drops_is_a_fault_and_the_app_goes_on`, `a_panic_while_the_editor_opens_is_refused_as_one`, `an_open_refused_while_the_editor_is_still_in_a_call_is_a_fault`, `a_scale_that_is_no_positive_number_is_passed_over`, `a_block_of_no_frames_does_not_play_and_its_outputs_are_silence`
 - test `crates/standalone/src/block/tests.rs`: `the_sound_is_the_same_whatever_the_cut`, `a_mono_plugin_plays_on_every_channel_and_a_missing_output_is_silent`
 - test `crates/standalone/src/session/tests.rs`: `a_kept_block_is_there_at_the_next_run`, `an_unchanged_block_is_not_written_again`, `a_held_session_writes_nothing_over_its_block`, `a_block_that_cannot_be_read_is_held_not_taken_for_none`
+- test `crates/standalone/src/device/tests.rs`: `an_error_followed_by_blocks_plays_on_and_is_said_once`, `an_error_followed_by_no_block_is_a_device_that_stopped`, `an_error_is_not_judged_before_its_second_is_up`, `blocks_that_stop_with_no_error_say_nothing_however_long`, `a_later_error_is_judged_afresh_with_its_own_text`
 - test `crates/standalone/src/app/tests.rs`: `a_block_the_plugin_refuses_is_kept_as_it_was`, `a_block_the_plugin_takes_is_kept_as_it_changes`, `a_minimized_window_s_size_is_none_to_hand_an_editor`, `the_window_s_title_says_what_it_shows_of_the_editor`
 
 ### D111. The dev host
 
 [Record section](decisions.md#d111-the-dev-host)
 
-- `crates/standalone/src/dev_host/mod.rs`: module, `run`, `start_again`, `DevHost::tick`, `DevHost::handle`, `DevHost::show`, `DevHost::keep`, `DevHost::finish`
+- `crates/standalone/src/dev_host/mod.rs`: module, `run`, `start_again`, `DevHost::periodic`, `DevHost::tick`, `DevHost::handle`, `DevHost::show`, `DevHost::keep`, `DevHost::finish`
 - `crates/standalone/src/dev_host/hosted.rs`: module, `Hosted`, `Param`, `kind_text`, `Vst3`, `Vst3Audio`, `Cabi`, `CabiAudio`, `MAX_CHANGES`
 - `crates/standalone/src/dev_host/pending.rs`: module, `Pending::set`, `Pending::take`
 - `crates/standalone/src/dev_host/audio.rs`: module, `Device`, `Audio::open`, `Audio::with`, `Audio::start_first`, `Audio::start`, `Audio::play`, `Audio::check`, `Audio::running`, `Audio::change`, `Audio::reactivate`, `Audio::stop`, `Audio::resume`, `Audio::set_signal`, `Audio::restart`, `Audio::silence`, `Audio::events`
