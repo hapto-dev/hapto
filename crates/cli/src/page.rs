@@ -49,11 +49,13 @@ pub(crate) fn write_param_map(workspace: &Workspace, plugin: &Plugin) -> Result<
 /// of `CI`. It writes the map, unless `CI` is set: there it checks the map,
 /// since Hapto's drift check refuses a test that rewrites its own file in CI,
 /// and a map that does not match fails the build. The variables' names are
-/// `hapto-testkit`'s, which this command does not link.
+/// `hapto-testkit`'s, which this command does not link. Cargo shows its
+/// progress, since a new crate's first run compiles hundreds of crates here,
+/// and the test's own harness is quiet.
 fn param_map_test(package: &str, root: &Path, ci: Option<&OsStr>) -> Command {
     let mut command = cargo();
     command
-        .args(["test", "-q", "-p", package, "--test", "page_params"])
+        .args(["test", "-p", package, "--test", "page_params", "--", "-q"])
         .current_dir(root);
     if ci.is_none_or(OsStr::is_empty) {
         command.env("HAPTO_BLESS", "1");

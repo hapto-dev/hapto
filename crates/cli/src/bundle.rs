@@ -165,17 +165,18 @@ pub(crate) fn arch_folder(module: &[u8]) -> Result<&'static str> {
     }
 }
 
-/// Refuses a system with no bundle layout yet: Windows alone has one.
+/// What `build` does, on Windows alone so far: a VST3 bundle has another
+/// layout elsewhere, which is not built yet.
+pub(crate) const BUILD_DOES: &str = "build lays out a VST3 bundle";
+
+/// Refuses any system but Windows, for a command that serves Windows alone
+/// so far, before the work that takes time; `what` says what it does.
 ///
 /// # Errors
 ///
-/// Says the bundle's layout on `os` is not built yet.
-pub(crate) fn windows_only(os: &str) -> Result<()> {
-    ensure!(
-        os == "windows",
-        "build lays out a Windows bundle only; on {os} a VST3 bundle has another \
-         layout, which is not built yet"
-    );
+/// Says `what` is done on Windows only, not yet on `os`.
+pub(crate) fn windows_only(os: &str, what: &str) -> Result<()> {
+    ensure!(os == "windows", "{what} on Windows only, not yet on {os}");
     Ok(())
 }
 
@@ -337,7 +338,7 @@ pub(crate) fn build(
     page: bool,
     profile: Profile,
 ) -> Result<PathBuf> {
-    windows_only(std::env::consts::OS)?;
+    windows_only(std::env::consts::OS, BUILD_DOES)?;
     // Before the builds, which take minutes, so a name no file can take is
     // refused at once.
     let file = file_name(&plugin.name)?;

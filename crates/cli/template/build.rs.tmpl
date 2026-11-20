@@ -1,7 +1,8 @@
 //! Builds the page in when `page/dist` holds it, by setting the `hapto_page`
-//! cfg `src/page.rs` reads, and warns when it does not: the plugin then
-//! offers no editor, unless a debug build loads the page from a dev server.
-//! Cargo never runs Node; `cargo hapto build` builds the page first.
+//! cfg `src/page.rs` reads. A release build without it warns, since the
+//! plugin then offers no editor; a debug build stays quiet, since it loads
+//! the page from the dev server `cargo hapto dev` runs. Cargo never runs
+//! Node; `cargo hapto build` builds the page first.
 
 use std::path::Path;
 
@@ -24,5 +25,11 @@ fn main() {
         // command. Cargo looks through a watched folder for anything newer,
         // so the page's first build is still seen.
         println!("cargo::rerun-if-changed=page");
+        if std::env::var("PROFILE").is_ok_and(|profile| profile == "release") {
+            println!(
+                "cargo::warning=the page is not built, so the plugin has no editor; \
+                 `cargo hapto build` builds the page"
+            );
+        }
     }
 }

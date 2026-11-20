@@ -5,7 +5,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use super::{
-    Folder, Options, Profile, arch_folder, copy_error, file_name, layout, module_of, windows_only,
+    BUILD_DOES, Folder, Options, Profile, arch_folder, copy_error, file_name, layout, module_of,
+    windows_only,
 };
 use crate::tool::Artifact;
 use crate::workspace::Plugin;
@@ -97,9 +98,9 @@ fn a_name_is_written_as_a_file_name_or_refused() {
 
 #[test]
 fn only_windows_has_a_bundle_layout_yet() {
-    assert!(windows_only("windows").is_ok());
-    assert!(windows_only("macos").is_err());
-    assert!(windows_only("linux").is_err());
+    assert!(windows_only("windows", BUILD_DOES).is_ok());
+    assert!(windows_only("macos", BUILD_DOES).is_err());
+    assert!(windows_only("linux", BUILD_DOES).is_err());
 }
 
 /// The first bytes of a Windows DLL built for `machine`, as its PE header

@@ -78,6 +78,14 @@ fn the_map_is_written_on_a_machine_and_checked_in_ci() {
 }
 
 #[test]
+fn cargo_shows_its_progress_and_the_map_s_test_is_quiet() {
+    let command = param_map_test("gain", Path::new("."), None);
+    let args: Vec<&OsStr> = command.get_args().collect();
+    let expected = ["test", "-p", "gain", "--test", "page_params", "--", "-q"];
+    assert_eq!(args, expected.map(OsStr::new), "-q only after --");
+}
+
+#[test]
 fn a_port_something_listens_on_is_refused() {
     let held = std::net::TcpListener::bind("127.0.0.1:0").expect("a free port");
     let port = held.local_addr().expect("bound").port();

@@ -23,7 +23,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, Result};
 
-use crate::bundle::Profile;
+use crate::bundle::{Profile, windows_only};
 use crate::page::{self, DEV_PORT, DevServer, PAGE_DEV_URL, write_param_map};
 use crate::tool::{self, cargo};
 use crate::watch::Watch;
@@ -214,12 +214,17 @@ pub(crate) struct Options {
     pub(crate) profile: Profile,
 }
 
+/// What `dev` does, on Windows alone so far: elsewhere the standalone app
+/// ends at once, after the page's packages and the build.
+pub(crate) const DEV_DOES: &str = "dev runs the plugin's standalone app";
+
 /// Runs `cargo hapto dev` with `options`, until the plugin's window closes.
 ///
 /// # Errors
 ///
 /// Returns the step that failed and why.
 pub(crate) fn run(options: &Options) -> Result<()> {
+    windows_only(std::env::consts::OS, DEV_DOES)?;
     let (workspace, plugin) = Workspace::find(options.package.as_deref())?;
     // A crate with no standalone binary is told so before the page's
     // packages and server, which take time.
@@ -395,6 +400,12 @@ fn build_app(
     profile: Profile,
 ) -> Result<(PathBuf, Build)> {
     write_param_map(workspace, plugin)?;
+    // The map's test builds the plugin's library with other features and
+    // its dev dependencies, in the same target folder, and a path crate's
+    // `cdylib` has no hash in its name to keep the two apart. So for a
+    // crate with a page map this build always finds the features changed
+    // and writes a new binary: a save that changed nothing still restarts
+    // the app.
     let artifacts = tool::build(
         cargo()
             .args(["build", "-p", &plugin.package, "--bin", &app.bin])

@@ -398,23 +398,30 @@ pub(crate) fn run(options: &Options) -> Result<()> {
     )?;
     let hapto = checkout(options.hapto.as_deref())?;
     write(&options.folder, &identity, &hapto)?;
-    let here = options
-        .folder
-        .components()
-        .all(|part| part == Component::CurDir);
-    let cd = if here {
-        String::new()
-    } else {
-        format!("  cd {}\n", options.folder.display())
-    };
     println!(
-        "wrote {} ({}, {}) in {}\n\nnext:\n{cd}  cargo hapto dev",
+        "wrote {} ({}, {}) in {}\n\nnext:\n{}  cargo hapto dev",
         identity.name,
         identity.crate_name,
         identity.id,
         options.folder.display(),
+        cd_line(&options.folder),
     );
     Ok(())
+}
+
+/// Returns the line of the next steps that changes to `folder`, quoted when
+/// it holds a space so it can be pasted as it is; none when it is the folder
+/// the command ran in.
+pub(crate) fn cd_line(folder: &Path) -> String {
+    if folder.components().all(|part| part == Component::CurDir) {
+        return String::new();
+    }
+    let shown = folder.display().to_string();
+    if shown.contains(' ') {
+        format!("  cd \"{shown}\"\n")
+    } else {
+        format!("  cd {shown}\n")
+    }
 }
 
 /// Returns the name of the folder `folder` names, which the crate takes its

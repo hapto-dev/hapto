@@ -4,10 +4,10 @@
 use std::path::{Path, PathBuf};
 
 use super::{
-    App, Build, Copies, Ended, Mode, Next, Options, PageSource, RELAUNCH, Seen, after_build,
-    app_command, page_source,
+    App, Build, Copies, DEV_DOES, Ended, Mode, Next, Options, PageSource, RELAUNCH, Seen,
+    after_build, app_command, page_source,
 };
-use crate::bundle::Profile;
+use crate::bundle::{Profile, windows_only};
 use crate::page::{DEV_PORT, PAGE_DEV_URL};
 use crate::workspace::Plugin;
 
@@ -183,6 +183,27 @@ fn a_debug_app_takes_its_page_from_the_server_and_a_release_one_built_in() {
 fn source(path: &str) -> String {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join(path);
     std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+}
+
+#[test]
+fn dev_refuses_any_system_but_windows_before_it_starts_anything() {
+    assert!(windows_only("windows", DEV_DOES).is_ok());
+    for os in ["macos", "linux"] {
+        let refused = windows_only(os, DEV_DOES).expect_err(os).to_string();
+        assert!(refused.contains("standalone app"), "{refused}");
+        assert!(refused.contains(os), "{refused}");
+    }
+    let run = source("cli/src/dev.rs");
+    let first = run
+        .split("pub(crate) fn run(options: &Options) -> Result<()> {")
+        .nth(1)
+        .and_then(|body| body.lines().find(|line| !line.trim().is_empty()))
+        .unwrap_or_default();
+    assert_eq!(
+        first.trim(),
+        "windows_only(std::env::consts::OS, DEV_DOES)?;",
+        "the first thing run does"
+    );
 }
 
 #[test]

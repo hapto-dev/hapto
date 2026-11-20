@@ -5,7 +5,8 @@
 use std::path::{Path, PathBuf};
 
 use super::{
-    FILES, Identity, Options, TAKEN, au_code, class_id, crate_name, folder_name, render, write,
+    FILES, Identity, Options, TAKEN, au_code, cd_line, class_id, crate_name, folder_name, render,
+    write,
 };
 
 fn identity(folder: &str) -> Identity {
@@ -274,8 +275,9 @@ fn a_vendor_with_no_letters_cannot_make_the_default_id() {
 
 /// Writes a crate with this checkout's crates, then builds and tests it: the
 /// template compiles, its page map matches its declarations, and its tests
-/// pass. By hand: `cargo test -p cargo-hapto -- --ignored`, minutes the first
-/// time, since the crate builds in a target folder of its own.
+/// pass. The full CI run takes it on Windows, and by hand: `cargo test -p
+/// cargo-hapto -- --ignored`, minutes the first time, since the crate builds
+/// in a target folder of its own.
 #[test]
 #[ignore = "builds a whole plugin crate"]
 fn a_new_crate_builds_and_passes_its_tests() {
@@ -292,4 +294,12 @@ fn a_new_crate_builds_and_passes_its_tests() {
         .status()
         .expect("cargo ran");
     assert!(status.success(), "the new crate's tests: {status}");
+}
+
+#[test]
+fn the_next_step_quotes_a_folder_with_a_space_and_skips_the_one_it_ran_in() {
+    use std::path::Path;
+    assert_eq!(cd_line(Path::new("Tone Shaper")), "  cd \"Tone Shaper\"\n");
+    assert_eq!(cd_line(Path::new("tone-shaper")), "  cd tone-shaper\n");
+    assert_eq!(cd_line(Path::new(".")), "");
 }
