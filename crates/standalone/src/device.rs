@@ -1,36 +1,46 @@
-//! The audio device: the system's default output, through cpal.
+//! The audio device: the system's default output, through cpal, and the rule
+//! that follows it from device to device.
 
 #[cfg(test)]
 mod tests;
 
 use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use anyhow::{Context as _, Result, bail};
-use cpal::ErrorKind;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::{DeviceId, ErrorKind};
 
 use crate::block::{Player, Render};
 
-/// The system's default output device and the stream configuration it
-/// prefers.
+/// The device that was the system's default output when it was opened, and
+/// the stream configuration it prefers.
 pub(crate) struct Output {
     device: cpal::Device,
     config: cpal::StreamConfig,
+    id: DeviceId,
 }
 
 impl Output {
-    /// Opens the system's default output device in its own configuration.
+    /// Opens the device that is the system's default output now, taken from
+    /// the host by its id, in its own configuration. Its stream stays on that
+    /// device and tells of no change of the default, which
+    /// [`default_output_id`] says.
+    ///
+    /// cpal's own default device is not used: on Windows it cannot be opened
+    /// again once any audio device has left during the run.
     ///
     /// # Errors
     ///
-    /// Returns why there is none to play to: no device, or one that does not
-    /// take 32-bit floats, which shared-mode devices on Windows do.
+    /// Returns why there is none to play to: no device, a default that is
+    /// not found again by its id, or one that does not take 32-bit floats,
+    /// which shared-mode devices on Windows do.
     pub(crate) fn system_default() -> Result<Output> {
+        let id = default_output_id().context("there is no audio output device")?;
         let device = cpal::default_host()
-            .default_output_device()
-            .context("there is no audio output device")?;
+            .device_by_id(&id)
+            .context("there is no audio output device: none has the default's id")?;
         let supported = device
             .default_output_config()
             .context("the audio output device")?;
@@ -43,7 +53,13 @@ impl Output {
         Ok(Output {
             device,
             config: supported.config(),
+            id,
         })
+    }
+
+    /// Returns the id it was opened by.
+    pub(crate) fn id(&self) -> &DeviceId {
+        &self.id
     }
 
     /// Returns the device's own sample rate.
@@ -124,52 +140,76 @@ impl Output {
     }
 }
 
+/// Returns the id of the device that is the system's default output now,
+/// `None` when there is none. It opens nothing and builds no stream.
+pub(crate) fn default_output_id() -> Option<DeviceId> {
+    cpal::default_host().default_output_device()?.id().ok()
+}
+
+/// How often the app and the dev host look at which device is the system's
+/// default output.
+pub(crate) const LOOK: Duration = Duration::from_secs(1);
+
+/// What a look at the system's default output asks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Look {
+    /// Play on: the device that plays is the default.
+    Keep,
+    /// Stop the device that plays, then open the default: another device is
+    /// the default now.
+    Move,
+    /// Stop: there is no default output.
+    Stop,
+    /// Open the default: nothing plays, and there is one.
+    Open,
+    /// Wait: nothing plays, and there is no default to open.
+    Wait,
+}
+
+/// Returns what a look asks of audio that plays on the device `playing`, or
+/// on none, when the system's default output is `default`, or none.
+///
+/// Audio an error stopped plays on none, so the next look opens the default
+/// again: no device is opened more than once a look, and no device error
+/// stops the audio for the run.
+pub(crate) fn look<Id: PartialEq>(playing: Option<&Id>, default: Option<&Id>) -> Look {
+    match (playing, default) {
+        (Some(playing), Some(default)) if playing == default => Look::Keep,
+        (Some(_), Some(_)) => Look::Move,
+        (Some(_), None) => Look::Stop,
+        (None, Some(_)) => Look::Open,
+        (None, None) => Look::Wait,
+    }
+}
+
+/// Returns `reason` unless `said` holds it already, and holds it there: a
+/// failure that repeats at every look is said once, and again only when its
+/// reason changes.
+pub(crate) fn say_once(said: &mut Option<String>, reason: String) -> Option<String> {
+    if said.as_ref() == Some(&reason) {
+        return None;
+    }
+    *said = Some(reason.clone());
+    Some(reason)
+}
+
 /// What a device's error asks of the app.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Answer {
     /// The device plays on: a glitch, a refused rise in the thread's
     /// priority, or a change of route it followed itself.
     PlaysOn,
-    /// The stream has ended, or plays to a device that is no longer the
-    /// default output: the default is opened again.
+    /// The stream has ended, or must be built again: it is dropped at once,
+    /// and the next look opens the default output again.
     Reopen,
 }
 
 /// Returns what an error of `kind` asks of the app. On Windows every other
-/// error either ends cpal's thread or says the stream must be built again,
-/// since cpal never moves a stream to a new default output: it reports the
-/// change and goes on playing to the old one.
+/// error either ends cpal's thread or says the stream must be built again.
 pub(crate) fn answer(kind: ErrorKind) -> Answer {
     match kind {
         ErrorKind::Xrun | ErrorKind::RealtimeDenied | ErrorKind::DeviceChanged => Answer::PlaysOn,
         _ => Answer::Reopen,
-    }
-}
-
-/// How long after the default output is opened again a second error that
-/// asks for it stops the audio instead, so a device that fails at once is
-/// not opened again at every tick.
-pub(crate) const SETTLE: Duration = Duration::from_secs(1);
-
-/// When the default output was last opened again after an error.
-#[derive(Debug, Default)]
-pub(crate) struct Reopens {
-    last: Option<Instant>,
-}
-
-impl Reopens {
-    /// Whether an error at `now` that asks for the default output may open
-    /// it again: not within [`SETTLE`] of the last time. One that may is
-    /// counted as made.
-    pub(crate) fn may(&mut self, now: Instant) -> bool {
-        if self
-            .last
-            .is_some_and(|last| now.duration_since(last) < SETTLE)
-        {
-            return false;
-        }
-        self.last = Some(now);
-        true
     }
 }
 
@@ -178,8 +218,22 @@ impl Reopens {
 pub(crate) struct DeviceError {
     /// What kind it is, which says what it asks of the app.
     pub(crate) kind: ErrorKind,
-    /// Its text: cpal's own, or its kind's when cpal's was not kept.
+    /// Its text: plain words for a device that went away, else cpal's own,
+    /// or its kind's when cpal's was not kept.
     pub(crate) text: String,
+}
+
+/// Returns the text of an error of `kind`, given the error the callback
+/// `kept`. A device that went away is said in plain words, since cpal's
+/// text names a call of the system's and a number; every other kind keeps
+/// cpal's text.
+fn text(kind: ErrorKind, kept: Option<cpal::Error>) -> String {
+    if kind == ErrorKind::DeviceNotAvailable {
+        return "the audio device went away".to_owned();
+    }
+    // A text kept from an older error than the newest is not its text.
+    kept.filter(|error| error.kind() == kind)
+        .map_or_else(|| kind.to_string(), |error| error.to_string())
 }
 
 /// Every kind of error cpal names, so the error callback keeps one as its
@@ -252,11 +306,10 @@ impl Playing {
         }
         self.read = errors;
         let kind = kind_at(heard.kind.load(Ordering::Relaxed));
-        let last = heard.last.lock().ok().and_then(|mut last| last.take());
-        // A text kept from an older error than the newest is not its text.
-        let text = last
-            .filter(|error| error.kind() == kind)
-            .map_or_else(|| kind.to_string(), |error| error.to_string());
-        Some(DeviceError { kind, text })
+        let kept = heard.last.lock().ok().and_then(|mut last| last.take());
+        Some(DeviceError {
+            kind,
+            text: text(kind, kept),
+        })
     }
 }

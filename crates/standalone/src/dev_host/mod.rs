@@ -50,6 +50,7 @@ use crate::app::{
     EditorShown, KEEP, TICK, Wake, first_layout, quit_when_stdin_closes, silence_note,
     tick_from_a_thread,
 };
+use crate::device::LOOK;
 use crate::options::Options;
 use crate::session::{RELAUNCH, Session};
 use activity::Activity;
@@ -132,6 +133,7 @@ pub(crate) fn run<P: Plugin>(options: &Options) -> Result<ExitCode> {
         dev: options.dev.is_some(),
         next_tick: now,
         next_show: now,
+        next_look: now + LOOK,
         next_keep: now + KEEP,
         started: since_1970(SystemTime::now()),
         first_load,
@@ -224,6 +226,7 @@ struct DevHost {
     dev: bool,
     next_tick: Instant,
     next_show: Instant,
+    next_look: Instant,
     next_keep: Instant,
     /// When the run started, in milliseconds since 1970.
     started: u64,
@@ -237,14 +240,19 @@ struct DevHost {
 }
 
 impl DevHost {
-    /// Ticks the plugin, keeps the saved block and shows what the host sees,
-    /// each when it is due, and ends the loop for a switch of format. The
-    /// block is kept before it is shown, so the two take the same save.
+    /// Ticks the plugin, looks at which device is the default output, keeps
+    /// the saved block and shows what the host sees, each when it is due,
+    /// and ends the loop for a switch of format. The block is kept before it
+    /// is shown, so the two take the same save.
     fn periodic(&mut self, event_loop: &ActiveEventLoop) {
         let now = Instant::now();
         if now >= self.next_tick {
             self.tick(event_loop);
             self.next_tick = now + TICK;
+        }
+        if now >= self.next_look {
+            self.look(now);
+            self.next_look = now + LOOK;
         }
         if self.dev && now >= self.next_keep {
             self.keep(now);
@@ -271,7 +279,19 @@ impl DevHost {
         for message in messages {
             self.handle(message, event_loop);
         }
-        self.audio.check(&*self.hosted, now);
+        self.audio.check(&*self.hosted);
+        for event in self.audio.events() {
+            self.activity.note(event, now);
+        }
+    }
+
+    /// Follows the system's default output, and keeps the settings a look
+    /// changed once the plugin processes with them, so the next run starts
+    /// with them rather than drop them for a rate its device lacks.
+    fn look(&mut self, now: Instant) {
+        if self.audio.look(&*self.hosted) {
+            self.keep_audio();
+        }
         for event in self.audio.events() {
             self.activity.note(event, now);
         }

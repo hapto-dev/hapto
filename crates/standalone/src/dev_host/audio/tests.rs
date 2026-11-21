@@ -1,14 +1,17 @@
 //! In each format, a start the plugin refuses brings back the settings that
 //! last ran, so the settings a session keeps are always ones that ran, and
 //! kept settings the plugin refuses at the first start fall back to the
-//! device's own. A device error the device plays on after is logged, and
-//! any other opens the default output again and starts the plugin there.
+//! device's own. A device error the device plays on after is logged, and any
+//! other stops the plugin until the next look. A look follows the system's
+//! default output: processing, to a new device, where the plugin is started
+//! again, or to none, where it waits; waiting, it starts the plugin again
+//! once it can; stopped by the author, it takes the new device and starts
+//! nothing.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use std::time::{Duration, Instant};
 
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Context as _, Result, anyhow, bail};
 use cpal::ErrorKind;
 use hapto_host::{
     AuCodes, Block, Category, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
@@ -18,9 +21,9 @@ use hapto_params::{Declarer, Params};
 use super::{Audio, Device};
 use crate::block::{Player, Render};
 use crate::dev_host::format::Format;
-use crate::dev_host::hosted::host;
-use crate::device::{DeviceError, SETTLE};
-use crate::settings::Settings;
+use crate::dev_host::hosted::{Hosted, host};
+use crate::device::DeviceError;
+use crate::settings::{Blocks, Settings};
 use crate::signal::Signal;
 
 /// A device at 48 kHz that takes four rates and plays nothing: a start
@@ -32,9 +35,14 @@ struct Silent {
 
 impl Device for Silent {
     type Stream = ();
+    type Id = ();
 
     fn name(&self) -> String {
         "Silent".to_owned()
+    }
+
+    fn id(&self) -> &() {
+        &()
     }
 
     fn sample_rate(&self) -> u32 {
@@ -59,6 +67,10 @@ impl Device for Silent {
         None
     }
 
+    fn default_id(&self) -> Option<()> {
+        Some(())
+    }
+
     fn reopen(&self) -> Result<Silent> {
         Ok(Silent::default())
     }
@@ -69,9 +81,14 @@ struct Broken;
 
 impl Device for Broken {
     type Stream = ();
+    type Id = ();
 
     fn name(&self) -> String {
         "Broken".to_owned()
+    }
+
+    fn id(&self) -> &() {
+        &()
     }
 
     fn sample_rate(&self) -> u32 {
@@ -94,39 +111,48 @@ impl Device for Broken {
         None
     }
 
+    fn default_id(&self) -> Option<()> {
+        Some(())
+    }
+
     fn reopen(&self) -> Result<Broken> {
         Ok(Broken)
     }
 }
 
-/// A device whose stream a test can have report an error, as a change of
-/// the system's default output does. It opens again as a fresh copy of
-/// itself, numbered one on, at `next_rate`, unless it is told none is left.
+/// What a test's system says of its outputs, shared by every device opened
+/// from it, as the system's own state is.
+struct System {
+    /// The number of the default output; `None` when there is none.
+    default: Cell<Option<u32>>,
+    /// The rate the device opened next plays at.
+    next_rate: Cell<u32>,
+    /// Whether every start fails, as on a device another app holds.
+    busy: Cell<bool>,
+}
+
+/// A device numbered as the system's default output was when it opened,
+/// whose stream a test can have report an error.
 struct Changing {
     number: u32,
     rate: u32,
-    /// The rate the next copy plays at.
-    next_rate: Cell<u32>,
-    /// Whether no default output is left to open.
-    none_left: Cell<bool>,
+    system: Rc<System>,
     stream: RefCell<Option<Rc<RefCell<Option<DeviceError>>>>>,
 }
 
-impl Default for Changing {
-    fn default() -> Self {
-        Changing::numbered(1, 48_000)
-    }
-}
-
 impl Changing {
-    fn numbered(number: u32, rate: u32) -> Changing {
-        Changing {
+    /// Opens the system's default output.
+    fn opened(system: &Rc<System>) -> Result<Changing> {
+        let number = system
+            .default
+            .get()
+            .context("there is no audio output device")?;
+        Ok(Changing {
             number,
-            rate,
-            next_rate: Cell::new(rate),
-            none_left: Cell::new(false),
+            rate: system.next_rate.get(),
+            system: Rc::clone(system),
             stream: RefCell::new(None),
-        }
+        })
     }
 
     /// Has the stream playing now report an error of `kind`.
@@ -142,9 +168,14 @@ impl Changing {
 
 impl Device for Changing {
     type Stream = Rc<RefCell<Option<DeviceError>>>;
+    type Id = u32;
 
     fn name(&self) -> String {
         format!("Device {}", self.number)
+    }
+
+    fn id(&self) -> &u32 {
+        &self.number
     }
 
     fn sample_rate(&self) -> u32 {
@@ -160,6 +191,9 @@ impl Device for Changing {
     }
 
     fn start(&self, _rate: u32, _player: Player<Box<dyn Render>>) -> Result<Self::Stream> {
+        if self.system.busy.get() {
+            bail!("the device is in use by another app");
+        }
         let stream = Rc::new(RefCell::new(None));
         *self.stream.borrow_mut() = Some(Rc::clone(&stream));
         Ok(stream)
@@ -169,23 +203,45 @@ impl Device for Changing {
         stream.borrow_mut().take()
     }
 
-    fn reopen(&self) -> Result<Changing> {
-        if self.none_left.get() {
-            bail!("there is no audio output device");
-        }
-        Ok(Changing::numbered(self.number + 1, self.next_rate.get()))
+    fn default_id(&self) -> Option<u32> {
+        self.system.default.get()
     }
+
+    fn reopen(&self) -> Result<Changing> {
+        Changing::opened(&self.system)
+    }
+}
+
+/// A system whose default output is Device 1, at 48 kHz.
+fn system() -> Rc<System> {
+    Rc::new(System {
+        default: Cell::new(Some(1)),
+        next_rate: Cell::new(48_000),
+        busy: Cell::new(false),
+    })
+}
+
+/// The audio of a plugin started through `hosted` on `system`'s default
+/// output, with `kept` settings, and the start's log taken.
+fn started(hosted: &dyn Hosted, system: &Rc<System>, kept: Option<&str>) -> Audio<Changing> {
+    let device = Changing::opened(system).expect("a default");
+    let mut audio = Audio::with(device, Layout::STEREO, Signal::Silence, kept);
+    audio.start_first(hosted);
+    let _started = audio.events();
+    audio
 }
 
 thread_local! {
     /// Whether the watched plugin is active.
     static ACTIVE: Cell<bool> = const { Cell::new(false) };
+    /// How many times the watched plugin was activated.
+    static ACTIVATIONS: Cell<u32> = const { Cell::new(0) };
     /// Whether the watched plugin refuses every activation.
     static REFUSES: Cell<bool> = const { Cell::new(false) };
 }
 
-/// A plugin that says whether it is active, and refuses every activation
-/// while asked to.
+/// A plugin that says whether it is active, and how many times it was, and
+/// refuses every activation while asked to.
 struct Watched;
 
 impl Plugin for Watched {
@@ -205,6 +261,7 @@ impl Plugin for Watched {
     fn activate(&mut self, _setup: &ProcessSetup) -> Through {
         assert!(!REFUSES.get(), "refuses every activation");
         ACTIVE.set(true);
+        ACTIVATIONS.set(ACTIVATIONS.get() + 1);
         Through
     }
 
@@ -270,7 +327,7 @@ impl Plugin for Picky {
 const OWN: Settings = Settings {
     rate: 48_000,
     max: 512,
-    blocks: crate::settings::Blocks::Device,
+    blocks: Blocks::Device,
 };
 
 #[test]
@@ -349,16 +406,19 @@ fn logged(events: &[String], text: &str) -> bool {
     events.iter().any(|event| event.contains(text))
 }
 
+/// The note the Audio tab shows, empty for none.
+fn note<D: Device>(audio: &Audio<D>) -> String {
+    audio.shown().note.map(str::to_owned).unwrap_or_default()
+}
+
 #[test]
 fn an_error_the_device_plays_on_after_is_only_logged() {
     for format in Format::ALL {
         let hosted = host::<Watched>(format);
-        let mut audio = Audio::with(Changing::default(), Layout::STEREO, Signal::Silence, None);
-        audio.start_first(&*hosted);
-        let _started = audio.events();
+        let mut audio = started(&*hosted, &system(), None);
         for kind in [ErrorKind::Xrun, ErrorKind::RealtimeDenied] {
             audio.output().report(kind);
-            audio.check(&*hosted, Instant::now());
+            audio.check(&*hosted);
             assert_eq!(audio.running(), Some(OWN), "{format:?}: plays on");
             assert!(ACTIVE.get(), "{format:?}: still active");
             assert_eq!(audio.shown().device, "Device 1", "{format:?}");
@@ -369,24 +429,19 @@ fn an_error_the_device_plays_on_after_is_only_logged() {
 }
 
 #[test]
-fn a_new_default_output_reopens_and_reactivates_the_plugin_there() {
+fn a_new_default_while_processing_moves_the_plugin_there_and_reactivates_it() {
     for format in Format::ALL {
         let hosted = host::<Watched>(format);
-        let mut audio = Audio::with(Changing::default(), Layout::STEREO, Signal::Silence, None);
-        audio.start_first(&*hosted);
-        let _started = audio.events();
-        audio.output().next_rate.set(44_100);
-        audio.output().report(ErrorKind::StreamInvalidated);
-        audio.check(&*hosted, Instant::now());
-        let at_its_own = Settings {
-            rate: 44_100,
-            ..OWN
-        };
-        assert_eq!(audio.running(), Some(at_its_own), "{format:?}: its rate");
-        assert!(ACTIVE.get(), "{format:?}: active again");
+        let system = system();
+        let mut audio = started(&*hosted, &system, None);
+        let activations = ACTIVATIONS.get();
+        system.default.set(Some(2));
+        audio.look(&*hosted);
+        assert_eq!(audio.running(), Some(OWN), "{format:?}");
+        assert!(ACTIVE.get(), "{format:?}: active");
+        assert_eq!(ACTIVATIONS.get(), activations + 1, "{format:?}: again");
         assert_eq!(audio.shown().device, "Device 2", "{format:?}");
-        let note = audio.shown().note.map(str::to_owned).unwrap_or_default();
-        assert!(note.contains("Device 2"), "{format:?}: {note}");
+        assert_eq!(note(&audio), "", "{format:?}: a move leaves no note");
         let events = audio.events();
         assert!(logged(&events, "now Device 2"), "{format:?}: {events:?}");
         assert!(logged(&events, "activated at"), "{format:?}: {events:?}");
@@ -394,42 +449,117 @@ fn a_new_default_output_reopens_and_reactivates_the_plugin_there() {
 }
 
 #[test]
-fn a_default_output_that_does_not_open_again_stops_processing_with_the_note() {
+fn a_new_default_that_lacks_the_rate_takes_its_own_and_the_settings_are_kept() {
     for format in Format::ALL {
         let hosted = host::<Watched>(format);
-        let mut audio = Audio::with(Changing::default(), Layout::STEREO, Signal::Silence, None);
-        audio.start_first(&*hosted);
-        audio.output().none_left.set(true);
-        audio.output().report(ErrorKind::DeviceNotAvailable);
-        audio.check(&*hosted, Instant::now());
-        assert_eq!(audio.running(), None, "{format:?}: stopped");
-        assert!(!ACTIVE.get(), "{format:?}: deactivated");
-        let note = audio.shown().note.map(str::to_owned).unwrap_or_default();
-        assert!(
-            note.contains("no audio output device"),
-            "{format:?}: {note}"
-        );
-        assert!(note.contains("processing is stopped"), "{format:?}: {note}");
-        assert!(logged(&audio.events(), "did not open again"), "{format:?}");
+        let system = system();
+        let mut audio = started(&*hosted, &system, Some("48000 256 random"));
+        system.default.set(Some(2));
+        system.next_rate.set(44_100);
+        assert!(audio.look(&*hosted), "{format:?}: for the session to keep");
+        let moved = Settings {
+            rate: 44_100,
+            max: 256,
+            blocks: Blocks::Random,
+        };
+        assert_eq!(audio.running(), Some(moved), "{format:?}: its own rate");
+        assert!(!audio.look(&*hosted), "{format:?}: nothing new to keep");
     }
 }
 
 #[test]
-fn a_device_that_fails_again_at_once_is_not_opened_again() {
+fn an_error_drops_the_stream_and_the_next_look_opens_the_default() {
     for format in Format::ALL {
         let hosted = host::<Watched>(format);
-        let mut audio = Audio::with(Changing::default(), Layout::STEREO, Signal::Silence, None);
-        audio.start_first(&*hosted);
-        let start = Instant::now();
-        audio.output().report(ErrorKind::StreamInvalidated);
-        audio.check(&*hosted, start);
-        assert_eq!(audio.shown().device, "Device 2", "{format:?}");
-        audio.output().report(ErrorKind::StreamInvalidated);
-        audio.check(&*hosted, start + SETTLE - Duration::from_millis(1));
+        let mut audio = started(&*hosted, &system(), None);
+        // A second error soon after the first waits for the look too.
+        for time in ["first", "second"] {
+            audio.output().report(ErrorKind::StreamInvalidated);
+            audio.check(&*hosted);
+            assert_eq!(audio.running(), None, "{format:?} {time}: dropped");
+            assert!(!ACTIVE.get(), "{format:?} {time}: deactivated");
+            let stopped = note(&audio);
+            assert!(stopped.contains("processing is stopped"), "{stopped}");
+            audio.look(&*hosted);
+            assert_eq!(audio.running(), Some(OWN), "{format:?} {time}: plays");
+            assert!(ACTIVE.get(), "{format:?} {time}: active again");
+            assert_eq!(note(&audio), "", "{format:?} {time}: cleared");
+        }
+    }
+}
+
+#[test]
+fn no_default_stops_processing_with_the_note_and_a_new_one_starts_it_again() {
+    for format in Format::ALL {
+        let hosted = host::<Watched>(format);
+        let system = system();
+        let mut audio = started(&*hosted, &system, None);
+        system.default.set(None);
+        audio.look(&*hosted);
         assert_eq!(audio.running(), None, "{format:?}: stopped");
         assert!(!ACTIVE.get(), "{format:?}: deactivated");
-        assert_eq!(audio.shown().device, "Device 2", "{format:?}: not opened");
-        let note = audio.shown().note.map(str::to_owned).unwrap_or_default();
-        assert!(note.contains("within a second"), "{format:?}: {note}");
+        let stopped = note(&audio);
+        assert!(stopped.contains("no audio output device"), "{stopped}");
+        assert!(stopped.contains("processing is stopped"), "{stopped}");
+        assert!(logged(&audio.events(), "no audio output device"));
+        audio.look(&*hosted);
+        assert_eq!(audio.events(), Vec::<String>::new(), "{format:?}: waits");
+        system.default.set(Some(3));
+        audio.look(&*hosted);
+        assert_eq!(audio.running(), Some(OWN), "{format:?}: started");
+        assert!(ACTIVE.get(), "{format:?}: active");
+        assert_eq!(audio.shown().device, "Device 3", "{format:?}");
+        assert_eq!(note(&audio), "", "{format:?}: cleared");
+    }
+}
+
+#[test]
+fn a_start_that_fails_after_a_move_is_tried_at_each_look_and_logged_once() {
+    for format in Format::ALL {
+        let hosted = host::<Watched>(format);
+        let system = system();
+        let mut audio = started(&*hosted, &system, None);
+        system.default.set(Some(2));
+        system.busy.set(true);
+        audio.look(&*hosted);
+        assert_eq!(audio.running(), None, "{format:?}: stopped");
+        assert!(!ACTIVE.get(), "{format:?}: deactivated again");
+        assert!(note(&audio).contains("in use"), "{format:?}");
+        let events = audio.events();
+        let refusals = events.iter().filter(|e| e.contains("in use")).count();
+        assert_eq!(refusals, 1, "{format:?}: {events:?}");
+        audio.look(&*hosted);
+        assert!(!logged(&audio.events(), "in use"), "{format:?}: once");
+        assert!(note(&audio).contains("in use"), "{format:?}: still noted");
+        system.busy.set(false);
+        audio.look(&*hosted);
+        assert_eq!(audio.running(), Some(OWN), "{format:?}: tried again");
+        assert!(ACTIVE.get(), "{format:?}: active");
+        assert_eq!(note(&audio), "", "{format:?}: cleared");
+    }
+}
+
+#[test]
+fn after_stop_a_new_default_is_taken_and_not_started_and_start_plays_on_it() {
+    for format in Format::ALL {
+        let hosted = host::<Watched>(format);
+        let system = system();
+        let mut audio = started(&*hosted, &system, None);
+        audio.stop(&*hosted);
+        system.default.set(Some(2));
+        system.next_rate.set(44_100);
+        audio.look(&*hosted);
+        assert_eq!(audio.running(), None, "{format:?}: not started");
+        assert!(!ACTIVE.get(), "{format:?}: inactive");
+        assert_eq!(audio.shown().device, "Device 2", "{format:?}");
+        assert_eq!(audio.shown().rates, [44_100], "{format:?}: its rates");
+        assert!(logged(&audio.events(), "now Device 2"), "{format:?}");
+        audio.resume(&*hosted);
+        let there = Settings {
+            rate: 44_100,
+            ..OWN
+        };
+        assert_eq!(audio.running(), Some(there), "{format:?}: plays on it");
+        assert_eq!(audio.output().number, 2, "{format:?}");
     }
 }

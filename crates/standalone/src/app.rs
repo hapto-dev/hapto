@@ -20,7 +20,7 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy}
 use winit::window::{Window, WindowId};
 
 use crate::block::{Plan, Player};
-use crate::device::{Answer, Output, Playing, Reopens, answer};
+use crate::device::{self, Answer, LOOK, Look, Output, Playing, answer, say_once};
 use crate::options::Options;
 use crate::session::Session;
 use crate::settings::Blocks;
@@ -77,21 +77,22 @@ pub(crate) fn run<P: Plugin>(options: &Options) -> Result<ExitCode> {
     if let Some(line) = silence_note(P::INFO.name, first_layout::<P>(), options.signal) {
         eprintln!("{line}");
     }
-    let (stream, _device) = start_audio(&plugin, options.signal)?;
+    let audio = start_audio(&plugin, options.signal)?;
     let mut app = App {
-        stream: Some(stream),
+        audio: Some(audio),
         editor: None,
         window: None,
         failed: None,
         dev: options.dev.is_some(),
         signal: options.signal,
-        reopens: Reopens::default(),
+        failing: None,
         shows: TitleShows {
             editor: EditorShown::None,
             audio_stopped: false,
             faults: 0,
         },
         next_tick: Instant::now(),
+        next_look: Instant::now() + LOOK,
         next_keep: Instant::now() + KEEP,
         session,
         plugin,
@@ -107,13 +108,13 @@ pub(crate) fn run<P: Plugin>(options: &Options) -> Result<ExitCode> {
 
 /// Opens the system's default output, activates `plugin` at its rate in its
 /// first layout, and starts the output playing it, with `signal` on its
-/// inputs. Returns the stream, and the device's name and rate in words.
+/// inputs. A device that does not start leaves the plugin deactivated again.
 ///
 /// # Errors
 ///
 /// Returns why it did not start: no device, an activation refused, or a
 /// device that did not start.
-fn start_audio<P: Plugin>(plugin: &Standalone<P>, signal: Signal) -> Result<(Playing, String)> {
+fn start_audio<P: Plugin>(plugin: &Standalone<P>, signal: Signal) -> Result<Audio> {
     let output = Output::system_default()?;
     let (rate, layout) = (output.sample_rate(), first_layout::<P>());
     plugin
@@ -127,8 +128,23 @@ fn start_audio<P: Plugin>(plugin: &Standalone<P>, signal: Signal) -> Result<(Pla
         BLOCK,
         Plan::new(Blocks::Device, signal),
     );
-    let stream = output.start(rate, player)?;
-    Ok((stream, format!("{} at {rate} Hz", output.name())))
+    let stream = output
+        .start(rate, player)
+        .inspect_err(|_| plugin.deactivate())?;
+    Ok(Audio { stream, output })
+}
+
+/// The audio playing the plugin: the stream, then the device it plays on.
+struct Audio {
+    stream: Playing,
+    output: Output,
+}
+
+impl Audio {
+    /// Returns where it plays, in words: the device's name and rate.
+    fn place(&self) -> String {
+        format!("{} at {} Hz", self.output.name(), self.output.sample_rate())
+    }
 }
 
 /// Returns the line that tells the author of the plugin `name`, laid out as
@@ -182,7 +198,7 @@ pub(crate) enum EditorShown {
 pub(crate) struct TitleShows {
     /// What the window shows of the editor.
     pub(crate) editor: EditorShown,
-    /// Whether the audio output stopped and did not open again.
+    /// Whether the audio is stopped: no device plays the plugin.
     pub(crate) audio_stopped: bool,
     /// How many faults the plugin has had, each kind's first written to the
     /// terminal.
@@ -252,17 +268,21 @@ pub(crate) fn tick_from_a_thread(proxy: EventLoopProxy<Wake>) {
 /// teardown must take: the device first, so no audio side outlives the
 /// plugin, then the editor, then the window it is in, then the plugin.
 struct App<P: Plugin> {
-    stream: Option<Playing>,
+    /// The audio, while a device plays the plugin.
+    audio: Option<Audio>,
     editor: Option<StandaloneEditor<P>>,
     window: Option<Window>,
     /// Why the app could not go on, once its loop ends.
     failed: Option<anyhow::Error>,
     dev: bool,
-    /// What plays into the plugin's inputs, kept for a reopened output.
+    /// What plays into the plugin's inputs, kept for the next device.
     signal: Signal,
-    reopens: Reopens,
+    /// Why the default output last did not open, said once until the audio
+    /// plays again.
+    failing: Option<String>,
     shows: TitleShows,
     next_tick: Instant,
+    next_look: Instant,
     next_keep: Instant,
     session: Session,
     plugin: Standalone<P>,
@@ -326,9 +346,10 @@ impl<P: Plugin> App<P> {
     }
 
     /// Reads the device's newest error. One it plays on after is said in a
-    /// line; any other [reopens](Self::reopen) the system's default output.
+    /// line; any other [stops the audio](Self::stop_audio), and the next
+    /// [look](Self::look) opens the default output again.
     fn check_audio(&mut self) {
-        let Some(error) = self.stream.as_mut().and_then(Playing::error) else {
+        let Some(error) = self.audio.as_mut().and_then(|audio| audio.stream.error()) else {
             return;
         };
         match answer(error.kind) {
@@ -337,52 +358,87 @@ impl<P: Plugin> App<P> {
                 P::INFO.name,
                 error.text
             ),
-            Answer::Reopen => self.reopen(&error.text),
+            Answer::Reopen => self.stop_audio(&error.text),
         }
     }
 
-    /// Drops the stream, so its blocks end before the plugin is touched, and
-    /// starts the audio again on the system's default output, saying in a
-    /// line where it plays now. One that does not start, or a second error
-    /// within [`SETTLE`](crate::device::SETTLE) of the last reopen, stops
-    /// the audio: that is said in a line and in the window's title, and the
-    /// plugin stays as it is until the app starts again.
-    fn reopen(&mut self, why: &str) {
+    /// Looks at which device is the system's default output, and follows
+    /// it: to a new default, with a line that says so; to none, which stops
+    /// the audio; and, while nothing plays, by opening the default.
+    fn look(&mut self) {
         let name = P::INFO.name;
-        drop(self.stream.take());
-        if !self.reopens.may(Instant::now()) {
-            eprintln!(
-                "{name}: the audio output stopped, after an error within a second of opening \
-                 it again: {why}"
-            );
-            self.audio_stopped();
-            return;
+        let default = device::default_output_id();
+        let playing = self.audio.as_ref().map(|audio| audio.output.id());
+        match device::look(playing, default.as_ref()) {
+            Look::Keep | Look::Wait => {}
+            Look::Move => {
+                self.silence();
+                if let Some(place) = self.open_audio() {
+                    eprintln!(
+                        "{name}: the audio output now plays on {place}: the default output changed"
+                    );
+                }
+            }
+            Look::Stop => self.stop_audio("there is no audio output device"),
+            Look::Open => {
+                if let Some(place) = self.open_audio() {
+                    eprintln!("{name}: the audio output plays again, on {place}");
+                }
+            }
         }
-        // As a host does for a new device: deactivate, then activate again.
-        self.plugin.deactivate();
+    }
+
+    /// Opens the system's default output and plays the plugin there, as a
+    /// host does for a new device, and returns where it plays. One that does
+    /// not open leaves the audio stopped, which the window's title says, and
+    /// a line says why, once, and again only when the reason changes.
+    fn open_audio(&mut self) -> Option<String> {
         match start_audio(&self.plugin, self.signal) {
-            Ok((stream, device)) => {
-                eprintln!("{name}: the audio output now plays on {device}, after an error: {why}");
-                self.stream = Some(stream);
+            Ok(audio) => {
+                let place = audio.place();
+                self.audio = Some(audio);
+                self.failing = None;
+                self.show_audio_stopped(false);
+                Some(place)
             }
             Err(error) => {
-                eprintln!(
-                    "{name}: the audio output stopped: the default output did not open again \
-                     ({error:#}) after an error: {why}"
-                );
-                self.audio_stopped();
+                let reason = format!("the default output did not open ({error:#})");
+                if let Some(reason) = say_once(&mut self.failing, reason) {
+                    eprintln!("{}: the audio output stopped: {reason}", P::INFO.name);
+                }
+                self.show_audio_stopped(true);
+                None
             }
         }
     }
 
-    fn audio_stopped(&mut self) {
-        self.shows.audio_stopped = true;
-        self.retitle();
+    /// Stops the audio, which a line with `why` and the window's title say.
+    fn stop_audio(&mut self, why: &str) {
+        self.silence();
+        eprintln!("{}: the audio output stopped: {why}", P::INFO.name);
+        self.show_audio_stopped(true);
     }
 
-    /// Ticks the plugin, reads the device and the faults, and keeps the
-    /// saved block, each when it is due. A fault's line goes to the
-    /// terminal, and the title counts them.
+    /// Drops the stream, so its blocks end before the plugin is touched,
+    /// then deactivates the plugin: it is inactive whenever no device plays
+    /// it.
+    fn silence(&mut self) {
+        drop(self.audio.take());
+        self.plugin.deactivate();
+    }
+
+    /// Says in the window's title whether the audio is `stopped`.
+    fn show_audio_stopped(&mut self, stopped: bool) {
+        if self.shows.audio_stopped != stopped {
+            self.shows.audio_stopped = stopped;
+            self.retitle();
+        }
+    }
+
+    /// Ticks the plugin, reads the device and the faults, looks at which
+    /// device is the default output, and keeps the saved block, each when it
+    /// is due. A fault's line goes to the terminal, and the title counts
+    /// them.
     fn periodic(&mut self) {
         let now = Instant::now();
         if now >= self.next_tick {
@@ -395,6 +451,10 @@ impl<P: Plugin> App<P> {
             }
             self.next_tick = now + TICK;
         }
+        if now >= self.next_look {
+            self.look();
+            self.next_look = now + LOOK;
+        }
         if self.dev && now >= self.next_keep {
             self.keep();
             self.next_keep = now + KEEP;
@@ -404,7 +464,7 @@ impl<P: Plugin> App<P> {
     /// Keeps the saved block and tears down in order.
     fn finish(&mut self) {
         self.keep();
-        drop(self.stream.take());
+        drop(self.audio.take());
         drop(self.editor.take());
         drop(self.window.take());
     }

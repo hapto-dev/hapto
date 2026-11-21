@@ -10,24 +10,29 @@
 //! varies from block to block. Stopped, the plugin is deactivated and no
 //! block runs; a change of settings then waits for the start.
 //!
-//! An error from the device that it does not play on after, a new default
-//! output among them, opens the system's default output again, as a host
-//! follows a change of device: the plugin is stopped, then started on the
-//! new device.
+//! A look once a second asks which device is the system's default output,
+//! and follows it as a host follows a change of device. Processing on
+//! another device, the plugin is stopped, then started on the new one. With
+//! no default left, or after an error from the device that it does not play
+//! on after, the plugin is stopped and waits, and each look takes the
+//! default and tries the start again. Stopped by the author, a look takes a
+//! new default and starts nothing.
 
 #[cfg(test)]
 mod tests;
 
 use std::sync::Arc;
-use std::time::Instant;
 
 use anyhow::Result;
+use cpal::DeviceId;
 use hapto_host::Layout;
 
 use super::hosted::Hosted;
 use super::message::AudioShown;
 use crate::block::{Plan, Player, Render};
-use crate::device::{Answer, DeviceError, Output, Playing, Reopens, answer};
+use crate::device::{
+    Answer, DeviceError, Look, Output, Playing, answer, default_output_id, look, say_once,
+};
 use crate::settings::{MAX_BLOCKS, Settings};
 use crate::signal::Signal;
 
@@ -36,8 +41,12 @@ use crate::signal::Signal;
 pub(crate) trait Device {
     /// What plays the blocks, until it drops.
     type Stream;
+    /// What tells one device from another.
+    type Id: PartialEq;
     /// Returns its name, as the system shows it.
     fn name(&self) -> String;
+    /// Returns its id.
+    fn id(&self) -> &Self::Id;
     /// Returns its own sample rate.
     fn sample_rate(&self) -> u32;
     /// Returns how many channels it plays.
@@ -53,6 +62,9 @@ pub(crate) trait Device {
     fn start(&self, rate: u32, player: Player<Box<dyn Render>>) -> Result<Self::Stream>;
     /// Returns the newest error `stream` reported since the last call.
     fn error(stream: &mut Self::Stream) -> Option<DeviceError>;
+    /// Returns the id of the system's default output now, `None` when there
+    /// is none.
+    fn default_id(&self) -> Option<Self::Id>;
     /// Opens the system's default output again, which may be another
     /// device now.
     ///
@@ -66,9 +78,14 @@ pub(crate) trait Device {
 
 impl Device for Output {
     type Stream = Playing;
+    type Id = DeviceId;
 
     fn name(&self) -> String {
         Output::name(self)
+    }
+
+    fn id(&self) -> &DeviceId {
+        Output::id(self)
     }
 
     fn sample_rate(&self) -> u32 {
@@ -91,6 +108,10 @@ impl Device for Output {
         stream.error()
     }
 
+    fn default_id(&self) -> Option<DeviceId> {
+        default_output_id()
+    }
+
     fn reopen(&self) -> Result<Output> {
         Output::system_default()
     }
@@ -110,11 +131,15 @@ pub(crate) struct Audio<D: Device = Output> {
     ran: Option<Settings>,
     /// The stream playing the plugin's blocks, while it processes.
     stream: Option<D::Stream>,
-    /// Why the last change did not take.
+    /// Why processing is stopped, or what the last change refused; cleared
+    /// when the plugin processes again.
     note: Option<String>,
     /// What changed since the last look, for the Activity log.
     events: Vec<String>,
-    reopens: Reopens,
+    /// Whether a change of device left the plugin waiting: each look tries
+    /// the start again, until it processes or the author stops, starts or
+    /// reactivates it.
+    waits: bool,
 }
 
 impl Audio {
@@ -148,7 +173,7 @@ impl<D: Device> Audio<D> {
             stream: None,
             note: None,
             events: Vec::new(),
-            reopens: Reopens::default(),
+            waits: false,
         }
     }
 
@@ -158,7 +183,7 @@ impl<D: Device> Audio<D> {
     }
 
     /// Whether the plugin processes: not after [`stop`](Self::stop), nor
-    /// after a start it refused.
+    /// after a start it refused, nor while a change of device stopped it.
     pub(crate) fn is_processing(&self) -> bool {
         self.stream.is_some()
     }
@@ -248,18 +273,22 @@ impl<D: Device> Audio<D> {
     /// Reactivates the plugin with the settings it has, as a host does when
     /// the user asks it to, or reloads the plugin's state. Stopped, it
     /// starts; settings changed meanwhile that it refuses give way to the
-    /// ones that last ran.
+    /// ones that last ran. A plugin a change of device left waiting waits no
+    /// more.
     pub(crate) fn reactivate(&mut self, hosted: &dyn Hosted) {
+        self.waits = false;
         let before = self.ran.filter(|ran| *ran != self.settings);
         self.restart(hosted, before);
     }
 
     /// Stops processing and deactivates the plugin, with no block running,
-    /// until [`resume`](Self::resume).
+    /// until [`resume`](Self::resume). A plugin a change of device left
+    /// waiting waits no more.
     pub(crate) fn stop(&mut self, hosted: &dyn Hosted) {
-        if !self.is_processing() {
+        if !self.is_processing() && !self.waits {
             return;
         }
+        self.waits = false;
         self.silence();
         hosted.stop();
         self.note = None;
@@ -309,10 +338,10 @@ impl<D: Device> Audio<D> {
         self.note = Some(note);
     }
 
-    /// Reads the device's newest error at `now`. One it plays on after goes
-    /// in the log; any other [reopens](Self::reopen) the system's default
-    /// output.
-    pub(crate) fn check(&mut self, hosted: &dyn Hosted, now: Instant) {
+    /// Reads the device's newest error. One it plays on after goes in the
+    /// log; any other [stops](Self::halt) the plugin at once, and the next
+    /// [look](Self::look) starts it again on the default output.
+    pub(crate) fn check(&mut self, hosted: &dyn Hosted) {
         let Some(error) = self.stream.as_mut().and_then(D::error) else {
             return;
         };
@@ -321,58 +350,116 @@ impl<D: Device> Audio<D> {
                 "the audio device reported an error and plays on: {}",
                 error.text
             )),
-            Answer::Reopen => self.reopen(hosted, &error.text, now),
+            Answer::Reopen => self.halt(hosted, &error.text),
         }
     }
 
-    /// Stops processing, as a host stops for a change of device, and starts
-    /// it again on the system's default output, with the settings it has
-    /// where the device offers their rate, and else at the device's own.
-    /// A device that does not open, or a second error within
-    /// [`SETTLE`](crate::device::SETTLE) of the last reopen, leaves
-    /// processing stopped, and the note and the log say why.
-    fn reopen(&mut self, hosted: &dyn Hosted, why: &str, now: Instant) {
+    /// Looks at which device is the system's default output, as a host
+    /// follows a change of device. Returns whether the look changed the
+    /// settings the plugin processes with, for the session to keep.
+    ///
+    /// Processing, the plugin moves to a new default, and with none left it
+    /// stops and waits. Waiting, it takes the default and tries the start
+    /// again. Stopped otherwise, by the author or a refusal, it takes a new
+    /// default, so the Audio tab and its rates are true, and starts nothing.
+    pub(crate) fn look(&mut self, hosted: &dyn Hosted) -> bool {
+        let before = self.running();
+        let default = self.output.default_id();
+        if self.is_processing() || self.waits {
+            let playing = self.is_processing().then(|| self.output.id());
+            match look(playing, default.as_ref()) {
+                Look::Keep | Look::Wait => {}
+                Look::Move => self.move_on(hosted),
+                Look::Stop => self.halt(hosted, "there is no audio output device"),
+                Look::Open => self.start_again(hosted),
+            }
+        } else if default.is_some_and(|id| id != *self.output.id()) {
+            // Tried again at the next look when the new default does not
+            // open.
+            let _adopted = self.adopt();
+        }
+        self.running() != before
+    }
+
+    /// Stops the plugin for a new default output, takes the device and
+    /// starts the plugin there, as at the run's first start. A start that
+    /// fails leaves the plugin waiting for the next look.
+    fn move_on(&mut self, hosted: &dyn Hosted) {
         self.silence();
         hosted.stop();
-        if !self.reopens.may(now) {
+        self.note = None;
+        self.waits = true;
+        if let Err(error) = self.adopt() {
             self.stopped(format!(
-                "processing is stopped: the audio device failed again within a second of \
-                 opening it, after an error: {why}"
+                "processing is stopped: the default output did not open ({error:#})"
             ));
             return;
         }
-        let output = match self.output.reopen() {
-            Ok(output) => output,
-            Err(error) => {
-                self.stopped(format!(
-                    "processing is stopped: the default output did not open again ({error:#}) \
-                     after an error: {why}"
-                ));
-                return;
+        self.start_first(hosted);
+        if self.is_processing() {
+            self.waits = false;
+            self.events.push(format!("activated at {}", self.shape()));
+        }
+    }
+
+    /// Takes the system's default output and starts the plugin there again,
+    /// for a plugin a change of device left waiting. A failure is noted and
+    /// logged once, and again only when its reason changes.
+    fn start_again(&mut self, hosted: &dyn Hosted) {
+        if let Err(error) = self.adopt() {
+            self.stopped(format!(
+                "processing is stopped: the default output did not open ({error:#})"
+            ));
+            return;
+        }
+        match self.start(hosted) {
+            Ok(()) => {
+                self.waits = false;
+                self.note = None;
+                self.events.push(format!("activated at {}", self.shape()));
             }
-        };
+            Err(error) => self.stopped(format!("{error:#}: processing is stopped")),
+        }
+    }
+
+    /// Stops processing and the plugin for a change of device, and leaves
+    /// the plugin waiting for the next look; the note and the log say `why`.
+    fn halt(&mut self, hosted: &dyn Hosted, why: &str) {
+        self.silence();
+        hosted.stop();
+        self.waits = true;
+        self.stopped(format!("processing is stopped: {why}"));
+    }
+
+    /// Takes the system's default output, as it is now: its name and its
+    /// rates, and the settings where it offers their rate, else its own
+    /// rate. A device other than the one before goes in the log.
+    ///
+    /// # Errors
+    ///
+    /// Returns why there is no default output to take.
+    fn adopt(&mut self) -> Result<()> {
+        let output = self.output.reopen()?;
+        let moved = output.id() != self.output.id();
         self.rates = output.rates();
         self.device = output.name();
         if !self.rates.contains(&self.settings.rate) {
             self.settings.rate = output.sample_rate();
         }
         self.output = output;
-        let note = format!(
-            "the audio device is now {}, after an error: {why}",
-            self.device
-        );
-        self.events.push(note.clone());
-        self.note = Some(note);
-        self.start_first(hosted);
-        if self.is_processing() {
-            self.events.push(format!("activated at {}", self.shape()));
+        if moved {
+            self.events
+                .push(format!("the audio device is now {}", self.device));
         }
+        Ok(())
     }
 
-    /// Says why processing is stopped, in the note and the log.
+    /// Says why processing is stopped, in the note and the log, once, and
+    /// again only when the reason changes.
     fn stopped(&mut self, note: String) {
-        self.events.push(note.clone());
-        self.note = Some(note);
+        if let Some(note) = say_once(&mut self.note, note) {
+            self.events.push(note);
+        }
     }
 
     /// Returns the device, for a test that changes it.

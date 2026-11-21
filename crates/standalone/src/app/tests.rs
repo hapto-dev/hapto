@@ -156,6 +156,21 @@ fn the_window_s_title_counts_the_faults_beside_what_else_it_says() {
 }
 
 #[test]
+fn the_window_s_title_says_the_audio_stopped_until_it_plays_again() {
+    use super::{EditorShown, TitleShows, title};
+    let stopped = TitleShows {
+        audio_stopped: true,
+        ..showing(EditorShown::Open)
+    };
+    assert_eq!(title("Gain", stopped), "Gain (audio stopped)");
+    let again = TitleShows {
+        audio_stopped: false,
+        ..stopped
+    };
+    assert_eq!(title("Gain", again), "Gain", "cleared");
+}
+
+#[test]
 fn an_effect_s_inputs_are_said_to_hear_silence_and_an_instrument_s_are_not() {
     use super::silence_note;
     use crate::signal::Signal;
