@@ -6,7 +6,8 @@
 //! default output: processing, to a new device, where the plugin is started
 //! again, or to none, where it waits; waiting, it starts the plugin again
 //! once it can; stopped by the author, it takes the new device and starts
-//! nothing.
+//! nothing. A wait ends once the plugin plays again, and at a Stop, a Start
+//! or a Reactivate, and a move clears the note of an earlier refusal.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -129,6 +130,9 @@ struct System {
     next_rate: Cell<u32>,
     /// Whether every start fails, as on a device another app holds.
     busy: Cell<bool>,
+    /// How many of the next starts fail, as on a device another app holds
+    /// for a moment.
+    refusals: Cell<u32>,
 }
 
 /// A device numbered as the system's default output was when it opened,
@@ -191,7 +195,9 @@ impl Device for Changing {
     }
 
     fn start(&self, _rate: u32, _player: Player<Box<dyn Render>>) -> Result<Self::Stream> {
-        if self.system.busy.get() {
+        let refusals = self.system.refusals.get();
+        if self.system.busy.get() || refusals > 0 {
+            self.system.refusals.set(refusals.saturating_sub(1));
             bail!("the device is in use by another app");
         }
         let stream = Rc::new(RefCell::new(None));
@@ -218,6 +224,7 @@ fn system() -> Rc<System> {
         default: Cell::new(Some(1)),
         next_rate: Cell::new(48_000),
         busy: Cell::new(false),
+        refusals: Cell::new(0),
     })
 }
 
@@ -561,5 +568,83 @@ fn after_stop_a_new_default_is_taken_and_not_started_and_start_plays_on_it() {
         };
         assert_eq!(audio.running(), Some(there), "{format:?}: plays on it");
         assert_eq!(audio.output().number, 2, "{format:?}");
+    }
+}
+
+#[test]
+fn a_stop_a_start_or_a_reactivation_ends_the_wait_for_a_device() {
+    type End = fn(&mut Audio<Changing>, &dyn Hosted);
+    let ends: [(&str, End); 3] = [
+        ("Stop", Audio::stop),
+        ("Start", Audio::resume),
+        ("Reactivate", Audio::reactivate),
+    ];
+    for format in Format::ALL {
+        for (name, end) in ends {
+            let hosted = host::<Watched>(format);
+            let system = system();
+            let mut audio = started(&*hosted, &system, None);
+            audio.output().report(ErrorKind::StreamInvalidated);
+            audio.check(&*hosted);
+            // The device is held, so a start asked for now fails.
+            system.busy.set(true);
+            end(&mut audio, &*hosted);
+            assert_eq!(audio.running(), None, "{format:?} {name}: stopped");
+            system.busy.set(false);
+            let activations = ACTIVATIONS.get();
+            audio.look(&*hosted);
+            assert_eq!(audio.running(), None, "{format:?} {name}: no more tries");
+            assert_eq!(ACTIVATIONS.get(), activations, "{format:?} {name}");
+        }
+    }
+}
+
+#[test]
+fn once_the_plugin_plays_again_a_later_refusal_is_not_tried_at_a_look() {
+    for format in Format::ALL {
+        for by_a_move in [false, true] {
+            let hosted = host::<Watched>(format);
+            let system = system();
+            let mut audio = started(&*hosted, &system, None);
+            if by_a_move {
+                system.default.set(Some(2));
+            } else {
+                audio.output().report(ErrorKind::StreamInvalidated);
+                audio.check(&*hosted);
+            }
+            audio.look(&*hosted);
+            assert_eq!(audio.running(), Some(OWN), "{format:?}: plays again");
+            // A change the device refuses, and the settings before with it.
+            system.busy.set(true);
+            let smaller = Settings { max: 256, ..OWN };
+            audio.change(&*hosted, smaller);
+            assert_eq!(audio.running(), None, "{format:?}: refused");
+            system.busy.set(false);
+            let activations = ACTIVATIONS.get();
+            audio.look(&*hosted);
+            assert_eq!(audio.running(), None, "{format:?}: not tried again");
+            assert_eq!(ACTIVATIONS.get(), activations, "{format:?}");
+        }
+    }
+}
+
+#[test]
+fn a_move_clears_the_note_of_an_earlier_refusal() {
+    for format in Format::ALL {
+        let hosted = host::<Watched>(format);
+        let system = system();
+        let mut audio = started(&*hosted, &system, None);
+        // One start fails: the change is refused, and the settings before
+        // come back with a note.
+        system.refusals.set(1);
+        let smaller = Settings { max: 256, ..OWN };
+        audio.change(&*hosted, smaller);
+        assert_eq!(audio.running(), Some(OWN), "{format:?}: the ones before");
+        let refused = note(&audio);
+        assert!(refused.contains("settings before are back"), "{refused}");
+        system.default.set(Some(2));
+        audio.look(&*hosted);
+        assert_eq!(audio.shown().device, "Device 2", "{format:?}");
+        assert_eq!(note(&audio), "", "{format:?}: a move leaves no note");
     }
 }
