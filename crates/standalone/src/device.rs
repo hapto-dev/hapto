@@ -147,7 +147,9 @@ pub(crate) fn default_output_id() -> Option<DeviceId> {
 }
 
 /// How often the app and the dev host look at which device is the system's
-/// default output.
+/// default output: this long after the last look ended. A look that opens a
+/// device runs on the main thread, so one that is slow to fail still leaves
+/// the window this long between two tries.
 pub(crate) const LOOK: Duration = Duration::from_secs(1);
 
 /// What a look at the system's default output asks.
@@ -205,7 +207,9 @@ pub(crate) enum Answer {
 }
 
 /// Returns what an error of `kind` asks of the app. On Windows every other
-/// error either ends cpal's thread or says the stream must be built again.
+/// error either ends cpal's thread or says the stream must be built again,
+/// but one: cpal reports a refused rise in the thread's priority there as a
+/// backend error, so a stream that plays on is dropped for it.
 pub(crate) fn answer(kind: ErrorKind) -> Answer {
     match kind {
         ErrorKind::Xrun | ErrorKind::RealtimeDenied | ErrorKind::DeviceChanged => Answer::PlaysOn,

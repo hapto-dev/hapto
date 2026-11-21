@@ -453,7 +453,8 @@ impl<P: Plugin> App<P> {
         }
         if now >= self.next_look {
             self.look();
-            self.next_look = now + LOOK;
+            // From the look's end, as `LOOK` says.
+            self.next_look = Instant::now() + LOOK;
         }
         if self.dev && now >= self.next_keep {
             self.keep();
