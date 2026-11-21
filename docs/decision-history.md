@@ -1174,6 +1174,19 @@ debugger saw it before, which D75 now says too, and the window's title counts
 the faults; a held block's line says where it is; and a plugin with inputs
 says at start that they hear silence.
 
+Later on 2026-11-20, from the owner's run: two switches of the default
+output within a second stopped the audio for the run; an unplugged default
+did too, its reopen refused with "Cannot change thread mode after it is
+set"; and after either nothing brought the audio back, a switch back and a
+replug included. With cpal 0.18.2, once any audio device left during the
+run, cpal's own default device could not be opened again. The app now opens
+the default by its id and looks once a second at which device is the
+default, so an error drops the stream, the next look opens the default
+again, and no device error stops the audio for the run. At the owner's
+call, an unplug is followed at the next look rather than at once, and a
+device that went away is said in plain words rather than in cpal's text.
+The window's title now clears once the audio plays again.
+
 ### D111. The dev host
 
 [The decision](decisions.md#d111-the-dev-host)
@@ -1203,6 +1216,16 @@ once a second, for the session and the settings window together, where a
 save it faulted on counted ten faults a second while the window showed; and
 the settings page no longer says the dev host speaks MIDI-CI, or that it was
 built without a virtual MIDI endpoint.
+
+Later on 2026-11-20, from the owner's run, where the dev host's Start failed
+the same way as the app's reopen for the rest of the run: the dev host
+follows the default output by looking once a second, as the app does
+(D110). At the owner's call, a plugin a change of device stopped waits and
+is started again at every look, whatever refused the start, until it
+processes or the author stops, starts or reactivates it; and a move to a new
+device shows in the Activity log and the Audio tab, no longer in the box for
+refusals. After Stop a look takes a new default and starts nothing, and
+settings a look changed are kept in the session.
 
 ## Rules
 

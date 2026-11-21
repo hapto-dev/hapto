@@ -3207,18 +3207,25 @@ against C++.
   into every input what `--signal` asks for: silence by default, so nothing
   sounds until its author asks, or a 440 Hz sine at -24 dBFS, or white noise at
   -24 dBFS. A plugin with one output plays it on every channel, and a plugin
-  with inputs says at start that they hear silence, when they do. An error the
-  device reports is judged by its kind. A glitch, a refused rise in the audio
-  thread's priority, or a change of route the device followed itself plays on,
-  and is said in a line. Any other opens the system's default output again,
-  since cpal never moves a stream to a new default: it reports the change and
-  goes on playing to the old device. The stream is dropped first, so no block
-  runs, the plugin is deactivated and activated at the new device's rate, and
-  a line says where the app plays now. A device that does not open, or a
-  second such error within a second of opening it, stops the audio, which a
-  line and the window's title say. The audio thread runs at real-time
-  priority, through cpal's `realtime` feature, so a build on every core does
-  not break up the tone. A fault's line goes to the terminal as well as to a
+  with inputs says at start that they hear silence, when they do. It opens
+  the device that is the system's default output by its id, not cpal's own
+  default device: with cpal 0.18.2 that one cannot be opened again once any
+  audio device has left during the run. A stream on a device taken by its id
+  stays on it, so the app looks once a second at which device is the
+  default. A new default is followed: the stream is dropped first, so no
+  block runs, the plugin is deactivated and activated at the new device's
+  rate, and a line says where the app plays now. An error the device reports
+  is judged by its kind. A glitch, a refused rise in the audio thread's
+  priority, or a change of route the device followed itself plays on, and is
+  said in a line. Any other drops the stream and deactivates the plugin at
+  once, and so does a look that finds no default output; the next look that
+  finds one opens it. A stop is said in a line, a device that went away in
+  plain words, and in the window's title until the audio plays again. A
+  default that does not open is tried at every look and said once for each
+  reason, so no device error stops the audio for the run. The audio thread
+  runs at real-time priority, through cpal's `realtime` feature, so a build
+  on every core does not break up the tone. A fault's line goes to the
+  terminal as well as to a
   debugger, and the window's title counts the faults. It ticks the
   plugin every 16 ms from the window's event loop, woken by a thread of its
   own, since the loop's deadline is not served while a title bar is held or a
@@ -3241,7 +3248,9 @@ shipped app carries cpal and winit, under the Apache License 2.0 alone,
 tracing, under MIT, and audio_thread_priority, under MPL-2.0, which a plugin's
 module never links; THIRD-PARTY-NOTICES
 holds their notices apart from a plugin's, and nothing ships that file with
-an app or a bundle yet.
+an app or a bundle yet. Open: the app can go back to cpal's own default device
+once a cpal release opens it again after a device has left; its stream tells
+of a new default at once, where a look finds one up to a second later.
 
 **Alternatives.** The alternatives were the JUCE adapter's standalone app,
 which needs CMake and JUCE in a `cargo` loop; and a plugin hosted in a real
@@ -3320,17 +3329,24 @@ hosts, in process, linked into the app.
   brings back the settings it last ran with, and at a run's first start, kept
   settings it refuses give way to the device's own; one it refuses even then
   leaves processing stopped with its reason, so no refusal keeps the dev host
-  from starting. A start the device refuses stops the plugin again. An error
-  the device reports is judged by its kind, as the app judges it (D110): one
-  it plays on after goes in the Activity log, and any other stops processing
-  and the plugin, opens the system's default output again and starts there,
-  as a host follows a change of device, with the settings the plugin had
-  where the new device offers their rate, and else at the device's own. The
-  log, the note and the Audio tab name the new device. One that does not
-  open, or a second such error within a second of opening it, leaves
-  processing stopped with its reason. The test signal changes at the next
-  block, with no reactivation. The settings are kept in the session once the
-  plugin runs with them.
+  from starting. A start the device refuses stops the plugin again. It
+  follows the system's default output as the app does (D110), looking once a
+  second, as a host follows a change of device. Processing, a new default
+  stops processing and the plugin, which starts again there, with the
+  settings it had where the new device offers their rate, and else at the
+  device's own; the Activity log and the Audio tab name the device. An error
+  the device reports is judged by its kind, as the app judges it: one it
+  plays on after goes in the Activity log, and any other stops processing
+  and the plugin at once. Such an error, a look that finds no default
+  output, or a start that fails after a move leaves the plugin waiting: each
+  look takes the default and tries the start again, whatever refused it,
+  until the plugin processes, or Stop, Start or Reactivate ends the wait. The
+  Audio tab says why processing is stopped until the plugin processes again,
+  and the log says it once for each reason. Stopped otherwise, a look takes a
+  new default, so the Audio tab and its rates are true, and starts nothing;
+  Start then plays on it. The test signal changes at the next block, with no
+  reactivation. The settings are kept in the session once the plugin runs
+  with them, a look's change of them included.
 - **Blocks** are cut from the device's buffers by a plan the audio thread
   reads at each block, changed with no reactivation: as the device asks, cut
   at the maximum; always the maximum; random lengths from 1 to the maximum;
