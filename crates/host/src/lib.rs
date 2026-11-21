@@ -3,8 +3,9 @@
 //! A plugin implements [`Plugin`] once, with no knowledge of any format. An
 //! exporter, a module behind the cargo feature of its name, projects it into
 //! one format, as a thin shell over the core all exporters share: the `vst3`
-//! module natively, and the `cabi` module as a C ABI plus a generated header.
-//! One generic JUCE adapter turns that into AU, AUv3, AAX and hosting.
+//! module natively, the `cabi` module as a C ABI plus a generated header,
+//! and the `standalone` module for an app of the plugin's own, with no host.
+//! One generic JUCE adapter turns the C ABI into AU, AUv3, AAX and hosting.
 //!
 //! Hapto builds each instance's [`Parts`], its parameter set, session and
 //! saved state, from the plugin's declarations, and hands them to
@@ -129,7 +130,7 @@ mod state;
 // does.
 #[allow(unsafe_code, reason = "a host boundary: every block says why it holds")]
 #[cfg_attr(
-    not(any(feature = "vst3", feature = "cabi", test)),
+    not(any(feature = "vst3", feature = "cabi", feature = "standalone", test)),
     expect(dead_code, reason = "only an exporter drives the core")
 )]
 mod boundary;
@@ -139,16 +140,20 @@ mod boundary;
 pub mod cabi;
 #[allow(unsafe_code, reason = "a host boundary: every block says why it holds")]
 #[cfg_attr(
-    not(any(feature = "vst3", feature = "cabi")),
+    not(any(feature = "vst3", feature = "cabi", feature = "standalone")),
     expect(dead_code, reason = "only an exporter drives the engine")
 )]
 mod engine;
 #[allow(unsafe_code, reason = "a host boundary: every block says why it holds")]
 #[cfg_attr(
-    not(any(feature = "vst3", feature = "cabi")),
+    not(any(feature = "vst3", feature = "cabi", feature = "standalone")),
     expect(dead_code, reason = "only an exporter drives the core")
 )]
 mod faults;
+#[cfg(feature = "standalone")]
+#[cfg_attr(docsrs, doc(cfg(feature = "standalone")))]
+#[allow(unsafe_code, reason = "a host boundary: every block says why it holds")]
+pub mod standalone;
 #[cfg(feature = "vst3")]
 #[cfg_attr(docsrs, doc(cfg(feature = "vst3")))]
 #[allow(unsafe_code, reason = "a host boundary: every block says why it holds")]
@@ -160,7 +165,7 @@ pub mod vst3;
 pub use audio::{Block, Event, EventList, MAX_FRAMES, ProcessSetup, Status};
 pub use boundary::ParentWindow;
 pub use editor::{Editor, Size};
-#[cfg(any(feature = "vst3", feature = "cabi"))]
+#[cfg(any(feature = "vst3", feature = "cabi", feature = "standalone"))]
 pub use faults::boundary_faults;
 #[doc(hidden)]
 pub use faults::report_line;

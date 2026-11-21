@@ -1,0 +1,813 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #141416; --panel: #1a1a1e; --nav: #121214; --line: #26262b; --edge: #2c2c31;
+    --field: #141416; --fg: #ececea; --fg2: #c9c9c4; --muted: #9b9b96; --faint: #8a8a85;
+    --accent: #7aa2ff; --accent-soft: rgba(122, 162, 255, 0.16); --accent-ink: #e8eeff;
+    --on-accent: #0b1430; --ok: #6fcf8f; --ok-ink: #9fdcb2; --ok-soft: rgba(120, 210, 150, 0.12);
+    --warn-ink: #ffd2a1; --warn-soft: rgba(255, 184, 107, 0.10); --warn-line: rgba(255, 184, 107, 0.35);
+    --plan-ink: #e6c27a; --plan-soft: rgba(230, 194, 122, 0.14); --amber: #ffb86b; --idle: #5b5b62;
+    --sans: "Segoe UI", system-ui, sans-serif;
+    --mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      color-scheme: light;
+      --bg: #f4f4f1; --panel: #ffffff; --nav: #ecece8; --line: #dcdcd6; --edge: #d0d0ca;
+      --field: #ffffff; --fg: #1b1b19; --fg2: #3a3a36; --muted: #6a6a64; --faint: #7a7a74;
+      --accent: #2a64d6; --accent-soft: rgba(42, 100, 214, 0.12); --accent-ink: #123a8a;
+      --on-accent: #ffffff; --ok: #2f9e5a; --ok-ink: #1f7a43; --ok-soft: rgba(47, 158, 90, 0.12);
+      --warn-ink: #7a4300; --warn-soft: rgba(255, 170, 60, 0.14); --warn-line: rgba(200, 120, 20, 0.4);
+      --plan-ink: #7a5c08; --plan-soft: rgba(200, 160, 40, 0.18); --amber: #d9822b; --idle: #b4b4ae;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    display: flex; flex-direction: column; overflow: hidden;
+    background: var(--bg); color: var(--fg); font: 13px/1.45 var(--sans);
+  }
+  button { font: 500 12.5px var(--sans); color: inherit; }
+  .mono { font-family: var(--mono); }
+  .muted { color: var(--muted); }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+  header {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px;
+    padding: 14px 20px; border-bottom: 1px solid var(--line);
+  }
+  h1 { margin: 0; font-size: 16px; font-weight: 600; }
+  .ident { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .ident span { color: var(--muted); font: 12px var(--mono); }
+  .segments {
+    display: flex; gap: 4px; padding: 3px; background: var(--panel);
+    border: 1px solid var(--edge); border-radius: 9px;
+  }
+  .segments button {
+    height: 28px; padding: 0 12px; border: 0; border-radius: 6px; background: transparent;
+    color: var(--fg2); cursor: pointer; display: flex; align-items: center; gap: 6px;
+  }
+  .segments button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); cursor: default; }
+  .segments button:disabled { color: var(--faint); cursor: default; padding: 0 10px; }
+  .badge {
+    font-size: 10.5px; padding: 1px 6px; border-radius: 99px;
+    background: var(--plan-soft); color: var(--plan-ink); font-weight: 500;
+  }
+  .badge.plain { background: var(--line); color: var(--muted); }
+  .pills { margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px; }
+  .pill {
+    display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px;
+    border-radius: 99px; background: var(--panel); color: var(--fg2);
+  }
+  .pill.ok { background: var(--ok-soft); color: var(--ok-ink); }
+  .pill.warn { background: var(--warn-soft); color: var(--warn-ink); }
+  .dot { width: 7px; height: 7px; border-radius: 99px; background: currentColor; }
+
+  .body { flex: 1; min-height: 0; display: flex; }
+  nav {
+    flex: none; width: 190px; display: flex; flex-direction: column; gap: 2px;
+    padding: 14px 10px; border-right: 1px solid var(--line); background: var(--nav);
+  }
+  nav button {
+    height: 34px; display: flex; align-items: center; gap: 10px; padding: 0 10px;
+    border: 0; border-radius: 7px; background: transparent; color: var(--fg2);
+    font-size: 13px; text-align: left; cursor: pointer;
+  }
+  nav button[aria-current="page"] {
+    background: var(--panel); color: var(--fg); cursor: default;
+    box-shadow: inset 2px 0 0 var(--accent);
+  }
+  nav button span { flex: 1; }
+  nav .foot { margin-top: auto; padding: 12px 10px 4px; font-size: 11.5px; color: var(--faint); }
+  main { flex: 1; min-width: 0; overflow: auto; padding: 20px 24px 28px; }
+  .tab { display: flex; flex-direction: column; gap: 16px; }
+  h2 { margin: 0; font-size: 15px; font-weight: 600; }
+  h3 {
+    margin: 0; font-size: 11.5px; font-weight: 600; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+  .group { display: flex; flex-wrap: wrap; gap: 6px; }
+  .card {
+    display: flex; flex-direction: column; gap: 12px; padding: 16px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  }
+  .grid { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 14px 16px; align-items: start; }
+  .grid > .label { color: var(--fg2); padding-top: 5px; }
+  .choice {
+    height: 30px; min-width: 48px; padding: 0 10px; border-radius: 7px; cursor: pointer;
+    border: 1px solid var(--edge); background: var(--field); color: var(--fg2);
+  }
+  .choice.mono { font-family: var(--mono); }
+  .choice[aria-pressed="true"] {
+    border-color: var(--accent); background: var(--accent-soft); color: var(--accent-ink); cursor: default;
+  }
+  .choice:disabled {
+    border-style: dashed; background: transparent; color: var(--faint); cursor: default;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .action {
+    height: 30px; padding: 0 12px; border-radius: 7px; cursor: pointer;
+    border: 1px solid var(--edge); background: var(--field); color: var(--fg2);
+  }
+  .action.primary { border-color: var(--accent); background: transparent; color: var(--accent-ink); }
+  .action.small { height: 28px; padding: 0 10px; font-size: 12px; }
+  .action[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-ink); }
+  .action:disabled { border-color: var(--line); background: transparent; color: var(--faint); cursor: default; }
+  .callout {
+    display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 8px;
+    font-size: 12.5px;
+  }
+  .callout svg { flex: none; margin-top: 1px; }
+  .callout.warn { background: var(--warn-soft); border: 1px solid var(--warn-line); color: var(--warn-ink); }
+  .callout.ok { background: var(--ok-soft); border: 1px solid var(--ok-soft); color: var(--ok-ink); align-items: center; }
+  .callout.note { background: var(--plan-soft); border: 1px solid var(--plan-soft); color: var(--plan-ink); }
+  .callout.plain { background: var(--panel); border: 1px solid var(--line); color: var(--fg2); align-items: center; }
+  .empty {
+    padding: 12px; border-radius: 8px; border: 1px dashed var(--edge); color: var(--muted); font-size: 12.5px;
+  }
+  .help { font-size: 12px; color: var(--muted); }
+
+  .plans { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  .plan {
+    display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 8px;
+    border: 1px solid var(--edge); background: var(--field); color: var(--fg); text-align: left;
+    font: 13px var(--sans); cursor: pointer;
+  }
+  .plan b { font-weight: 600; }
+  .plan small { font-size: 12px; color: var(--muted); }
+  .plan[aria-checked="true"] { border-color: var(--accent); background: var(--accent-soft); cursor: default; }
+  .plan[aria-checked="true"] small { color: var(--accent-ink); }
+  .bars { height: 22px; display: flex; align-items: flex-end; gap: 2px; }
+  .bars span { width: 5px; border-radius: 1px; background: var(--idle); }
+  .plan[aria-checked="true"] .bars span { background: var(--accent); }
+  .recent {
+    display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 8px;
+    background: var(--field); border: 1px solid var(--line);
+  }
+  .graph { height: 64px; display: flex; align-items: flex-end; gap: 3px; border-bottom: 1px solid var(--edge); }
+  .graph span { flex: 1; min-width: 2px; border-radius: 1px 1px 0 0; background: var(--accent); }
+  .graph span.none { background: var(--faint); }
+  .graph span.over { background: var(--amber); }
+
+  table { width: 100%; border-collapse: collapse; }
+  .params { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+  .params table { min-width: 640px; }
+  .params th {
+    padding: 9px 14px; background: var(--panel); color: var(--muted); font-size: 11.5px;
+    font-weight: 600; text-align: left;
+  }
+  .params td { padding: 12px 14px; border-top: 1px solid var(--line); vertical-align: middle; }
+  .params td.mono { white-space: nowrap; }
+  .params input { width: 100%; accent-color: var(--accent); }
+  .params .name { display: flex; flex-direction: column; gap: 2px; }
+  .params .name span { font-size: 11.5px; color: var(--muted); font-family: var(--mono); }
+
+  .log {
+    height: max(240px, calc(100vh - 290px)); overflow: auto; border: 1px solid var(--line);
+    border-radius: 10px; background: #0c0c0c; color: #e8e8e8;
+  }
+  .log table { table-layout: fixed; font: 12px/1.55 var(--mono); }
+  .log th {
+    position: sticky; top: 0; z-index: 1; background: #0c0c0c; box-shadow: inset 0 -1px 0 #333;
+    padding: 7px 6px; font-weight: 500; text-align: left; border-left: 1px solid #333;
+    white-space: nowrap;
+  }
+  .log th:first-child { border-left: 0; }
+  .log td { padding: 2px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: top; }
+  .log .right { text-align: right; }
+  .log .comment td { padding: 3px 6px 3px 52px; color: #c19c00; font-style: italic; }
+  .log .unit { margin-left: 1ch; color: #767676; display: inline-block; width: 2ch; text-align: left; }
+  .log .index { color: #767676; }
+  .log .time { color: #8fbc8f; }
+  .log .host { color: #c9a8ff; }
+  .log .field { margin-right: 2ch; }
+  .log .field b { font-weight: 400; color: #767676; margin-right: 1ch; }
+  .log .field i { font-style: normal; color: #8fbc8f; }
+  .action.lock { width: 28px; padding: 0; display: flex; align-items: center; justify-content: center; }
+  .action.lock svg { flex: none; }
+  .filter { display: flex; gap: 2px; padding: 2px; background: var(--field); border: 1px solid var(--edge); border-radius: 8px; }
+  .filter button {
+    height: 24px; min-width: 52px; padding: 0 12px; border: 0; border-radius: 6px;
+    background: transparent; color: var(--fg2); font-size: 12px; cursor: pointer;
+  }
+  .filter button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-ink); }
+
+  pre {
+    margin: 0; padding: 14px 16px; border-radius: 10px; background: var(--panel);
+    border: 1px solid var(--line); font: 12.5px/1.6 var(--mono); color: var(--fg2);
+    overflow-x: auto; white-space: pre;
+  }
+  .facts {
+    display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 8px 16px; padding: 16px;
+    border-radius: 10px; border: 1px dashed var(--edge); font-size: 12.5px;
+  }
+  .facts span:nth-child(odd) { color: var(--muted); }
+  .verdict {
+    display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 36px 20px;
+    border-radius: 10px; background: var(--panel); border: 1px solid var(--line); text-align: center;
+  }
+  .verdict b { font-size: 14px; font-weight: 600; }
+  .verdict span { max-width: 460px; color: var(--muted); font-size: 12.5px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="ident"><h1 id="name"></h1><span id="ident"></span></div>
+  <div class="segments" id="formats" role="group" aria-label="Format"></div>
+  <div class="pills">
+    <span class="pill" id="processing"><span class="dot" aria-hidden="true"></span><span></span></span>
+    <span class="pill" id="latency"></span>
+    <span class="pill" id="faults"></span>
+  </div>
+</header>
+
+<div class="body">
+  <nav aria-label="Settings" id="tabs">
+    <div class="foot">Closing this window hides it; the plugin keeps running.</div>
+  </nav>
+
+  <main>
+    <section class="tab" id="tab-audio" aria-label="Audio">
+      <div class="callout warn" role="alert" id="refusal" hidden>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M8 2.5 14 13H2L8 2.5Z M8 6.5v3 M8 11.3v.2"/></svg>
+        <span></span>
+      </div>
+      <section class="card" aria-labelledby="device-h">
+        <h3 id="device-h">Device</h3>
+        <div class="grid">
+          <span class="label">Output</span>
+          <div style="display: flex; flex-direction: column; gap: 4px; padding-top: 5px">
+            <span id="device"></span>
+            <span class="help" id="device-shape"></span>
+          </div>
+          <span class="label">Into the inputs</span>
+          <div class="group" role="group" aria-label="Into the inputs" id="signals"></div>
+        </div>
+      </section>
+      <section class="card" aria-labelledby="proc-h">
+        <div class="row">
+          <h3 id="proc-h">Processing</h3>
+          <div class="group">
+            <button type="button" class="action" id="stop"></button>
+            <button type="button" class="action primary" id="reactivate">Reactivate</button>
+          </div>
+        </div>
+        <div class="grid">
+          <span class="label">Sample rate</span>
+          <div class="group" role="group" aria-label="Sample rate" id="rates"></div>
+          <span class="label">Block size</span>
+          <div class="group" role="group" aria-label="Block size" id="maxes"></div>
+        </div>
+      </section>
+      <section class="card" aria-labelledby="blocks-h">
+        <h3 id="blocks-h">How blocks are cut</h3>
+        <div class="plans" role="radiogroup" aria-label="How blocks are cut" id="plans"></div>
+        <div class="recent">
+          <div class="row" style="font-size: 12px">
+            <span style="color: var(--fg2)">The last blocks</span>
+            <span class="mono muted" id="played"></span>
+          </div>
+          <div class="graph" role="img" aria-label="The lengths of the last blocks played" id="graph"></div>
+          <span class="help">An empty block shows as a dot; one past the maximum in amber, which the engine plays in pieces.</span>
+        </div>
+      </section>
+    </section>
+
+    <section class="tab" id="tab-midi" aria-label="MIDI" hidden>
+      <div class="row">
+        <h2>MIDI</h2>
+        <div class="group" style="font-size: 12px">
+          <span class="pill" id="midi-in"></span>
+          <span class="pill" id="midi-out"></span>
+          <span class="pill">UMP: MIDI 1.0 and 2.0</span>
+        </div>
+      </div>
+      <div class="callout note" role="note">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><path d="M8 7.2v4 M8 4.8v.2"/></svg>
+        <span>No exporter passes MIDI to or from a plugin yet. Until one does, nothing reaches the plugin, and Activity shows only host calls.</span>
+      </div>
+      <section class="tab" style="gap: 10px" aria-labelledby="midi-own-h">
+        <h3 id="midi-own-h">This dev host's device</h3>
+        <div class="empty">The dev host has no virtual MIDI endpoint yet.</div>
+      </section>
+      <section class="tab" style="gap: 10px" aria-labelledby="midi-in-h">
+        <div class="row">
+          <h3 id="midi-in-h">Into the plugin</h3>
+          <div class="group">
+            <button type="button" class="action small" disabled aria-label="Translate MIDI 1.0 up to MIDI 2.0" title="Hosts differ: some pass MIDI 1.0 on as it came, some translate it up to MIDI 2.0. The plugin reads either.">MIDI 1.0 &#8594; MIDI 2.0</button>
+            <button type="button" class="action small" disabled>Rescan</button>
+          </div>
+        </div>
+        <div class="empty">The dev host opens no MIDI devices yet.</div>
+      </section>
+      <section class="tab" style="gap: 10px" aria-labelledby="midi-out-h">
+        <h3 id="midi-out-h">Out of the plugin</h3>
+        <div class="empty" id="midi-out-text"></div>
+      </section>
+    </section>
+
+    <section class="tab" id="tab-params" aria-label="Parameters" hidden>
+      <div class="row" style="align-items: baseline">
+        <h2>Parameters, as the host lists them</h2>
+        <span class="help" id="params-help"></span>
+      </div>
+      <div class="params">
+        <table>
+          <thead><tr><th scope="col">Name</th><th scope="col" style="width: 34%">Control</th><th scope="col">Value</th><th scope="col">0 to 1</th><th scope="col">Learned from</th></tr></thead>
+          <tbody id="params"></tbody>
+        </table>
+      </div>
+      <span class="help">Learned from: the MIDI learn mappings the plugin keeps in its saved block, with the UMP group and channel in each source.</span>
+    </section>
+
+    <section class="tab" id="tab-activity" aria-label="Activity" hidden style="gap: 12px">
+      <h2>Activity</h2>
+      <div class="row">
+        <div class="filter" role="group" aria-label="Show" id="show"></div>
+        <div class="group">
+          <button type="button" class="action small" id="clear">Clear</button>
+          <button type="button" class="action small" id="verbose" aria-pressed="false">Verbose</button>
+          <button type="button" class="action small lock" id="follow" aria-pressed="true" aria-label="Snap to the newest message">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d=""/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="log" id="log" tabindex="0" aria-label="Activity log">
+        <table>
+          <thead><tr id="log-head"></tr></thead>
+          <tbody id="log-rows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="tab" id="tab-state" aria-label="State" hidden>
+      <h2>Saved block</h2>
+      <div class="callout" id="load" role="status">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d=""/></svg>
+        <span></span>
+      </div>
+      <pre id="block">Not saved yet.</pre>
+    </section>
+
+    <section class="tab" id="tab-faults" aria-label="Faults" hidden>
+      <h2>Faults</h2>
+      <div class="verdict">
+        <svg width="28" height="28" viewBox="0 0 16 16" fill="none" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" id="fault-icon"><path d=""/></svg>
+        <b id="fault-count"></b>
+        <span>A fault is a panic caught at the boundary, a call on a thread the plugin refuses, an editor that did not open, or a save left short. The first of each kind is written, with its reason, to an attached debugger.</span>
+      </div>
+    </section>
+
+    <section class="tab" id="tab-midici" aria-label="MIDI-CI" hidden>
+      <div class="row">
+        <div class="group" style="align-items: center; gap: 8px"><h2>MIDI-CI</h2><span class="badge">planned</span></div>
+        <button type="button" class="action small" disabled>Run discovery</button>
+      </div>
+      <span style="color: var(--fg2)" id="ci-who"></span>
+      <div class="facts">
+        <span>Manufacturer ID</span><span class="mono">0x7D, for non-commercial use, until one is chosen</span>
+        <span>Profiles</span><span>None declared</span>
+        <span>Property exchange</span><span>None declared</span>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+  "use strict";
+  const post = (message) => window.ipc.postMessage(JSON.stringify(message));
+  const $ = (id) => document.getElementById(id);
+  const make = (tag, props = {}, children = []) => {
+    const node = document.createElement(tag);
+    for (const [key, value] of Object.entries(props)) {
+      if (key === "text") node.textContent = value;
+      else if (key === "class") node.className = value;
+      else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
+      else node.setAttribute(key, value);
+    }
+    node.append(...children);
+    return node;
+  };
+  const press = (node, on) => node.setAttribute("aria-pressed", String(on));
+  const plural = (n, one, many) => `${n.toLocaleString("en")} ${n === 1 ? one : many}`;
+  // A block laid out with its keys in its own order; as it came when it is
+  // not JSON.
+  const pretty = (text) => {
+    try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; }
+  };
+
+  const ICONS = {
+    audio: "M2 8h1.5M5 5v6M7.5 3v10M10 6v4M12.5 4.5v7M14 8h0",
+    midi: "M2 3.5h12v9H2zM5 3.5v5.5M8 3.5v5.5M11 3.5v5.5",
+    params: "M3 3v10M8 3v10M13 3v10M1.5 10h3M6.5 5h3M11.5 8.5h3",
+    activity: "M1.5 8h3l2-4.5 3 9 2-4.5h3",
+    state: "M3 3.5h7l3 3V13H3zM10 3.5v3h3M5.5 9h5M5.5 11h3.5",
+    faults: "M8 2.5 14 13H2L8 2.5ZM8 6.5v3M8 11.3v.2",
+    midici: "M6.5 9.5 9.5 6.5M7 4.5l1.2-1.2a2.5 2.5 0 0 1 3.5 3.5L10.5 8M9 11.5l-1.2 1.2a2.5 2.5 0 0 1-3.5-3.5L5.5 8",
+  };
+  const TABS = [
+    ["audio", "Audio"], ["midi", "MIDI", true], ["params", "Parameters"], ["activity", "Activity"],
+    ["state", "State"], ["faults", "Faults"], ["midici", "MIDI-CI", true],
+  ];
+  // The formats a host meets, in order; the dev host runs those it lists.
+  const FORMATS = [
+    ["vst3", "VST3"], ["au", "AU", "macOS", "Audio Units run on macOS only"],
+    ["auv3", "AUv3", "macOS", "Audio Units run on macOS only"], ["cabi", "C interface"],
+    ["clap", "CLAP", "planned", "No CLAP exporter yet"],
+  ];
+  const CHECK = "M3 8.5 6.5 12 13 4.5";
+  const WARN = "M8 2.5 14 13H2L8 2.5Z M8 6.5v3 M8 11.3v.2";
+  const INFO = "M8 7.2v4 M8 4.8v.2 M14.2 8A6.2 6.2 0 1 1 1.8 8a6.2 6.2 0 0 1 12.4 0Z";
+  const LOCKED = "M4 7.5h8v6H4zM5.5 7.5v-2a2.5 2.5 0 0 1 5 0v2M8 9.6v1.8";
+  const OPEN = "M4 7.5h8v6H4zM5.5 7.5v-2a2.5 2.5 0 0 1 4.9-.7M8 9.6v1.8";
+
+  let state = null;
+  let tab = "audio";
+  const held = new Set();
+  let rows = [];
+
+  function showTab(name) {
+    tab = name;
+    for (const [id] of TABS) {
+      $(`tab-${id}`).hidden = id !== name;
+      const button = $(`nav-${id}`);
+      if (id === name) button.setAttribute("aria-current", "page");
+      else button.removeAttribute("aria-current");
+    }
+    if (name === "activity") log.scrollIfFollowing();
+  }
+
+  // Posts only what changed: the settings shown may be a moment old.
+  function postAudio(change) {
+    post({ kind: "audio", ...change });
+  }
+
+  function build() {
+    $("name").textContent = state.plugin.name;
+    $("ident").textContent = `${state.plugin.id} · v${state.plugin.version}`;
+    const foot = $("tabs").lastElementChild;
+    for (const [id, label, planned] of TABS) {
+      const icon = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICONS[id]}"/></svg>`;
+      const button = make("button", { type: "button", id: `nav-${id}`, onclick: () => showTab(id) });
+      button.innerHTML = icon;
+      button.append(make("span", { text: label }));
+      if (planned) button.append(make("span", { class: "badge", text: "planned", style: "flex: none" }));
+      $("tabs").insertBefore(button, foot);
+    }
+    const listed = new Map(state.formats.map((f) => [f.name, f.label]));
+    for (const [name, label, badge, why] of FORMATS) {
+      const runs = listed.has(name);
+      const button = make("button", { type: "button", "aria-pressed": String(name === state.format) },
+        [listed.get(name) ?? label]);
+      if (runs) {
+        button.addEventListener("click", () => { if (name !== state.format) post({ kind: "format", name }); });
+      } else {
+        button.disabled = true;
+        button.title = why;
+        button.append(make("span", { class: badge === "planned" ? "badge" : "badge plain", text: badge }));
+      }
+      $("formats").append(button);
+    }
+    buildAudio(state.audio);
+    buildMidi(state.plugin);
+    buildParams(state.params);
+    log.build();
+    $("ci-who").textContent = state.format === "vst3"
+      ? "In VST3 a host speaks MIDI-CI for the plugin, from what the plugin declares; the dev host does not yet."
+      : "In the C interface no host speaks for the plugin: hapto-ci answers for it, with UMP in and out.";
+    $("params-help").textContent = state.format === "vst3"
+      ? "A move here reaches the processor with the next block, as a host's own control does."
+      : "A move here lands at once, as the JUCE adapter's set does.";
+    showTab(tab);
+  }
+
+  function buildAudio(audio) {
+    for (const signal of audio.signals) {
+      $("signals").append(make("button", {
+        type: "button", class: "choice", "data-name": signal.name, text: signal.label,
+        onclick: () => post({ kind: "signal", name: signal.name }),
+      }));
+    }
+    const planned = make("button", { type: "button", class: "choice", disabled: "" }, ["Device input"]);
+    planned.append(make("span", { class: "badge", text: "planned" }));
+    $("signals").append(planned);
+    for (const { rate, label } of audio.rates) {
+      const button = make("button", {
+        type: "button", class: "choice mono", "data-rate": rate, text: label,
+        onclick: () => postAudio({ rate }),
+      });
+      if (rate === audio.deviceRate) button.title = "The device's own rate";
+      $("rates").append(button);
+    }
+    for (const max of audio.maxes) {
+      $("maxes").append(make("button", {
+        type: "button", class: "choice mono", "data-max": max, text: String(max),
+        onclick: () => postAudio({ max }),
+      }));
+    }
+    for (const plan of audio.plans) {
+      const bars = make("span", { class: "bars", "aria-hidden": "true" },
+        // The blocks the plan cuts first, as the dev host cuts them; the
+        // tallest is one past the most.
+        plan.preview.map((length) =>
+          make("span", { style: `height: ${length === 0 ? 2 : Math.max(3, Math.round(length / (audio.previewMax + 1) * 22))}px` })));
+      $("plans").append(make("button", {
+        type: "button", class: "plan", role: "radio", "data-name": plan.name,
+        onclick: () => postAudio({ blocks: plan.name }),
+      }, [bars, make("b", { text: plan.label }), make("small", { text: plan.text })]));
+    }
+    $("stop").addEventListener("click", () => post({ kind: "processing", on: !state.audio.processing }));
+    $("reactivate").addEventListener("click", () => post({ kind: "reactivate" }));
+  }
+
+  function buildMidi(plugin) {
+    $("midi-in").textContent = plugin.midiIn ? "takes MIDI in" : "takes no MIDI in";
+    $("midi-out").textContent = plugin.midiOut ? "sends MIDI out" : "sends no MIDI";
+    $("midi-out-text").textContent = plugin.midiOut
+      ? "Nothing leaves the plugin yet."
+      : "This plugin declares no MIDI output, so there is nothing to send.";
+  }
+
+  function buildParams(params) {
+    if (params.length === 0) {
+      $("params").append(make("tr", {}, [make("td", { colspan: "5", class: "muted", text: "The plugin lists none." })]));
+    }
+    rows = params.map((param, index) => {
+      const slider = make("input", {
+        type: "range", min: "0", max: "1", step: param.steps > 0 ? String(1 / param.steps) : "0.001",
+        "aria-label": param.title,
+        onpointerdown: () => held.add(index),
+        // Let go however the pointer leaves: a cancelled touch or pen
+        // gesture ends it with no pointerup.
+        onpointerup: () => held.delete(index),
+        onpointercancel: () => held.delete(index),
+        onlostpointercapture: () => held.delete(index),
+        oninput: () => post({ kind: "set", index, value: Number(slider.value) }),
+      });
+      const text = make("td", { class: "mono" });
+      const normalized = make("td", { class: "mono muted" });
+      const learned = make("td", { class: "mono", style: "font-size: 12px" });
+      const name = make("div", { class: "name" }, [
+        make("b", { text: param.title, style: "font-weight: 500" }),
+        make("span", { text: `${param.handle} · ${param.kind}` }),
+      ]);
+      $("params").append(make("tr", {}, [make("td", {}, [name]), make("td", {}, [slider]), text, normalized, learned]));
+      return { slider, text, normalized, learned };
+    });
+  }
+
+  function showAudio(audio) {
+    $("refusal").hidden = audio.note === null;
+    $("refusal").lastElementChild.textContent = audio.note ?? "";
+    $("device").textContent = audio.device;
+    const own = audio.rates.find((r) => r.rate === audio.deviceRate)?.label ?? `${audio.deviceRate} Hz`;
+    $("device-shape").textContent = `${own}, ${plural(audio.channels, "channel", "channels")}, 32-bit float.`;
+    for (const button of $("signals").querySelectorAll("[data-name]")) {
+      press(button, button.dataset.name === audio.signal);
+    }
+    for (const button of $("rates").children) press(button, Number(button.dataset.rate) === audio.rate);
+    for (const button of $("maxes").children) press(button, Number(button.dataset.max) === audio.max);
+    for (const button of $("plans").children) {
+      button.setAttribute("aria-checked", String(button.dataset.name === audio.blocks));
+    }
+    $("stop").textContent = audio.processing ? "Stop processing" : "Start processing";
+    const recent = audio.recent;
+    const last = recent.length > 0 ? recent[recent.length - 1] : 0;
+    $("played").textContent = `${plural(audio.played, "block", "blocks")} played · last ${last} frames · max ${audio.max}`;
+    const graph = $("graph");
+    while (graph.children.length < recent.length) graph.append(make("span"));
+    while (graph.children.length > recent.length) graph.lastElementChild.remove();
+    recent.forEach((length, index) => {
+      const bar = graph.children[index];
+      bar.className = length === 0 ? "none" : length > audio.max ? "over" : "";
+      bar.style.height = `${length === 0 ? 3 : Math.max(3, Math.round(length / (audio.max + 1) * 60))}px`;
+    });
+  }
+
+  function showHeader() {
+    const audio = state.audio;
+    const processing = $("processing");
+    processing.className = audio.processing ? "pill ok" : "pill";
+    processing.lastElementChild.textContent = audio.processing ? "Processing" : "Stopped";
+    $("latency").textContent = `latency ${plural(state.latency, "frame", "frames")}`;
+    $("faults").textContent = state.faults === 0 ? "no faults" : plural(state.faults, "fault", "faults");
+    $("faults").className = state.faults === 0 ? "pill" : "pill warn";
+    const icon = $("fault-icon");
+    icon.setAttribute("stroke", state.faults === 0 ? "var(--ok)" : "var(--amber)");
+    icon.firstElementChild.setAttribute("d", state.faults === 0 ? CHECK : WARN);
+    $("fault-count").textContent = state.faults === 0
+      ? "No faults in this run"
+      : `${plural(state.faults, "fault", "faults")} in this run`;
+  }
+
+  function showParams() {
+    state.values.forEach(([value, text], index) => {
+      const row = rows[index];
+      if (!row) return;
+      row.text.textContent = text;
+      row.normalized.textContent = value.toFixed(4);
+      if (!held.has(index)) row.slider.value = String(value);
+    });
+    if (state.learned !== null) {
+      state.learned.forEach((learned, index) => {
+        const row = rows[index];
+        if (!row) return;
+        row.learned.textContent = learned || "—";
+        row.learned.style.color = learned ? "var(--fg2)" : "var(--faint)";
+      });
+    }
+  }
+
+  // How the first load went, which comes once: the update that brings
+  // everything has it.
+  let firstLoad = null;
+
+  function showState() {
+    if (state.load !== null) {
+      firstLoad = state.load;
+      showLoad(firstLoad);
+    }
+    const ownBlock = firstLoad !== null && firstLoad.kind !== "refused" && firstLoad.kind !== "unreadable";
+    if (ownBlock && state.saved !== null) $("block").textContent = pretty(state.saved);
+  }
+
+  function showLoad(load) {
+    const at = new Date(state.started).toLocaleTimeString();
+    const box = $("load");
+    const kinds = {
+      loaded: ["ok", CHECK, `Loaded when the dev host started, at ${at}.`],
+      upgraded: ["ok", CHECK, `Loaded when the dev host started, at ${at}, upgraded from pluginStateVersion ${load.from} to ${load.to}.`],
+      nothing: ["plain", INFO, `No saved block to load when the dev host started, at ${at}: the plugin began from its defaults.`],
+      refused: ["warn", WARN, `Refused when the dev host started, at ${at}: ${load.reason}. The plugin started from its defaults, and its reason went to an attached debugger. This block is kept, and the next run tries it again.`],
+      unreadable: ["warn", WARN, `The saved block could not be read when the dev host started, at ${at}: ${load.reason}. The plugin started from its defaults, and the block is left as it is.`],
+    };
+    const [look, icon, text] = kinds[load.kind];
+    box.className = `callout ${look}`;
+    box.setAttribute("role", look === "warn" ? "alert" : "status");
+    box.firstElementChild.firstElementChild.setAttribute("d", icon);
+    box.lastElementChild.textContent = text;
+    if (load.kind === "refused") $("block").textContent = pretty(load.block);
+    else if (load.kind === "unreadable") $("block").textContent = "Not read.";
+  }
+
+  // The Activity log, laid out as Windows MIDI Services' `midi endpoint
+  // monitor`: what reaches the plugin and what it tells the host, newest
+  // last, snapped to the newest while following.
+  const log = {
+    entries: [],
+    cleared: 0,
+    show: "all",
+    verbose: false,
+    follow: true,
+    index: 0,
+    lastAt: null,
+
+    build() {
+      for (const [id, label] of [["all", "All"], ["midi", "MIDI"], ["host", "Host"]]) {
+        $("show").append(make("button", {
+          type: "button", "data-show": id, text: label,
+          onclick: () => { this.show = id; this.redraw(); },
+        }));
+      }
+      $("clear").addEventListener("click", () => {
+        this.cleared = this.entries.length > 0 ? this.entries[this.entries.length - 1].number : 0;
+        this.follow = true;
+        this.redraw();
+      });
+      $("verbose").addEventListener("click", () => { this.verbose = !this.verbose; this.redraw(); });
+      $("follow").addEventListener("click", () => {
+        this.follow = !this.follow;
+        this.showControls();
+        this.scrollIfFollowing();
+      });
+      $("log").addEventListener("scroll", () => {
+        const box = $("log");
+        const atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 8;
+        if (atEnd !== this.follow) { this.follow = atEnd; this.showControls(); }
+      });
+      this.redraw();
+    },
+
+    take(entries) {
+      if (entries.length === 0) return;
+      const fresh = entries.filter((e) => this.entries.length === 0 || e.number > this.entries[this.entries.length - 1].number);
+      this.entries.push(...fresh);
+      for (const entry of fresh) this.append(entry);
+      const over = this.entries.length - state.kept;
+      if (over > 0) {
+        const oldest = this.entries[over - 1].number;
+        this.entries.splice(0, over);
+        this.trim(oldest);
+      }
+      this.scrollIfFollowing();
+    },
+
+    // Drops the rows of the entries up to the one numbered `upTo`, and keeps
+    // a view scrolled up on the rows it shows.
+    trim(upTo) {
+      const rows = $("log-rows");
+      let lost = 0;
+      while (rows.firstElementChild && Number(rows.firstElementChild.dataset.number) <= upTo) {
+        lost += rows.firstElementChild.offsetHeight;
+        rows.firstElementChild.remove();
+      }
+      if (!this.follow) $("log").scrollTop -= lost;
+    },
+
+    shown(entry) {
+      if (entry.number <= this.cleared) return false;
+      if (entry.kind === "note") return true;
+      return this.show !== "midi";
+    },
+
+    columns() {
+      const columns = [["Index", 40, "right"]];
+      if (this.verbose) columns.push(["Timestamp", 120, "right"]);
+      columns.push(["From Last", 92, "right"], ["To", 44], ["Data", 124], ["Gr Ch", 44],
+        ["Message Type", 150], ["Decoded Data"], ["Frame", 52, "right"]);
+      return columns;
+    },
+
+    redraw() {
+      for (const button of $("show").children) press(button, button.dataset.show === this.show);
+      const head = $("log-head");
+      // Decoded Data takes what is left, at least 220 pixels: narrower, the
+      // log scrolls sideways.
+      const least = this.columns().reduce((sum, [, width]) => sum + (width ?? 220) + 12, 0);
+      head.closest("table").style.minWidth = `${least}px`;
+      head.replaceChildren(...this.columns().map(([label, width, align]) =>
+        make("th", { scope: "col", class: align ?? "", style: width ? `width: ${width}px` : "", text: label })));
+      $("log-rows").replaceChildren();
+      this.index = 0;
+      this.lastAt = null;
+      for (const entry of this.entries) this.append(entry);
+      this.showControls();
+      this.scrollIfFollowing();
+    },
+
+    append(entry) {
+      if (!this.shown(entry)) return;
+      const width = this.columns().length;
+      if (entry.kind === "note") {
+        $("log-rows").append(make("tr", { class: "comment", "data-number": String(entry.number) }, [make("td", { colspan: String(width), text: `# ${entry.text}` })]));
+        return;
+      }
+      this.index += 1;
+      const gap = this.lastAt === null ? 0 : entry.at - this.lastAt;
+      this.lastAt = entry.at;
+      const ms = gap >= 1000;
+      const fromLast = make("td", { class: "right" }, [
+        make("span", { class: "time", text: (ms ? gap / 1000 : gap).toFixed(2) }),
+        make("span", { class: "unit", text: ms || gap === 0 ? "ms" : "µs" }),
+      ]);
+      const cells = [make("td", { class: "right index", text: String(this.index) })];
+      if (this.verbose) {
+        cells.push(make("td", { class: "right time", text: `${(entry.at / 1000).toLocaleString("en", { minimumFractionDigits: 3, maximumFractionDigits: 3 })} ms` }));
+      }
+      const decoded = entry.fields.map(([label, value]) =>
+        make("span", { class: "field" }, [make("b", { text: label }), make("i", { text: value })]));
+      cells.push(
+        fromLast,
+        make("td", { class: "host", text: "Host" }),
+        make("td"),
+        make("td"),
+        make("td", { class: "host", text: entry.name, title: entry.name }),
+        make("td", { title: entry.fields.map(([l, v]) => `${l} ${v}`).join("  ") }, decoded),
+        make("td", { class: "right" }),
+      );
+      $("log-rows").append(make("tr", { "data-number": String(entry.number) }, cells));
+    },
+
+    showControls() {
+      press($("verbose"), this.verbose);
+      press($("follow"), this.follow);
+      $("follow").title = this.follow ? "Snapped to the newest message" : "Snap to the newest message";
+      $("follow").querySelector("path").setAttribute("d", this.follow ? LOCKED : OPEN);
+    },
+
+    scrollIfFollowing() {
+      if (this.follow) $("log").scrollTop = $("log").scrollHeight;
+    },
+  };
+
+  window.update = (next) => {
+    const first = state === null;
+    state = next;
+    if (first) build();
+    showHeader();
+    showAudio(state.audio);
+    showParams();
+    showState();
+    log.take(state.activity);
+  };
+  post({ kind: "ready" });
+</script>
+</body>
+</html>

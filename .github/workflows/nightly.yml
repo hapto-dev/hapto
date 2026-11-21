@@ -44,11 +44,12 @@ jobs:
       - name: Toolchain
         run: rustup toolchain install "$NIGHTLY" --profile minimal --component miri,rust-src
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      # The host crate's own tests drive its VST3 and C exporters. Six of
-      # them are ignored under miri: five need a system timer and one reads
-      # 64 MiB. A test leaks an instance on purpose, hence -Zmiri-ignore-leaks.
+      # The host crate's own tests drive its VST3, C and standalone exporters.
+      # Six of them are ignored under miri: five need a system timer and one
+      # reads 64 MiB. A test leaks an instance on purpose, hence
+      # -Zmiri-ignore-leaks.
       - name: hapto-host
-        run: cargo +"$NIGHTLY" miri test -p hapto-host --features vst3,cabi,test-host --lib --locked
+        run: cargo +"$NIGHTLY" miri test -p hapto-host --features vst3,cabi,standalone,test-host --lib --locked
         env:
           MIRIFLAGS: -Zmiri-ignore-leaks ${{ matrix.flags }}
       # The core crates' unit tests, and the integration tests of the UMP crate
@@ -58,10 +59,13 @@ jobs:
       # allocation gate is not run: it fails on Windows under both models
       # inside std's allocator (docs/testing.md), and Linux has not run it
       # yet. The other crates' integration tests are not run here either:
-      # hapto-undo's does not finish in an hour under the interpreter.
+      # hapto-undo's does not finish in an hour under the interpreter. The
+      # standalone app is left out with the host: its tests write files, which
+      # the interpreter's isolation refuses. cargo-hapto is a binary alone, so
+      # --lib runs none of its tests; its exclusion only says so.
       - name: The core crates
         run: |
-          cargo +"$NIGHTLY" miri test --workspace --exclude hapto-host --exclude hapto-example-eq --exclude hapto-example-gain --exclude hapto-testkit --exclude xtask --lib --locked
+          cargo +"$NIGHTLY" miri test --workspace --exclude hapto-host --exclude hapto-standalone --exclude cargo-hapto --exclude hapto-example-eq --exclude hapto-example-gain --exclude hapto-testkit --exclude xtask --lib --locked
           cargo +"$NIGHTLY" miri test -p hapto-ump --tests --locked
           cargo +"$NIGHTLY" miri test -p hapto-learn --test capture --test dispatch --test saved --test targets --locked -- --skip the_table_at_the_ceiling
         env:
@@ -89,7 +93,7 @@ jobs:
         run: rustup toolchain install $env:NIGHTLY --profile minimal --component miri,rust-src
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: hapto-host
-        run: cargo "+$env:NIGHTLY" miri test -p hapto-host --features vst3,cabi,test-host --lib --locked
+        run: cargo "+$env:NIGHTLY" miri test -p hapto-host --features vst3,cabi,standalone,test-host --lib --locked
         env:
           MIRIFLAGS: -Zmiri-ignore-leaks ${{ matrix.flags }}
 

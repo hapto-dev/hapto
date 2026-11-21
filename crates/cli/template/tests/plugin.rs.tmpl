@@ -1,0 +1,41 @@
+//! {{name}} through the VST3 exporter, as a host drives it: the parameters
+//! it lists, a block at a gain the host sets, and its saved block.
+
+use hapto_host::vst3::{Refused, TestHost};
+use {{lib}}::{{type}};
+
+#[test]
+fn the_host_lists_the_gain_and_the_bypass() {
+    let host = TestHost::<{{type}}>::new();
+    assert_eq!(host.parameter_count(), 2);
+    let gain = host.parameter(0).expect("listed");
+    assert_eq!((gain.title.as_str(), gain.units.as_str()), ("Gain", "dB"));
+    assert!(host.parameter(1).expect("listed").is_bypass);
+}
+
+#[test]
+fn a_block_plays_at_the_gain_the_host_sends() -> Result<(), Refused> {
+    let mut host = TestHost::<{{type}}>::new();
+    let gain = host.parameter(0).expect("listed").id;
+    host.setup(48_000.0, 64)?;
+    host.activate()?;
+    host.start()?;
+    let (mut left, mut right) = ([1.0_f32; 64], [1.0_f32; 64]);
+    // -6 dB, as the host's 0 to 1 for -60 to 12 dB.
+    let minus_six = host.normalize(gain, -6.0);
+    host.process_in_place(&mut [&mut left[..], &mut right[..]], 64, &[(gain, minus_six)])?;
+    assert!((left[0] - 0.501).abs() < 1e-3, "{}", left[0]);
+    Ok(())
+}
+
+#[test]
+fn the_saved_block_brings_the_gain_back() -> Result<(), Refused> {
+    let first = TestHost::<{{type}}>::new();
+    let gain = first.parameter(0).expect("listed").id;
+    first.set_normalized(gain, 0.25)?;
+    let saved = first.save()?;
+    let second = TestHost::<{{type}}>::new();
+    second.load(&saved)?;
+    assert_eq!(second.normalized(gain), first.normalized(gain));
+    Ok(())
+}

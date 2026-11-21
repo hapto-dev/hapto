@@ -518,7 +518,7 @@ impl<P: Plugin> IComponentTrait for Component<P> {
             let Some(bytes) = (unsafe { read_all(stream, MAX_STATE_BYTES) }) else {
                 return kResultFalse;
             };
-            if engine.load_saved(&bytes) {
+            if engine.load_saved(&bytes).is_ok() {
                 kResultOk
             } else {
                 kResultFalse

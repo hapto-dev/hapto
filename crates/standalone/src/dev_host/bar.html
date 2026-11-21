@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bar</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ecece8; --fg: #1b1b19; --muted: #6a6a64; --line: #d4d4ce;
+    --accent: #2a64d6; --warn: #b3261e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141416; --fg: #ececea; --muted: #9b9b96; --line: #2c2c30;
+      --accent: #7aa2ff; --warn: #ff8a80;
+    }
+  }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg);
+    font: 12.5px/1.4 "Segoe UI", system-ui, sans-serif;
+  }
+  .bar {
+    box-sizing: border-box; height: 36px; display: flex; align-items: center; gap: 10px;
+    padding: 0 6px 0 12px; border-bottom: 1px solid var(--line); user-select: none;
+  }
+  .running { white-space: nowrap; }
+  .running b { font-weight: 600; }
+  .status {
+    flex: 1; min-width: 0; color: var(--muted); font-variant-numeric: tabular-nums;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .status.faults { color: var(--warn); }
+  button {
+    font: inherit; padding: 3px 10px; border-radius: 6px; cursor: pointer;
+    border: 1px solid var(--line); background: transparent; color: var(--fg);
+  }
+  button:hover { border-color: var(--accent); }
+  .note { padding: 14px 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="bar">
+  <span class="running">Running as <b id="format"></b></span>
+  <span class="status" id="status"></span>
+  <button id="settings" type="button">Settings</button>
+</div>
+<div class="note" id="note" hidden></div>
+<script>
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  $("settings").addEventListener("click", () =>
+    window.ipc.postMessage(JSON.stringify({ kind: "settings" })));
+  window.update = (state) => {
+    $("format").textContent = state.format;
+    $("status").textContent = state.status;
+    $("status").classList.toggle("faults", state.faults > 0);
+    $("note").hidden = state.note === null;
+    $("note").textContent = state.note ?? "";
+  };
+</script>
+</body>
+</html>

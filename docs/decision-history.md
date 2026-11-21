@@ -569,6 +569,10 @@ have.
 
 The throttled line per instance and kind was the second audit's suggestion.
 
+On 2026-11-20, from the standalone app's review (D110): with `hapto-host`'s
+`standalone` feature the line goes to stderr on Windows too, since a panicking
+processor in the app played silence with no line where its author looks.
+
 ### D76. A panic while edits are told to the host
 
 [The decision](decisions.md#d76-a-panic-while-edits-are-told-to-the-host)
@@ -1081,6 +1085,158 @@ told. The owner took the review's recommendations: the version at 2, the
 state flag alone in a call of its own with the header promising it, and an
 edit between a load and its assignment left as an open line rather than
 code, since the fix offered would lose a real edit in the same place.
+
+### D109. The plugin author's command
+
+[The decision](decisions.md#d109-the-plugin-authors-command)
+
+The implementer's choice, on 2026-11-18, from the owner's ask for a command
+like Tauri's (`cargo hapto init`, `dev`, `build`) in place of the xtask, tried
+on a branch first. xtask's `bundle` moved into it as `build`, and works on any
+workspace. `dev` came with the standalone app (D110), and `init` last, with
+its template a smaller plugin than the gain.
+
+On 2026-11-19, from the branch's audit, at the owner's call: `dev --host
+<exe>`, which installed the debug bundle and started a real host with the
+dev server set, ended the server as the host's process ended, so a host
+started through a launcher, which exits at once, lost its page. It is gone,
+and `serve` runs the dev server alone until Ctrl+C; the debug bundle comes
+from `build --debug --install`, and the author starts the host. `--host` now
+means the dev host alone.
+
+On 2026-11-19, at the owner's call: the command line is clap's in place of a
+parser of the command's own, whose help was written by hand beside each
+command's flags. A flag given twice, which that parser took, is refused, as
+Cargo refuses its own.
+
+On 2026-11-19, from the pull request's review: the app asks to be started
+again with exit code 75, not 3, which the C runtime's `abort` can exit with;
+the lockfile left the watched files, since the first build of a new crate
+writes it and so built twice; and a rewrite of a generated file leaves one
+that already holds the text, since the map written before each build moved
+its time and rebuilt a crate whose build script watches `page`.
+
+On 2026-11-20, from the pull request's second review, with the owner's
+decisions of that day: `dev` refuses any system but Windows at once, as
+`build` does, where it installed the page's packages, built, and started an
+app that ended at once, after every build. The map's test shows Cargo's
+progress, since a new crate's first `dev` printed nothing while hundreds of
+crates compiled. The owner accepted that a crate with a page map restarts the
+app after a save that changed nothing, since the map's test builds the
+library with other features; giving the test its own target folder would
+double a new crate's first build, and the app writing the map itself is
+left for later. The template's build script warns of a release build with no
+page, as its comment said it did; `init` quotes a folder with a space in its
+next step; and the template's test runs in the full CI run.
+
+### D110. The standalone exporter and app
+
+[The decision](decisions.md#d110-the-standalone-exporter-and-app)
+
+The implementer's choice, on 2026-11-18, from the owner's ask that `cargo
+hapto dev` launch a standalone version of the plugin. It replaces the
+standalone app the JUCE adapter was to bring, which ARCHITECTURE.md listed as
+decided and not built, with one of Hapto's own. To confirm.
+
+On 2026-11-19, from the branch's audit, at the owner's call: a teardown
+leaked the instance when only an editor outlived the app, and leaked it
+silently. It now counts the editors, so only an audio side left alive leaks
+it, and that leak is a fault. The owner kept `audio()` over a `take_audio()`
+that would hand out one side alone: a second side's block finds the
+processor held and plays silence. `Standalone::load` answered a bool, so the
+app could not say why a block did not load; it now returns the reason, or a
+panic, and an activation that panicked no longer reads as a busy plugin. The
+owner kept an output's part past the block as it was, for now.
+
+The branch's second audit found the editor's drop, the plugin's own drop and
+the editor's catching up after its open running outside any guard, which the
+VST3 exporter guards each of; they are guarded now, so a panic in any of them
+is a fault and the app goes on.
+
+On 2026-11-19, from the pull request's review, each seen in a run on
+Windows: the app took any error cpal reported for the device's end and
+dropped a stream that still played, as after a change of the system's default
+output, and made the error's text beside the blocks; and the tick stopped for
+as long as a title bar was held or the window's menu was open. A device now
+counts as stopped only once no block follows the error for a second, and a
+thread wakes the loop for each tick.
+
+On 2026-11-20, from the pull request's second review and the owner's run:
+cpal never moves a stream to a new default output on Windows. It reports
+the change and goes on playing to the old device, so the second's watch said
+the app played on while nothing was heard, and an unplugged default stopped
+the audio though another device was there. An error is now judged by its
+kind, and each kind but a glitch, a refused priority and a route the device
+followed opens the default output again, at most once a second. At the
+owner's call the audio thread takes real-time priority, through cpal's
+`realtime` feature. A fault's line reaches the terminal, where only a
+debugger saw it before, which D75 now says too, and the window's title counts
+the faults; a held block's line says where it is; and a plugin with inputs
+says at start that they hear silence.
+
+Later on 2026-11-20, from the owner's run: two switches of the default
+output within a second stopped the audio for the run; an unplugged default
+did too, its reopen refused with "Cannot change thread mode after it is
+set"; and after either nothing brought the audio back, a switch back and a
+replug included. With cpal 0.18.2, once any audio device left during the
+run, cpal's own default device could not be opened again. The app now opens
+the default by its id and looks once a second at which device is the
+default, so an error drops the stream, the next look opens the default
+again, and no device error stops the audio for the run. At the owner's
+call, an unplug is followed at the next look rather than at once, and a
+device that went away is said in plain words rather than in cpal's text.
+The window's title now clears once the audio plays again.
+
+A review the same day changed two small things. The second between two
+looks is counted from a look's end, where it was counted from its start, so
+a default whose open takes over a second to fail is not tried again at
+once. And the record says that with cpal 0.18.2 each look leaks the
+default's id string, measured at about 140 bytes, which cpal fixed after
+0.18.2 and had not released.
+
+### D111. The dev host
+
+[The decision](decisions.md#d111-the-dev-host)
+
+The implementer's choice, on 2026-11-18, from the owner's ask for a host of
+Hapto's own that `cargo hapto dev` launches with the plugin loaded, cycling
+between the formats in the dev window. It runs the plugin in process
+through the test hosts, rather than loading a bundle, and switches format by
+starting again. To confirm.
+
+Later on 2026-11-18 the inspector became the settings window the owner
+designed: a tab each for the audio, MIDI, the parameters, the Activity log,
+the saved block, the faults and MIDI-CI, the log laid out as Windows MIDI
+Services' `midi endpoint monitor` at the owner's ask. Building it showed that
+a saved block the plugin refused was saved over with the plugin's defaults at
+the next keep, so the block is now kept for the next run.
+
+On 2026-11-19, from the branch's audit: the settings window drew each plan's
+picture from a copy of the player's cutting, which had drifted from it, and
+held its own copy of the log's length. Both now come from Rust, the pictures
+cut by the player's own code.
+
+On 2026-11-20, from the pull request's second review: the dev host follows a
+new default output as the app does (D110); it stops and deactivates the
+plugin at the close, which no host leaves undone; the plugin saves at most
+once a second, for the session and the settings window together, where a
+save it faulted on counted ten faults a second while the window showed; and
+the settings page no longer says the dev host speaks MIDI-CI, or that it was
+built without a virtual MIDI endpoint.
+
+Later on 2026-11-20, from the owner's run, where the dev host's Start failed
+the same way as the app's reopen for the rest of the run: the dev host
+follows the default output by looking once a second, as the app does
+(D110). At the owner's call, a plugin a change of device stopped waits and
+is started again at every look, whatever refused the start, until it
+processes or the author stops, starts or reactivates it; and a move to a new
+device shows in the Activity log and the Audio tab, no longer in the box for
+refusals. After Stop a look takes a new default and starts nothing, and
+settings a look changed are kept in the session.
+
+The review of that the same day found no test that a wait ends. Three now
+pin that Stop, Start or Reactivate ends it, that a plugin playing again
+waits no more, and that a move clears the note of an earlier refusal.
 
 ## Rules
 

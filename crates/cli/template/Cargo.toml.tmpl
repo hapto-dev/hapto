@@ -1,0 +1,59 @@
+[package]
+name = "{{crate}}"
+description = "{{name}}: a gain with a bypass, and its page in the host's window"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+publish = false
+
+# A workspace of its own. To make it a member of another, delete this table
+# and list the crate in that workspace's `members`.
+[workspace]
+
+# Who the plugin is, to every host: `hapto_host::manifest_info!` reads it,
+# with the version and description above. A host knows the plugin by its ids
+# for good, so they never change once it ships.
+[package.metadata.hapto]
+name = "{{name}}"
+vendor = "{{vendor}}"
+id = "{{id}}"
+vst3-class-id = "{{class_id}}"
+au-codes = { subtype = "{{subtype}}", manufacturer = "{{manufacturer}}" }
+category = "effect"
+
+[lib]
+# The cdylib is the VST3 module; the rlib lets tests drive it in-process.
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["vst3"]
+# The VST3 module's entry points, through Hapto's exporter.
+vst3 = ["hapto-host/vst3"]
+# The plugin as an app of its own, which `cargo hapto dev` runs; the module
+# never links it.
+standalone = ["dep:hapto-standalone"]
+
+# Hapto's crates, from the checkout `cargo hapto init` was given. Point every
+# one of them at the same place: before 1.0 a minor version may break the API.
+[dependencies]
+hapto-host = { path = "{{hapto}}/crates/host", features = ["manifest"] }
+hapto-params = { path = "{{hapto}}/crates/params", features = ["derive"] }
+hapto-standalone = { path = "{{hapto}}/crates/standalone", optional = true }
+hapto-webview = { path = "{{hapto}}/crates/webview" }
+
+[dev-dependencies]
+hapto-host = { path = "{{hapto}}/crates/host", features = ["vst3", "test-host"] }
+hapto-bridge = { path = "{{hapto}}/crates/bridge", features = ["typescript"] }
+hapto-testkit = { path = "{{hapto}}/crates/testkit" }
+
+[lints.rust]
+unsafe_code = "deny"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+
+[[bin]]
+name = "{{crate}}-standalone"
+path = "src/bin/standalone.rs"
+required-features = ["standalone"]

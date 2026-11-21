@@ -1,6 +1,6 @@
 [package]
 name = "hapto-host"
-description = "The format-agnostic plugin trait, and its VST3 and C ABI exporters behind features"
+description = "The format-agnostic plugin trait, and its VST3, C ABI and standalone exporters behind features"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -37,6 +37,9 @@ vst3 = ["dep:vst3", "dep:windows-sys"]
 # The C ABI and generated header the JUCE adapter (AU, AUv3, AAX, hosting)
 # is driven by.
 cabi = []
+# The standalone exporter, `standalone::Standalone`: a plugin as an app of its
+# own, which `hapto-standalone` makes.
+standalone = []
 # The test hosts, `vst3::TestHost` and `cabi::TestHost`, which drive a plugin
 # through an exporter in tests: for a plugin crate's dev-dependencies, so a
 # shipping plugin carries none of it.

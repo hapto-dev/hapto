@@ -1,0 +1,30 @@
+[package]
+name = "cargo-hapto"
+description = "The plugin author's command: `cargo hapto init`, `dev`, `serve`, `build` and `validate`"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords = ["audio", "plugin", "vst3", "cargo-subcommand"]
+categories = ["development-tools::cargo-plugins", "multimedia::audio"]
+publish.workspace = true
+
+# A binary only: it drives Cargo and npm as processes and links no Hapto
+# crate, so a plugin's workspace pins the crates and this tool reads which.
+[dependencies]
+# Errors: each one with the step and path that failed, as a chain.
+anyhow.workspace = true
+# The command line: each command's flags, help and errors, from one
+# declaration per command.
+clap = { version = "4.6.7", features = ["derive"] }
+# `cargo metadata` and a page's `package.json`.
+serde_json.workspace = true
+# The random half of the VST3 class id `init` writes. The version the
+# workspace already locks.
+getrandom = "0.4.3"
+
+[lints]
+workspace = true

@@ -5,11 +5,13 @@
 //! the block, the tick, what the host is told, and teardown. The rules it
 //! keeps are on [`Engine`]; a shell adds only its format's shape.
 //!
-//! The engine is boxed and never moves, so a timer's tick can hold a pointer
-//! to it; a shell frees it only when [`Engine::release`] says it may.
+//! The engine never moves once its address is out, so a timer's tick can
+//! hold a pointer to it: a shell keeps it in a `Box`, or moves it into an
+//! `Arc`, before anything holds its address. A shell frees it only when
+//! [`Engine::release`] says it may.
 
 mod automation;
-#[cfg(feature = "vst3")]
+#[cfg(any(feature = "vst3", feature = "standalone"))]
 mod editor;
 mod process;
 pub(crate) mod timer;
@@ -18,12 +20,12 @@ pub(crate) mod timer;
 mod tests;
 
 use std::cell::{Cell, RefCell};
-#[cfg(feature = "vst3")]
+#[cfg(any(feature = "vst3", feature = "standalone"))]
 use std::fmt::Display;
 use std::num::NonZeroUsize;
 #[cfg(feature = "vst3")]
 use std::ptr::NonNull;
-#[cfg(feature = "vst3")]
+#[cfg(any(feature = "vst3", feature = "standalone"))]
 use std::rc::{Rc, Weak};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
@@ -37,9 +39,9 @@ use automation::Automation;
 pub(crate) use automation::Points;
 #[cfg(all(test, feature = "vst3"))]
 pub(crate) use automation::{MAX_SKIPPED_QUEUES, Point};
-#[cfg(feature = "vst3")]
+#[cfg(any(feature = "vst3", feature = "standalone"))]
 pub(crate) use editor::{EditorSlot, Opened};
-#[cfg(any(feature = "vst3", feature = "cabi"))]
+#[cfg(any(feature = "vst3", feature = "cabi", feature = "standalone"))]
 pub(crate) use process::Outcome;
 use process::{Audio, PendingReset, install};
 use timer::{Handle, Timer, abandon};
@@ -48,7 +50,7 @@ use timer::{Handle, Timer, abandon};
 use crate::boundary::Patience;
 use crate::boundary::{AudioSlot, Lent, MainThread, Refused};
 use crate::faults::{Fault, Faults, report_refused_declarations};
-use crate::{Driver, Layout, MAX_FRAMES, Parts, Plugin, SavedState, Tail};
+use crate::{Driver, Layout, LoadError, MAX_FRAMES, Parts, Plugin, SavedState, Tail};
 
 /// What `tail` answers for a plugin whose output falls silent with its
 /// input; VST3's `kNoTail` and the C interface's `HAPTO_TAIL_NONE`.
@@ -266,7 +268,7 @@ struct OnThread {
     timer: RefCell<Option<Timer>>,
     /// The editors the plugin handed out, one for each view a host asked
     /// for, as long as the view keeps it; each tick ticks the open ones.
-    #[cfg(feature = "vst3")]
+    #[cfg(any(feature = "vst3", feature = "standalone"))]
     editors: RefCell<Vec<Weak<EditorSlot>>>,
 }
 
@@ -460,7 +462,7 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
             on_thread: Some(OnThread {
                 driver,
                 timer: RefCell::new(None),
-                #[cfg(feature = "vst3")]
+                #[cfg(any(feature = "vst3", feature = "standalone"))]
                 editors: RefCell::new(Vec::new()),
             }),
         };
@@ -509,21 +511,17 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
         }
     }
 
-    /// Loads a block the host handed over, and answers whether it took. The
+    /// Loads a block the host handed over, or says why it did not take. The
     /// first refusal of an instance writes a line with the reason, as
     /// [`faults`](crate::faults) says; it is not a fault. Any thread but
     /// audio.
-    pub(crate) fn load_saved(&self, bytes: &[u8]) -> bool {
-        match self.saved.load(bytes) {
-            Ok(()) => true,
-            Err(error) => {
-                self.faults.report_refused_load(
-                    || format!("{} (instance {})", P::INFO.name, self.number),
-                    &error,
-                );
-                false
-            }
-        }
+    pub(crate) fn load_saved(&self, bytes: &[u8]) -> Result<(), LoadError> {
+        self.saved.load(bytes).inspect_err(|error| {
+            self.faults.report_refused_load(
+                || format!("{} (instance {})", P::INFO.name, self.number),
+                error,
+            );
+        })
     }
 
     /// The main bus layout. Any thread.
@@ -600,14 +598,14 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
     }
 
     /// How many faults the instance has had, on every thread.
-    #[cfg(any(test, feature = "test-host"))]
+    #[cfg(any(test, feature = "test-host", feature = "standalone"))]
     pub(crate) fn faults(&self) -> u64 {
         self.faults.count()
     }
 
     /// Whether the processor in the audio slot came with learn's audio side;
     /// `None` with no processor there.
-    #[cfg(test)]
+    #[cfg(all(test, any(feature = "vst3", feature = "cabi")))]
     pub(crate) fn holds_learn_audio(&self) -> Option<bool> {
         self.audio
             .hold()
@@ -754,10 +752,11 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
     pub(crate) fn ticker(&self) -> Box<dyn Fn()> {
         let engine = NonNull::from(self);
         Box::new(move || {
-            // SAFETY: the engine is boxed and never moves. Its shell frees
-            // it only after `release` dropped the timer that holds this
-            // tick, on the main thread, outside any tick; otherwise it
-            // leaks. Either way, the engine is live whenever a tick runs.
+            // SAFETY: the engine never moves once its address is out, as
+            // it is here. Its shell frees it only after `release` dropped
+            // the timer that holds this tick, on the main thread, outside
+            // any tick; otherwise it leaks. Either way, the engine is live
+            // whenever a tick runs.
             unsafe { engine.as_ref() }.idle();
         })
     }
@@ -807,7 +806,7 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
             Err(_) => return,
         }
         self.tell_host(main);
-        #[cfg(feature = "vst3")]
+        #[cfg(any(feature = "vst3", feature = "standalone"))]
         self.tick_editors(main);
     }
 
@@ -815,7 +814,7 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
     /// it for the tick as long as the view keeps it. `None` when the plugin
     /// has none, and when it is busy in a call that reached the host, which
     /// counts as a fault.
-    #[cfg(feature = "vst3")]
+    #[cfg(any(feature = "vst3", feature = "standalone"))]
     pub(crate) fn editor(&self, main: &Main<P, H>) -> Option<Rc<EditorSlot>> {
         let on_thread = main.on_thread.as_ref()?;
         let Ok(mut plugin) = main.plugin.try_borrow_mut() else {
@@ -840,7 +839,7 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
     /// a time; and an editor still in a call of its own is passed over. An
     /// editor whose tick panics is a fault and is closed, and the editors
     /// after it still tick.
-    #[cfg(feature = "vst3")]
+    #[cfg(any(feature = "vst3", feature = "standalone"))]
     fn tick_editors(&self, main: &Main<P, H>) {
         let Some(on_thread) = &main.on_thread else {
             return;
@@ -865,7 +864,7 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
 
     /// Records an editor that failed to open, with `reason`, the editor's
     /// or Hapto's, as [`faults`](crate::faults) says.
-    #[cfg(feature = "vst3")]
+    #[cfg(any(feature = "vst3", feature = "standalone"))]
     pub(crate) fn editor_failed(&self, reason: &dyn Display) {
         self.faults.record_with_reason(
             Fault::NoEditor,
@@ -876,9 +875,16 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
 
     /// Records an editor that panicked inside its `open` or its tick, which
     /// was caught there.
-    #[cfg(feature = "vst3")]
+    #[cfg(any(feature = "vst3", feature = "standalone"))]
     pub(crate) fn editor_panicked(&self) {
         self.faults.record(Fault::Panic);
+    }
+
+    /// Records an audio side a standalone app left alive as it dropped the
+    /// instance, which then leaks.
+    #[cfg(feature = "standalone")]
+    pub(crate) fn audio_outlived(&self) {
+        self.faults.record(Fault::AudioOutlived);
     }
 
     /// Tells the host of the edits the plugin made since the last call, of

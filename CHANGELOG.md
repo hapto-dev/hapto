@@ -221,14 +221,48 @@ exporter.
   VST3 module. Its page, a Vite and React app, shows a slider on the gain, a
   field for the label, which shows a load or an undo at once and drops an
   edit on Escape, and the version, in the host's window on Windows, when it
-  was built in. [docs/first-plugin.md](docs/first-plugin.md) walks through it.
+  was built in. It runs standalone too, under `cargo hapto dev`.
+  [docs/first-plugin.md](docs/first-plugin.md) walks through it.
 - `examples/eq`: an EQ of six biquad bands and an output gain, as a VST3 module
   or a static library for the adapter.
 - `xtask`: `cargo xtask gen` writes every generated file, and CI fails when one
-  drifts. `cargo xtask wrap` holds comments and docs to 80 columns. `cargo
-  xtask bundle` builds a plugin crate's page and the crate in release, lays out
-  its VST3 bundle under `target/bundle/` and installs it, per user or for every
-  user, on Windows.
+  drifts. `cargo xtask wrap` holds comments and docs to 80 columns.
+- `cargo-hapto`: the plugin author's command, for a plugin crate in any
+  workspace. `cargo hapto init` writes a new plugin crate, a gain with its
+  page, a standalone binary and tests, with fresh ids, its Hapto crates from
+  a checkout. `cargo hapto dev` runs the plugin's standalone binary with its
+  page from Vite, and rebuilds and restarts it after each change to Rust with
+  its saved block kept; `--host` runs it in the dev host. `cargo hapto serve`
+  runs the page's dev server alone, for the debug bundle in a real host.
+  `cargo hapto build` writes a plugin crate's page map, builds its page and
+  the crate in release, lays out its VST3 bundle under `target/bundle/` and
+  installs it, per user or for every user, on Windows. `cargo hapto validate`
+  runs pluginval on that bundle as CI does: CI's validator lane runs it. Each
+  command's `--help` says its flags.
+- `hapto-host`: the standalone exporter, behind the `standalone` feature: a
+  plugin driven by an app of its own with no host, through the same engine.
+  With the feature, a fault's line goes to stderr on Windows too, the app's
+  terminal.
+- `hapto-standalone`: a plugin as an app of its own, on Windows, which a plugin
+  crate's binary runs: its editor in a window, a test signal through it to the
+  system's audio output, which it follows to a new default output, and its
+  saved block kept between runs. Its title counts the plugin's faults. Its dev
+  host, `cargo hapto dev --host`, runs the plugin through the VST3 exporter or
+  the C interface in process, in a window of the plugin's own with a bar that
+  names the format, and a settings window of what the host sees, a tab each,
+  which switches between the two formats keeping the saved block. It changes the
+  audio as a host does: the sample rate, of those the device takes, and the most
+  frames a block holds, each by reactivating the plugin, blocks cut as the
+  device asks, at the maximum, at random or at awkward lengths, and the test
+  signal; it stops and starts processing. It lists the parameters as the host
+  does, each with its kind and the MIDI learn mappings that name it, logs what
+  the plugin tells the host and what the dev host does to the plugin, and shows
+  the saved block and how its first load went. A block the plugin refused is
+  kept for the next run rather than saved over.
+- `hapto-host`: `vst3::TestView::attach_to` attaches a test host's view to a
+  window of the caller's, and `vst3::ChildWindow` is a window inside one of
+  the caller's for it, placed where a host wants the view.
+  `vst3::HiddenWindow` gives its window handle.
 - `bench`: the comparison of the example EQ against the same EQ in plain JUCE,
   with its reports in `bench/reports`.
 - Guarantees the tests keep: the audio path never allocates (allocation gates),

@@ -1,0 +1,35 @@
+//! Builds the page in when `page/dist` holds it, by setting the `hapto_page`
+//! cfg `src/page.rs` reads. A release build without it warns, since the
+//! plugin then offers no editor; a debug build stays quiet, since it loads
+//! the page from the dev server `cargo hapto dev` runs. Cargo never runs
+//! Node; `cargo hapto build` builds the page first.
+
+use std::path::Path;
+
+/// The files `npm run build` in `page/` writes, under fixed names.
+const BUILT: [&str; 3] = [
+    "page/dist/index.html",
+    "page/dist/assets/index.js",
+    "page/dist/assets/index.css",
+];
+
+fn main() {
+    println!("cargo::rustc-check-cfg=cfg(hapto_page)");
+    if BUILT.iter().all(|file| Path::new(file).is_file()) {
+        for file in BUILT {
+            println!("cargo::rerun-if-changed={file}");
+        }
+        println!("cargo::rustc-cfg=hapto_page");
+    } else {
+        // A watched file that does not exist reruns this script on every
+        // command. Cargo looks through a watched folder for anything newer,
+        // so the page's first build is still seen.
+        println!("cargo::rerun-if-changed=page");
+        if std::env::var("PROFILE").is_ok_and(|profile| profile == "release") {
+            println!(
+                "cargo::warning=the page is not built, so the plugin has no editor; \
+                 `cargo hapto build` builds the page"
+            );
+        }
+    }
+}

@@ -134,8 +134,9 @@ configuration builds and plays the same as its Release one.
 
 B's module is the EQ crate's `cdylib`
 (`cargo build -p hapto-example-eq --release`), which a bundle step puts in
-`Hapto Example EQ.vst3/Contents/x86_64-win/`. Until `cargo xtask bundle` exists,
-`scripts/compare.py` builds it and makes that bundle itself.
+`Hapto Example EQ.vst3/Contents/x86_64-win/`. `scripts/compare.py` builds it
+and makes that bundle itself, under its `--out`, where `cargo hapto build`
+would lay it out under `target/bundle/`.
 
 `scripts/hosted.py` loads one build through JUCE's VST3 hosting
 (`hosted/hosted.cpp`, the `BenchHosted` target), names its parameters by the ids

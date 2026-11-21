@@ -10,8 +10,10 @@
 //!   included. Every fault counts for the process ([`boundary_faults`]),
 //!   and an instance's for the instance too.
 //! - **Reporting** writes a line: to an attached debugger on Windows, to
-//!   stderr elsewhere. Writing is a system call, so Hapto never writes on the
-//!   audio thread.
+//!   stderr elsewhere. With the `standalone` feature it goes to stderr on
+//!   Windows too, the terminal an app runs in, which a module in a host has
+//!   no use for. Writing is a system call, so Hapto never writes on the audio
+//!   thread.
 //! - **An instance's fault** is only recorded where it happens. The first
 //!   of each kind is reported from the instance's next tick, on the main
 //!   thread, or from its release; later ones are counted, not reported.
@@ -50,6 +52,13 @@ use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering};
 static TOTAL: AtomicU64 = AtomicU64::new(0);
 
 /// The kinds reported for faults outside any instance.
+#[cfg_attr(
+    not(any(feature = "vst3", feature = "cabi", feature = "standalone", test)),
+    expect(
+        dead_code,
+        reason = "only a format's entry points run outside an instance"
+    )
+)]
 static REPORTED: AtomicU16 = AtomicU16::new(0);
 
 /// Returns how many faults the exporters have recorded in this process, on
@@ -62,7 +71,7 @@ static REPORTED: AtomicU16 = AtomicU16::new(0);
 /// first thing to check when a plugin goes quiet or a project does not come
 /// back as it was saved. Each instance also writes the first fault of each
 /// kind as a line of text, to an attached debugger on Windows and to stderr
-/// elsewhere.
+/// elsewhere, and with the `standalone` feature to stderr on Windows too.
 ///
 /// # Examples
 ///
@@ -87,9 +96,12 @@ static REPORTED: AtomicU16 = AtomicU16::new(0);
 /// assert_eq!(boundary_faults(), before + 1);
 /// # }
 /// ```
-#[cfg_attr(docsrs, doc(cfg(any(feature = "vst3", feature = "cabi"))))]
 #[cfg_attr(
-    not(any(feature = "vst3", feature = "cabi")),
+    docsrs,
+    doc(cfg(any(feature = "vst3", feature = "cabi", feature = "standalone")))
+)]
+#[cfg_attr(
+    not(any(feature = "vst3", feature = "cabi", feature = "standalone")),
     expect(unreachable_pub, reason = "an exporter re-exports it at the root")
 )]
 pub fn boundary_faults() -> u64 {
@@ -127,12 +139,15 @@ pub(crate) enum Fault {
     /// The plugin's editor failed to open in the host's window, and the host
     /// was told so.
     NoEditor,
+    /// A standalone app dropped the instance while an audio side it handed
+    /// out was still alive: the instance leaked.
+    AudioOutlived,
 }
 
 impl Fault {
     /// Every kind, each once, in the order a report lists them. Up to 16 fit
     /// the `u16`s the kinds are kept in.
-    const ALL: [Fault; 9] = [
+    const ALL: [Fault; 10] = [
         Fault::Panic,
         Fault::AudioPanic,
         Fault::WrongThread,
@@ -142,6 +157,7 @@ impl Fault {
         Fault::SharedPath,
         Fault::NoRoom,
         Fault::NoEditor,
+        Fault::AudioOutlived,
     ];
 
     fn bit(self) -> u16 {
@@ -178,6 +194,10 @@ impl Fault {
                 "a save left out parameters made at run time: the saved block had no room for them"
             }
             Fault::NoEditor => "the plugin's editor failed to open, and the host was told so",
+            Fault::AudioOutlived => {
+                "the app dropped the instance while an audio side was still alive, so the \
+                 instance leaked rather than be freed where that side could reach it"
+            }
         }
     }
 }
@@ -189,7 +209,7 @@ impl Fault {
 // until the match reads its new place too. The assertion keeps each kind's
 // bit inside the `u16`s that hold them.
 const _: () = {
-    const ALL: [Fault; 9] = Fault::ALL;
+    const ALL: [Fault; 10] = Fault::ALL;
     const FIRST: Fault = ALL[0];
     const SECOND: Fault = ALL[1];
     const THIRD: Fault = ALL[2];
@@ -199,9 +219,10 @@ const _: () = {
     const SEVENTH: Fault = ALL[6];
     const EIGHTH: Fault = ALL[7];
     const NINTH: Fault = ALL[8];
+    const TENTH: Fault = ALL[9];
     assert!(Fault::ALL.len() <= u16::BITS as usize);
     match Fault::Panic {
-        FIRST | SECOND | THIRD | FOURTH | FIFTH | SIXTH | SEVENTH | EIGHTH | NINTH => {}
+        FIRST | SECOND | THIRD | FOURTH | FIFTH | SIXTH | SEVENTH | EIGHTH | NINTH | TENTH => {}
     }
 };
 
@@ -214,6 +235,13 @@ fn count() {
 
 /// Records a fault outside any instance, and reports its kind the first
 /// time it happens in the process. The caller is not the audio thread.
+#[cfg_attr(
+    not(any(feature = "vst3", feature = "cabi", feature = "standalone", test)),
+    expect(
+        dead_code,
+        reason = "only a format's entry points run outside an instance"
+    )
+)]
 pub(crate) fn record_fault(fault: Fault) {
     count();
     if REPORTED.fetch_or(fault.bit(), Ordering::Relaxed) & fault.bit() == 0 {
@@ -258,7 +286,7 @@ impl Faults {
     /// the instance, only when a line is written. Later ones are counted, as
     /// [`record`](Self::record) counts them. The caller is not the audio
     /// thread.
-    #[cfg(feature = "vst3")]
+    #[cfg(any(feature = "vst3", feature = "standalone"))]
     pub(crate) fn record_with_reason(
         &self,
         fault: Fault,
@@ -293,7 +321,7 @@ impl Faults {
     }
 
     /// How many faults the instance has had, on every thread.
-    #[cfg(any(test, feature = "test-host"))]
+    #[cfg(any(test, feature = "test-host", feature = "standalone"))]
     pub(crate) fn count(&self) -> u64 {
         self.count.load(Ordering::Relaxed)
     }
@@ -347,14 +375,15 @@ pub fn report_line(line: &str) {
 }
 
 /// Writes one diagnostic line where a developer looks: an attached
-/// debugger on Windows, stderr elsewhere. In this crate's tests, a list the
-/// test reads.
+/// debugger on Windows, stderr elsewhere, and with the `standalone` feature
+/// stderr on Windows too, for an app's terminal. In this crate's tests, a
+/// list the test reads.
 fn write_line(line: &str) {
     #[cfg(test)]
     tests::wrote(line);
     #[cfg(all(not(test), windows, not(miri)))]
     debugger::write(line);
-    #[cfg(all(not(test), not(all(windows, not(miri)))))]
+    #[cfg(all(not(test), any(not(all(windows, not(miri))), feature = "standalone")))]
     {
         use std::io::Write as _;
         // No other place to report a failed write, and a panic here would
@@ -384,5 +413,5 @@ mod tests;
 
 #[cfg(test)]
 pub(crate) use tests::thread_faults;
-#[cfg(all(test, any(feature = "vst3", feature = "cabi")))]
+#[cfg(all(test, any(feature = "vst3", feature = "cabi", feature = "standalone")))]
 pub(crate) use tests::written;

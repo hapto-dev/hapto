@@ -99,6 +99,28 @@ impl TestView {
         self.attach_raw(window.window as isize)
     }
 
+    /// Attaches the view to a window of the caller's, as a host attaches it to
+    /// the window it made for the editor: the editor opens in it. The caller
+    /// keeps the window until it [removes](Self::remove) the view. Windows
+    /// only.
+    ///
+    /// # Errors
+    ///
+    /// The [`Refused`] answer: the editor did not open; `kInvalidArgument`
+    /// for a window that gives no Win32 handle.
+    #[cfg(windows)]
+    pub fn attach_to(
+        &self,
+        window: &impl raw_window_handle::HasWindowHandle,
+    ) -> Result<(), Refused> {
+        use raw_window_handle::RawWindowHandle;
+
+        match window.window_handle().map(|handle| handle.as_raw()) {
+            Ok(RawWindowHandle::Win32(handle)) => self.attach_raw(handle.hwnd.get()),
+            _ => Err(Refused(kInvalidArgument)),
+        }
+    }
+
     /// Attaches the view to the window handle `window`. The exporter's own
     /// tests pass a number, any but 0, for stub editors that never touch the
     /// window.
@@ -113,8 +135,11 @@ impl TestView {
         use ::vst3::Steinberg::kPlatformTypeHWND;
 
         // SAFETY: the view is alive while this holds it. The handle is a
-        // hidden window that outlives the attachment, or a number that only
-        // a stub editor, which never borrows it, is given.
+        // hidden window that outlives the attachment, a window of the caller's
+        // that the caller keeps until it removes the view, or a number that
+        // only a stub editor, which never borrows it, is given. A handle is
+        // checked by the system at each use, so one destroyed early makes a
+        // call fail and touches no memory.
         Refused::check(unsafe { self.view.attached(window as *mut c_void, kPlatformTypeHWND) })
     }
 
@@ -319,6 +344,23 @@ impl HiddenWindow {
             child = unsafe { GetWindow(child, GW_HWNDNEXT) };
         }
         shown
+    }
+}
+
+#[cfg(windows)]
+impl raw_window_handle::HasWindowHandle for HiddenWindow {
+    fn window_handle(
+        &self,
+    ) -> Result<raw_window_handle::WindowHandle<'_>, raw_window_handle::HandleError> {
+        use raw_window_handle::{HandleError, RawWindowHandle, Win32WindowHandle, WindowHandle};
+
+        let window =
+            std::num::NonZeroIsize::new(self.window as isize).ok_or(HandleError::Unavailable)?;
+        let raw = RawWindowHandle::Win32(Win32WindowHandle::new(window));
+        // SAFETY: the window this made, which this destroys only when it
+        // drops, so not while the handle borrows it; a handle is checked by
+        // the system at each use.
+        Ok(unsafe { WindowHandle::borrow_raw(raw) })
     }
 }
 

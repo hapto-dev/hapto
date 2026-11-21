@@ -30,6 +30,13 @@ pub use window::ParentWindow;
 /// Runs an entry point's body outside any instance, answering `refused` if
 /// it panics: a panic must never unwind into the host, which would abort
 /// it. Not for the audio thread, since a fault here is reported at once.
+#[cfg_attr(
+    not(any(feature = "vst3", feature = "cabi", feature = "standalone", test)),
+    expect(
+        dead_code,
+        reason = "only a format's entry points run outside an instance"
+    )
+)]
 pub(crate) fn guard<R>(refused: R, body: impl FnOnce() -> R) -> R {
     panic::catch_unwind(AssertUnwindSafe(body)).unwrap_or_else(|_| {
         record_fault(Fault::Panic);

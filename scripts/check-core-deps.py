@@ -33,8 +33,9 @@ from pathlib import Path
 
 # A crate may depend only on crates of a lower layer. Learn is above session
 # because it reads the session's saved block; the WebView shell joins the
-# bridge to the host; the plugins, which depend on everything, are on top;
-# xtask drives the examples.
+# bridge to the host, and the standalone app runs a plugin with no host; the
+# plugins, which depend on everything, are on top; xtask drives the examples.
+# cargo-hapto links no Hapto crate (it runs Cargo), so it sits with the tools.
 LAYERS = {
     "hapto-testkit": 0,
     "hapto-macros": 0,
@@ -46,7 +47,9 @@ LAYERS = {
     "hapto-bridge": 3,
     "hapto-host": 4,
     "hapto-webview": 5,
+    "hapto-standalone": 5,
     "xtask": 7,
+    "cargo-hapto": 7,
 }
 
 # Every crate under examples/ is a plugin: it depends on the host and below,

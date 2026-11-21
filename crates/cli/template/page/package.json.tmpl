@@ -1,0 +1,23 @@
+{
+  "name": "{{crate}}-page",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "{{name}}'s page: a slider on the gain, in the plugin's window.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "@hapto/page": "file:{{hapto}}/page"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.5"
+  }
+}

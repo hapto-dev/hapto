@@ -576,7 +576,7 @@ unsafe extern "C" fn load<P: Plugin>(
             // for reading `length` bytes until this call returns.
             unsafe { std::slice::from_raw_parts(data, length) }
         };
-        instance.load_saved(bytes)
+        instance.load_saved(bytes).is_ok()
     })
 }
 

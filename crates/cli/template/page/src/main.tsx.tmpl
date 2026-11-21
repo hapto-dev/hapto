@@ -1,0 +1,57 @@
+// The page: a slider on the gain, which drags it as a user would, one undo
+// step and one host gesture per drag.
+
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import { createClient, createHooks, webviewTransport } from "@hapto/page";
+
+import type { Params } from "./generated/params";
+import "./styles.css";
+
+/** The page's events, commands and values: none yet. `src/page.rs` adds a
+    command or binds a value, and its type goes here. */
+type None = Record<string, never>;
+
+const client = createClient(webviewTransport());
+const { useParam } = createHooks<Params, None, None, None>(client);
+
+function GainSlider() {
+  const gain = useParam("gain");
+  return (
+    <label className="row">
+      <span className="name">Gain</span>
+      <input
+        type="range"
+        min={0}
+        max={1}
+        step={0.001}
+        value={gain.value}
+        onPointerDown={gain.onDragStart}
+        onChange={(event) => gain.onDrag(event.currentTarget.valueAsNumber)}
+        onPointerUp={gain.onDragEnd}
+        onPointerCancel={gain.onDragEnd}
+      />
+      <output>{gain.text}</output>
+    </label>
+  );
+}
+
+function App() {
+  const failure = useParam("gain").failure;
+  if (failure) return <p className="failure">{failure.message}</p>;
+  return (
+    <main>
+      <h1>{{name}}</h1>
+      <GainSlider />
+    </main>
+  );
+}
+
+const root = document.getElementById("root");
+if (root) {
+  createRoot(root).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  );
+}

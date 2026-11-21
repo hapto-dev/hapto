@@ -59,7 +59,12 @@ pub fn check_generated(path: &Path, generated: &str) {
             if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent).expect("create the generated file's folder");
             }
-            std::fs::write(path, generated).expect("write the generated file");
+            // A file that already holds the text is left as it is, so its
+            // time does not move and nothing that watches it runs again.
+            let committed = std::fs::read_to_string(path).ok();
+            if needs_writing(committed.as_deref(), generated) {
+                std::fs::write(path, generated).expect("write the generated file");
+            }
         }
         Mode::Check => {
             let committed = std::fs::read_to_string(path)
@@ -98,6 +103,12 @@ fn mode(bless: Option<&OsStr>, ci: Option<&OsStr>) -> Result<Mode, String> {
              passes whatever the code generates, so CI refuses it"
         )),
     }
+}
+
+/// Whether a rewrite has anything to write: the file is missing, or holds
+/// another text than `generated`, line endings compared as LF.
+fn needs_writing(committed: Option<&str>, generated: &str) -> bool {
+    committed.is_none_or(|committed| committed.replace("\r\n", "\n") != generated)
 }
 
 fn hint() -> String {
@@ -148,6 +159,14 @@ mod tests {
     fn the_refusal_reads_as_one_sentence() {
         let refusal = mode(os("1"), os("true")).unwrap_err();
         assert!(!refusal.contains("  "), "a run of spaces in {refusal:?}");
+    }
+
+    #[test]
+    fn a_rewrite_leaves_a_file_that_already_holds_the_text() {
+        assert!(!needs_writing(Some("a\nb\n"), "a\nb\n"));
+        assert!(!needs_writing(Some("a\r\nb\r\n"), "a\nb\n"), "CRLF");
+        assert!(needs_writing(Some("a\n"), "a\nb\n"), "another text");
+        assert!(needs_writing(None, "a\n"), "no file");
     }
 
     #[test]

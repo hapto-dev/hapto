@@ -15,6 +15,9 @@
 //! toolkit may leave the host something that points into it and a host may
 //! unload the module and load it again elsewhere.
 
+#[cfg(test)]
+mod tests;
+
 use std::cell::{Cell, RefCell};
 use std::error::Error;
 use std::panic::{self, AssertUnwindSafe};
@@ -72,6 +75,14 @@ pub(crate) struct EditorSlot {
 }
 
 impl EditorSlot {
+    /// Whether an editor takes `scale`: a positive finite number. The slot
+    /// passes any other over, since a NaN never equals the scale the editor
+    /// was told last, so telling it would go on for ever; the VST3 view asks
+    /// too, to answer the host that it refused one.
+    pub(crate) fn takes_scale(scale: f64) -> bool {
+        scale.is_finite() && scale > 0.0
+    }
+
     /// Holds `editor`, closed, at the size it opens at and a scale of 1.
     pub(crate) fn new(editor: Box<dyn Editor>) -> Self {
         let size = editor.size();
@@ -171,8 +182,12 @@ impl EditorSlot {
     }
 
     /// Takes the scale the host gave, as [`set_size`](Self::set_size) takes
-    /// a size. Returns whether it changed.
+    /// a size. Returns whether it changed. One no editor
+    /// [takes](Self::takes_scale) is passed over, whoever gives it.
     pub(crate) fn set_scale(&self, scale: f64) -> bool {
+        if !Self::takes_scale(scale) {
+            return false;
+        }
         let changed = self.scale.replace(scale) != scale;
         self.tell_now();
         changed

@@ -1,7 +1,8 @@
 //! What hapto-host runs over and over does not allocate: the per-block event
 //! list a format exporter fills and a processor reads, a block through an
-//! exporter with learn's audio side in it, and a plugin's idle tick when
-//! nothing changed, which every instance runs about 60 times a second.
+//! exporter with learn's audio side in it, the standalone exporter's audio
+//! side around the engine, and a plugin's idle tick when nothing changed,
+//! which every instance runs about 60 times a second.
 
 hapto_testkit::install_alloc_gate!();
 
@@ -134,12 +135,12 @@ fn an_idle_tick_with_ten_thousand_parameters_made_at_run_time_does_not_allocate(
 
 /// A plugin that keeps its parts, with undo and learn on, so the engine
 /// ticks them.
-#[cfg(all(feature = "cabi", feature = "test-host"))]
+#[cfg(any(all(feature = "cabi", feature = "test-host"), feature = "standalone"))]
 struct Kept {
     _parts: Parts,
 }
 
-#[cfg(all(feature = "cabi", feature = "test-host"))]
+#[cfg(any(all(feature = "cabi", feature = "test-host"), feature = "standalone"))]
 impl Plugin for Kept {
     const INFO: PluginInfo = Listening::INFO;
     type Params = Gain;
@@ -188,4 +189,41 @@ fn a_block_through_the_engine_with_learn_on_does_not_allocate() {
         },
     );
     assert_eq!(host.faults(), 0);
+}
+
+#[cfg(feature = "standalone")]
+#[test]
+fn a_block_through_the_standalone_exporter_does_not_allocate() {
+    use hapto_host::standalone::{MAX_CHANNELS, Standalone};
+
+    let app = Standalone::<Kept>::new();
+    let mut audio = app.audio();
+    let input = vec![0.25f32; 600];
+    let (mut left, mut right) = (vec![0.0f32; 600], vec![0.0f32; 600]);
+    let mut wide = vec![vec![0.0f32; 64]; MAX_CHANNELS + 1];
+    let mut outputs: Vec<&mut [f32]> = wide.iter_mut().map(|c| &mut c[..]).collect();
+    assert_no_allocations("a block before the activation, which is silence", || {
+        audio.process(&[&input, &input], &mut [&mut left, &mut right]);
+    });
+    assert_eq!(app.activate(48_000.0, 256, Layout::STEREO), Ok(()));
+    assert_no_allocations(
+        "blocks through the standalone exporter, the first after activation on",
+        || {
+            for frames in [256, 600, 1, 255] {
+                let inputs = [&input[..frames], &input[..frames]];
+                audio.process(&inputs, &mut [&mut left[..frames], &mut right[..frames]]);
+            }
+            // An input shorter than the outputs, inputs that share part of
+            // one buffer, and more outputs than the most.
+            audio.process(
+                &[&input[..100], &input[..100]],
+                &mut [&mut left, &mut right],
+            );
+            let shifted = [&input[..256], &input[1..257]];
+            audio.process(&shifted, &mut [&mut left[..256], &mut right[..256]]);
+            audio.process(&[], &mut outputs);
+        },
+    );
+    assert_eq!(app.faults(), 0);
+    drop(audio);
 }
