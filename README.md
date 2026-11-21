@@ -94,6 +94,6 @@ reaches `main`.
 ## Licence
 
 MIT ([LICENSE](LICENSE)). [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES) holds the
-notices of the works a build carries besides: in a plugin, the VST3 SDK and
-`triple_buffer`, and with a page wry's WebView2 bindings, Microsoft's WebView2
-loader, `bytes` and `dpi`; a standalone app adds `cpal`, `winit` and `tracing`.
+notices of what else a build carries: a plugin's VST3 SDK and `triple_buffer`;
+with a page, wry's WebView2 bindings, Microsoft's WebView2 loader, `bytes` and
+`dpi`; and the app's `cpal`, `winit`, `tracing` and `audio_thread_priority`.

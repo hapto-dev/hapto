@@ -3248,7 +3248,10 @@ shipped app carries cpal and winit, under the Apache License 2.0 alone,
 tracing, under MIT, and audio_thread_priority, under MPL-2.0, which a plugin's
 module never links; THIRD-PARTY-NOTICES
 holds their notices apart from a plugin's, and nothing ships that file with
-an app or a bundle yet. Open: the app can go back to cpal's own default device
+an app or a bundle yet. Open: on Windows cpal's output stream reports none of
+the three kinds the app plays on after: a glitch only on an input, no change
+of route, and a refused priority as a backend error, which stops the audio
+until the next look. Open: the app can go back to cpal's own default device
 once a cpal release opens it again after a device has left; its stream tells
 of a new default at once, where a look finds one up to a second later.
 
