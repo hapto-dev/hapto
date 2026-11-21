@@ -3212,23 +3212,24 @@ against C++.
   default device: with cpal 0.18.2 that one cannot be opened again once any
   audio device has left during the run. A stream on a device taken by its id
   stays on it, so the app looks once a second at which device is the
-  default. A new default is followed: the stream is dropped first, so no
-  block runs, the plugin is deactivated and activated at the new device's
-  rate, and a line says where the app plays now. An error the device reports
-  is judged by its kind. A glitch, a refused rise in the audio thread's
-  priority, or a change of route the device followed itself plays on, and is
-  said in a line. Any other drops the stream and deactivates the plugin at
-  once, and so does a look that finds no default output; the next look that
-  finds one opens it. A stop is said in a line, a device that went away in
-  plain words, and in the window's title until the audio plays again. A
-  default that does not open is tried at every look and said once for each
-  reason, so no device error stops the audio for the run. The audio thread
-  runs at real-time priority, through cpal's `realtime` feature, so a build
-  on every core does not break up the tone. A fault's line goes to the
-  terminal as well as to a
-  debugger, and the window's title counts the faults. It ticks the
-  plugin every 16 ms from the window's event loop, woken by a thread of its
-  own, since the loop's deadline is not served while a title bar is held or a
+  default, the second counted from the last look's end, so the window still
+  gets a second between two tries at a default that is slow to fail. A new
+  default is followed: the stream is dropped first, so no block runs, the
+  plugin is deactivated and activated at the new device's rate, and a line
+  says where the app plays now. An error the device reports is judged by its
+  kind. A glitch, a refused rise in the audio thread's priority, or a change
+  of route the device followed itself plays on, and is said in a line. Any
+  other drops the stream and deactivates the plugin at once, and so does a
+  look that finds no default output; the next look that finds one opens it.
+  A stop is said in a line, a device that went away in plain words, and in
+  the window's title until the audio plays again. A default that does not
+  open is tried at every look and said once for each reason, so no device
+  error stops the audio for the run. The audio thread runs at real-time
+  priority, through cpal's `realtime` feature, so a build on every core does
+  not break up the tone. A fault's line goes to the terminal as well as to a
+  debugger, and the window's title counts the faults. It ticks the plugin
+  every 16 ms from the window's event loop, woken by a thread of its own,
+  since the loop's deadline is not served while a title bar is held or a
   window menu is open.
   The saved block is kept in a session folder, the plugin's own below the user's
   local application data, or under `cargo hapto dev` the one `--dev` names,
@@ -3253,7 +3254,10 @@ the three kinds the app plays on after: a glitch only on an input, no change
 of route, and a refused priority as a backend error, which stops the audio
 until the next look. Open: the app can go back to cpal's own default device
 once a cpal release opens it again after a device has left; its stream tells
-of a new default at once, where a look finds one up to a second later.
+of a new default at once, where a look finds one up to a second later. Open:
+with cpal 0.18.2 each look leaks the default's id, about 140 bytes, since
+cpal does not free the string the system hands it; cpal has fixed that and
+not yet released it, and the release that has it ends the leak.
 
 **Alternatives.** The alternatives were the JUCE adapter's standalone app,
 which needs CMake and JUCE in a `cargo` loop; and a plugin hosted in a real

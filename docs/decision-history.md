@@ -1187,6 +1187,13 @@ call, an unplug is followed at the next look rather than at once, and a
 device that went away is said in plain words rather than in cpal's text.
 The window's title now clears once the audio plays again.
 
+A review the same day changed two small things. The second between two
+looks is counted from a look's end, where it was counted from its start, so
+a default whose open takes over a second to fail is not tried again at
+once. And the record says that with cpal 0.18.2 each look leaks the
+default's id string, measured at about 140 bytes, which cpal fixed after
+0.18.2 and had not released.
+
 ### D111. The dev host
 
 [The decision](decisions.md#d111-the-dev-host)
@@ -1226,6 +1233,10 @@ processes or the author stops, starts or reactivates it; and a move to a new
 device shows in the Activity log and the Audio tab, no longer in the box for
 refusals. After Stop a look takes a new default and starts nothing, and
 settings a look changed are kept in the session.
+
+The review of that the same day found no test that a wait ends. Three now
+pin that Stop, Start or Reactivate ends it, that a plugin playing again
+waits no more, and that a move clears the note of an earlier refusal.
 
 ## Rules
 
