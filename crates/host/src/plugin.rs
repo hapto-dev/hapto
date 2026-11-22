@@ -593,7 +593,7 @@ pub enum Tail {
 ///     type Layout = Mono;
 ///
 ///     fn process(&mut self, mut block: Block<'_, Mono>) -> Status {
-///         for sample in block.audio.frames_mut() {
+///         for [sample] in block.audio.frames_mut() {
 ///             self.state += 0.5 * (*sample - self.state);
 ///             *sample = self.state;
 ///         }
@@ -615,10 +615,10 @@ pub enum Tail {
 /// assert_eq!(filter.state, 0.0);
 /// ```
 pub trait Processor: Send + 'static {
-    /// The main bus's channels, as a type: [`Mono`](crate::layout::Mono),
-    /// [`Stereo`](crate::layout::Stereo) or
-    /// [`StereoOut`](crate::layout::StereoOut) for a processor that runs at
-    /// one width, whose frames destructure, or
+    /// The main bus's channels, as a type: a [`Bus`](crate::layout::Bus)
+    /// for a processor that runs at one width, such as
+    /// [`Stereo`](crate::layout::Stereo) or `Bus<4, 4>`, whose frames and
+    /// channels are arrays that destructure, or
     /// [`AnyLayout`](crate::layout::AnyLayout) for one that runs at each
     /// width its plugin lists in [`PluginInfo::layouts`].
     type Layout: Layout;

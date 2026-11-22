@@ -148,7 +148,7 @@ comments never cite an id: they state the reason in words, and
 | D109 | [What builds, bundles, checks and runs a plugin crate outside this repository? (D27)](#d109-the-plugin-authors-command) | `cargo hapto`, a binary that runs Cargo, npm and Node and links no Hapto crate, so it serves any workspace: it writes a new plugin crate with fresh ids, finds the plugin crate, runs it while its author edits it, builds its page and module, lays out and installs its bundle, and validates it. It warns when the workspace locks another Hapto version than its own. | to confirm |
 | D110 | [How does a plugin run with no host, while its author works on it and as an app of its own? (D16, D100, D109)](#d110-the-standalone-exporter-and-app) | Through a standalone exporter over the same engine, which the app is the host of, and `hapto-standalone`, an app any plugin crate's binary runs: the editor in a window, a test signal to the audio output, the saved block kept between runs. Windows only, as the page is. | to confirm |
 | D111 | [How does a plugin's author see it through a plugin format while working on it, with no real host? (D109, D110)](#d111-the-dev-host) | The standalone app's dev host: the plugin through Hapto's own VST3 and C interface test hosts, in process, its editor as the exporter's view below a bar that names the format, with a settings window of what the host sees, a tab each. It changes the sample rate, of those the device takes, and the most frames a block holds by reactivating the plugin as a host does, cuts blocks by a plan, and logs what the plugin tells the host. A switch of format starts the app again with the saved block, and a block the plugin refused is kept for the next run. It stands in for no real host. | to confirm |
-| D112 | [How does a processor see its block's audio, and the widths it runs at? (D23, D97)](#d112-the-blocks-audio-and-the-layout-as-a-type) | As a type: `Processor::Layout` names the main bus's channels, `Mono`, `Stereo` and `StereoOut` at one width each, or `AnyLayout` at each width `PluginInfo::layouts` lists. `Block::audio` lends the channels as `Audio`, walked by frame or by channel with no index or frame count; `Width` counts them at run time, and `AudioBuf` owns audio for tests. | decided |
+| D112 | [How does a processor see its block's audio, and the widths it runs at? (D23, D97)](#d112-the-blocks-audio-and-the-layout-as-a-type) | As a type: `Processor::Layout` names the main bus's channels, a `Bus<IN, OUT>` at one width, with `Mono`, `Stereo` and the like for the common ones, or `AnyLayout` at each width `PluginInfo::layouts` lists. `Block::audio` lends the channels as `Audio`, walked by frame or by channel with no index or frame count, and in a `Bus` both are arrays that destructure. `Width` counts channels at run time, and `AudioBuf` owns audio for tests. | decided |
 | D113 | [Where do the audio types live? (D112)](#d113-the-audio-types-crate) | In `hapto-audio`, a core crate of layer 1 beside `hapto-params` and `hapto-ump`, which `hapto-host` re-exports, so code that only writes audio, such as a voice, needs no host. | decided |
 
 **Open.** D25 is held until `hapto-ci` needs it. It keeps its recommendation
@@ -3402,12 +3402,19 @@ buses at run time. Not checked against C++.
 **Rust.** A processor names its main bus's channels as a type,
 `Processor::Layout`, and its block lends them as `Audio`.
 
-- **The layouts.** `Mono`, `Stereo` and `StereoOut` run at one width each, so
-  a frame of their audio is its sample or an array of them, and a stereo
-  frame destructures as `[left, right]`. `AnyLayout` runs at each width its
-  plugin lists in `PluginInfo::layouts`, which only it takes, and a frame is a
-  `Frame` of every channel. The trait is sealed. A plugin that lists widths
-  beside a typed layout, or none for `AnyLayout`, fails to build.
+- **The layouts.** A `Bus<IN, OUT>` runs at one width, up to 16 channels
+  each way, and its frames and its channels are arrays, so they destructure:
+  `for [left, right] in block.audio.frames_mut()` walks frames, and
+  `let [_, _, third, _] = block.audio.channels_mut()` reaches a channel by
+  its place, with no index and nothing to unwrap. A pattern that names a
+  channel the bus does not have fails to compile. The common widths have
+  names: `Mono`, `Stereo`, `StereoOut`, `MonoToStereo` and `NoAudio`.
+  `AnyLayout` runs at each width its plugin lists in `PluginInfo::layouts`,
+  which only it takes; a frame is a `Frame` of every channel, the channels
+  come as an iterator, and `channel_mut` reaches one by its number. The
+  trait is sealed. A plugin that lists widths beside a `Bus`, or none for
+  `AnyLayout`, fails to build. A `Bus` wider than stereo builds for the C
+  interface; the VST3 exporter arranges mono and stereo buses only.
 - **The audio.** `Block::audio` holds the channels in place, over the block's
   frames: `frames_mut` walks a moment at a time across every channel, and
   `channels_mut` a channel at a time, so audio code needs no index, frame
@@ -3424,7 +3431,9 @@ buses at run time. Not checked against C++.
   borrows.
 
 Every processor names its layout: Rust has no default for an associated
-type.
+type. Stable Rust cannot work out an array's length from a generic count,
+so `hapto-audio` writes the `Layout` of each `Bus` up to 16 channels each
+way with a macro.
 
 **Open.** A plugin that offers several typed widths, as a set it matches on,
 takes `AnyLayout` until that set is designed. Whether walking frames

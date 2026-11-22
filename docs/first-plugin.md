@@ -159,10 +159,12 @@ fails that build with the reason, in any test.
 [`Block`](../crates/host/src/audio.rs): its
 [`Audio`](../crates/audio/src/audio.rs), edited in place, and the block's MIDI
 events. The processor names its channels as a type, its
-[layout](../crates/audio/src/layout.rs). The gain is `Stereo`, two channels in
-and two out, so its audio always holds two, and its loop walks them with
-`block.audio.channels_mut()`, with no index or frame count. A plugin that runs
-at several widths takes `AnyLayout` and lists them in its `INFO`:
+[layout](../crates/audio/src/layout.rs). The gain is `Stereo`, a `Bus` of two
+channels in and two out, so its audio always holds two, and its loop walks
+them with `block.audio.channels_mut()`, with no index or frame count. In a
+`Bus` the channels are an array, so `let [left, right] =
+block.audio.channels_mut()` would name each. A plugin that runs at several
+widths takes `AnyLayout` and lists them in its `INFO`:
 
 ```rust
 impl Processor for GainProcessor {

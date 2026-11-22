@@ -195,9 +195,9 @@ Several senses:
 ### Layout
 
 The channels a processor's main bus has, as a type it names as
-`Processor::Layout` ([layout.rs](../crates/audio/src/layout.rs)): `Mono`,
-`Stereo` or `StereoOut` at one [width](#width) each, or `AnyLayout` at each
-width its plugin lists.
+`Processor::Layout` ([layout.rs](../crates/audio/src/layout.rs)): a `Bus` at
+one [width](#width), whose frames and channels are arrays, such as `Stereo`,
+or `AnyLayout` at each width its plugin lists.
 
 ### Learned write
 

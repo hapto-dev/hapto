@@ -2,9 +2,11 @@
 //!
 //! A processor names its main bus's channels as a [layout](layout::Layout)
 //! type, and its block lends it [`Audio`]: frames and channels to loop over,
-//! with no index and no frame count to carry. In a typed layout the channels
-//! are known at compile time, so a stereo frame destructures as
-//! `[left, right]`; [`AnyLayout`](layout::AnyLayout) counts them at run time.
+//! with no index and no frame count to carry. In a [`Bus`](layout::Bus) the
+//! channels are known at compile time, so frames and channels are arrays: a
+//! stereo frame destructures as `[left, right]`, and
+//! `let [left, right] = audio.channels_mut()` reaches each channel by its
+//! place. [`AnyLayout`](layout::AnyLayout) counts them at run time.
 //! [`AudioBuf`] owns audio of its own, for tests and scratch.
 //!
 //! The crate is in the core tier and depends on nothing, so code that writes
@@ -18,7 +20,7 @@
 //!
 //! ```
 //! use hapto_audio::{Audio, AudioBuf};
-//! use hapto_audio::layout::{Stereo, Width};
+//! use hapto_audio::layout::Stereo;
 //!
 //! fn gain(audio: &mut Audio<'_, Stereo>, gain: f32) {
 //!     for [left, right] in audio.frames_mut() {
@@ -34,7 +36,7 @@
 //!     }
 //! }
 //!
-//! let mut stereo = AudioBuf::<Stereo>::new(Width::STEREO, 64);
+//! let mut stereo = AudioBuf::<Stereo>::new(64);
 //! stereo.audio().add_to_all([1.0; 64]);
 //! gain(&mut stereo.audio(), 0.5);
 //! assert_eq!(stereo.audio().peak(), 0.5);

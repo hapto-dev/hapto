@@ -9,7 +9,7 @@ use hapto_testkit::alloc::assert_no_allocations;
 
 #[test]
 fn walking_audio_allocates_nothing() {
-    let mut stereo = AudioBuf::<Stereo>::new(Width::STEREO, 256);
+    let mut stereo = AudioBuf::<Stereo>::new(256);
     let mut wide = AudioBuf::<AnyLayout>::new(Width::new(8, 8), 256);
     let (mut left, mut right) = (vec![0.5_f32; 256], vec![0.5_f32; 256]);
     assert_no_allocations("walking audio", || {

@@ -9,7 +9,7 @@
 use std::hint::black_box;
 
 use hapto_audio::AudioBuf;
-use hapto_audio::layout::{Stereo, Width};
+use hapto_audio::layout::Stereo;
 use iai_callgrind::{library_benchmark, library_benchmark_group, main};
 
 /// A block's frames: a common host block size.
@@ -17,7 +17,7 @@ const FRAMES: usize = 512;
 
 /// A stereo block of a little signal.
 fn stereo() -> AudioBuf<Stereo> {
-    let mut buffer = AudioBuf::<Stereo>::new(Width::STEREO, FRAMES);
+    let mut buffer = AudioBuf::<Stereo>::new(FRAMES);
     buffer
         .audio()
         .add_to_all((0..FRAMES).map(|frame| frame as f32 * 1e-3));

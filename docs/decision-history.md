@@ -1252,6 +1252,14 @@ named after the field that holds it, rather than JUCE's `AudioBuffer`, since
 the standard library names an owner `Buf`, and `AudioBuf` is the one that
 owns.
 
+Later on 2026-11-21, at the owner's ask for the API developers would love
+most, after asking how a gain would reach the third of four channels: the
+three typed layouts became one, `Bus<IN, OUT>`, with their names kept as
+aliases, so any fixed width is typed. A `Bus`'s channels became an array, as
+its frames are, so a channel is reached by its place and one it does not
+have fails to compile, where `channel_mut` returned an `Option` even in a
+layout whose count was known. `AnyLayout` kept its iterators.
+
 ### D113. The audio types' crate
 
 [The decision](decisions.md#d113-the-audio-types-crate)
