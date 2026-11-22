@@ -17,10 +17,11 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
+use hapto_host::layout::{AnyLayout, Width};
 use hapto_host::vst3::{HiddenWindow, TestHost};
 use hapto_host::{
-    AuCodes, Block, Category, Editor, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor,
-    Size, Status,
+    AuCodes, Block, Category, Editor, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Size,
+    Status,
 };
 use hapto_params::{Declarer, Float, FloatDecl, Params, Value};
 use hapto_webview::{Asset, Page};
@@ -82,7 +83,9 @@ impl Params for ProbeParams {
 struct Through;
 
 impl Processor for Through {
-    fn process(&mut self, _block: Block<'_, '_>) -> Status {
+    type Layout = AnyLayout;
+
+    fn process(&mut self, _block: Block<'_, AnyLayout>) -> Status {
         Status::Continue
     }
 }
@@ -108,7 +111,7 @@ impl Plugin for Probe {
         },
         category: Category::Effect,
         features: &[],
-        layouts: &[Layout::STEREO],
+        layouts: &[Width::STEREO],
         midi_input: false,
         midi_output: false,
     };

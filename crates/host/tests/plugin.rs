@@ -4,9 +4,9 @@ use std::cell::Cell;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use hapto_host::layout::{AnyLayout, Width};
 use hapto_host::{
-    AuCodes, Block, Category, Driver, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor,
-    Status,
+    AuCodes, Block, Category, Driver, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
 };
 use hapto_params::{Bool, BoolDecl, Declarer, Kind, ParamDecl, ParamSet, Params};
 use hapto_session::Session;
@@ -30,7 +30,9 @@ impl Params for OnParams {
 struct Silent;
 
 impl Processor for Silent {
-    fn process(&mut self, _: Block<'_, '_>) -> Status {
+    type Layout = AnyLayout;
+
+    fn process(&mut self, _: Block<'_, AnyLayout>) -> Status {
         Status::Sleep
     }
 }
@@ -58,7 +60,7 @@ impl Plugin for Minimal {
         },
         category: Category::Effect,
         features: &[],
-        layouts: &[Layout::STEREO],
+        layouts: &[Width::STEREO],
         midi_input: false,
         midi_output: false,
     };

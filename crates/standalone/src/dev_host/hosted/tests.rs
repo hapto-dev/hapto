@@ -5,8 +5,9 @@
 
 use std::cell::RefCell;
 
+use hapto_host::layout::{AnyLayout, Width};
 use hapto_host::{
-    AuCodes, Block, Category, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
+    AuCodes, Block, Category, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
 };
 use hapto_params::{Declarer, Kind, ParamDecl, Params, host_id};
 
@@ -33,7 +34,9 @@ impl Params for NoParams {
 struct Through;
 
 impl Processor for Through {
-    fn process(&mut self, _block: Block<'_, '_>) -> Status {
+    type Layout = AnyLayout;
+
+    fn process(&mut self, _block: Block<'_, AnyLayout>) -> Status {
         Status::Continue
     }
 }
@@ -57,7 +60,7 @@ impl Plugin for Probe {
         },
         category: Category::Effect,
         features: &[],
-        layouts: &[Layout::STEREO],
+        layouts: &[Width::STEREO],
         midi_input: false,
         midi_output: false,
     };
@@ -127,16 +130,14 @@ fn a_change_of_rate_and_maximum_reactivates_the_plugin_in_each_format() {
     for format in Format::ALL {
         ACTIVATIONS.with_borrow_mut(Vec::clear);
         let hosted = host::<Probe>(format);
-        let mut render = hosted
-            .start(48_000.0, 512, Layout::STEREO)
-            .expect("started");
+        let mut render = hosted.start(48_000.0, 512, Width::STEREO).expect("started");
         play(&mut *render, 512);
         // As the dev host changes a setting: the device's blocks end, then
         // the plugin stops.
         drop(render);
         hosted.stop();
         let mut render = hosted
-            .start(96_000.0, 256, Layout::STEREO)
+            .start(96_000.0, 256, Width::STEREO)
             .expect("started again");
         play(&mut *render, 256);
         drop(render);
@@ -183,7 +184,7 @@ fn each_format_lists_the_parameters_by_kind_with_hapto_s_host_ids() {
 fn a_control_moved_while_processing_is_stopped_lands_in_each_format() {
     for format in Format::ALL {
         let hosted = host::<Knobs>(format);
-        drop(hosted.start(48_000.0, 64, Layout::STEREO).expect("started"));
+        drop(hosted.start(48_000.0, 64, Width::STEREO).expect("started"));
         hosted.stop();
         // No block runs to carry the change, as a host's own control sends
         // one while it processes.
@@ -212,12 +213,12 @@ fn a_block_that_is_not_a_saved_one_is_refused_in_each_format() {
 fn a_plugin_stopped_twice_starts_again_with_no_fault_in_each_format() {
     for format in Format::ALL {
         let hosted = host::<Probe>(format);
-        drop(hosted.start(48_000.0, 64, Layout::STEREO).expect("started"));
+        drop(hosted.start(48_000.0, 64, Width::STEREO).expect("started"));
         // Stopped by the author, then reactivated, which stops it first.
         hosted.stop();
         hosted.stop();
         let mut render = hosted
-            .start(48_000.0, 64, Layout::STEREO)
+            .start(48_000.0, 64, Width::STEREO)
             .expect("started again");
         play(&mut *render, 64);
         drop(render);
@@ -229,7 +230,7 @@ fn a_plugin_stopped_twice_starts_again_with_no_fault_in_each_format() {
 fn awkward_blocks_play_with_no_fault_in_each_format() {
     for format in Format::ALL {
         let hosted = host::<Probe>(format);
-        let mut render = hosted.start(48_000.0, 64, Layout::STEREO).expect("started");
+        let mut render = hosted.start(48_000.0, 64, Width::STEREO).expect("started");
         for frames in [1, 0, 64, 65, 3, 0] {
             play(&mut *render, frames);
         }

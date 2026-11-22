@@ -4,7 +4,8 @@
 
 use hapto_example_eq::ExampleEq;
 use hapto_host::cabi::{KIND_BOOL, KIND_CONTINUOUS, TestHost};
-use hapto_host::{Block, EventList, Layout, Plugin, ProcessSetup, Processor};
+use hapto_host::layout::Width;
+use hapto_host::{Audio, Block, EventList, Plugin, ProcessSetup, Processor};
 use hapto_params::{Kind, host_id};
 
 mod common;
@@ -18,7 +19,7 @@ fn the_adapter_lists_every_parameter_with_its_key() {
     let host = TestHost::<ExampleEq>::new();
     let declarations = declarations();
     assert_eq!(host.parameter_count(), declarations.len());
-    assert_eq!(host.layouts(), [Layout::STEREO, Layout::MONO]);
+    assert_eq!(host.layouts(), [Width::STEREO, Width::MONO]);
     for index in 0..declarations.len() as u32 {
         let info = host.parameter(index).expect("listed");
         let decl = declarations
@@ -46,12 +47,12 @@ fn the_adapter_lists_every_parameter_with_its_key() {
 #[test]
 fn audio_through_the_c_interface_matches_the_processor_driven_directly() {
     let host = TestHost::<ExampleEq>::new();
-    assert_eq!(host.activate(RATE, MAX_FRAMES, Layout::STEREO), Ok(()));
+    assert_eq!(host.activate(RATE, MAX_FRAMES, Width::STEREO), Ok(()));
     let (mut plugin, saved) = built();
     let mut processor = plugin.activate(&ProcessSetup {
         sample_rate: RATE,
         max_frames: MAX_FRAMES as usize,
-        layout: Layout::STEREO,
+        layout: Width::STEREO,
         max_events: 0,
         max_out_events: 0,
     });
@@ -77,7 +78,11 @@ fn audio_through_the_c_interface_matches_the_processor_driven_directly() {
 
         let (mut expected_left, mut expected_right) = (left.clone(), right.clone());
         let mut channels: [&mut [f32]; 2] = [&mut expected_left, &mut expected_right];
-        processor.process(Block::new(&mut channels, frames, &events, &mut out_events));
+        processor.process(Block::new(
+            Audio::new(&mut channels, frames),
+            &events,
+            &mut out_events,
+        ));
 
         let (mut got_left, mut got_right) = (vec![0.0f32; frames], vec![0.0f32; frames]);
         if block % 2 == 0 {

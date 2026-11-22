@@ -43,14 +43,15 @@ pub(crate) use automation::{MAX_SKIPPED_QUEUES, Point};
 pub(crate) use editor::{EditorSlot, Opened};
 #[cfg(any(feature = "vst3", feature = "cabi", feature = "standalone"))]
 pub(crate) use process::Outcome;
-use process::{Audio, PendingReset, install};
+use process::{Active, PendingReset, install};
 use timer::{Handle, Timer, abandon};
 
 #[cfg(feature = "cabi")]
 use crate::boundary::Patience;
 use crate::boundary::{AudioSlot, Lent, MainThread, Refused};
 use crate::faults::{Fault, Faults, report_refused_declarations};
-use crate::{Driver, Layout, LoadError, MAX_FRAMES, Parts, Plugin, SavedState, Tail};
+use crate::layout::Width;
+use crate::{Driver, LoadError, MAX_FRAMES, Parts, Plugin, SavedState, Tail, first_width, widths};
 
 /// What `tail` answers for a plugin whose output falls silent with its
 /// input; VST3's `kNoTail` and the C interface's `HAPTO_TAIL_NONE`.
@@ -183,7 +184,7 @@ struct Answers {
 }
 
 impl Answers {
-    fn new(layout: Layout, plugin: &impl Plugin) -> Self {
+    fn new(layout: Width, plugin: &impl Plugin) -> Self {
         let answers = Answers {
             layout: AtomicU64::new(0),
             latency: AtomicU32::new(0),
@@ -195,15 +196,15 @@ impl Answers {
     }
 
     #[cfg(feature = "vst3")]
-    fn layout(&self) -> Layout {
+    fn layout(&self) -> Width {
         let packed = self.layout.load(Ordering::Acquire);
-        Layout::new(
+        Width::new(
             (packed >> 32) as usize,
             (packed & u64::from(u32::MAX)) as usize,
         )
     }
 
-    fn set_layout(&self, layout: Layout) {
+    fn set_layout(&self, layout: Width) {
         let half = |channels: usize| u64::from(u32::try_from(channels).unwrap_or(u32::MAX));
         self.layout.store(
             half(layout.inputs) << 32 | half(layout.outputs),
@@ -378,7 +379,7 @@ pub(crate) struct Engine<P: Plugin, H> {
     timer_handle: OnceLock<Handle>,
     /// Room for a block's automation, taken by the audio thread only.
     automation: AudioSlot<Automation>,
-    audio: AudioSlot<Option<Audio<P::Processor>>>,
+    audio: AudioSlot<Option<Active<P::Processor>>>,
     main: MainThread<Main<P, H>>,
 }
 
@@ -448,7 +449,7 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
             .take_host_event_drain()
             .expect("a set Hapto just built still has its host event drain");
         let plugin = P::new(params, parts);
-        let layout = const { first_layout(P::INFO.layouts) };
+        let layout = const { first_width::<P>() };
         let answers = Answers::new(layout, &plugin);
         let main = Main {
             reported: Cell::new(answers.latency.load(Ordering::Acquire)),
@@ -526,7 +527,7 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
 
     /// The main bus layout. Any thread.
     #[cfg(feature = "vst3")]
-    pub(crate) fn layout(&self) -> Layout {
+    pub(crate) fn layout(&self) -> Width {
         self.answers.layout()
     }
 
@@ -651,8 +652,8 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
     /// Sets the main bus layout for the next activation; false while active
     /// or for a layout the plugin does not declare.
     #[cfg(feature = "vst3")]
-    pub(crate) fn arrange(&self, main: &Main<P, H>, layout: Layout) -> bool {
-        if main.active.get() || !P::INFO.layouts.contains(&layout) {
+    pub(crate) fn arrange(&self, main: &Main<P, H>, layout: Width) -> bool {
+        if main.active.get() || !widths::<P>().contains(&layout) {
             return false;
         }
         self.answers.set_layout(layout);
@@ -663,15 +664,15 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
     ///
     /// False for a layout the plugin does not declare, or when the plugin is
     /// busy in a call that reached the host, which counts as a fault.
-    pub(crate) fn activate(&self, main: &Main<P, H>, setup: Setup, layout: Layout) -> bool {
-        if !P::INFO.layouts.contains(&layout) {
+    pub(crate) fn activate(&self, main: &Main<P, H>, setup: Setup, layout: Width) -> bool {
+        if !widths::<P>().contains(&layout) {
             return false;
         }
         let Ok(mut plugin) = main.plugin.try_borrow_mut() else {
             self.faults.record(Fault::Reentered);
             return false;
         };
-        let mut audio = Audio::new(&mut *plugin, setup, layout, |midi| {
+        let mut audio = Active::new(&mut *plugin, setup, layout, |midi| {
             if midi { MAX_EVENTS } else { 0 }
         });
         // Inside the plugin's borrow, so none of its methods holds learn's
@@ -1011,16 +1012,6 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
         if let Some(&handle) = self.timer_handle.get() {
             abandon(handle);
         }
-    }
-}
-
-/// The layout an instance starts with, the first of `layouts`. Evaluated in
-/// a `const` block, it fails to compile for a plugin that declares none,
-/// since every activation would then be refused.
-pub(crate) const fn first_layout(layouts: &[Layout]) -> Layout {
-    match layouts.first() {
-        Some(&layout) => layout,
-        None => panic!("a plugin declares at least one layout"),
     }
 }
 

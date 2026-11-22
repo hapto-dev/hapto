@@ -10,7 +10,8 @@
 //! Hapto builds each instance's [`Parts`], its parameter set, session and
 //! saved state, from the plugin's declarations, and hands them to
 //! [`Plugin::new`]. The audio thread gets each block as a [`Block`] in
-//! [`Processor::process`], and reads the parameters the plugin handed its
+//! [`Processor::process`], whose [`Audio`] is in the processor's own
+//! [layout](layout::Layout), and reads the parameters the plugin handed its
 //! processor.
 //!
 //! What a host reads before creating an instance is [`PluginInfo`]. A plugin
@@ -38,9 +39,9 @@
 //! learn.
 //!
 //! ```no_run
+//! use hapto_host::layout::Stereo;
 //! use hapto_host::{
-//!     AuCodes, Block, Category, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor,
-//!     Status,
+//!     AuCodes, Block, Category, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
 //! };
 //! use hapto_params::{Declarer, Float, FloatDecl, Params};
 //!
@@ -58,16 +59,17 @@
 //!     }
 //! }
 //!
-//! /// The audio-thread half: scales every channel by the gain.
+//! /// The audio-thread half: scales both channels by the gain.
 //! struct Level(GainParams);
 //!
 //! impl Processor for Level {
-//!     fn process(&mut self, block: Block<'_, '_>) -> Status {
+//!     type Layout = Stereo;
+//!
+//!     fn process(&mut self, mut block: Block<'_, Stereo>) -> Status {
 //!         let gain = 10.0_f32.powf(self.0.gain.get() / 20.0);
-//!         for channel in block.channels.iter_mut() {
-//!             for sample in channel.iter_mut() {
-//!                 *sample *= gain;
-//!             }
+//!         for [left, right] in block.audio.frames_mut() {
+//!             *left *= gain;
+//!             *right *= gain;
 //!         }
 //!         Status::Continue
 //!     }
@@ -92,7 +94,8 @@
 //!         au_codes: AuCodes { subtype: *b"gain", manufacturer: *b"Exmp" },
 //!         category: Category::Effect,
 //!         features: &[],
-//!         layouts: &[Layout::STEREO],
+//!         // A processor in a typed layout runs at that layout's own width.
+//!         layouts: &[],
 //!         midi_input: false,
 //!         midi_output: false,
 //!     };
@@ -169,6 +172,9 @@ pub use editor::{Editor, Size};
 pub use faults::boundary_faults;
 #[doc(hidden)]
 pub use faults::report_line;
+// Inlined: a block's audio is `hapto_audio`'s, shown here as this crate's.
+#[doc(inline)]
+pub use hapto_audio::{Audio, AudioBuf, Frame, layout};
 /// Writes a plugin's [`PluginInfo`]: who the plugin is from its manifest, and
 /// what its code relies on from the fields the macro is given.
 ///
@@ -179,9 +185,10 @@ pub use faults::report_line;
 /// two is a [`Category`] or [`Feature`] variant in kebab case, `effect` or
 /// `pitch-shift`. The `url`, the `email` and the `features` may be left out,
 /// for none. The package's own `version` and `description` are the plugin's.
-/// The fields written in Rust are the rest of `PluginInfo`'s, the
-/// [`layouts`](PluginInfo::layouts) and the MIDI flags, beside the code that
-/// relies on them.
+/// The fields written in Rust are the rest of `PluginInfo`'s, the MIDI flags
+/// and, for a processor in [`AnyLayout`](layout::AnyLayout), the
+/// [`layouts`](PluginInfo::layouts) it runs at, beside the code that relies
+/// on them. Left out, `layouts` is empty, as a typed layout needs it.
 ///
 /// Cargo reads no `[package.metadata]` table, so the macro checks this one
 /// while compiling. It refuses a key the table does not take, a value of the
@@ -207,10 +214,11 @@ pub use faults::report_line;
 /// ```
 ///
 /// ```
-/// use hapto_host::{Category, Feature, Layout, PluginInfo};
+/// use hapto_host::layout::Width;
+/// use hapto_host::{Category, Feature, PluginInfo};
 ///
 /// const INFO: PluginInfo = hapto_host::manifest_info! {
-///     layouts: &[Layout::STEREO, Layout::MONO],
+///     layouts: &[Width::STEREO, Width::MONO],
 ///     midi_input: false,
 ///     midi_output: false,
 /// };
@@ -222,7 +230,9 @@ pub use faults::report_line;
 #[cfg(feature = "manifest")]
 #[cfg_attr(docsrs, doc(cfg(feature = "manifest")))]
 pub use hapto_macros::manifest_info;
-pub use info::{AuCodes, Category, Feature, Layout, PluginInfo};
+pub use info::{AuCodes, Category, Feature, PluginInfo};
+#[doc(hidden)]
+pub use info::{first_width, widths};
 pub use parts::{Driver, Maker, Parts};
 pub use plugin::{Plugin, Processor, Tail};
 pub use state::{LoadError, MAX_STATE_BYTES, STATE_VERSION, SavedState};

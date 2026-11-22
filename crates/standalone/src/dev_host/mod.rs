@@ -47,8 +47,7 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
 use crate::app::{
-    EditorShown, KEEP, TICK, Wake, first_layout, quit_when_stdin_closes, silence_note,
-    tick_from_a_thread,
+    EditorShown, KEEP, TICK, Wake, quit_when_stdin_closes, silence_note, tick_from_a_thread,
 };
 use crate::device::LOOK;
 use crate::options::Options;
@@ -96,11 +95,15 @@ pub(crate) fn run<P: Plugin>(options: &Options) -> Result<ExitCode> {
             session.held_note()
         );
     }
-    if let Some(line) = silence_note(P::INFO.name, first_layout::<P>(), options.signal) {
+    if let Some(line) = silence_note(P::INFO.name, hapto_host::first_width::<P>(), options.signal) {
         eprintln!("{line}");
     }
     let kept = session.audio();
-    let mut audio = Audio::open(first_layout::<P>(), options.signal, kept.as_deref())?;
+    let mut audio = Audio::open(
+        hapto_host::first_width::<P>(),
+        options.signal,
+        kept.as_deref(),
+    )?;
     audio.start_first(&*hosted);
     if let Some(running) = audio.running()
         && let Err(error) = session.set_audio(&running.write())

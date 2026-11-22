@@ -1,7 +1,8 @@
 # use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 #
+# use hapto_host::layout::{Stereo, Width};
 # use hapto_host::{
-#     AuCodes, Block, Category, EventList, Layout, Parts, Plugin, PluginInfo, ProcessSetup,
+#     Audio, AuCodes, Block, Category, EventList, Parts, Plugin, PluginInfo, ProcessSetup,
 #     Processor, Status, Tail,
 # };
 # use hapto_params::{Declarer, Float, FloatDecl, Params};
@@ -32,16 +33,11 @@
 # struct Level(GainParams);
 #
 # impl Processor for Level {
-#     fn process(&mut self, block: Block<'_, '_>) -> Status {
-#         let gain = 10.0_f32.powf(self.0.gain.get() / 20.0);
-#         let mut peak = 0.0_f32;
-#         for channel in block.channels.iter_mut() {
-#             for sample in channel.iter_mut() {
-#                 *sample *= gain;
-#                 peak = peak.max(sample.abs());
-#             }
-#         }
-#         if peak == 0.0 { Status::Sleep } else { Status::Continue }
+#     type Layout = Stereo;
+#
+#     fn process(&mut self, mut block: Block<'_, Stereo>) -> Status {
+#         block.audio.apply_gain(10.0_f32.powf(self.0.gain.get() / 20.0));
+#         if block.audio.peak() == 0.0 { Status::Sleep } else { Status::Continue }
 #     }
 # }
 #
@@ -64,7 +60,7 @@
 #         au_codes: AuCodes { subtype: *b"gain", manufacturer: *b"Exmp" },
 #         category: Category::Effect,
 #         features: &[],
-#         layouts: &[Layout::STEREO],
+#         layouts: &[],
 #         midi_input: false,
 #         midi_output: false,
 #     };

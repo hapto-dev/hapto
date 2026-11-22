@@ -24,6 +24,8 @@
 
 use std::f32::consts::PI;
 
+use hapto_host::Audio;
+
 /// What a band does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Shape {
@@ -162,13 +164,13 @@ impl Biquad {
         self.state = [[0.0; 2]; 2];
     }
 
-    /// Filters the first `frames` samples of up to two channels in place;
+    /// Filters the first two channels of `audio` in place, one state each;
     /// `bypassed`, it still runs, but the samples keep their input.
-    pub(crate) fn process(&mut self, channels: &mut [&mut [f32]], frames: usize, bypassed: bool) {
+    pub(crate) fn process(&mut self, audio: &mut Audio<'_>, bypassed: bool) {
         let [b0, b1, b2, a1, a2] = self.coefficients;
-        for (samples, state) in channels.iter_mut().zip(&mut self.state) {
+        for (samples, state) in audio.channels_mut().zip(&mut self.state) {
             let [mut lv1, mut lv2] = *state;
-            for sample in samples.iter_mut().take(frames) {
+            for sample in samples {
                 let input = *sample;
                 let output = (input * b0) + lv1;
                 if !bypassed {
@@ -282,11 +284,11 @@ mod tests {
         };
         let mut impulse = [0.0f32; 64];
         impulse[0] = 1e-6;
-        filter.process(&mut [&mut impulse], 64, false);
+        filter.process(&mut Audio::new(&mut [&mut impulse], 64), false);
         let mut silence = [0.0f32; 64];
         for _ in 0..200 {
             silence = [0.0; 64];
-            filter.process(&mut [&mut silence], 64, false);
+            filter.process(&mut Audio::new(&mut [&mut silence], 64), false);
         }
         assert!(
             silence.iter().all(|sample| sample.to_bits() == 0),
@@ -303,8 +305,8 @@ mod tests {
         let (mut running, mut bypassed) = (tuned.clone(), tuned);
         let signal: Vec<f32> = (0..256).map(|n| (n as f32 * 0.1).sin()).collect();
         let (mut a, mut b) = (signal.clone(), signal.clone());
-        running.process(&mut [&mut a], 256, false);
-        bypassed.process(&mut [&mut b], 256, true);
+        running.process(&mut Audio::new(&mut [&mut a], 256), false);
+        bypassed.process(&mut Audio::new(&mut [&mut b], 256), true);
         assert_eq!(b, signal, "bypassed, the samples keep their input");
         assert_eq!(
             running.state, bypassed.state,

@@ -20,7 +20,8 @@ hapto_host::export_vst3!(ExampleEq);
 #[cfg(feature = "cabi")]
 hapto_host::export_cabi!(ExampleEq);
 
-use hapto_host::{Block, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status};
+use hapto_host::layout::{AnyLayout, Width};
+use hapto_host::{Block, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status};
 use hapto_params::{Bool, Changes, Float};
 
 use crate::dsp::{Biquad, coefficients, decibels_to_gain};
@@ -43,7 +44,8 @@ const _: () = {
 
 impl Plugin for ExampleEq {
     const INFO: PluginInfo = hapto_host::manifest_info! {
-        layouts: &[Layout::STEREO, Layout::MONO],
+        // Its processor takes `AnyLayout`, so these are the widths it runs at.
+        layouts: &[Width::STEREO, Width::MONO],
         midi_input: false,
         midi_output: false,
     };
@@ -163,19 +165,16 @@ impl EqProcessor {
     )
 )]
 impl Processor for EqProcessor {
-    fn process(&mut self, block: Block<'_, '_>) -> Status {
+    type Layout = AnyLayout;
+
+    fn process(&mut self, mut block: Block<'_, AnyLayout>) -> Status {
         self.retune();
-        let frames = block.frames;
-        let count = block.channels.len().min(2);
-        let Some((channels, _)) = block.channels.split_at_mut_checked(count) else {
-            return Status::Continue;
-        };
         for band in &mut self.bands {
-            band.filter.process(channels, frames, band.bypassed);
+            band.filter.process(&mut block.audio, band.bypassed);
         }
         if let Some(gain) = self.output.gain {
-            for samples in channels.iter_mut() {
-                for sample in samples.iter_mut().take(frames) {
+            for channel in block.audio.channels_mut().take(2) {
+                for sample in channel {
                     *sample *= gain;
                 }
             }

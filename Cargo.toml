@@ -16,7 +16,7 @@ publish = false
 # scripts/check-core-deps.py keeps, each crate depending only on lower ones:
 #   0  hapto-testkit (test tools), hapto-macros (the parameters' derives and
 #      `manifest_info!`)
-#   1  hapto-params, hapto-ump
+#   1  hapto-params, hapto-ump, hapto-audio
 #   2  hapto-undo, hapto-session
 #   3  hapto-learn (the core's top), hapto-bridge (the page)
 #   4  hapto-host (plugin formats)
@@ -32,6 +32,7 @@ hapto-undo = { path = "crates/undo" }
 hapto-session = { path = "crates/session" }
 hapto-learn = { path = "crates/learn" }
 hapto-ump = { path = "crates/ump" }
+hapto-audio = { path = "crates/audio" }
 hapto-host = { path = "crates/host" }
 hapto-bridge = { path = "crates/bridge" }
 hapto-macros = { path = "crates/macros" }

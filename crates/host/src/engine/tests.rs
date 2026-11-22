@@ -14,9 +14,10 @@ use hapto_undo::{Bound, History};
 use serde_json::{Map, Value as Json};
 
 use crate::faults::written;
+use crate::layout::{Stereo, Width};
 use crate::{
-    AuCodes, Block, Category, Driver, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor,
-    Status, Tail, boundary_faults,
+    AuCodes, Block, Category, Driver, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
+    Tail, boundary_faults,
 };
 
 /// The parameters every plugin here declares: one gain, which hosts list
@@ -66,13 +67,15 @@ struct Probe(Gain);
 struct Adder(Gain);
 
 impl Processor for Adder {
-    fn process(&mut self, block: Block<'_, '_>) -> Status {
+    type Layout = Stereo;
+
+    fn process(&mut self, mut block: Block<'_, Stereo>) -> Status {
         let marked = audio_thread::is_here();
         seen(|seen| seen.marked_blocks = Some(seen.marked_blocks.unwrap_or(true) && marked));
         assert!(!seen(|seen| seen.panic_in_process), "a processor's bug");
         let add = self.0.gain.get();
-        for channel in block.channels.iter_mut() {
-            for sample in &mut channel[..block.frames] {
+        for channel in block.audio.channels_mut() {
+            for sample in channel {
                 *sample += add;
             }
         }
@@ -110,7 +113,7 @@ impl Plugin for Probe {
         },
         category: Category::Effect,
         features: &[],
-        layouts: &[Layout::STEREO],
+        layouts: &[],
         midi_input: false,
         midi_output: false,
     };
@@ -310,7 +313,7 @@ impl<P: Plugin> Shell for crate::cabi::TestHost<P> {
     }
 
     fn activate(&mut self) -> Result<(), Self::Refused> {
-        crate::cabi::TestHost::activate(self, 48_000.0, 64, Layout::STEREO)
+        crate::cabi::TestHost::activate(self, 48_000.0, 64, Width::STEREO)
     }
 
     fn deactivate(&mut self) {

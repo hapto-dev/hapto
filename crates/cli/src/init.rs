@@ -91,7 +91,6 @@ const TAKEN: &[&str] = &[
     "Editor",
     "Err",
     "Float",
-    "Layout",
     "None",
     "Ok",
     "Option",
@@ -110,6 +109,7 @@ const TAKEN: &[&str] = &[
     "Size",
     "Some",
     "Status",
+    "Stereo",
     "TestHost",
     "UiParams",
 ];

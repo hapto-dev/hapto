@@ -1,8 +1,9 @@
 # use std::error::Error;
 #
+# use hapto_host::layout::{Stereo, Width};
 # use hapto_host::{
-#     AuCodes, Block, Category, Editor, Layout, ParentWindow, Parts, Plugin, PluginInfo,
-#     ProcessSetup, Processor, Size, Status,
+#     AuCodes, Block, Category, Editor, ParentWindow, Parts, Plugin, PluginInfo, ProcessSetup,
+#     Processor, Size, Status,
 # };
 #
 # /// An editor that draws nothing and never touches its window.
@@ -27,7 +28,9 @@
 # struct Through;
 #
 # impl Processor for Through {
-#     fn process(&mut self, _block: Block<'_, '_>) -> Status {
+#     type Layout = Stereo;
+#
+#     fn process(&mut self, _block: Block<'_, Stereo>) -> Status {
 #         Status::Continue
 #     }
 # }
@@ -48,7 +51,7 @@
 #         au_codes: AuCodes { subtype: *b"panl", manufacturer: *b"Exmp" },
 #         category: Category::Effect,
 #         features: &[],
-#         layouts: &[Layout::STEREO],
+#         layouts: &[],
 #         midi_input: false,
 #         midi_output: false,
 #     };

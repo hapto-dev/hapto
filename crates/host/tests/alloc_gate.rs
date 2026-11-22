@@ -6,9 +6,10 @@
 
 hapto_testkit::install_alloc_gate!();
 
+use hapto_host::layout::{AnyLayout, Width};
 use hapto_host::{
-    AuCodes, Block, Category, Driver, Event, EventList, Layout, Parts, Plugin, PluginInfo,
-    ProcessSetup, Processor, Status,
+    AuCodes, Block, Category, Driver, Event, EventList, Parts, Plugin, PluginInfo, ProcessSetup,
+    Processor, Status,
 };
 use hapto_learn::{Config, Control, Mapping, Source};
 use hapto_params::{Declarer, Float, FloatDecl, Params};
@@ -48,7 +49,9 @@ impl Params for Gain {
 struct Silent;
 
 impl Processor for Silent {
-    fn process(&mut self, _: Block<'_, '_>) -> Status {
+    type Layout = AnyLayout;
+
+    fn process(&mut self, _: Block<'_, AnyLayout>) -> Status {
         Status::Sleep
     }
 }
@@ -73,7 +76,7 @@ impl Plugin for Listening {
         },
         category: Category::Effect,
         features: &[],
-        layouts: &[Layout::STEREO],
+        layouts: &[Width::STEREO],
         midi_input: true,
         midi_output: false,
     };
@@ -177,7 +180,7 @@ fn an_idle_tick_through_the_engine_does_not_allocate() {
 #[test]
 fn a_block_through_the_engine_with_learn_on_does_not_allocate() {
     let host = hapto_host::cabi::TestHost::<Kept>::new();
-    assert_eq!(host.activate(48_000.0, 256, Layout::STEREO), Ok(()));
+    assert_eq!(host.activate(48_000.0, 256, Width::STEREO), Ok(()));
     let (mut left, mut right) = (vec![0.25f32; 600], vec![-0.25f32; 600]);
     host.process_in_place(&mut [&mut left, &mut right], 256);
     assert_no_allocations(
@@ -205,7 +208,7 @@ fn a_block_through_the_standalone_exporter_does_not_allocate() {
     assert_no_allocations("a block before the activation, which is silence", || {
         audio.process(&[&input, &input], &mut [&mut left, &mut right]);
     });
-    assert_eq!(app.activate(48_000.0, 256, Layout::STEREO), Ok(()));
+    assert_eq!(app.activate(48_000.0, 256, Width::STEREO), Ok(()));
     assert_no_allocations(
         "blocks through the standalone exporter, the first after activation on",
         || {

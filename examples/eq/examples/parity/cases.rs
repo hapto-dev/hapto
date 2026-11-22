@@ -6,7 +6,8 @@ use std::sync::Arc;
 use hapto_example_eq::ExampleEq;
 use hapto_example_eq::dsp::{Shape, coefficients};
 use hapto_example_eq::params::EqParams;
-use hapto_host::{Block, EventList, Layout, Parts, Plugin, ProcessSetup, Processor};
+use hapto_host::layout::Width;
+use hapto_host::{Audio, Block, EventList, Parts, Plugin, ProcessSetup, Processor};
 use hapto_params::{Float, Kind, ParamDecl, ParamSet, Range};
 
 fn bits(value: f32) -> String {
@@ -224,7 +225,7 @@ pub(crate) fn audio(input: impl BufRead, out: &mut impl Write) {
                 let setup = ProcessSetup {
                     sample_rate: rate.parse().expect("a rate"),
                     max_frames: 4_096,
-                    layout: Layout::STEREO,
+                    layout: Width::STEREO,
                     max_events: 0,
                     max_out_events: 0,
                 };
@@ -247,7 +248,11 @@ pub(crate) fn audio(input: impl BufRead, out: &mut impl Write) {
                 processor
                     .as_mut()
                     .expect("a rate first")
-                    .process(Block::new(&mut channels, frames, &events, &mut events_out));
+                    .process(Block::new(
+                        Audio::new(&mut channels, frames),
+                        &events,
+                        &mut events_out,
+                    ));
                 let [left, right] = channels;
                 for (left, right) in left.iter().zip(right.iter()) {
                     writeln!(out, "{} {}", bits(*left), bits(*right)).expect("write a case");

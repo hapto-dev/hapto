@@ -10,8 +10,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 
+use hapto_host::layout::{AnyLayout, Width};
 use hapto_host::{
-    AuCodes, Block, Category, Driver, EventList, Layout, Maker, Parts, Plugin, PluginInfo,
+    AuCodes, Audio, Block, Category, Driver, EventList, Maker, Parts, Plugin, PluginInfo,
     ProcessSetup, Processor, SavedState, Status,
 };
 use hapto_learn::{Config, Control, DEFAULT_MAX_MAPPINGS, Mapping, Source, Takes};
@@ -405,7 +406,7 @@ impl Plugin for Mixer {
         },
         category: Category::Effect,
         features: &[],
-        layouts: &[Layout::STEREO],
+        layouts: &[Width::STEREO],
         midi_input: true,
         midi_output: false,
     };
@@ -505,7 +506,9 @@ struct MixerProcessor {
 }
 
 impl Processor for MixerProcessor {
-    fn process(&mut self, block: Block<'_, '_>) -> Status {
+    type Layout = AnyLayout;
+
+    fn process(&mut self, mut block: Block<'_, AnyLayout>) -> Status {
         self.bank.sync();
         if self.changes.moved([&self.params.gain, &self.drive]) {
             self.gain = factor(self.params.gain.get()) * (1.0 + self.drive.get());
@@ -515,11 +518,7 @@ impl Processor for MixerProcessor {
             .groups
             .iter_mut()
             .fold(self.gain, |level, group| level * group.retune());
-        for channel in block.channels.iter_mut() {
-            for sample in channel.iter_mut() {
-                *sample *= level;
-            }
-        }
+        block.audio.apply_gain(level);
         Status::Continue
     }
 }
@@ -550,7 +549,7 @@ fn activated(plugin: &mut Mixer) -> MixerProcessor {
     plugin.activate(&ProcessSetup {
         sample_rate: 48_000.0,
         max_frames: 8,
-        layout: Layout::STEREO,
+        layout: Width::STEREO,
         max_events: 4,
         max_out_events: 0,
     })
@@ -562,7 +561,7 @@ fn block(processor: &mut MixerProcessor, events: &EventList) -> f32 {
     let (mut left, mut right) = ([1.0_f32; 8], [1.0_f32; 8]);
     let mut out = EventList::with_capacity(0);
     let mut channels = [&mut left[..], &mut right[..]];
-    let block = Block::new(&mut channels, 8, events, &mut out);
+    let block = Block::new(Audio::new(&mut channels, 8), events, &mut out);
     hapto_testkit::alloc::assert_no_allocations("a block", || {
         let _mark = audio_thread::enter();
         Processor::process(processor, block);

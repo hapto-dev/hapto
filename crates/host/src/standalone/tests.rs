@@ -13,8 +13,9 @@ use raw_window_handle::{
 
 use super::{LoadRefused, MAX_CHANNELS, OpenError, Refused, Standalone};
 use crate::faults::{thread_faults, written};
+use crate::layout::{AnyLayout, Width};
 use crate::{
-    AuCodes, Block, Category, Editor, Layout, LoadError, ParentWindow, Parts, Plugin, PluginInfo,
+    AuCodes, Block, Category, Editor, LoadError, ParentWindow, Parts, Plugin, PluginInfo,
     ProcessSetup, Processor, Size, Status, Tail,
 };
 
@@ -120,13 +121,11 @@ impl Params for Level {
 struct Scale(Level);
 
 impl Processor for Scale {
-    fn process(&mut self, block: Block<'_, '_>) -> Status {
+    type Layout = AnyLayout;
+
+    fn process(&mut self, mut block: Block<'_, AnyLayout>) -> Status {
         let gain = self.0.gain.get();
-        for channel in block.channels.iter_mut() {
-            for sample in channel.iter_mut() {
-                *sample *= gain;
-            }
-        }
+        block.audio.apply_gain(gain);
         Status::Continue
     }
 }
@@ -151,7 +150,7 @@ impl Plugin for Amp {
         },
         category: Category::Effect,
         features: &[],
-        layouts: &[Layout::STEREO],
+        layouts: &[Width::STEREO],
         midi_input: false,
         midi_output: false,
     };
@@ -210,7 +209,7 @@ fn a_block_before_an_activation_is_silence_and_after_it_plays() {
     assert_eq!(played, None);
     assert_eq!((left, right), ([0.0; 8], [0.0; 8]), "silence is written");
 
-    app.activate(48_000.0, 4, Layout::STEREO).expect("stereo");
+    app.activate(48_000.0, 4, Width::STEREO).expect("stereo");
     let played = audio.process(
         &[&input[..], &input[..]],
         &mut [&mut left[..], &mut right[..]],
@@ -223,7 +222,7 @@ fn a_block_before_an_activation_is_silence_and_after_it_plays() {
 #[test]
 fn a_block_is_as_long_as_its_shortest_channel() {
     let app = Standalone::<Amp>::new();
-    app.activate(48_000.0, 64, Layout::STEREO).expect("stereo");
+    app.activate(48_000.0, 64, Width::STEREO).expect("stereo");
     let mut audio = app.audio();
     let input = [0.5_f32; 4];
     let (mut left, mut right) = ([9.0_f32; 8], [9.0_f32; 8]);
@@ -239,7 +238,7 @@ fn a_block_is_as_long_as_its_shortest_channel() {
 #[test]
 fn a_block_of_no_frames_does_not_play_and_its_outputs_are_silence() {
     let app = Standalone::<Amp>::new();
-    app.activate(48_000.0, 64, Layout::STEREO).expect("stereo");
+    app.activate(48_000.0, 64, Width::STEREO).expect("stereo");
     let mut audio = app.audio();
     let (input, empty) = ([0.5_f32; 8], [0.0_f32; 0]);
     let (mut left, mut right) = ([9.0_f32; 8], [9.0_f32; 8]);
@@ -255,7 +254,7 @@ fn a_block_of_no_frames_does_not_play_and_its_outputs_are_silence() {
 #[test]
 fn channels_past_the_most_are_passed_over() {
     let app = Standalone::<Amp>::new();
-    app.activate(48_000.0, 64, Layout::STEREO).expect("stereo");
+    app.activate(48_000.0, 64, Width::STEREO).expect("stereo");
     let mut audio = app.audio();
     let mut channels = vec![[3.0_f32; 4]; MAX_CHANNELS + 1];
     let mut outputs: Vec<&mut [f32]> = channels.iter_mut().map(|c| &mut c[..]).collect();
@@ -271,7 +270,7 @@ fn channels_past_the_most_are_passed_over() {
 #[test]
 fn inputs_that_are_one_buffer_play_and_ones_that_share_part_of_one_do_not() {
     let app = Standalone::<Amp>::new();
-    app.activate(48_000.0, 64, Layout::STEREO).expect("stereo");
+    app.activate(48_000.0, 64, Width::STEREO).expect("stereo");
     let mut audio = app.audio();
     let input = [0.5_f32; 8];
     let (mut left, mut right) = ([0.0_f32; 4], [0.0_f32; 4]);
@@ -301,10 +300,10 @@ fn inputs_that_are_one_buffer_play_and_ones_that_share_part_of_one_do_not() {
 fn an_activation_refuses_a_layout_and_a_rate_it_cannot_take() {
     let app = Standalone::<Amp>::new();
     assert_eq!(
-        app.activate(48_000.0, 512, Layout::MONO),
-        Err(Refused::Layout(Layout::MONO))
+        app.activate(48_000.0, 512, Width::MONO),
+        Err(Refused::Layout(Width::MONO))
     );
-    let refused = app.activate(-1.0, 512, Layout::STEREO);
+    let refused = app.activate(-1.0, 512, Width::STEREO);
     assert_eq!(refused, Err(Refused::SampleRate(-1.0)));
     assert!(refused.expect_err("refused").to_string().contains("-1"));
 }
@@ -385,9 +384,7 @@ fn an_editor_that_refuses_to_open_says_why() {
 #[test]
 fn the_saved_block_carries_the_parameters_between_runs() {
     let first = Standalone::<Amp>::new();
-    first
-        .activate(48_000.0, 64, Layout::STEREO)
-        .expect("stereo");
+    first.activate(48_000.0, 64, Width::STEREO).expect("stereo");
     let mut audio = first.audio();
     let input = [1.0_f32; 4];
     let (mut left, mut right) = ([0.0_f32; 4], [0.0_f32; 4]);
@@ -453,7 +450,7 @@ fn a_migration_that_panics_refuses_the_load_and_counts_a_fault() {
 #[test]
 fn an_activation_that_panics_is_refused_as_a_panic() {
     let app = Standalone::<Migrating>::new();
-    let refused = app.activate(48_000.0, 64, Layout::STEREO);
+    let refused = app.activate(48_000.0, 64, Width::STEREO);
     assert_eq!(
         refused,
         Err(Refused::Panicked),
@@ -588,7 +585,7 @@ fn a_teardown_while_the_audio_thread_plays_leaks_the_engine_and_silences_it() {
 
     let faults = thread_faults();
     let app = Standalone::<Amp>::new();
-    app.activate(48_000.0, 64, Layout::STEREO).expect("stereo");
+    app.activate(48_000.0, 64, Width::STEREO).expect("stereo");
     let mut audio = app.audio();
     // The engine, watched: were the audio side's drop to free it, it would
     // be freed on the audio thread.

@@ -43,7 +43,8 @@ use saved::{SavedValue, Synced};
 /// use hapto_host::{Block, Driver, Parts, Plugin, ProcessSetup, Processor, Status};
 /// use hapto_params::{Declarer, Float, FloatDecl, Params};
 /// use hapto_undo::{Bound, History};
-/// # use hapto_host::{AuCodes, Category, Layout, PluginInfo};
+/// # use hapto_host::layout::Stereo;
+/// # use hapto_host::{AuCodes, Category, PluginInfo};
 ///
 /// struct Level {
 ///     gain: Float,
@@ -57,7 +58,8 @@ use saved::{SavedValue, Synced};
 ///
 /// # struct Silent;
 /// # impl Processor for Silent {
-/// #     fn process(&mut self, _block: Block<'_, '_>) -> Status {
+/// #     type Layout = Stereo;
+/// #     fn process(&mut self, _block: Block<'_, Stereo>) -> Status {
 /// #         Status::Sleep
 /// #     }
 /// # }
@@ -81,7 +83,7 @@ use saved::{SavedValue, Synced};
 /// #       au_codes: AuCodes { subtype: *b"gain", manufacturer: *b"Exmp" },
 /// #       category: Category::Effect,
 /// #       features: &[],
-/// #       layouts: &[Layout::STEREO],
+/// #       layouts: &[],
 /// #       midi_input: false,
 /// #       midi_output: false,
 /// #   };

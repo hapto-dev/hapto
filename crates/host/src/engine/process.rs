@@ -28,11 +28,12 @@ use hapto_params::audio_thread;
 use super::{Engine, HostLink, Points, Setup};
 use crate::boundary::{AudioSlot, Channels, FlushDenormals};
 use crate::faults::Fault;
-use crate::{Block, Event, EventList, Layout, Plugin, ProcessSetup, Processor, Status};
+use crate::layout::Width;
+use crate::{Audio, Block, Event, EventList, Plugin, ProcessSetup, Processor, Status};
 
 /// What the audio thread works with while the plugin is active.
 #[derive(Debug)]
-pub(super) struct Audio<R> {
+pub(super) struct Active<R> {
     pub(super) processor: R,
     channels: Channels,
     /// The block's MIDI in, at frames from the block's start.
@@ -53,14 +54,14 @@ pub(super) struct Audio<R> {
     faulted: bool,
 }
 
-impl<R> Audio<R> {
+impl<R> Active<R> {
     /// Asks `plugin` for a processor for `setup` and `layout`, and allocates
     /// everything a block will touch. `events` gives the capacity of each
     /// direction's MIDI list from whether the plugin declares MIDI there.
     pub(super) fn new<P: Plugin<Processor = R>>(
         plugin: &mut P,
         setup: Setup,
-        layout: Layout,
+        layout: Width,
         events: impl Fn(bool) -> usize,
     ) -> Self {
         let max_events = events(P::INFO.midi_input);
@@ -72,7 +73,7 @@ impl<R> Audio<R> {
             max_events,
             max_out_events,
         });
-        Audio::around(
+        Active::around(
             processor,
             layout,
             setup.max_frames,
@@ -83,12 +84,12 @@ impl<R> Audio<R> {
 
     fn around(
         processor: R,
-        layout: Layout,
+        layout: Width,
         max_frames: NonZeroUsize,
         max_events: usize,
         max_out_events: usize,
     ) -> Self {
-        Audio {
+        Active {
             processor,
             channels: Channels::new(layout.inputs, layout.outputs, max_frames),
             events: EventList::with_capacity(max_events),
@@ -120,8 +121,8 @@ pub(super) enum Held<T> {
 /// which must wait for the slot to replace the processor, installs one that
 /// starts clean, however the two threads interleave.
 pub(super) fn run_held<R, T>(
-    slot: &AudioSlot<Option<Audio<R>>>,
-    block: impl FnOnce(&mut Audio<R>) -> T,
+    slot: &AudioSlot<Option<Active<R>>>,
+    block: impl FnOnce(&mut Active<R>) -> T,
 ) -> Held<T> {
     let Some(mut held) = slot.try_hold() else {
         return Held::Idle;
@@ -170,10 +171,10 @@ impl PendingReset {
 /// processor only by holding the slot after that, so a reset asked once a
 /// block has run on it is kept for the next one.
 pub(super) fn install<R>(
-    slot: &AudioSlot<Option<Audio<R>>>,
+    slot: &AudioSlot<Option<Active<R>>>,
     reset: &PendingReset,
-    audio: Audio<R>,
-) -> Option<Audio<R>> {
+    audio: Active<R>,
+) -> Option<Active<R>> {
     let mut held = slot.hold();
     reset.0.store(false, Ordering::Release);
     held.replace(audio)
@@ -304,12 +305,12 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
 ///
 /// As [`Engine::process`].
 unsafe fn pieces<R: Processor>(
-    audio: &mut Audio<R>,
+    audio: &mut Active<R>,
     frames: usize,
     inputs: &[*mut f32],
     outputs: &[*mut f32],
 ) -> Status {
-    let Audio {
+    let Active {
         processor,
         channels,
         events,
@@ -338,7 +339,8 @@ unsafe fn pieces<R: Processor>(
         // scratch's frames.
         status = unsafe {
             channels.run(inputs, outputs, offset, length, |block| {
-                processor.process(Block::new(block, length, piece_events, out_events))
+                let audio = Audio::new(block, length);
+                processor.process(Block::new(audio, piece_events, out_events))
             })
         };
         let start = u32::try_from(offset).unwrap_or(u32::MAX);
@@ -379,18 +381,18 @@ mod loom_models {
 
     use std::num::NonZeroUsize;
 
-    use super::{Audio, Held, PendingReset, install, run_held};
-    use crate::Layout;
+    use super::{Active, Held, PendingReset, install, run_held};
     use crate::boundary::AudioSlot;
+    use crate::layout::Width;
 
     /// A processor that says which activation built it.
     #[derive(Debug)]
     struct Built(u32);
 
-    fn audio(activation: u32) -> Option<Audio<Built>> {
-        Some(Audio::around(
+    fn audio(activation: u32) -> Option<Active<Built>> {
+        Some(Active::around(
             Built(activation),
-            Layout::new(0, 0),
+            Width::new(0, 0),
             NonZeroUsize::MIN,
             0,
             0,
@@ -408,7 +410,7 @@ mod loom_models {
             let audio_side = Arc::clone(&slot);
             let block = loom::thread::spawn(move || {
                 let mut ran_on = None;
-                let held = run_held(&audio_side, |audio: &mut Audio<Built>| {
+                let held = run_held(&audio_side, |audio: &mut Active<Built>| {
                     ran_on = Some(audio.processor.0);
                     // Unwinds as a panic does, without the panic hook's
                     // message for every interleaving.
@@ -441,7 +443,7 @@ mod loom_models {
             let (audio_side, asked) = (Arc::clone(&slot), Arc::clone(&reset));
             let block = loom::thread::spawn(move || {
                 // As a block takes the request before it plays.
-                let held = run_held(&audio_side, |audio: &mut Audio<Built>| {
+                let held = run_held(&audio_side, |audio: &mut Active<Built>| {
                     asked.take();
                     audio.processor.0
                 });

@@ -8,8 +8,9 @@ use std::error::Error;
 use std::time::Instant;
 
 use anyhow::anyhow;
+use hapto_host::layout::{AnyLayout, Width};
 use hapto_host::{
-    AuCodes, Block, Category, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
+    AuCodes, Block, Category, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
 };
 use hapto_params::{Declarer, Params};
 use serde_json::{Map, Value as Json};
@@ -31,7 +32,9 @@ impl Params for NoParams {
 struct Through;
 
 impl Processor for Through {
-    fn process(&mut self, _block: Block<'_, '_>) -> Status {
+    type Layout = AnyLayout;
+
+    fn process(&mut self, _block: Block<'_, AnyLayout>) -> Status {
         Status::Continue
     }
 }
@@ -56,7 +59,7 @@ impl Plugin for Migrating {
         },
         category: Category::Effect,
         features: &[],
-        layouts: &[Layout::STEREO],
+        layouts: &[Width::STEREO],
         midi_input: false,
         midi_output: false,
     };

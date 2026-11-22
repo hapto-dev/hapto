@@ -3,9 +3,10 @@
 
 use std::path::PathBuf;
 
+use hapto_host::layout::{AnyLayout, Width};
 use hapto_host::standalone::Standalone;
 use hapto_host::{
-    AuCodes, Block, Category, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
+    AuCodes, Block, Category, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
 };
 use hapto_params::{Declarer, Params};
 
@@ -24,7 +25,9 @@ impl Params for NoParams {
 struct Through;
 
 impl Processor for Through {
-    fn process(&mut self, _block: Block<'_, '_>) -> Status {
+    type Layout = AnyLayout;
+
+    fn process(&mut self, _block: Block<'_, AnyLayout>) -> Status {
         Status::Continue
     }
 }
@@ -47,7 +50,7 @@ impl Plugin for Quiet {
         },
         category: Category::Effect,
         features: &[],
-        layouts: &[Layout::STEREO],
+        layouts: &[Width::STEREO],
         midi_input: false,
         midi_output: false,
     };
@@ -174,10 +177,10 @@ fn the_window_s_title_says_the_audio_stopped_until_it_plays_again() {
 fn an_effect_s_inputs_are_said_to_hear_silence_and_an_instrument_s_are_not() {
     use super::silence_note;
     use crate::signal::Signal;
-    let note = silence_note("Gain", Layout::STEREO, Signal::Silence).unwrap_or_default();
+    let note = silence_note("Gain", Width::STEREO, Signal::Silence).unwrap_or_default();
     assert!(note.contains("--signal sine"), "{note}");
-    assert_eq!(silence_note("Gain", Layout::STEREO, Signal::Sine), None);
-    let instrument = Layout::new(0, 2);
+    assert_eq!(silence_note("Gain", Width::STEREO, Signal::Sine), None);
+    let instrument = Width::new(0, 2);
     assert_eq!(silence_note("Synth", instrument, Signal::Silence), None);
 }
 

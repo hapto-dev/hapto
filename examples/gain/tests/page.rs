@@ -12,10 +12,10 @@ use std::cell::Cell;
 use std::time::{Duration, Instant};
 
 use hapto_example_gain::{GainParams, PAGE};
+use hapto_host::layout::{AnyLayout, Width};
 use hapto_host::vst3::{HiddenWindow, TestHost};
 use hapto_host::{
-    AuCodes, Block, Category, Editor, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor,
-    Status,
+    AuCodes, Block, Category, Editor, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
 };
 use hapto_webview::Page;
 
@@ -27,7 +27,9 @@ thread_local! {
 struct Through;
 
 impl Processor for Through {
-    fn process(&mut self, _block: Block<'_, '_>) -> Status {
+    type Layout = AnyLayout;
+
+    fn process(&mut self, _block: Block<'_, AnyLayout>) -> Status {
         Status::Continue
     }
 }
@@ -53,7 +55,7 @@ impl Plugin for Probe {
         },
         category: Category::Effect,
         features: &[],
-        layouts: &[Layout::STEREO],
+        layouts: &[Width::STEREO],
         midi_input: false,
         midi_output: false,
     };

@@ -59,8 +59,9 @@ pub use test_host::{
 #[cfg_attr(docsrs, doc(cfg(all(windows, feature = "test-host"))))]
 pub use test_host::{ChildWindow, HiddenWindow};
 
+use crate::Plugin;
 use crate::boundary::guard;
-use crate::{Layout, Plugin};
+use crate::layout::Width;
 
 /// Returns the factory for `P`, as `GetPluginFactory` does: one reference,
 /// which the host releases. [`export_vst3!`](crate::export_vst3) calls it.
@@ -93,10 +94,10 @@ pub fn exit_module() -> bool {
 ///
 /// For such a layout, which is the point.
 #[doc(hidden)]
-pub const fn check_layouts(layouts: &[Layout]) {
+pub const fn check_layouts(layouts: &[Width]) {
     let mut index = 0;
     while index < layouts.len() {
-        let Layout { inputs, outputs } = layouts[index];
+        let Width { inputs, outputs } = layouts[index];
         if inputs > 2 || outputs > 2 {
             let mut message = Message::new();
             message.text(
@@ -189,11 +190,7 @@ impl Message {
 #[cfg_attr(docsrs, doc(cfg(feature = "vst3")))]
 macro_rules! export_vst3 {
     ($plugin:ty) => {
-        const _: () = ::std::assert!(
-            !<$plugin as $crate::Plugin>::INFO.layouts.is_empty(),
-            "a plugin declares at least one layout"
-        );
-        const _: () = $crate::vst3::check_layouts(<$plugin as $crate::Plugin>::INFO.layouts);
+        const _: () = $crate::vst3::check_layouts($crate::widths::<$plugin>());
 
         #[cfg(not(panic = "unwind"))]
         ::std::compile_error!(

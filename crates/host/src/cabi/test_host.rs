@@ -10,7 +10,8 @@ use super::abi::{
     HaptoHost, HaptoInstance, HaptoLayout, HaptoParamInfo, HaptoPlugin, HaptoProcess,
 };
 use super::{CChar, HaptoStr, plugin, plugin_moving};
-use crate::{Layout, Plugin};
+use crate::Plugin;
+use crate::layout::Width;
 
 /// What the plugin told the host through its callbacks.
 ///
@@ -54,8 +55,8 @@ pub enum HostCall {
 ///
 /// let host = TestHost::<Gain>::new();
 /// // The plugin declares stereo only.
-/// assert_eq!(host.activate(48_000.0, 4, Layout::MONO), Err(Refused));
-/// assert_eq!(host.activate(48_000.0, 4, Layout::STEREO), Ok(()));
+/// assert_eq!(host.activate(48_000.0, 4, Width::MONO), Err(Refused));
+/// assert_eq!(host.activate(48_000.0, 4, Width::STEREO), Ok(()));
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Refused;
@@ -133,7 +134,7 @@ pub struct ParamInfo {
 /// use hapto_host::cabi::TestHost;
 ///
 /// let host = TestHost::<Gain>::new();
-/// host.activate(48_000.0, 4, Layout::STEREO)?;
+/// host.activate(48_000.0, 4, Width::STEREO)?;
 ///
 /// host.set(0, 0.0); // the host writes -24 dB
 /// let (mut left, mut right) = ([1.0_f32; 4], [1.0_f32; 4]);
@@ -253,7 +254,7 @@ impl<P: Plugin> TestHost<P> {
     }
 
     /// Returns the main bus layouts the plugin lists.
-    pub fn layouts(&self) -> Vec<Layout> {
+    pub fn layouts(&self) -> Vec<Width> {
         // SAFETY: `layout_count` takes no pointer.
         let count = unsafe { (self.table.layout_count)() };
         (0..count)
@@ -265,7 +266,7 @@ impl<P: Plugin> TestHost<P> {
                 // SAFETY: `layout` is valid for writing one `HaptoLayout`
                 // during the call.
                 unsafe { (self.table.layout)(index, &mut layout) }
-                    .then(|| Layout::new(layout.inputs as usize, layout.outputs as usize))
+                    .then(|| Width::new(layout.inputs as usize, layout.outputs as usize))
             })
             .collect()
     }
@@ -380,7 +381,7 @@ impl<P: Plugin> TestHost<P> {
         &self,
         sample_rate: f64,
         max_frames: u32,
-        layout: Layout,
+        layout: Width,
     ) -> Result<(), Refused> {
         let channels = |count: usize| u32::try_from(count).unwrap_or(u32::MAX);
         let layout = HaptoLayout {
@@ -561,7 +562,7 @@ impl<P: Plugin> std::fmt::Debug for TestHost<P> {
 /// use hapto_host::cabi::TestHost;
 ///
 /// let host = TestHost::<Gain>::new();
-/// host.activate(48_000.0, 4, Layout::STEREO)?;
+/// host.activate(48_000.0, 4, Width::STEREO)?;
 ///
 /// // The host's audio thread gets a side of its own and sends blocks on it.
 /// let audio = host.audio_side();

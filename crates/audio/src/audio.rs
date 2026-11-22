@@ -1,0 +1,312 @@
+//! The audio a block lends a processor.
+
+use std::fmt;
+use std::marker::PhantomData;
+
+use crate::layout::{AnyLayout, Layout, MAX_CHANNELS};
+
+/// A block's channels over the same frames, lent for one call: the host's,
+/// or an [`AudioBuf`](crate::AudioBuf)'s.
+///
+/// Its loops cannot go out of range, so audio code needs no index, no frame
+/// count and no bounds check. [`frames_mut`](Self::frames_mut) walks it a
+/// moment at a time across every channel, and
+/// [`channels_mut`](Self::channels_mut) a channel at a time. Hapto's examples
+/// put the iterators in the loop header and the DSP in the loop body.
+///
+/// It is named after the field of the block that holds it, and rustdoc's
+/// search also finds it under JUCE's name.
+///
+/// # Examples
+///
+/// A stereo widener: in a typed layout a frame destructures.
+///
+/// ```
+/// use hapto_audio::{Audio, AudioBuf};
+/// use hapto_audio::layout::{Stereo, Width};
+///
+/// fn widen(audio: &mut Audio<'_, Stereo>, width: f32) {
+///     for [left, right] in audio.frames_mut() {
+///         let mid = 0.5 * (*left + *right);
+///         let side = 0.5 * (*left - *right) * width;
+///         *left = mid + side;
+///         *right = mid - side;
+///     }
+/// }
+///
+/// let mut buffer = AudioBuf::<Stereo>::new(Width::STEREO, 2);
+/// buffer.audio().channel_mut(0).unwrap().fill(1.0);
+/// // At width 0 both channels carry the mid.
+/// widen(&mut buffer.audio(), 0.0);
+/// assert!(buffer.channels().all(|channel| channel == [0.5, 0.5]));
+/// ```
+#[doc(alias = "AudioBuffer")]
+pub struct Audio<'a, L: Layout = AnyLayout> {
+    /// The first `count` are the channels; the rest are empty.
+    channels: [&'a mut [f32]; MAX_CHANNELS],
+    count: usize,
+    frames: usize,
+    layout: PhantomData<L>,
+}
+
+impl<'a, L: Layout> Audio<'a, L> {
+    /// Lends `channels`, each cut to its first `frames` samples, as audio in
+    /// layout `L`: for an exporter, or for a test over buffers of its own.
+    ///
+    /// # Panics
+    ///
+    /// If there are more than [`MAX_CHANNELS`] channels, if one holds fewer
+    /// than `frames` samples, or if `L` fixes its channels and there are
+    /// another number of them.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hapto_audio::Audio;
+    ///
+    /// let (mut left, mut right) = ([1.0_f32; 8], [1.0_f32; 8]);
+    /// let mut channels = [&mut left[..], &mut right[..]];
+    /// // The first 4 frames only.
+    /// let mut audio: Audio<'_> = Audio::new(&mut channels, 4);
+    /// audio.apply_gain(0.5);
+    /// assert_eq!(left, [0.5, 0.5, 0.5, 0.5, 1.0, 1.0, 1.0, 1.0]);
+    /// ```
+    pub fn new(channels: &'a mut [&mut [f32]], frames: usize) -> Self {
+        let count = channels.len();
+        assert!(
+            count <= MAX_CHANNELS,
+            "audio holds at most {MAX_CHANNELS} channels, not {count}"
+        );
+        assert!(
+            L::fits(count),
+            "this layout fixes its channels, and {count} is not its count"
+        );
+        assert!(
+            channels.iter().all(|channel| channel.len() >= frames),
+            "a channel holds fewer than the {frames} frames asked for"
+        );
+        let channels = channels.iter_mut().map(|channel| {
+            let channel: &'a mut [f32] = channel;
+            channel.get_mut(..frames).unwrap_or_default()
+        });
+        Audio::over(channels, frames)
+    }
+
+    /// Lends `channels`, each `frames` long, of which there are at most
+    /// [`MAX_CHANNELS`] and as many as `L` fixes.
+    pub(crate) fn over(channels: impl Iterator<Item = &'a mut [f32]>, frames: usize) -> Self {
+        let mut audio = Audio {
+            channels: Default::default(),
+            count: 0,
+            frames,
+            layout: PhantomData,
+        };
+        for (slot, channel) in audio.channels.iter_mut().zip(channels) {
+            *slot = channel;
+            audio.count = audio.count.saturating_add(1);
+        }
+        audio
+    }
+
+    /// How many frames it holds: its length in time.
+    pub fn frames(&self) -> usize {
+        self.frames
+    }
+
+    /// Each frame in turn, one moment across every channel. In a typed
+    /// layout a frame is an array of the channels' samples, so
+    /// `for [left, right] in audio.frames_mut()` destructures it; in
+    /// [`AnyLayout`] it is a [`Frame`](crate::Frame).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hapto_audio::AudioBuf;
+    ///
+    /// // A sine into every channel, as a mono voice plays in any layout.
+    /// let mut buffer = AudioBuf::stereo(48);
+    /// let mut phase = 0.0_f32;
+    /// for frame in buffer.audio().frames_mut() {
+    ///     frame.add((phase * std::f32::consts::TAU).sin());
+    ///     phase = (phase + 1.0 / 48.0).fract();
+    /// }
+    /// assert!(buffer.audio().peak() > 0.99);
+    /// ```
+    pub fn frames_mut(&mut self) -> impl ExactSizeIterator<Item = L::Frame<'_>> {
+        self.frames_as::<L>()
+    }
+
+    /// Each channel, as a slice.
+    pub fn channels(&self) -> impl ExactSizeIterator<Item = &[f32]> + DoubleEndedIterator {
+        self.channels
+            .iter()
+            .take(self.count)
+            .map(|channel| &**channel)
+    }
+
+    /// Each channel, as a slice, so every slice method in std applies: a
+    /// filter that runs a channel at a time walks these.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hapto_audio::AudioBuf;
+    ///
+    /// let mut buffer = AudioBuf::stereo(3);
+    /// // One state per channel, zipped in the loop header.
+    /// let mut states = [0.0_f32; 2];
+    /// for (channel, state) in buffer.audio().channels_mut().zip(&mut states) {
+    ///     for sample in channel {
+    ///         *state += 1.0;
+    ///         *sample = *state;
+    ///     }
+    /// }
+    /// assert_eq!(states, [3.0, 3.0]);
+    /// ```
+    pub fn channels_mut(
+        &mut self,
+    ) -> impl ExactSizeIterator<Item = &mut [f32]> + DoubleEndedIterator {
+        self.channels
+            .iter_mut()
+            .take(self.count)
+            .map(|channel| &mut **channel)
+    }
+
+    /// The channel numbered `index`, from 0, or `None` past the last.
+    pub fn channel_mut(&mut self, index: usize) -> Option<&mut [f32]> {
+        self.channels_mut().nth(index)
+    }
+
+    /// Multiplies every sample by `gain`.
+    pub fn apply_gain(&mut self, gain: f32) {
+        for channel in self.channels_mut() {
+            for sample in channel {
+                *sample *= gain;
+            }
+        }
+    }
+
+    /// Sets every sample to 0.
+    pub fn clear(&mut self) {
+        for channel in self.channels_mut() {
+            channel.fill(0.0);
+        }
+    }
+
+    /// Adds `samples`, one per frame, into every channel, stopping at the
+    /// shorter of the two: for an author who prefers a chain to a loop.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hapto_audio::AudioBuf;
+    ///
+    /// let mut buffer = AudioBuf::stereo(4);
+    /// buffer.audio().add_to_all((0..).map(|frame| frame as f32));
+    /// assert!(buffer.channels().all(|channel| channel == [0.0, 1.0, 2.0, 3.0]));
+    /// ```
+    pub fn add_to_all(&mut self, samples: impl IntoIterator<Item = f32>) {
+        for (frame, sample) in self.frames_as::<AnyLayout>().zip(samples) {
+            frame.add(sample);
+        }
+    }
+
+    /// The largest magnitude of any sample, 0 for silence. It is NaN if any
+    /// sample is, so output a filter broke never reads as a level.
+    pub fn peak(&self) -> f32 {
+        self.channels().flatten().fold(0.0, |peak: f32, sample| {
+            let magnitude = sample.abs();
+            if magnitude > peak || magnitude.is_nan() {
+                magnitude
+            } else {
+                peak
+            }
+        })
+    }
+
+    /// The same audio, lent again in [`AnyLayout`]: for code written to run
+    /// in any layout, such as a voice, called from a processor in a typed
+    /// one.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hapto_audio::layout::{Stereo, Width};
+    /// use hapto_audio::{Audio, AudioBuf};
+    ///
+    /// /// A mono tone into every channel, however many there are.
+    /// fn tone(out: &mut Audio<'_>, level: f32) {
+    ///     for frame in out.frames_mut() {
+    ///         frame.add(level);
+    ///     }
+    /// }
+    ///
+    /// let mut buffer = AudioBuf::<Stereo>::new(Width::STEREO, 4);
+    /// let mut audio = buffer.audio();
+    /// tone(&mut audio.as_any_layout(), 0.25);
+    /// assert_eq!(audio.peak(), 0.25);
+    /// ```
+    pub fn as_any_layout(&mut self) -> Audio<'_, AnyLayout> {
+        let frames = self.frames;
+        Audio::over(self.channels_mut(), frames)
+    }
+
+    /// The frames, as layout `M` makes them: `L`'s own, or a
+    /// [`Frame`](crate::Frame) of every channel whatever `L` is.
+    fn frames_as<M: Layout>(&mut self) -> FramesMut<'_, M> {
+        let (count, remaining) = (self.count, self.frames);
+        let mut channels: [&mut [f32]; MAX_CHANNELS] = Default::default();
+        for (slot, channel) in channels.iter_mut().zip(self.channels.iter_mut()) {
+            *slot = &mut **channel;
+        }
+        FramesMut {
+            channels,
+            count,
+            remaining,
+            layout: PhantomData,
+        }
+    }
+}
+
+impl<L: Layout> fmt::Debug for Audio<'_, L> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Audio")
+            .field("channels", &self.count)
+            .field("frames", &self.frames)
+            .finish_non_exhaustive()
+    }
+}
+
+/// The frames of some audio, each made by splitting the next sample off the
+/// front of each channel, so no two frames share a sample.
+struct FramesMut<'a, L: Layout> {
+    /// What is left of each channel; the first `count` are the channels.
+    channels: [&'a mut [f32]; MAX_CHANNELS],
+    count: usize,
+    remaining: usize,
+    layout: PhantomData<L>,
+}
+
+impl<'a, L: Layout> Iterator for FramesMut<'a, L> {
+    type Item = L::Frame<'a>;
+
+    fn next(&mut self) -> Option<L::Frame<'a>> {
+        self.remaining = self.remaining.checked_sub(1)?;
+        let samples = self
+            .channels
+            .iter_mut()
+            .take(self.count)
+            .filter_map(|channel| {
+                let (first, rest) = std::mem::take(channel).split_first_mut()?;
+                *channel = rest;
+                Some(first)
+            });
+        L::frame(samples)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.remaining, Some(self.remaining))
+    }
+}
+
+impl<L: Layout> ExactSizeIterator for FramesMut<'_, L> {}

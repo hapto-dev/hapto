@@ -34,9 +34,10 @@ use super::test_host::{Recorder, Stream};
 use super::{HostCall, RESTART_LATENCY, RESTART_VALUES, Refused, TestHost, plugin_factory};
 use crate::engine::timer::{detached, pump};
 use crate::faults::{thread_faults, written};
+use crate::layout::{AnyLayout, Width};
 use crate::{
-    AuCodes, Block, Category, Feature, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor,
-    Status, Tail,
+    AuCodes, Block, Category, Feature, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
+    Tail,
 };
 
 mod told;
@@ -122,17 +123,19 @@ impl Drop for ProbeProcessor {
 }
 
 impl Processor for ProbeProcessor {
-    fn process(&mut self, block: Block<'_, '_>) -> Status {
+    type Layout = AnyLayout;
+
+    fn process(&mut self, mut block: Block<'_, AnyLayout>) -> Status {
         assert!(!probe(|state| state.panic_in_process), "a processor's bug");
         let tiny = std::hint::black_box(f32::MIN_POSITIVE);
         let product = std::hint::black_box(tiny * std::hint::black_box(0.5));
         probe(|state| {
             state.flushed = Some(product == 0.0);
-            state.blocks.push(block.frames);
+            state.blocks.push(block.audio.frames());
         });
         let add = self.params.value(self.gain);
-        for channel in block.channels.iter_mut() {
-            for sample in &mut channel[..block.frames] {
+        for channel in block.audio.channels_mut() {
+            for sample in channel {
                 *sample += add;
             }
         }
@@ -166,7 +169,7 @@ impl Plugin for Probe {
         },
         category: Category::Effect,
         features: &[Feature::Equalizer, Feature::Delay],
-        layouts: &[Layout::STEREO, Layout::MONO],
+        layouts: &[Width::STEREO, Width::MONO],
         midi_input: false,
         midi_output: false,
     };
@@ -406,16 +409,16 @@ fn the_host_writes_through_process_and_through_the_controller() {
 #[test]
 fn layouts_follow_the_declaration() {
     let host = TestHost::<Probe>::new();
-    assert_eq!(host.layout(), Layout::STEREO, "the first layout by default");
-    assert_eq!(host.arrange(Layout::MONO), Ok(()));
-    assert_eq!(host.layout(), Layout::MONO);
+    assert_eq!(host.layout(), Width::STEREO, "the first layout by default");
+    assert_eq!(host.arrange(Width::MONO), Ok(()));
+    assert_eq!(host.layout(), Width::MONO);
     assert_eq!(
-        host.arrange(Layout::new(1, 2)),
+        host.arrange(Width::new(1, 2)),
         Err(Refused(kResultFalse)),
         "not a declared layout"
     );
-    assert_eq!(host.arrange(Layout::new(6, 6)), Err(Refused(kResultFalse)));
-    assert_eq!(host.layout(), Layout::MONO);
+    assert_eq!(host.arrange(Width::new(6, 6)), Err(Refused(kResultFalse)));
+    assert_eq!(host.layout(), Width::MONO);
     let (plugin, processor, _) = host.interfaces();
     // SAFETY: the component is alive while the host holds its interfaces;
     // all zeros is a valid `BusInfo`, live through each call that writes it,
@@ -453,13 +456,13 @@ fn layouts_follow_the_declaration() {
     }
     assert_eq!(host.activate(), Ok(()));
     assert_eq!(
-        host.arrange(Layout::STEREO),
+        host.arrange(Width::STEREO),
         Err(Refused(kResultFalse)),
         "not while active"
     );
     assert_eq!(
         probe(|state| state.setups.last().map(|setup| setup.layout)),
-        Some(Layout::MONO)
+        Some(Width::MONO)
     );
 }
 
@@ -565,7 +568,7 @@ fn activation_builds_the_processor_and_deactivation_hands_it_back() {
     assert_eq!(setup.len(), 2);
     assert_eq!(
         (setup[0].sample_rate, setup[0].max_frames, setup[0].layout),
-        (96_000.0, 333, Layout::STEREO)
+        (96_000.0, 333, Width::STEREO)
     );
     assert_eq!((setup[0].max_events, setup[0].max_out_events), (0, 0));
     assert_eq!(host.deactivate(), Ok(()));
@@ -723,9 +726,11 @@ struct Shaped<const INPUTS: usize, const OUTPUTS: usize>;
 struct ShapedProcessor;
 
 impl Processor for ShapedProcessor {
-    fn process(&mut self, block: Block<'_, '_>) -> Status {
-        for channel in block.channels.iter_mut() {
-            for sample in &mut channel[..block.frames] {
+    type Layout = AnyLayout;
+
+    fn process(&mut self, mut block: Block<'_, AnyLayout>) -> Status {
+        for channel in block.audio.channels_mut() {
+            for sample in channel {
                 *sample += 1.0;
             }
         }
@@ -753,7 +758,7 @@ impl<const INPUTS: usize, const OUTPUTS: usize> Plugin for Shaped<INPUTS, OUTPUT
             Category::Effect
         },
         features: &[],
-        layouts: &[Layout::new(INPUTS, OUTPUTS)],
+        layouts: &[Width::new(INPUTS, OUTPUTS)],
         midi_input: false,
         midi_output: false,
     };
@@ -786,7 +791,7 @@ const OUTPUT: BusDirection = BusDirections_::kOutput as BusDirection;
 fn a_plugin_without_input_has_no_input_bus() {
     let idle = TestHost::<Shaped<0, 2>>::new();
     assert_eq!(
-        idle.arrange(Layout::new(0, 2)),
+        idle.arrange(Width::new(0, 2)),
         Ok(()),
         "arranged with no input bus"
     );
@@ -798,7 +803,7 @@ fn a_plugin_without_input_has_no_input_bus() {
         assert_eq!(plugin.getBusCount(AUDIO, INPUT), 0);
         assert_eq!(plugin.getBusCount(AUDIO, OUTPUT), 1);
     }
-    assert_eq!(host.layout(), Layout::new(0, 2));
+    assert_eq!(host.layout(), Width::new(0, 2));
     let (mut left, mut right) = ([5.0f32; 4], [5.0f32; 4]);
     assert_eq!(
         host.process(&[], &mut [&mut left, &mut right], 4, &[]),
@@ -825,7 +830,7 @@ fn mono_in_stereo_out_starts_the_second_channel_silent() {
         assert_eq!(plugin.getBusInfo(AUDIO, OUTPUT, 0, &mut bus), kResultOk);
         assert_eq!(bus.channelCount, 2);
     }
-    assert_eq!(host.layout(), Layout::new(1, 2));
+    assert_eq!(host.layout(), Width::new(1, 2));
     let input = [3.0f32; 4];
     let (mut left, mut right) = ([9.0f32; 4], [9.0f32; 4]);
     assert_eq!(
@@ -1240,7 +1245,7 @@ fn setup_is_refused_while_active() {
 #[test]
 fn layout_latency_and_tail_answer_on_any_thread() {
     let host = TestHost::<Probe>::new();
-    assert_eq!(host.arrange(Layout::MONO), Ok(()));
+    assert_eq!(host.arrange(Width::MONO), Ok(()));
     probe(|state| state.latency = 64);
     host.tick();
     assert_eq!(host.calls(), [HostCall::Restart(RESTART_LATENCY)]);
@@ -1832,7 +1837,7 @@ fn an_endless_state_stream_fails_the_load() {
 fn every_arrangement_offered_is_one_the_exporter_then_takes() {
     let host = TestHost::<Probe>::new();
     let (_, processor, _) = host.interfaces();
-    for layout in [Layout::STEREO, Layout::MONO] {
+    for layout in [Width::STEREO, Width::MONO] {
         assert_eq!(host.arrange(layout), Ok(()));
         let (mut input, mut output): (SpeakerArrangement, SpeakerArrangement) = (0, 0);
         // SAFETY: the component is alive while the host holds its
@@ -1858,11 +1863,7 @@ fn a_bus_wider_than_stereo_is_refused_by_name() {
     // Each of these is wide on one side only, or on both.
     for (inputs, outputs) in [(6, 6), (2, 6), (6, 2)] {
         let refused = std::panic::catch_unwind(|| {
-            super::check_layouts(&[
-                Layout::STEREO,
-                Layout::new(1, 2),
-                Layout::new(inputs, outputs),
-            ]);
+            super::check_layouts(&[Width::STEREO, Width::new(1, 2), Width::new(inputs, outputs)]);
         });
         let message = refused.expect_err("refused");
         let message = message
@@ -1872,7 +1873,7 @@ fn a_bus_wider_than_stereo_is_refused_by_name() {
         let expected = format!("layout 2 has {inputs} in and {outputs} out");
         assert!(message.contains(&expected), "{message}");
     }
-    super::check_layouts(&[Layout::new(0, 2), Layout::MONO]);
+    super::check_layouts(&[Width::new(0, 2), Width::MONO]);
 }
 
 /// A component with its own timer, initialized on this thread, which runs
@@ -2000,7 +2001,9 @@ struct Stuck;
 struct StuckProcessor;
 
 impl Processor for StuckProcessor {
-    fn process(&mut self, _: Block<'_, '_>) -> Status {
+    type Layout = AnyLayout;
+
+    fn process(&mut self, _: Block<'_, AnyLayout>) -> Status {
         Status::Continue
     }
 }

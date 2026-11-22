@@ -14,8 +14,9 @@ use std::cell::Cell;
 use std::sync::Arc;
 
 use anyhow::{Context as _, Result};
+use hapto_host::layout::Width;
 use hapto_host::vst3::{HostCall, RESTART_LATENCY, RESTART_VALUES, TestView};
-use hapto_host::{Layout, Plugin, cabi, vst3};
+use hapto_host::{Plugin, cabi, vst3};
 
 use super::format::{Call, Format};
 use super::pending::Pending;
@@ -105,8 +106,7 @@ pub(crate) trait Hosted {
     /// # Errors
     ///
     /// Returns which call the plugin refused.
-    fn start(&self, sample_rate: f64, max_frames: usize, layout: Layout)
-    -> Result<Box<dyn Render>>;
+    fn start(&self, sample_rate: f64, max_frames: usize, layout: Width) -> Result<Box<dyn Render>>;
 }
 
 /// Makes the plugin in `format`.
@@ -248,12 +248,7 @@ impl<P: Plugin> Hosted for Vst3<P> {
         let _deactivated = self.host.deactivate();
     }
 
-    fn start(
-        &self,
-        sample_rate: f64,
-        max_frames: usize,
-        layout: Layout,
-    ) -> Result<Box<dyn Render>> {
+    fn start(&self, sample_rate: f64, max_frames: usize, layout: Width) -> Result<Box<dyn Render>> {
         self.host
             .arrange(layout)
             .context("VST3 setBusArrangements")?;
@@ -401,12 +396,7 @@ impl<P: Plugin> Hosted for Cabi<P> {
         self.host.deactivate();
     }
 
-    fn start(
-        &self,
-        sample_rate: f64,
-        max_frames: usize,
-        layout: Layout,
-    ) -> Result<Box<dyn Render>> {
+    fn start(&self, sample_rate: f64, max_frames: usize, layout: Width) -> Result<Box<dyn Render>> {
         let frames = u32::try_from(max_frames).unwrap_or(u32::MAX);
         self.host
             .activate(sample_rate, frames, layout)

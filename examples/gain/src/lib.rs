@@ -16,9 +16,8 @@ mod page;
 
 pub use page::PAGE;
 
-use hapto_host::{
-    Block, Editor, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
-};
+use hapto_host::layout::Stereo;
+use hapto_host::{Block, Editor, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status};
 use hapto_learn::{Config, LearnError, Takes};
 use hapto_params::{Bool, Changes, Choice, Choices, Float, Params, UiParams, Value};
 use hapto_undo::{Bound, History};
@@ -102,7 +101,6 @@ impl Gain {
 
 impl Plugin for Gain {
     const INFO: PluginInfo = hapto_host::manifest_info! {
-        layouts: &[Layout::STEREO],
         midi_input: true,
         midi_output: false,
     };
@@ -174,14 +172,16 @@ impl GainProcessor {
 }
 
 impl Processor for GainProcessor {
-    fn process(&mut self, block: Block<'_, '_>) -> Status {
+    type Layout = Stereo;
+
+    fn process(&mut self, mut block: Block<'_, Stereo>) -> Status {
         self.retune();
         if self.bypassed {
             return Status::Continue;
         }
         let (gain, mode) = (self.gain, self.mode);
-        for channel in block.channels.iter_mut().take(2) {
-            for sample in channel.iter_mut() {
+        for channel in block.audio.channels_mut() {
+            for sample in channel {
                 *sample = match mode {
                     Mode::Clean => *sample * gain,
                     Mode::Warm => (*sample * gain).tanh(),

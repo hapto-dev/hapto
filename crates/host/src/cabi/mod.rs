@@ -52,7 +52,8 @@ pub use test_host::{AudioSide, HostCall, ParamInfo, Refused, TestHost};
 
 use crate::boundary::guard;
 use crate::engine::{LOAN_WAIT, Outcome, Release, Setup};
-use crate::{Layout, Plugin};
+use crate::layout::Width;
+use crate::{Plugin, widths};
 use instance::{Callbacks, Instance, channel_list, silence, status_code};
 
 /// Returns a table for `P` whose instances keep the thread that calls `create`
@@ -147,10 +148,7 @@ const fn table<P: Plugin>(create: Create) -> HaptoPlugin {
 #[cfg_attr(docsrs, doc(cfg(feature = "cabi")))]
 macro_rules! export_cabi {
     ($plugin:ty) => {
-        const _: () = ::std::assert!(
-            !<$plugin as $crate::Plugin>::INFO.layouts.is_empty(),
-            "a plugin declares at least one layout"
-        );
+        const _: &[$crate::layout::Width] = $crate::widths::<$plugin>();
 
         #[cfg(not(panic = "unwind"))]
         ::std::compile_error!(
@@ -201,7 +199,7 @@ fn param<P: Plugin>(instance: &Instance<P>, index: u32) -> Option<(ParamId, &Par
 /// None: it takes nothing, and is `unsafe` only to fit
 /// [`HaptoPlugin::layout_count`].
 unsafe extern "C" fn layout_count<P: Plugin>() -> u32 {
-    u32::try_from(P::INFO.layouts.len()).unwrap_or(u32::MAX)
+    u32::try_from(widths::<P>().len()).unwrap_or(u32::MAX)
 }
 
 /// # Safety
@@ -213,7 +211,7 @@ unsafe extern "C" fn layout<P: Plugin>(index: u32, out: *mut HaptoLayout) -> boo
     let Some(out) = (unsafe { out.as_mut() }) else {
         return false;
     };
-    let Some(layout) = P::INFO.layouts.get(index as usize) else {
+    let Some(layout) = widths::<P>().get(index as usize) else {
         return false;
     };
     let channels = |count: usize| u32::try_from(count).unwrap_or(u32::MAX);
@@ -477,7 +475,7 @@ unsafe extern "C" fn activate<P: Plugin>(
             return false;
         };
         let max_frames = usize::try_from(max_frames).unwrap_or(0);
-        let layout = Layout::new(layout.inputs as usize, layout.outputs as usize);
+        let layout = Width::new(layout.inputs as usize, layout.outputs as usize);
         Setup::new(sample_rate, max_frames)
             .is_some_and(|setup| instance.activate(&main, setup, layout))
     })

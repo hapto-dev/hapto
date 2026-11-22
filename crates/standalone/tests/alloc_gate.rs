@@ -10,10 +10,10 @@ hapto_testkit::install_alloc_gate!();
 
 #[cfg(windows)]
 mod on_windows {
+    use hapto_host::layout::{AnyLayout, Width};
     use hapto_host::standalone::Standalone;
     use hapto_host::{
-        AuCodes, Block, Category, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor,
-        Status,
+        AuCodes, Block, Category, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
     };
     use hapto_params::{Declarer, Float, FloatDecl, Params};
     use hapto_standalone::gate::{Blocks, Callback, Signal};
@@ -47,13 +47,10 @@ mod on_windows {
     struct Scale(Level);
 
     impl Processor for Scale {
-        fn process(&mut self, block: Block<'_, '_>) -> Status {
-            let gain = self.0.gain.get();
-            for channel in block.channels.iter_mut() {
-                for sample in channel.iter_mut() {
-                    *sample *= gain;
-                }
-            }
+        type Layout = AnyLayout;
+
+        fn process(&mut self, mut block: Block<'_, AnyLayout>) -> Status {
+            block.audio.apply_gain(self.0.gain.get());
             Status::Continue
         }
     }
@@ -78,7 +75,7 @@ mod on_windows {
             },
             category: Category::Effect,
             features: &[],
-            layouts: &[Layout::STEREO, Layout::MONO],
+            layouts: &[Width::STEREO, Width::MONO],
             midi_input: false,
             midi_output: false,
         };
@@ -97,7 +94,7 @@ mod on_windows {
     #[test]
     fn the_apps_callback_does_not_allocate() {
         let mut buffer = vec![0.0f32; 4096 * 6];
-        for layout in [Layout::STEREO, Layout::MONO] {
+        for layout in [Width::STEREO, Width::MONO] {
             for blocks in PLANS {
                 for signal in SIGNALS {
                     for channels in [1, 2, 6] {

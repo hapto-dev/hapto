@@ -8,8 +8,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use hapto_host::layout::Stereo;
 use hapto_host::{
-    AuCodes, Block, Category, Driver, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor,
+    AuCodes, Block, Category, Driver, Parts, Plugin, PluginInfo, ProcessSetup, Processor,
     SavedState, Status,
 };
 use hapto_params::{Declarer, Kind, ParamDecl, Params};
@@ -85,7 +86,9 @@ impl Participant for Anything {
 pub struct Silent;
 
 impl Processor for Silent {
-    fn process(&mut self, _block: Block<'_, '_>) -> Status {
+    type Layout = Stereo;
+
+    fn process(&mut self, _block: Block<'_, Stereo>) -> Status {
         Status::Continue
     }
 }
@@ -158,7 +161,7 @@ impl Plugin for Fuzzed {
         },
         category: Category::Effect,
         features: &[],
-        layouts: &[Layout::STEREO],
+        layouts: &[],
         midi_input: false,
         midi_output: false,
     };

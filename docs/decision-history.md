@@ -1238,6 +1238,28 @@ The review of that the same day found no test that a wait ends. Three now
 pin that Stop, Start or Reactivate ends it, that a plugin playing again
 waits no more, and that a move clears the note of an earlier refusal.
 
+### D112. The block's audio and the layout as a type
+
+[The decision](decisions.md#d112-the-blocks-audio-and-the-layout-as-a-type)
+
+The owner's decision, on 2026-11-21, from the MIDI design's exploration. The
+sketches drafted the block `hapto-midi` would write into, and the owner chose
+to change the audio API first, in a pull request of its own. The owner took
+each recommendation: `AnyLayout`, with its widths in `manifest_info!`'s
+`layouts`, for a plugin that offers several; the old struct renamed `Width`;
+and the channel slices held inline, up to 16, under one lifetime. `Audio` was
+named after the field that holds it, rather than JUCE's `AudioBuffer`, since
+the standard library names an owner `Buf`, and `AudioBuf` is the one that
+owns.
+
+### D113. The audio types' crate
+
+[The decision](decisions.md#d113-the-audio-types-crate)
+
+The owner's decision, on 2026-11-21, with D112: `hapto-midi` is to sit in the
+core, below `hapto-host`, and its voices take `Audio`, so the audio types sit
+below both.
+
 ## Rules
 
 ### P7. The host write: sanitise, clamp, convert, snap, store, publish

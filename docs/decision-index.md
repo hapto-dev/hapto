@@ -602,7 +602,8 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d58-what-the-plugin-trait-tells-every-host)
 
-- `crates/host/src/info.rs`: `PluginInfo`, `Feature`, `Layout`
+- `crates/audio/src/layout.rs`: `Width`
+- `crates/host/src/info.rs`: `PluginInfo`, `Feature`, `widths`
 - `crates/host/src/plugin.rs`: `Plugin::latency`, `Plugin::tail`, `Plugin::deactivate`
 
 ### D59. The shape of the VST3 exporter
@@ -623,7 +624,7 @@ move its line here; when a decision gains code, add one.
 
 - `crates/host/src/boundary.rs`: `guard`
 - `crates/host/src/cabi/mod.rs`: `export_cabi`
-- `crates/host/src/engine/process.rs`: `Audio`, `run_held`, `Engine::process`, `Engine::play`
+- `crates/host/src/engine/process.rs`: `Active`, `run_held`, `Engine::process`, `Engine::play`
 - `crates/host/src/faults.rs`: module, `Faults`, `Faults::guard`, `boundary_faults`
 - `crates/host/src/vst3/mod.rs`: `export_vst3`
 - test `crates/host/src/cabi/tests.rs`: `a_panic_in_activate_or_idle_is_answered`
@@ -791,7 +792,7 @@ move its line here; when a decision gains code, add one.
 [Record section](decisions.md#d74-what-export_vst3-refuses-to-build)
 
 - `.github/workflows/ci.yml`: `linux:`
-- `crates/host/src/engine/mod.rs`: `first_layout`
+- `crates/host/src/info.rs`: `first_width`
 - `crates/host/src/vst3/component.rs`: `Component::wrap`
 - `crates/host/src/vst3/component/buses.rs`: `arrangement`, `channels_of`
 - `crates/host/src/vst3/mod.rs`: module, `check_layouts`, `export_vst3`
@@ -911,8 +912,8 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d87-the-main-bus-in-processsetup)
 
-- `crates/host/src/audio.rs`: `ProcessSetup::layout`, `Block::channels`
-- `crates/host/src/engine/process.rs`: `Audio::new`
+- `crates/host/src/audio.rs`: `ProcessSetup::layout`, `Block::audio`
+- `crates/host/src/engine/process.rs`: `Active::new`
 - test `crates/host/src/cabi/tests.rs`: `an_instrument_plays_with_no_input_or_a_narrower_one`, `activation_builds_a_processor_for_the_setup_and_layout`
 - test `crates/host/src/vst3/tests.rs`: `layouts_follow_the_declaration`
 
@@ -962,7 +963,7 @@ move its line here; when a decision gains code, add one.
 
 - `crates/host/src/cabi/juce.rs`: `juce_settings`
 - `crates/host/src/engine/mod.rs`: `Engine::new_unbound`, `Engine::build`, `Engine::tick`, `Engine::activate`, `Main::on_thread`, `OnThread`
-- `crates/host/src/engine/process.rs`: `Audio::learn`, `pieces`
+- `crates/host/src/engine/process.rs`: `Active::learn`, `pieces`
 - `crates/host/src/faults.rs`: module, `report_refused_declarations`
 - `crates/host/src/parts.rs`: module, `Parts`, `Parts::for_plugin`, `Parts::undo`, `Parts::midi_learn`, `Parts::learn`, `Ticked`, `Ticked::tick`, `Driver`, `Driver::of`, `Driver::tick`, `Driver::learn_audio`
 - `crates/host/src/plugin.rs`: `Plugin`, `Plugin::Params`, `Plugin::new`, `Plugin::idle`, `Processor::process`
@@ -1312,6 +1313,33 @@ move its line here; when a decision gains code, add one.
 - test `crates/standalone/src/dev_host/learned/tests.rs`: `each_mapping_reaches_the_parameter_its_key_names`, `a_block_with_no_mappings_learned_nothing`, `a_mapping_with_a_group_past_any_number_is_passed_over`
 - test `crates/standalone/src/dev_host/format/tests.rs`: `an_edit_carries_its_parameter_and_its_value`, `a_dirty_call_says_whether_the_state_changed`, `a_restart_names_the_flags_it_knows_and_shows_the_rest_in_hex`
 - test `crates/cli/src/dev/tests.rs`: `the_dev_host_is_the_same_binary_with_its_feature_and_flag`
+
+### D112. The block's audio and the layout as a type
+
+[Record section](decisions.md#d112-the-blocks-audio-and-the-layout-as-a-type)
+
+- `crates/audio/src/audio.rs`: `Audio`, `Audio::new`, `Audio::frames_mut`, `Audio::channels_mut`, `Audio::as_any_layout`, `Audio::peak`
+- `crates/audio/src/buf.rs`: `AudioBuf`
+- `crates/audio/src/frame.rs`: `Frame`
+- `crates/audio/src/layout.rs`: `Width`, `Layout`, `Mono`, `Stereo`, `StereoOut`, `AnyLayout`, `MAX_CHANNELS`
+- `crates/host/src/audio.rs`: `Block`, `ProcessSetup`
+- `crates/host/src/engine/process.rs`: `pieces`
+- `crates/host/src/info.rs`: `widths`, `PluginInfo`
+- `crates/host/src/plugin.rs`: `Processor`
+- `crates/macros/src/manifest.rs`: `default_layouts`
+- test `crates/audio/tests/audio.rs`: module, `stereo_frames_come_in_time_order_left_then_right`, `new_refuses_a_count_the_layout_does_not_fix`, `a_typed_layout_lends_its_audio_to_code_for_any_layout`, `peak_is_nan_when_a_sample_is`
+- test `crates/audio/tests/alloc_gate.rs`: `walking_audio_allocates_nothing`
+- test `crates/audio/benches/iai.rs`: module, `gain_by_frame`, `gain_by_channel`, `gain_in_one_call`, `a_mono_source_into_every_channel`
+- test `crates/macros/src/manifest.rs`: `layouts_left_out_are_empty`
+- test `crates/host/src/info/manifest_refusals.rs`: `FieldInNeither`
+
+### D113. The audio types' crate
+
+[Record section](decisions.md#d113-the-audio-types-crate)
+
+- `crates/audio/src/lib.rs`: module
+- `crates/host/src/lib.rs`: module
+- `scripts/check-core-deps.py`: `LAYERS`
 
 ## Parameters
 

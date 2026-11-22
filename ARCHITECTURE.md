@@ -9,12 +9,12 @@ React page in a WebView, talking to Rust through a transport the page does not
 choose.
 
 Three [tiers](docs/glossary.md#tier), dependencies pointing down only. The core
-is `params`, `undo`, `session`, `learn` and `ump`. The projections are `bridge`
-(the page) and `host` (plugin formats). Shells (a plugin crate, the JUCE
-adapter) sit on top and may depend on both. Each rule below links the entry of
-[the decision record](docs/decisions.md) that says why it exists,
-where the record has one, and [docs/decision-index.md](docs/decision-index.md)
-leads from each decision to its code. A word Hapto coins links to [the
+is `params`, `undo`, `session`, `learn`, `ump` and `audio`. The projections are
+`bridge` (the page) and `host` (plugin formats). Shells (a plugin crate, the
+JUCE adapter) sit on top and may depend on both. Each rule below links the entry
+of [the decision record](docs/decisions.md) that says why it exists, where the
+record has one, and [docs/decision-index.md](docs/decision-index.md) leads from
+each decision to its code. A word Hapto coins links to [the
 glossary](docs/glossary.md) where it first appears. To write a plugin before
 reading how Hapto works inside, start with
 [docs/first-plugin.md](docs/first-plugin.md).
@@ -41,6 +41,10 @@ reading how Hapto works inside, start with
   reserves are in `reservation.rs`, and the section it saves is
   `mappings/session.rs`.
 - `crates/ump`: Universal MIDI Packets, the event list MIDI travels in.
+- `crates/audio`: a block's audio as a processor sees it: the layouts, the
+  channels a main bus has as a type (`layout.rs`); `Audio`, the channels a
+  block lends, walked by frame or by channel (`audio.rs`, `frame.rs`); and
+  `AudioBuf`, audio of its own for tests (`buf.rs`). `host` re-exports them.
 - `crates/host`: the `Plugin` trait, the [parts](docs/glossary.md#parts) Hapto
   builds for each instance (`parts.rs`, with the parameters a plugin makes at
   run time in `parts/run_time.rs`), the saved block (`SavedState`), which
@@ -124,7 +128,8 @@ Read these in order to change what happens to a block.
    calls `Processor::process` with a `Block` (`crates/host/src/audio.rs`) in
    [pieces](docs/glossary.md#piece) of at most the activation's `max_frames`.
    `Channels::run` (`boundary/channels.rs`) builds each piece's channels in
-   place. Channel `c` is the host's output buffer `c` when that overlaps no
+   place, and `pieces` lends them to the processor as `Audio` in its
+   layout. Channel `c` is the host's output buffer `c` when that overlaps no
    earlier channel's, and a scratch buffer otherwise. The host's input is
    copied into it unless it is already there. A scratch buffer also stands in
    for a channel the host gave none. The processor changes the audio in place.

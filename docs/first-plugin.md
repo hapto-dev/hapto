@@ -156,8 +156,22 @@ fails that build with the reason, in any test.
 
 [`Processor`](../crates/host/src/plugin.rs) is the audio thread's half, your
 `processBlock`. The host calls `process` with a
-[`Block`](../crates/host/src/audio.rs): the channels, edited in place, and the
-block's MIDI events.
+[`Block`](../crates/host/src/audio.rs): its
+[`Audio`](../crates/audio/src/audio.rs), edited in place, and the block's MIDI
+events. The processor names its channels as a type, its
+[layout](../crates/audio/src/layout.rs). The gain is `Stereo`, two channels in
+and two out, so its audio always holds two, and its loop walks them with
+`block.audio.channels_mut()`, with no index or frame count. A plugin that runs
+at several widths takes `AnyLayout` and lists them in its `INFO`:
+
+```rust
+impl Processor for GainProcessor {
+    type Layout = Stereo;
+
+    fn process(&mut self, mut block: Block<'_, Stereo>) -> Status {
+```
+
+The block is `mut` because the processor writes its audio.
 
 `GainProcessor` keeps the parameters' values in plain fields and reads them
 again only when one moved. It holds a clone of the parameters and a
@@ -229,12 +243,11 @@ category = "effect"
 
 [`manifest_info!`](../crates/host/src/lib.rs) reads it into `INFO` and checks
 it while compiling, since Cargo reads no `[package.metadata]` table itself.
-What the code relies on, the bus layouts it processes and the MIDI it takes,
-is written beside the code:
+What the code relies on, the MIDI it takes, is written beside the code. The
+processor's `Stereo` already says the width it runs at:
 
 ```rust
 const INFO: PluginInfo = hapto_host::manifest_info! {
-    layouts: &[Layout::STEREO],
     midi_input: true,
     midi_output: false,
 };

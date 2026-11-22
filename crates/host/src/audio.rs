@@ -2,7 +2,8 @@
 
 pub use hapto_ump::{Event, EventList};
 
-use crate::Layout;
+use crate::Audio;
+use crate::layout::{Layout, Width};
 
 /// The most frames a processor is built for per block: 65,536, about 1.4
 /// seconds at 48 kHz.
@@ -19,14 +20,15 @@ pub const MAX_FRAMES: usize = 65_536;
 /// # Examples
 ///
 /// ```
-/// use hapto_host::{Layout, ProcessSetup};
+/// use hapto_host::ProcessSetup;
+/// use hapto_host::layout::Width;
 ///
 /// // A host's activation for a stereo effect: a processor sizes everything
 /// // it needs from this, once, and the audio thread never allocates again.
 /// let setup = ProcessSetup {
 ///     sample_rate: 44_100.0,
 ///     max_frames: 1_024,
-///     layout: Layout::STEREO,
+///     layout: Width::STEREO,
 ///     max_events: 256,
 ///     max_out_events: 0,
 /// };
@@ -39,9 +41,9 @@ pub struct ProcessSetup {
     pub sample_rate: f64,
     /// The most frames a block will hold, at most [`MAX_FRAMES`].
     pub max_frames: usize,
-    /// The main bus's channels in and out: the one of the plugin's
-    /// [`layouts`](crate::PluginInfo::layouts) the host chose.
-    pub layout: Layout,
+    /// The main bus's channels in and out: the width the host chose among
+    /// those the processor's [layout](crate::Processor::Layout) runs at.
+    pub layout: Width,
     /// The most MIDI events one block may carry in; more are dropped and
     /// counted.
     pub max_events: usize,
@@ -60,40 +62,42 @@ pub struct ProcessSetup {
 /// # Examples
 ///
 /// ```
+/// use hapto_host::layout::AnyLayout;
 /// use hapto_host::{Block, Processor, Status};
 ///
-/// /// Halves the level, in place, in every channel.
+/// /// Halves the level, in place, in every channel, whatever the width.
 /// struct Half;
 ///
 /// impl Processor for Half {
-///     fn process(&mut self, block: Block<'_, '_>) -> Status {
-///         for channel in block.channels.iter_mut() {
-///             for sample in channel.iter_mut() {
+///     type Layout = AnyLayout;
+///
+///     fn process(&mut self, mut block: Block<'_, AnyLayout>) -> Status {
+///         for channel in block.audio.channels_mut() {
+///             for sample in channel {
 ///                 *sample *= 0.5;
 ///             }
 ///         }
 ///         Status::Continue
 ///     }
 /// }
-/// # use hapto_host::EventList;
+/// # use hapto_host::{Audio, EventList};
 /// # let (events, mut out) = (EventList::with_capacity(0), EventList::with_capacity(0));
 /// # let mut left = [1.0_f32; 4];
 /// # let mut channels = [&mut left[..]];
-/// # Half.process(Block::new(&mut channels, 4, &events, &mut out));
+/// # Half.process(Block::new(Audio::new(&mut channels, 4), &events, &mut out));
 /// # assert_eq!(left, [0.5; 4]);
 /// ```
 #[derive(Debug)]
 #[non_exhaustive]
-pub struct Block<'a, 'b> {
-    /// `max(inputs, outputs)` channels of the setup's
-    /// [`layout`](ProcessSetup::layout), each [`frames`](Self::frames) long,
-    /// processed in place.
+pub struct Block<'a, L: Layout> {
+    /// The main bus's channels over the block's frames, at most
+    /// [`ProcessSetup::max_frames`], processed in place: as many as the
+    /// larger of the setup's [`layout`](ProcessSetup::layout)'s inputs and
+    /// outputs.
     ///
     /// On entry the first `inputs` carry the input, and any further ones are
     /// zeroed. On return the first `outputs` carry the output.
-    pub channels: &'a mut [&'b mut [f32]],
-    /// The frames in this block, at most [`ProcessSetup::max_frames`].
-    pub frames: usize,
+    pub audio: Audio<'a, L>,
     /// The MIDI that arrived, in delivery order.
     pub events: &'a EventList,
     /// The MIDI to send; push in offset order. MIDI only: parameter changes
@@ -142,18 +146,12 @@ pub enum Status {
     Sleep,
 }
 
-impl<'a, 'b> Block<'a, 'b> {
-    /// Creates a block over the given buffers, for an exporter or a test that
-    /// drives a processor.
-    pub fn new(
-        channels: &'a mut [&'b mut [f32]],
-        frames: usize,
-        events: &'a EventList,
-        out_events: &'a mut EventList,
-    ) -> Self {
+impl<'a, L: Layout> Block<'a, L> {
+    /// Creates a block over `audio` and the MIDI lists, for an exporter or a
+    /// test that drives a processor.
+    pub fn new(audio: Audio<'a, L>, events: &'a EventList, out_events: &'a mut EventList) -> Self {
         Block {
-            channels,
-            frames,
+            audio,
             events,
             out_events,
         }
@@ -167,16 +165,17 @@ mod tests {
     #[test]
     fn a_processor_sends_midi_through_its_block() {
         use crate::Processor;
+        use crate::layout::Mono;
 
         struct Echo;
         impl Processor for Echo {
-            fn process(&mut self, block: Block<'_, '_>) -> Status {
+            type Layout = Mono;
+
+            fn process(&mut self, mut block: Block<'_, Mono>) -> Status {
                 for &event in block.events.as_slice() {
                     block.out_events.push(event);
                 }
-                for channel in block.channels.iter_mut() {
-                    channel[..block.frames].fill(0.0);
-                }
+                block.audio.clear();
                 Status::Sleep
             }
         }
@@ -190,7 +189,7 @@ mod tests {
         let mut out = EventList::with_capacity(1);
         let mut left = [1.0_f32; 4];
         let mut channels = [&mut left[..]];
-        let status = Echo.process(Block::new(&mut channels, 4, &events, &mut out));
+        let status = Echo.process(Block::new(Audio::new(&mut channels, 4), &events, &mut out));
         assert_eq!(status, Status::Sleep);
         assert_eq!(out.as_slice(), events.as_slice());
         assert_eq!(left, [0.0; 4]);

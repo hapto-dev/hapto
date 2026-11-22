@@ -10,9 +10,8 @@ mod page;
 
 pub use page::PAGE;
 
-use hapto_host::{
-    Block, Editor, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
-};
+use hapto_host::layout::Stereo;
+use hapto_host::{Block, Editor, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status};
 use hapto_params::{Bool, Changes, Float, Params, UiParams};
 
 /// The parameters, in the order hosts list them, each declared where it is
@@ -45,7 +44,6 @@ impl {{type}} {
 
 impl Plugin for {{type}} {
     const INFO: PluginInfo = hapto_host::manifest_info! {
-        layouts: &[Layout::STEREO],
         midi_input: false,
         midi_output: false,
     };
@@ -100,16 +98,18 @@ impl {{type}}Processor {
 }
 
 impl Processor for {{type}}Processor {
-    fn process(&mut self, block: Block<'_, '_>) -> Status {
+    // Stereo in and out, so a frame destructures as `[left, right]`.
+    type Layout = Stereo;
+
+    fn process(&mut self, mut block: Block<'_, Stereo>) -> Status {
         self.retune();
         if self.bypassed {
             return Status::Continue;
         }
         let gain = self.gain;
-        for channel in block.channels.iter_mut() {
-            for sample in channel.iter_mut() {
-                *sample *= gain;
-            }
+        for [left, right] in block.audio.frames_mut() {
+            *left *= gain;
+            *right *= gain;
         }
         Status::Continue
     }

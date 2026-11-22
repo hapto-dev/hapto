@@ -14,10 +14,11 @@ use ::vst3::Steinberg::{
 use ::vst3::{ComPtr, ComRef};
 
 use crate::faults::written;
+use crate::layout::{AnyLayout, Width};
 use crate::vst3::{ChildWindow, HiddenWindow, Refused, TestHost, TestView};
 use crate::{
-    AuCodes, Block, Category, Editor, Layout, ParentWindow, Parts, Plugin, PluginInfo,
-    ProcessSetup, Processor, Size, Status,
+    AuCodes, Block, Category, Editor, ParentWindow, Parts, Plugin, PluginInfo, ProcessSetup,
+    Processor, Size, Status,
 };
 
 /// What the stub editor was asked to do, in order.
@@ -144,7 +145,9 @@ impl Drop for Stub {
 struct Through;
 
 impl Processor for Through {
-    fn process(&mut self, _block: Block<'_, '_>) -> Status {
+    type Layout = AnyLayout;
+
+    fn process(&mut self, _block: Block<'_, AnyLayout>) -> Status {
         Status::Continue
     }
 }
@@ -165,7 +168,7 @@ const fn info(name: &'static str) -> PluginInfo {
         },
         category: Category::Effect,
         features: &[],
-        layouts: &[Layout::STEREO],
+        layouts: &[Width::STEREO],
         midi_input: false,
         midi_output: false,
     }

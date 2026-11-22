@@ -7,7 +7,8 @@
 use std::hint::black_box;
 
 use hapto_example_eq::ExampleEq;
-use hapto_host::{Block, EventList, Layout, Parts, Plugin, ProcessSetup, Processor};
+use hapto_host::layout::Width;
+use hapto_host::{Audio, Block, EventList, Parts, Plugin, ProcessSetup, Processor};
 use hapto_params::{AudioParams, ParamId};
 use iai_callgrind::{library_benchmark, library_benchmark_group, main};
 
@@ -31,7 +32,7 @@ fn rig() -> Rig {
     let processor = plugin.activate(&ProcessSetup {
         sample_rate: 48_000.0,
         max_frames: FRAMES,
-        layout: Layout::STEREO,
+        layout: Width::STEREO,
         max_events: 0,
         max_out_events: 0,
     });
@@ -60,8 +61,7 @@ fn rig() -> Rig {
 fn run(rig: &mut Rig) {
     let mut channels: [&mut [f32]; 2] = [&mut rig.left, &mut rig.right];
     rig.processor.process(Block::new(
-        &mut channels,
-        FRAMES,
+        Audio::new(&mut channels, FRAMES),
         &rig.events,
         &mut rig.out_events,
     ));

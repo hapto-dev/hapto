@@ -41,9 +41,9 @@ use super::text::copy_utf16;
 use crate::boundary::guard;
 use crate::engine::{
     Engine, HostLink, Outcome, Points, Release, Restart, Setup, TAIL_INFINITE, TAIL_NONE,
-    first_layout,
 };
-use crate::{Layout, MAX_STATE_BYTES, Plugin};
+use crate::layout::Width;
+use crate::{MAX_STATE_BYTES, Plugin, first_width, widths};
 use buses::{arrangement, bus_channels, channels_of, has_input, set_silence_flags, silence};
 
 // The engine's tail answers are the SDK's.
@@ -138,7 +138,7 @@ impl<P: Plugin> Component<P> {
     /// A plugin that declares a bus the exporter cannot arrange fails to
     /// build here, as in [`export_vst3!`](crate::export_vst3).
     pub(crate) fn wrap(timer: bool) -> ComWrapper<Self> {
-        const { super::check_layouts(P::INFO.layouts) };
+        const { super::check_layouts(widths::<P>()) };
         let component = ComWrapper::new(Component {
             engine: OnceLock::new(),
             timer,
@@ -176,9 +176,9 @@ impl<P: Plugin> Component<P> {
 
     /// The main bus layout: the engine's, or the first declared before
     /// `initialize`.
-    fn layout(&self) -> Layout {
+    fn layout(&self) -> Width {
         self.engine()
-            .map_or(const { first_layout(P::INFO.layouts) }, Engine::layout)
+            .map_or(const { first_width::<P>() }, Engine::layout)
     }
 
     /// Runs an entry point's body, answering `refused` if it panics: inside
@@ -583,7 +583,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
             let Some(outputs) = channels_of(unsafe { *outputs }) else {
                 return kResultFalse;
             };
-            if engine.arrange(&main, Layout::new(inputs, outputs)) {
+            if engine.arrange(&main, Width::new(inputs, outputs)) {
                 kResultTrue
             } else {
                 kResultFalse
