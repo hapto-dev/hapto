@@ -25,17 +25,15 @@ pub const MAX_FRAMES: usize = 65_536;
 ///
 /// // A host's activation for a stereo effect: a processor sizes everything
 /// // it needs from this, once, and the audio thread never allocates again.
-/// let setup = ProcessSetup {
-///     sample_rate: 44_100.0,
-///     max_frames: 1_024,
-///     layout: Width::STEREO,
-///     max_events: 256,
-///     max_out_events: 0,
-/// };
+/// let mut setup = ProcessSetup::new(44_100.0, 1_024, Width::STEREO);
+/// setup.max_events = 256;
 /// let scratch = vec![0.0_f32; setup.max_frames * setup.layout.outputs];
 /// assert_eq!(scratch.len(), 2_048);
 /// ```
+// Made with `new` outside this crate, so the buses beyond the main one can
+// join it without breaking a caller.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
 pub struct ProcessSetup {
     /// Samples per second.
     pub sample_rate: f64,
@@ -51,6 +49,22 @@ pub struct ProcessSetup {
     /// counted. Zero for a plugin without
     /// [`midi_output`](crate::PluginInfo::midi_output).
     pub max_out_events: usize,
+}
+
+impl ProcessSetup {
+    /// A setup at `sample_rate` for blocks of up to `max_frames`, with the
+    /// main bus at `layout` and no MIDI in or out. A processor that takes or
+    /// sends MIDI sets [`max_events`](Self::max_events) or
+    /// [`max_out_events`](Self::max_out_events) after.
+    pub const fn new(sample_rate: f64, max_frames: usize, layout: Width) -> Self {
+        ProcessSetup {
+            sample_rate,
+            max_frames,
+            layout,
+            max_events: 0,
+            max_out_events: 0,
+        }
+    }
 }
 
 /// One block, as [`Processor::process`](crate::Processor::process) gets it.

@@ -222,13 +222,7 @@ pub(crate) fn audio(input: impl BufRead, out: &mut impl Write) {
         let words: Vec<&str> = line.split_whitespace().collect();
         match words.as_slice() {
             ["rate", rate] => {
-                let setup = ProcessSetup {
-                    sample_rate: rate.parse().expect("a rate"),
-                    max_frames: 4_096,
-                    layout: Width::STEREO,
-                    max_events: 0,
-                    max_out_events: 0,
-                };
+                let setup = ProcessSetup::new(rate.parse().expect("a rate"), 4_096, Width::STEREO);
                 processor = Some(plugin.activate(&setup));
             }
             ["set", key, normalized] => {

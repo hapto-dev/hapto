@@ -41,13 +41,9 @@ fn learning_and_a_learned_controller_never_allocate() {
     let mut plugin = Gain::new(params, parts);
     let program = set.program();
     let [gain, mode, bypass] = [GAIN, MODE, BYPASS].map(|key| set.id(key).expect("declared"));
-    let mut processor = plugin.activate(&ProcessSetup {
-        sample_rate: 48_000.0,
-        max_frames: 256,
-        layout: Width::STEREO,
-        max_events: 4,
-        max_out_events: 0,
-    });
+    let mut setup = ProcessSetup::new(48_000.0, 256, Width::STEREO);
+    setup.max_events = 4;
+    let mut processor = plugin.activate(&setup);
     // As an activation takes it, and as each block runs it.
     let mut learn = driver.learn_audio().expect("learn is on");
     let mut events = EventList::with_capacity(4);

@@ -59,13 +59,7 @@ fn the_host_lists_every_parameter_by_its_key_hash() {
 fn audio_through_the_exporter_matches_the_processor_driven_directly() {
     let mut host = running();
     let (mut plugin, saved) = built();
-    let mut processor = plugin.activate(&ProcessSetup {
-        sample_rate: RATE,
-        max_frames: MAX_FRAMES,
-        layout: Width::STEREO,
-        max_events: 0,
-        max_out_events: 0,
-    });
+    let mut processor = plugin.activate(&ProcessSetup::new(RATE, MAX_FRAMES, Width::STEREO));
     let writes = saved.set().audio();
     let (events, mut out_events) = (EventList::with_capacity(0), EventList::with_capacity(0));
 

@@ -29,13 +29,7 @@ fn rig() -> Rig {
     let (params, parts) = Parts::for_plugin::<ExampleEq>().expect("valid declarations");
     let set = std::sync::Arc::clone(parts.set());
     let mut plugin = ExampleEq::new(params, parts);
-    let processor = plugin.activate(&ProcessSetup {
-        sample_rate: 48_000.0,
-        max_frames: FRAMES,
-        layout: Width::STEREO,
-        max_events: 0,
-        max_out_events: 0,
-    });
+    let processor = plugin.activate(&ProcessSetup::new(48_000.0, FRAMES, Width::STEREO));
     let mut state: u32 = 0x1234_5678;
     let mut noise = || {
         state ^= state << 13;

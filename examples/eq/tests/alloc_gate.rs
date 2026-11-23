@@ -21,13 +21,7 @@ fn processing_and_retuning_never_allocate() {
     let program = set.program();
     let gain = set.id("mid.gain").expect("declared");
     let on = set.id("high.on").expect("declared");
-    let setup = ProcessSetup {
-        sample_rate: 48_000.0,
-        max_frames: 256,
-        layout: Width::STEREO,
-        max_events: 0,
-        max_out_events: 0,
-    };
+    let setup = ProcessSetup::new(48_000.0, 256, Width::STEREO);
     let mut processor = plugin.activate(&setup);
     let events = EventList::with_capacity(0);
     let mut out = EventList::with_capacity(0);

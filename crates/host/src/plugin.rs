@@ -159,13 +159,7 @@ use crate::parts::Parts;
 /// // What an exporter does, here with no host.
 /// let (params, parts) = Parts::for_plugin::<Gain>()?;
 /// let mut plugin = Gain::new(params, parts);
-/// let setup = ProcessSetup {
-///     sample_rate: 48_000.0,
-///     max_frames: 64,
-///     layout: Width::STEREO,
-///     max_events: 0,
-///     max_out_events: 0,
-/// };
+/// let setup = ProcessSetup::new(48_000.0, 64, Width::STEREO);
 /// let mut processor = plugin.activate(&setup);
 ///
 /// let (mut left, mut right) = ([0.5_f32; 64], [0.5_f32; 64]);
@@ -399,13 +393,8 @@ pub trait Plugin: 'static {
     /// // The user arms learn and turns controller 74, which the host's block
     /// // brings. Learn's audio side runs over the block before the processor,
     /// // as the engine runs it.
-    /// # let setup = ProcessSetup {
-    /// #     sample_rate: 48_000.0,
-    /// #     max_frames: 1,
-    /// #     layout: Width::new(0, 2),
-    /// #     max_events: 1,
-    /// #     max_out_events: 0,
-    /// # };
+    /// # let mut setup = ProcessSetup::new(48_000.0, 1, Width::new(0, 2));
+    /// # setup.max_events = 1;
     /// let mut voices = synth.activate(&setup);
     /// let mut learn = driver.learn_audio().expect("learn is on");
     /// synth.parts.learn().arm(cutoff, Takes::CONTROLLER)?;

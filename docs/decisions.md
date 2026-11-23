@@ -2030,6 +2030,9 @@ from the processor's buses.
 processor's layout runs at (D112), which every exporter checks before it
 activates. The C interface's
 `HaptoLayout` and `hapto.h` are unchanged: only the Rust type is.
+`ProcessSetup` is made with `new`, which leaves no room for MIDI until a
+processor sets it, and is non-exhaustive, so the buses beyond the main one
+can join it without breaking a caller.
 
 **Alternatives.** The alternative was the two counts, `inputs` and `outputs`, it
 had, which a processor put back together by hand.
@@ -3447,7 +3450,12 @@ vectorise it, LLVM checks at run time that no two channels overlap, and at
 16 channels it needs more checks than it makes, so the loop runs a sample at
 a time, about 6 times a walk by channel. Walked inside a function that takes
 each channel as its own `&mut`, the loop needs no checks; that is the way out
-if a plugin on a wide bus needs it.
+if a plugin on a wide bus needs it. A typed set of widths is also to take a
+rule, such as any width whose inputs equal its outputs, and is to be designed
+with the extra buses: a sidechain, or a sampler's outputs the host turns on.
+Those arrive as layout types, not as a second associated type on
+`Processor`, which every processor would have to name, since Rust has no
+default for one. `PluginInfo::layouts` is then deprecated, not removed.
 
 ### D113. The audio types' crate
 

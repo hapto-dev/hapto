@@ -546,13 +546,9 @@ fn tick(plugin: &mut Mixer, driver: &Driver) {
 }
 
 fn activated(plugin: &mut Mixer) -> MixerProcessor {
-    plugin.activate(&ProcessSetup {
-        sample_rate: 48_000.0,
-        max_frames: 8,
-        layout: Width::STEREO,
-        max_events: 4,
-        max_out_events: 0,
-    })
+    let mut setup = ProcessSetup::new(48_000.0, 8, Width::STEREO);
+    setup.max_events = 4;
+    plugin.activate(&setup)
 }
 
 /// One block of 1.0s under the audio-thread mark and the allocation gate;

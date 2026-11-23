@@ -912,7 +912,7 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d87-the-main-bus-in-processsetup)
 
-- `crates/host/src/audio.rs`: `ProcessSetup::layout`, `Block::audio`
+- `crates/host/src/audio.rs`: `ProcessSetup::layout`, `ProcessSetup::new`, `Block::audio`
 - `crates/host/src/engine/process.rs`: `Active::new`
 - test `crates/host/src/cabi/tests.rs`: `an_instrument_plays_with_no_input_or_a_narrower_one`, `activation_builds_a_processor_for_the_setup_and_layout`
 - test `crates/host/src/vst3/tests.rs`: `layouts_follow_the_declaration`

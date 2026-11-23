@@ -31,6 +31,9 @@ exporter.
   processor in `AnyLayout`. The audio types are in a new core crate,
   `hapto-audio`, which `hapto-host` re-exports, with `AudioBuf`, audio of its
   own for tests.
+- **Breaking.** `ProcessSetup` is made with `ProcessSetup::new`, with room for
+  no MIDI until a test sets `max_events` or `max_out_events`, so the buses
+  beyond the main one can join it later without breaking a caller.
 
 ### Added
 

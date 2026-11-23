@@ -737,6 +737,10 @@ the decision. Confirmed by the owner on 2026-11-07.
 Decided by the owner on 2026-11-07. The form before had `inputs` and `outputs`
 fields.
 
+On 2026-11-23 `ProcessSetup` became non-exhaustive, made with `new`, where a
+caller outside the crate had built it from its fields, so that the extra buses
+can join it before the first release fixes its shape.
+
 ### D88. A call a test host was refused
 
 [The decision](decisions.md#d88-a-call-a-test-host-was-refused)

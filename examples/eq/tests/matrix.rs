@@ -129,13 +129,10 @@ struct Direct {
 impl Direct {
     fn open(layout: Width, rate: f64) -> Self {
         let (mut plugin, saved) = built();
-        let processor = plugin.activate(&ProcessSetup {
-            sample_rate: rate,
-            max_frames: MAX_FRAMES,
-            layout,
-            max_events: EVENT_ROOM,
-            max_out_events: EVENT_ROOM,
-        });
+        let mut setup = ProcessSetup::new(rate, MAX_FRAMES, layout);
+        setup.max_events = EVENT_ROOM;
+        setup.max_out_events = EVENT_ROOM;
+        let processor = plugin.activate(&setup);
         Direct {
             plugin,
             processor: Some(processor),

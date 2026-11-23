@@ -15,13 +15,7 @@ const RATE: f64 = 48_000.0;
 const MAX_FRAMES: usize = 512;
 
 fn setup() -> ProcessSetup {
-    ProcessSetup {
-        sample_rate: RATE,
-        max_frames: MAX_FRAMES,
-        layout: Width::STEREO,
-        max_events: 0,
-        max_out_events: 0,
-    }
+    ProcessSetup::new(RATE, MAX_FRAMES, Width::STEREO)
 }
 
 /// Runs both channels through in blocks of at most [`MAX_FRAMES`].

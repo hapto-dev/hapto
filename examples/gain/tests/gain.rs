@@ -179,13 +179,9 @@ fn two_lone_writes_are_two_steps_and_the_labels_sets_between_ticks_are_one() {
 #[test]
 fn a_learned_controller_drives_the_gain() {
     let (mut plugin, driver, saved) = built();
-    let mut processor = plugin.activate(&ProcessSetup {
-        sample_rate: 48_000.0,
-        max_frames: 8,
-        layout: Width::STEREO,
-        max_events: 4,
-        max_out_events: 0,
-    });
+    let mut setup = ProcessSetup::new(48_000.0, 8, Width::STEREO);
+    setup.max_events = 4;
+    let mut processor = plugin.activate(&setup);
     // As an activation takes it, and as each block runs it.
     let mut learn = driver.learn_audio().expect("learn is on");
     let cc = |controller, value| {
