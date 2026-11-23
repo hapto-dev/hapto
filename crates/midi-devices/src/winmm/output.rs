@@ -16,17 +16,15 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{self, JoinHandle};
 
 use hapto_ump::{Bytes, Event, MessageType, SysExJoin};
-use windows::Win32::Foundation::{CloseHandle, HANDLE};
 use windows::Win32::Media::Audio::{
     CALLBACK_EVENT, HMIDIOUT, MHDR_DONE, MIDIERR_NODEVICE, MIDIHDR, midiOutClose, midiOutLongMsg,
     midiOutOpen, midiOutPrepareHeader, midiOutReset, midiOutShortMsg, midiOutUnprepareHeader,
 };
 use windows::Win32::Media::{MMSYSERR_NODRIVER, MMSYSERR_NOERROR};
-use windows::Win32::System::Threading::{CreateEventW, SetEvent, WaitForSingleObject};
-use windows::core::{PCWSTR, PSTR};
+use windows::core::PSTR;
 
-use super::signal::{Signal, Timer};
-use super::{CLOSE_TRIES, UNPREPARE_TRIES, refusal, retry};
+use super::signal::{EventHandle, Signal, Timer};
+use super::{CLOSE_TRIES, UNPREPARE_TRIES, Waits, check};
 use crate::Instant;
 use crate::error::OpenError;
 use crate::id::{Device, Direction};
@@ -50,23 +48,6 @@ struct Handle(HMIDIOUT);
 // thread; the output closes it only after its thread is done with it.
 unsafe impl Send for Handle {}
 
-/// An auto-reset event WinMM sets as it finishes with a SysEx, which the
-/// output's thread waits on.
-struct Done(HANDLE);
-
-// SAFETY: an event handle may be set and waited on from any thread.
-unsafe impl Send for Done {}
-// SAFETY: as above; setting and waiting need no exclusive access.
-unsafe impl Sync for Done {}
-
-impl Drop for Done {
-    fn drop(&mut self) {
-        // SAFETY: the event `CreateEventW` made, closed once, after the
-        // device that sets it is closed and the thread that waits is done.
-        let _ = unsafe { CloseHandle(self.0) };
-    }
-}
-
 /// What the output shares with its thread.
 struct Shared {
     /// Tells the thread to end, resetting the device if a SysEx is under
@@ -74,7 +55,9 @@ struct Shared {
     stop: AtomicBool,
     /// Set when a send found the device gone: it left.
     left: AtomicBool,
-    done: Done,
+    /// Set by WinMM as it finishes with a SysEx: the output's thread waits
+    /// on it.
+    done: EventHandle,
 }
 
 /// A SysEx header, aligned for its pointers and its flags: WinMM packs its
@@ -195,15 +178,13 @@ impl Sysex {
                 }
                 // SAFETY: the shared event, which the device sets as it
                 // finishes with the header.
-                unsafe { WaitForSingleObject(shared.done.0, SYSEX_WAIT_MS) };
+                shared.done.wait(SYSEX_WAIT_MS);
             }
         } else {
             note_gone(shared, sent);
         }
         // SAFETY: the open handle and the header, done with.
-        retry(&mut UNPREPARE_TRIES.clone(), || unsafe {
-            midiOutUnprepareHeader(handle.0, header, size)
-        });
+        Waits(UNPREPARE_TRIES).retry(|| unsafe { midiOutUnprepareHeader(handle.0, header, size) });
         self.bytes.clear();
         sent == MMSYSERR_NOERROR
     }
@@ -255,15 +236,13 @@ impl Output {
         let Some(index) = super::index_of(Direction::Output, device.id()) else {
             return Err((OpenError::Gone, Some(consumer)));
         };
-        // SAFETY: an unnamed auto-reset event, not set, with default
-        // security.
-        let Ok(event) = (unsafe { CreateEventW(None, false, false, PCWSTR::null()) }) else {
+        let Some(done) = EventHandle::new() else {
             return Err((OpenError::NoMemory, Some(consumer)));
         };
         let shared = Arc::new(Shared {
             stop: AtomicBool::new(false),
             left: AtomicBool::new(false),
-            done: Done(event),
+            done,
         });
         let mut handle = HMIDIOUT::default();
         // SAFETY: the handle is written by the call. WinMM sets the event
@@ -273,13 +252,13 @@ impl Output {
             midiOutOpen(
                 &raw mut handle,
                 index,
-                Some(shared.done.0.0 as usize),
+                Some(shared.done.raw().0 as usize),
                 None,
                 CALLBACK_EVENT,
             )
         };
-        if opened != MMSYSERR_NOERROR {
-            return Err((refusal(opened), Some(consumer)));
+        if let Err(why) = check(opened) {
+            return Err((why, Some(consumer)));
         }
         let handle = Handle(handle);
         let (thread_shared, thread_signal) = (Arc::clone(&shared), Arc::clone(&signal));
@@ -326,14 +305,14 @@ impl Output {
         // Wakes the thread, waiting for a packet or on a SysEx.
         self.signal.set();
         // SAFETY: the shared event, alive with it.
-        let _ = unsafe { SetEvent(shared.done.0) };
+        shared.done.set();
         let consumer = self.thread.take().and_then(|thread| thread.join().ok());
         let handle = self.handle.0;
         // SAFETY: the open handle, which the stopped thread no longer uses.
         // The reset turns off any note the device was told to play.
         unsafe { midiOutReset(handle) };
         // SAFETY: the open handle, closed once.
-        if !retry(&mut CLOSE_TRIES.clone(), || unsafe { midiOutClose(handle) }) {
+        if !Waits(CLOSE_TRIES).retry(|| unsafe { midiOutClose(handle) }) {
             std::mem::forget(shared);
         }
         consumer

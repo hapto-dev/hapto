@@ -3,14 +3,14 @@
 
 use windows::Win32::Media::{MMSYSERR_ALLOCATED, MMSYSERR_BADDEVICEID, MMSYSERR_NOMEM};
 
+use super::super::refusal;
 use super::*;
 use crate::ring::{Consumer, ring};
 
 fn shared() -> (Shared, Consumer) {
     let (producer, consumer) = ring(16);
-    // SAFETY: an unnamed auto-reset event, as an input makes.
-    let event = unsafe { CreateEventW(None, false, false, PCWSTR::null()) }.expect("an event");
-    let shared = Shared::new(producer, Wake(event));
+    let wake = EventHandle::new().expect("an event");
+    let shared = Shared::new(producer, wake);
     // The device started a second in.
     shared.started.store(1_000_000_000, Ordering::Release);
     (shared, consumer)

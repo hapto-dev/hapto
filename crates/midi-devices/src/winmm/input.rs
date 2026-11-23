@@ -14,19 +14,18 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::{self, JoinHandle};
 
 use hapto_ump::{ByteStream, Bytes};
-use windows::Win32::Foundation::{CloseHandle, HANDLE};
 use windows::Win32::Media::Audio::{
     CALLBACK_FUNCTION, HMIDIIN, MIDIHDR, midiInAddBuffer, midiInClose, midiInOpen,
     midiInPrepareHeader, midiInReset, midiInStart, midiInStop, midiInUnprepareHeader,
 };
 use windows::Win32::Media::{
     MM_MIM_CLOSE, MM_MIM_DATA, MM_MIM_ERROR, MM_MIM_LONGDATA, MM_MIM_LONGERROR, MM_MIM_MOREDATA,
-    MMSYSERR_NOERROR,
 };
-use windows::Win32::System::Threading::{CreateEventW, INFINITE, SetEvent, WaitForSingleObject};
-use windows::core::{PCWSTR, PSTR};
+use windows::Win32::System::Threading::INFINITE;
+use windows::core::PSTR;
 
-use super::{CLOSE_TRIES, UNPREPARE_TRIES, refusal, retry};
+use super::signal::EventHandle;
+use super::{CLOSE_TRIES, UNPREPARE_TRIES, Waits, check};
 use crate::Instant;
 use crate::error::OpenError;
 use crate::id::{Device, Direction};
@@ -113,23 +112,6 @@ impl Buffers {
     }
 }
 
-/// An auto-reset event: the callback sets it, which WinMM allows, and the
-/// input's thread waits on it.
-struct Wake(HANDLE);
-
-// SAFETY: an event handle may be set and waited on from any thread.
-unsafe impl Send for Wake {}
-// SAFETY: as above; setting and waiting need no exclusive access.
-unsafe impl Sync for Wake {}
-
-impl Drop for Wake {
-    fn drop(&mut self) {
-        // SAFETY: the event `CreateEventW` made, closed once, after every
-        // thread that sets or waits on it is done.
-        let _ = unsafe { CloseHandle(self.0) };
-    }
-}
-
 /// What the callback reads into.
 struct Reading {
     bytes: ByteStream,
@@ -141,7 +123,7 @@ struct Reading {
 /// it does not.
 struct Shared {
     /// Set as the close begins: from then on the callback reads nothing and
-    /// hands no buffer back.
+    /// hands no buffer back, and the input's thread ends.
     closing: AtomicBool,
     /// Set when the device closed without the input closing it: it left.
     left: AtomicBool,
@@ -152,16 +134,16 @@ struct Shared {
     reading: Mutex<Reading>,
     /// Which buffers came back, for the input's thread to hand back.
     returned: [AtomicBool; BUFFERS],
-    wake: Wake,
-    /// Tells the input's thread to end.
-    stop: AtomicBool,
+    /// Set by the callback, which WinMM allows, as a buffer comes back, and
+    /// by the close: the input's thread waits on it.
+    wake: EventHandle,
     /// How many callbacks are running, which the close waits out before it
     /// frees what they read.
     in_callback: AtomicU32,
 }
 
 impl Shared {
-    fn new(producer: Producer, wake: Wake) -> Shared {
+    fn new(producer: Producer, wake: EventHandle) -> Shared {
         Shared {
             closing: AtomicBool::new(false),
             left: AtomicBool::new(false),
@@ -173,7 +155,6 @@ impl Shared {
             }),
             returned: std::array::from_fn(|_| AtomicBool::new(false)),
             wake,
-            stop: AtomicBool::new(false),
             in_callback: AtomicU32::new(0),
         }
     }
@@ -257,9 +238,7 @@ impl Shared {
     fn hand_back(&self, index: usize) {
         if let Some(flag) = self.returned.get(index) {
             flag.store(true, Ordering::Release);
-            // SAFETY: the shared event, alive with this. WinMM lets a
-            // callback set an event.
-            let _ = unsafe { SetEvent(self.wake.0) };
+            self.wake.set();
         }
     }
 
@@ -326,12 +305,10 @@ impl Input {
         let Some(index) = super::index_of(Direction::Input, device.id()) else {
             return Err((OpenError::Gone, Some(producer)));
         };
-        // SAFETY: an unnamed auto-reset event, not set, with default
-        // security.
-        let Ok(event) = (unsafe { CreateEventW(None, false, false, PCWSTR::null()) }) else {
+        let Some(wake) = EventHandle::new() else {
             return Err((OpenError::NoMemory, Some(producer)));
         };
-        let shared = Arc::new(Shared::new(producer, Wake(event)));
+        let shared = Arc::new(Shared::new(producer, wake));
         let mut handle = HMIDIIN::default();
         let callback = callback as unsafe extern "system" fn(HMIDIIN, u32, usize, usize, usize);
         // SAFETY: the handle is written by the call. The callback is this
@@ -346,8 +323,8 @@ impl Input {
                 CALLBACK_FUNCTION,
             )
         };
-        if opened != MMSYSERR_NOERROR {
-            return Err((refusal(opened), Shared::into_producer(shared)));
+        if let Err(why) = check(opened) {
+            return Err((why, Shared::into_producer(shared)));
         }
         let mut input = Input {
             handle: Handle(handle),
@@ -372,17 +349,9 @@ impl Input {
             buffers.reset(index);
             // SAFETY: the open handle and one of its buffers' headers, not
             // yet WinMM's.
-            let prepared =
-                unsafe { midiInPrepareHeader(self.handle.0, buffers.header(index), size) };
+            check(unsafe { midiInPrepareHeader(self.handle.0, buffers.header(index), size) })?;
             // SAFETY: the same header, prepared.
-            let added = unsafe { midiInAddBuffer(self.handle.0, buffers.header(index), size) };
-            if prepared != MMSYSERR_NOERROR || added != MMSYSERR_NOERROR {
-                return Err(refusal(if prepared == MMSYSERR_NOERROR {
-                    added
-                } else {
-                    prepared
-                }));
-            }
+            check(unsafe { midiInAddBuffer(self.handle.0, buffers.header(index), size) })?;
         }
         let (handle, thread_shared) = (self.handle, Arc::clone(shared));
         let thread = thread::Builder::new()
@@ -394,11 +363,7 @@ impl Input {
             .started
             .store(Instant::now().nanos(), Ordering::Release);
         // SAFETY: the open handle, its buffers with it.
-        let started = unsafe { midiInStart(self.handle.0) };
-        if started != MMSYSERR_NOERROR {
-            return Err(refusal(started));
-        }
-        Ok(())
+        check(unsafe { midiInStart(self.handle.0) })
     }
 
     /// Whether the device left while open.
@@ -421,9 +386,7 @@ impl Input {
         let shared = self.shared.take()?;
         shared.closing.store(true, Ordering::SeqCst);
         let left = shared.left.load(Ordering::Acquire);
-        shared.stop.store(true, Ordering::Release);
-        // SAFETY: the shared event, alive with it.
-        let _ = unsafe { SetEvent(shared.wake.0) };
+        shared.wake.set();
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
         }
@@ -439,11 +402,11 @@ impl Input {
             // One budget of waits for every buffer, so a driver that keeps
             // answering that one is still playing holds the close no longer
             // than a buffer's worth.
-            let mut waits = UNPREPARE_TRIES;
+            let mut waits = Waits(UNPREPARE_TRIES);
             for index in 0..BUFFERS {
                 // SAFETY: the open handle and one of its buffers' headers,
                 // back from the reset.
-                retry(&mut waits, || unsafe {
+                waits.retry(|| unsafe {
                     midiInUnprepareHeader(handle, buffers.header(index), size)
                 });
             }
@@ -454,7 +417,7 @@ impl Input {
         // below answers.
         // SAFETY: the open handle, closed once; or one the system closed,
         // which WinMM refuses as invalid.
-        let closed = retry(&mut CLOSE_TRIES.clone(), || unsafe { midiInClose(handle) }) || left;
+        let closed = Waits(CLOSE_TRIES).retry(|| unsafe { midiInClose(handle) }) || left;
         if !closed {
             // The driver may still write into the buffers or call back with
             // the shared state.
@@ -487,10 +450,8 @@ impl Drop for Input {
 fn hand_back(handle: Handle, buffers: Buffers, shared: &Shared) {
     let size = size_of::<MIDIHDR>() as u32;
     loop {
-        // SAFETY: the shared event, alive while this thread holds the
-        // shared state.
-        unsafe { WaitForSingleObject(shared.wake.0, INFINITE) };
-        if shared.stop.load(Ordering::Acquire) {
+        shared.wake.wait(INFINITE);
+        if shared.closing.load(Ordering::Acquire) {
             return;
         }
         for (index, flag) in shared.returned.iter().enumerate() {

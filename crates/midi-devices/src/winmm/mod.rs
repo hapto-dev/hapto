@@ -154,18 +154,35 @@ fn text(units: &[u16]) -> String {
     String::from_utf16_lossy(units.get(..end).unwrap_or(units))
 }
 
-/// Runs `call` until it answers anything but "still busy", at most `tries`
-/// times, and says whether it succeeded.
-fn retry(tries: &mut u32, mut call: impl FnMut() -> u32) -> bool {
-    loop {
-        match call() {
-            MMSYSERR_NOERROR => return true,
-            windows::Win32::Media::Audio::MIDIERR_STILLPLAYING if *tries > 0 => {
-                *tries = tries.saturating_sub(1);
-                std::thread::sleep(RETRY_WAIT);
+/// How many times a call WinMM answers "still busy" may wait before it is
+/// tried again: one budget, which calls in turn may share.
+struct Waits(u32);
+
+impl Waits {
+    /// Runs `call` until it answers anything but "still busy", waiting
+    /// before each try again while the budget lasts, and says whether it
+    /// succeeded.
+    fn retry(&mut self, mut call: impl FnMut() -> u32) -> bool {
+        loop {
+            match call() {
+                MMSYSERR_NOERROR => return true,
+                windows::Win32::Media::Audio::MIDIERR_STILLPLAYING if self.0 > 0 => {
+                    self.0 = self.0.saturating_sub(1);
+                    std::thread::sleep(RETRY_WAIT);
+                }
+                _ => return false,
             }
-            _ => return false,
         }
+    }
+}
+
+/// `code`, a WinMM call's answer, as a result: the refusal it means for
+/// anything but success.
+fn check(code: u32) -> Result<(), OpenError> {
+    if code == MMSYSERR_NOERROR {
+        Ok(())
+    } else {
+        Err(refusal(code))
     }
 }
 
