@@ -25,8 +25,8 @@ use std::f32::consts::TAU;
 
 use hapto_host::layout::StereoOut;
 use hapto_host::midi::controller::{self, number};
-use hapto_host::midi::{Channel, Group, Message, NoteId, NoteKey, NoteOn, Pitch};
-use hapto_host::{Block, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Spans, Status};
+use hapto_host::midi::{Channel, Group, Message, NoteId, NoteKey, NoteOn, PerChannel, Pitch};
+use hapto_host::{AddSample, Block, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status};
 
 /// How many notes sound at once. A note past them takes the quietest.
 const VOICES: usize = 16;
@@ -77,8 +77,8 @@ pub struct Probe {
     /// What a released note's level is multiplied by each frame.
     fade: f32,
     voices: [Voice; VOICES],
-    /// Each group's channels, the first group's first.
-    channels: [ChannelState; 256],
+    /// What each group's channels set for their notes.
+    channels: PerChannel<ChannelState>,
 }
 
 /// One sine, and the note it plays.
@@ -134,13 +134,8 @@ impl Probe {
             attack: 1.0 / (ATTACK * sample_rate).max(1.0),
             fade: (SILENT.ln() / (RELEASE * sample_rate).max(1.0)).exp(),
             voices: [Voice::default(); VOICES],
-            channels: [ChannelState::default(); 256],
+            channels: PerChannel::default(),
         }
-    }
-
-    /// The state of `channel` on `group`.
-    fn channel(&mut self, group: Group, channel: Channel) -> &mut ChannelState {
-        &mut self.channels[usize::from(group.wire()) * 16 + usize::from(channel.wire())]
     }
 
     /// Acts on one message, at the start of the span it arrives in.
@@ -167,12 +162,12 @@ impl Probe {
                 group,
                 channel,
                 value,
-            } => self.channel(*group, *channel).bend = value.get(),
+            } => self.channels[(*group, *channel)].bend = value.get(),
             Message::BendRange {
                 group,
                 channel,
                 semitones,
-            } => self.channel(*group, *channel).range = *semitones,
+            } => self.channels[(*group, *channel)].range = *semitones,
             Message::Control {
                 group,
                 channel,
@@ -190,9 +185,8 @@ impl Probe {
             }
             _ => {}
         }
-        if let (Some(volume), Some(channel)) = (controller::VOLUME.read(message), message.channel())
-        {
-            self.channel(message.group(), channel).volume = volume;
+        if let Some((group, channel, volume)) = controller::VOLUME.read_channel(message) {
+            self.channels[(group, channel)].volume = volume;
         }
         if let Some((note, volume)) = controller::VOLUME.read_note(message) {
             self.each_on(note, |voice| voice.volume = volume);
@@ -232,8 +226,7 @@ impl Probe {
             let Some((_, group, channel)) = voice.note else {
                 continue;
             };
-            let index = usize::from(group.wire()) * 16 + usize::from(channel.wire());
-            let channel = self.channels[index];
+            let channel = self.channels[(group, channel)];
             let pitch = Pitch::new(voice.pitch + voice.bend + channel.bend * channel.range);
             voice.step = pitch.hz() / self.sample_rate;
             voice.gain = LEVEL * voice.velocity * voice.volume * channel.volume;
@@ -268,23 +261,17 @@ impl Processor for Probe {
     type Layout = StereoOut;
 
     fn process(&mut self, block: Block<'_, StereoOut>) -> Status {
-        let Block {
-            audio,
-            midi,
-            mut midi_out,
-            ..
-        } = block;
         // Every message goes back out at its frame, as it came.
+        let midi = block.midi;
+        let (spans, mut midi_out) = block.spans_and_out();
         midi_out.extend(midi);
-        for mut span in Spans::new(audio, midi) {
+        for mut span in spans {
             for message in span.midi.messages() {
                 self.apply(&message);
             }
             self.tune();
-            for [left, right] in span.audio.frames_mut() {
-                let sample = self.next_sample();
-                *left += sample;
-                *right += sample;
+            for frame in span.audio.frames_mut() {
+                frame.add(self.next_sample());
             }
         }
         if self.voices.iter().any(|voice| voice.note.is_some()) {

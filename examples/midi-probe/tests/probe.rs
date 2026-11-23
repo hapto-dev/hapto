@@ -5,17 +5,20 @@
 use hapto_example_midi_probe::MidiProbe;
 use hapto_host::cabi::{HaptoPacket, MidiBlock, STATUS_SLEEP, TestHost};
 use hapto_host::layout::Width;
+use hapto_host::midi::controller::VOLUME;
+use hapto_host::midi::{Channel, Group, Key, Message, NoteOn, packets_of};
 
 const FRAMES: usize = 256;
 
-fn packet(frame: u32, first: u32) -> HaptoPacket {
-    HaptoPacket {
-        frame,
-        words: [first, 0, 0, 0],
-    }
+/// The packets `messages` go out as, as a host hands them in.
+fn packets<'m>(messages: impl IntoIterator<Item = (usize, Message<'m>)>) -> Vec<HaptoPacket> {
+    packets_of(messages)
+        .into_iter()
+        .map(HaptoPacket::from)
+        .collect()
 }
 
-/// One block with `midi_in`, the host taking MIDI 1.0 out: its status, its
+/// One block with `midi_in`, the host taking MIDI 2.0 out: its status, its
 /// loudest sample, and what came back out.
 fn play(host: &TestHost<MidiProbe>, midi_in: &[HaptoPacket]) -> (u32, f32, Vec<HaptoPacket>) {
     let (mut left, mut right) = ([0.0_f32; FRAMES], [0.0_f32; FRAMES]);
@@ -23,7 +26,7 @@ fn play(host: &TestHost<MidiProbe>, midi_in: &[HaptoPacket]) -> (u32, f32, Vec<H
     let midi = MidiBlock {
         midi_in,
         midi_out: &mut out,
-        midi_1_out: true,
+        midi_1_out: false,
     };
     let (status, sent) = host.process_with_midi(&mut [&mut left[..], &mut right[..]], FRAMES, midi);
     let peak = left
@@ -43,22 +46,28 @@ fn running() -> TestHost<MidiProbe> {
 fn a_note_sounds_and_every_message_comes_back_out_as_it_came() {
     let host = running();
     // A4 at full velocity, then the channel's volume, at their frames.
-    let sent = [packet(0, 0x2090_457F), packet(64, 0x20B0_0764)];
+    let sent = packets([
+        (0, NoteOn::new(Key::A4, 1.0).into()),
+        (64, VOLUME.message(Group::FIRST, Channel::FIRST, 1.0)),
+    ]);
     let (_, peak, out) = play(&host, &sent);
     assert!(peak > 0.05, "the note sounds: {peak}");
-    let words: Vec<_> = out
-        .iter()
-        .map(|packet| (packet.frame, packet.words[0]))
-        .collect();
-    assert_eq!(words, [(0, 0x2090_457F), (64, 0x20B0_0764)]);
+    let words = |packets: &[HaptoPacket]| {
+        packets
+            .iter()
+            .map(|p| (p.frame, p.words))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(words(&out), words(&sent));
     assert_eq!(host.faults(), 0);
 }
 
 #[test]
 fn a_released_note_falls_silent_and_the_block_sleeps() {
     let host = running();
-    play(&host, &[packet(0, 0x2090_457F)]);
-    let (_, _, out) = play(&host, &[packet(0, 0x2080_4540)]);
+    let note = NoteOn::new(Key::A4, 1.0);
+    play(&host, &packets([(0, note.into())]));
+    let (_, _, out) = play(&host, &packets([(0, note.off(0.5).into())]));
     assert_eq!(out.len(), 1, "the note-off comes back out");
     // Its release falls 60 dB in a fifth of a second: under 40 blocks.
     let mut last = (0, f32::MAX);
