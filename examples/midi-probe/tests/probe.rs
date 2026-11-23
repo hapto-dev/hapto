@@ -35,10 +35,7 @@ fn play(host: &TestHost<MidiProbe>, midi_in: &[HaptoPacket]) -> (u32, f32, Vec<H
 
 fn running() -> TestHost<MidiProbe> {
     let host = TestHost::<MidiProbe>::new();
-    assert_eq!(
-        host.activate(48_000.0, FRAMES as u32, Width::new(0, 2)),
-        Ok(())
-    );
+    assert_eq!(host.activate(48_000.0, FRAMES, Width::STEREO_OUT), Ok(()));
     host
 }
 

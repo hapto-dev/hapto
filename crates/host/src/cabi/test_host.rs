@@ -381,13 +381,14 @@ impl<P: Plugin> TestHost<P> {
     pub fn activate(
         &self,
         sample_rate: f64,
-        max_frames: u32,
+        max_frames: usize,
         layout: Width,
     ) -> Result<(), Refused> {
-        let channels = |count: usize| u32::try_from(count).unwrap_or(u32::MAX);
+        let narrow = |count: usize| u32::try_from(count).unwrap_or(u32::MAX);
+        let max_frames = narrow(max_frames);
         let layout = HaptoLayout {
-            inputs: channels(layout.inputs),
-            outputs: channels(layout.outputs),
+            inputs: narrow(layout.inputs),
+            outputs: narrow(layout.outputs),
         };
         // SAFETY: `self.instance` is the live instance `new` made: only
         // `release` frees it, and that takes the host by `&mut`.

@@ -239,7 +239,6 @@ impl Shell for CInterface {
 
     fn open(layout: Width, rate: f64, max_frames: usize) -> Self {
         let host = CHost::<ExampleEq>::new();
-        let max_frames = u32::try_from(max_frames).expect("small");
         assert_eq!(host.activate(rate, max_frames, layout), Ok(()));
         for (index, decl) in DECLARATIONS.iter().enumerate() {
             let info = host

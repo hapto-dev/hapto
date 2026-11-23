@@ -41,6 +41,12 @@ impl Width {
     pub const MONO: Width = Width::new(1, 1);
     /// Two channels in, two out.
     pub const STEREO: Width = Width::new(2, 2);
+    /// No channel in, two out: an instrument's.
+    pub const STEREO_OUT: Width = Width::new(0, 2);
+    /// One channel in, two out.
+    pub const MONO_TO_STEREO: Width = Width::new(1, 2);
+    /// No channel either way: a MIDI effect's.
+    pub const NO_AUDIO: Width = Width::new(0, 0);
 
     /// Creates a width of `inputs` channels in and `outputs` out.
     pub const fn new(inputs: usize, outputs: usize) -> Self {

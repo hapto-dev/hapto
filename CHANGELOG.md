@@ -32,7 +32,10 @@ exporter.
   processor in `AnyLayout`. The audio types are in a new core crate,
   `hapto-audio`, which `hapto-host` re-exports, with `AudioBuf`, audio of its
   own for tests. Every layout's frame takes a mono voice's sample into each
-  of its channels with `AddSample::add`.
+  of its channels with `AddSample::add`. `Width` names the layouts' widths,
+  `STEREO_OUT`, `MONO_TO_STEREO` and `NO_AUDIO` beside `MONO` and `STEREO`,
+  and the C interface's test host's `activate` takes its frames as a `usize`,
+  as a block counts them.
 - **Breaking.** `ProcessSetup` is made with `ProcessSetup::new`, with room for
   no MIDI until a test sets `max_events` or `max_out_events`, so the buses
   beyond the main one can join it later without breaking a caller.
@@ -77,8 +80,9 @@ exporter.
   once, and a block in pieces hands each piece its share. `hapto_host::midi`
   re-exports `hapto-midi`. `block.spans()` cuts a block into `Span`s at each
   frame a message arrives at, each with its audio and the messages at its
-  first frame, and `Spans::at_most` caps their length; `Spans::new` makes
-  them for a plugin that sends too. `Audio::split_at` splits audio at a
+  first frame, and `Spans::at_most` caps their length;
+  `block.spans_and_out()` hands the block's MIDI out back beside them, for a
+  plugin that sends too. `Audio::split_at` splits audio at a
   frame.
 - **Breaking.** MIDI is MIDI 2.0 inside. `ChannelVoice` reads and writes MIDI
   2.0's channel voice messages alone, a `ChannelMessage` for each status MIDI

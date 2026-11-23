@@ -12,7 +12,7 @@ mod common;
 use common::{Noise, bits, built, declarations};
 
 const RATE: f64 = 48_000.0;
-const MAX_FRAMES: u32 = 512;
+const MAX_FRAMES: usize = 512;
 
 #[test]
 fn the_adapter_lists_every_parameter_with_its_key() {
@@ -49,8 +49,7 @@ fn audio_through_the_c_interface_matches_the_processor_driven_directly() {
     let host = TestHost::<ExampleEq>::new();
     assert_eq!(host.activate(RATE, MAX_FRAMES, Width::STEREO), Ok(()));
     let (mut plugin, saved) = built();
-    let mut processor =
-        plugin.activate(&ProcessSetup::new(RATE, MAX_FRAMES as usize, Width::STEREO));
+    let mut processor = plugin.activate(&ProcessSetup::new(RATE, MAX_FRAMES, Width::STEREO));
     let writes = saved.set().audio();
     let mut out_events = EventList::with_capacity(0);
     let keys: Vec<String> = (0..host.parameter_count() as u32)

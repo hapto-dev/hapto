@@ -407,9 +407,8 @@ impl<P: Plugin> Hosted for Cabi<P> {
     }
 
     fn start(&self, sample_rate: f64, max_frames: usize, layout: Width) -> Result<Box<dyn Render>> {
-        let frames = u32::try_from(max_frames).unwrap_or(u32::MAX);
         self.host
-            .activate(sample_rate, frames, layout)
+            .activate(sample_rate, max_frames, layout)
             .context("the C interface's activate")?;
         Ok(Box::new(CabiAudio {
             side: self.host.audio_side(),

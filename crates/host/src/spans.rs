@@ -16,7 +16,7 @@
 )]
 
 use crate::layout::Layout;
-use crate::{Audio, Block, Midi};
+use crate::{Audio, Block, Midi, MidiOut};
 
 /// Part of a block in which nothing arrives but at its first frame: its
 /// audio, and the messages that arrive as it starts.
@@ -116,9 +116,8 @@ pub struct Spans<'a, L: Layout> {
 }
 
 impl<'a, L: Layout> Spans<'a, L> {
-    /// The spans of `audio` with `midi`, a block's: for a plugin that sends
-    /// MIDI too, which keeps the block's `midi_out` and makes its spans from
-    /// the rest.
+    /// The spans of `audio` with `midi`, a block's or a part of one.
+    /// [`Block::spans_and_out`] makes a block's with its `midi_out` kept.
     ///
     /// # Examples
     ///
@@ -206,8 +205,45 @@ impl<'a, L: Layout> Iterator for Spans<'a, L> {
 impl<'a, L: Layout> Block<'a, L> {
     /// Splits the block at each frame a MIDI message arrives at: see
     /// [`Spans`]. The block's [`midi_out`](Self::midi_out) goes with it; a
-    /// plugin that sends too makes its spans with [`Spans::new`].
+    /// plugin that sends too takes both with
+    /// [`spans_and_out`](Self::spans_and_out).
     pub fn spans(self) -> Spans<'a, L> {
         Spans::new(self.audio, self.midi)
+    }
+
+    /// Splits the block at each frame a MIDI message arrives at, as
+    /// [`spans`](Self::spans) does, and hands its
+    /// [`midi_out`](Self::midi_out) back beside them: for a plugin that
+    /// sends MIDI as it plays each span.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hapto_host::layout::Mono;
+    /// use hapto_host::{Block, Event, Processor, Status};
+    ///
+    /// /// Sends MIDI's clock at the start of each span.
+    /// struct Ticks;
+    ///
+    /// impl Processor for Ticks {
+    ///     type Layout = Mono;
+    ///
+    ///     fn process(&mut self, block: Block<'_, Mono>) -> Status {
+    ///         let (spans, mut midi_out) = block.spans_and_out();
+    ///         for span in spans {
+    ///             midi_out.send_packet(Event::new(span.start as u32, [0x10F8_0000, 0, 0, 0]));
+    ///         }
+    ///         Status::Continue
+    ///     }
+    /// }
+    /// # use hapto_host::{Audio, EventList, Midi, MidiOut};
+    /// # let (mut samples, mut out) = ([0.0_f32; 8], EventList::with_capacity(4));
+    /// # let mut channels = [&mut samples[..]];
+    /// # let block = Block::new(Audio::new(&mut channels, 8), Midi::default(), MidiOut::new(&mut out));
+    /// # Ticks.process(block);
+    /// # assert_eq!(out.as_slice().len(), 1, "a block with no MIDI is one span");
+    /// ```
+    pub fn spans_and_out(self) -> (Spans<'a, L>, MidiOut<'a>) {
+        (Spans::new(self.audio, self.midi), self.midi_out)
     }
 }
