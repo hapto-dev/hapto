@@ -9,7 +9,7 @@ hapto_testkit::install_alloc_gate!();
 use hapto_testkit::alloc::assert_no_allocations;
 use hapto_ump::{
     Attribute, Bank, ByteStream, Bytes, ChannelMessage, ChannelVoice, Downgrade, Event, EventList,
-    Midi1Message, Midi1Voice, Packets, Upgrade, packet_words,
+    Midi1Message, Midi1Voice, Packets, Upgrade,
 };
 
 const CAPACITY: usize = 256;
@@ -160,7 +160,7 @@ fn filling_reading_and_clearing_a_list_does_not_allocate() {
             }
             let mut sum = 0_u64;
             for event in list.as_slice() {
-                sum += u64::from(event.message_type()) + u64::from(event.group());
+                sum += u64::from(event.message_type().get()) + u64::from(event.group());
                 if let Some(voice) = event.channel_voice() {
                     sum += u64::from(voice.event(event.offset).words[0]);
                 }
@@ -185,7 +185,7 @@ fn splitting_words_and_decoding_and_encoding_voices_does_not_allocate() {
         .collect::<Vec<_>>();
     let mut words = Vec::new();
     for packet in &packets {
-        let length = packet_words(Event::new(0, *packet).message_type()).expect("a type");
+        let length = Event::new(0, *packet).message_type().words();
         words.extend_from_slice(&packet[..length]);
     }
     words.extend([0x0000_0000, 0xB000_0000, 0, 0, 0x5000_0000, 0, 0, 0]);

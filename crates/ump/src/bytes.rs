@@ -19,22 +19,8 @@
 use std::fmt;
 use std::ops::Deref;
 
-/// System messages, one word.
-const SYSTEM: u32 = 0x1;
-/// MIDI 1.0 channel voice messages, one word.
-const MIDI1: u32 = 0x2;
-/// 7-bit System Exclusive, two words.
-const SYSEX7: u32 = 0x3;
-
-/// The SysEx7 statuses: the whole message in one packet, or its first,
-/// middle and last packets.
-const COMPLETE: u32 = 0x0;
-const START: u32 = 0x1;
-const CONTINUE: u32 = 0x2;
-const END: u32 = 0x3;
-
-/// The most data bytes one SysEx7 packet carries.
-const SYSEX_BYTES: usize = 6;
+use crate::buf::Buf;
+use crate::{MessageType, SysEx7, SysExForm};
 
 const SYSEX_BEGIN: u8 = 0xF0;
 const SYSEX_FINISH: u8 = 0xF7;
@@ -76,12 +62,10 @@ pub struct ByteStream {
     group: u8,
     /// The status the next data bytes complete: a channel voice status, in
     /// force until another status, or a system common one waiting for its
-    /// data. 0 for none.
-    status: u8,
-    /// The data bytes the status still wants.
-    data: [u8; 2],
-    /// How many of `data` have arrived.
-    have: u8,
+    /// data.
+    status: Option<u8>,
+    /// The data bytes that have come for it.
+    data: Buf<2>,
     /// A SysEx under way, if one is.
     sysex: Option<SysEx>,
 }
@@ -90,9 +74,7 @@ pub struct ByteStream {
 #[derive(Debug, Clone, Copy)]
 struct SysEx {
     /// The bytes not yet sent, at most a packet's.
-    held: [u8; SYSEX_BYTES],
-    /// How many of `held` there are.
-    len: u8,
+    held: Buf<{ SysEx7::MAX_DATA }>,
     /// Whether a packet of this SysEx went out already, so the next is not
     /// its first.
     begun: bool,
@@ -102,7 +84,7 @@ impl fmt::Debug for ByteStream {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ByteStream")
             .field("group", &self.group)
-            .field("status", &format_args!("{:#04X}", self.status))
+            .field("status", &format_args!("{:02X?}", self.status))
             .field("in_sysex", &self.sysex.is_some())
             .finish_non_exhaustive()
     }
@@ -114,9 +96,8 @@ impl ByteStream {
     pub const fn new(group: u8) -> Self {
         ByteStream {
             group: group & 0xF,
-            status: 0,
-            data: [0; 2],
-            have: 0,
+            status: None,
+            data: Buf::new(),
             sysex: None,
         }
     }
@@ -157,106 +138,93 @@ impl ByteStream {
                 return;
             }
         }
-        self.have = 0;
-        self.status = 0;
-        match byte {
-            SYSEX_BEGIN => {
-                self.sysex = Some(SysEx {
-                    held: [0; SYSEX_BYTES],
-                    len: 0,
-                    begun: false,
-                });
-            }
+        self.data.clear();
+        self.status = None;
+        if byte == SYSEX_BEGIN {
+            self.sysex = Some(SysEx {
+                held: Buf::new(),
+                begun: false,
+            });
+            return;
+        }
+        match Bytes::length_of(byte) {
             // Tune request, which has no data.
-            0xF6 => send(self.system(byte, 0, 0)),
-            // Time code quarter frame, song position and song select wait
-            // for their data, and hold no running status.
-            0xF1..=0xF3 => self.status = byte,
-            // A channel voice status, in force until another status. A
-            // stray end of SysEx and 0xF4 and 0xF5, undefined, only end it.
-            0x80..=0xEF => self.status = byte,
-            _ => {}
+            Some(1) => send(self.system(byte, 0, 0)),
+            // A channel voice status, in force until another status, or a
+            // system common one waiting for its data, which holds no
+            // running status.
+            Some(_) => self.status = Some(byte),
+            // A stray end of SysEx, and 0xF4 and 0xF5, undefined, only end
+            // the status in force.
+            None => {}
         }
     }
 
     fn data_byte(&mut self, byte: u8, send: &mut impl FnMut([u32; 4])) {
         if let Some(sysex) = &mut self.sysex {
-            if usize::from(sysex.len) == SYSEX_BYTES {
+            if sysex.held.is_full() {
                 // A seventh byte: the six held are not the last.
-                let status = if sysex.begun { CONTINUE } else { START };
-                let packet = sysex7(self.group, status, &sysex.held);
+                let form = if sysex.begun {
+                    SysExForm::Continue
+                } else {
+                    SysExForm::Start
+                };
+                send(SysEx7::new(self.group, form, sysex.held.as_slice()).words());
                 sysex.begun = true;
-                sysex.len = 0;
-                send(packet);
+                sysex.held.clear();
             }
-            if let Some(slot) = sysex.held.get_mut(usize::from(sysex.len)) {
-                *slot = byte;
-                sysex.len = sysex.len.saturating_add(1);
-            }
+            sysex.held.push(byte);
             return;
         }
-        let wants = match self.status {
-            0 => return,
-            0xC0..=0xDF | 0xF1 | 0xF3 => 1,
-            _ => 2,
+        let Some(status) = self.status else {
+            return;
         };
-        if let Some(slot) = self.data.get_mut(usize::from(self.have)) {
-            *slot = byte;
-            self.have = self.have.saturating_add(1);
-        }
-        if self.have < wants {
+        self.data.push(byte);
+        // A status this stream keeps has a length of 2 or 3, itself included.
+        let wants = Bytes::length_of(status).map_or(1, |length| length.saturating_sub(1));
+        if self.data.len() < wants {
             return;
         }
-        self.have = 0;
-        let [first, second] = self.data;
-        let second = if wants == 2 { second } else { 0 };
-        if self.status >= 0xF0 {
-            send(self.system(self.status, first, second));
+        let (first, second) = match *self.data.as_slice() {
+            [first, second, ..] => (first, second),
+            [first] => (first, 0),
+            [] => (0, 0),
+        };
+        self.data.clear();
+        if status >= 0xF0 {
+            send(self.system(status, first, second));
             // A system common message holds no running status.
-            self.status = 0;
+            self.status = None;
         } else {
-            send(word(MIDI1, self.group, self.status, first, second));
+            send(word(MessageType::MIDI1, self.group, status, first, second));
         }
     }
 
     /// Sends what `sysex` holds as its last packet: the whole of it if no
     /// packet of it went out yet.
     fn finish(&self, sysex: SysEx, send: &mut impl FnMut([u32; 4])) {
-        let status = if sysex.begun { END } else { COMPLETE };
-        let held = sysex.held.get(..usize::from(sysex.len)).unwrap_or(&[]);
-        send(sysex7(self.group, status, held));
+        let form = if sysex.begun {
+            SysExForm::End
+        } else {
+            SysExForm::Complete
+        };
+        send(SysEx7::new(self.group, form, sysex.held.as_slice()).words());
     }
 
     fn system(&self, status: u8, first: u8, second: u8) -> [u32; 4] {
-        word(SYSTEM, self.group, status, first, second)
+        word(MessageType::SYSTEM, self.group, status, first, second)
     }
 }
 
 /// A one-word packet of message type `kind`: a status byte and two data
 /// bytes after the group.
-fn word(kind: u32, group: u8, status: u8, first: u8, second: u8) -> [u32; 4] {
-    let head = kind << 28
+fn word(kind: MessageType, group: u8, status: u8, first: u8, second: u8) -> [u32; 4] {
+    let head = u32::from(kind.get()) << 28
         | u32::from(group & 0xF) << 24
         | u32::from(status) << 16
         | u32::from(first & 0x7F) << 8
         | u32::from(second & 0x7F);
     [head, 0, 0, 0]
-}
-
-/// A SysEx7 packet carrying `data`, at most six bytes.
-fn sysex7(group: u8, status: u32, data: &[u8]) -> [u32; 4] {
-    let mut bytes = [0_u8; SYSEX_BYTES];
-    for (slot, &byte) in bytes.iter_mut().zip(data) {
-        *slot = byte & 0x7F;
-    }
-    let count = data.len().min(SYSEX_BYTES) as u32;
-    let [b1, b2, b3, b4, b5, b6] = bytes.map(u32::from);
-    [
-        SYSEX7 << 28 | u32::from(group & 0xF) << 24 | status << 20 | count << 16 | b1 << 8 | b2,
-        b3 << 24 | b4 << 16 | b5 << 8 | b6,
-        0,
-        0,
-    ]
 }
 
 /// One packet as MIDI 1.0 bytes, for a device or port that takes the byte
@@ -279,11 +247,8 @@ fn sysex7(group: u8, status: u32, data: &[u8]) -> [u32; 4] {
 /// // A MIDI 2.0 note-on is not MIDI 1.0: downgrade it first.
 /// assert_eq!(Bytes::of([0x4090_3C00, 0xFFFF_0000, 0, 0]), None);
 /// ```
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub struct Bytes {
-    bytes: [u8; 8],
-    len: u8,
-}
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+pub struct Bytes(Buf<8>);
 
 impl Bytes {
     /// `words` as MIDI 1.0 bytes. `None` for a packet MIDI 1.0's byte
@@ -294,82 +259,70 @@ impl Bytes {
     /// Thread: any. Allocates nothing.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn of(words: [u32; 4]) -> Option<Bytes> {
-        let [head, second, ..] = words;
-        let byte = |shift: u32| ((head >> shift) & 0xFF) as u8;
-        let data = |shift: u32| ((head >> shift) & 0x7F) as u8;
-        match head >> 28 {
-            SYSTEM => {
-                let status = byte(16);
-                let length = match status {
-                    0xF2 => 3,
-                    0xF1 | 0xF3 => 2,
-                    0xF6 | 0xF8 | 0xFA..=0xFC | 0xFE | 0xFF => 1,
-                    _ => return None,
-                };
-                Some(Bytes::from_slice(&[status, data(8), data(0)], length))
-            }
-            MIDI1 => {
-                let status = byte(16);
-                let length = match status >> 4 {
-                    0xC | 0xD => 2,
-                    0x8..=0xE => 3,
-                    _ => return None,
-                };
-                Some(Bytes::from_slice(&[status, data(8), data(0)], length))
-            }
-            SYSEX7 => {
-                let count = usize::from(byte(16) & 0xF).min(SYSEX_BYTES);
-                let payload = [
-                    data(8),
-                    data(0),
-                    ((second >> 24) & 0x7F) as u8,
-                    ((second >> 16) & 0x7F) as u8,
-                    ((second >> 8) & 0x7F) as u8,
-                    (second & 0x7F) as u8,
-                ];
-                let payload = payload.get(..count).unwrap_or(&[]);
-                let (begins, ends) = match (head >> 20) & 0xF {
-                    COMPLETE => (true, true),
-                    START => (true, false),
-                    CONTINUE => (false, false),
-                    END => (false, true),
-                    _ => return None,
-                };
-                let mut out = Bytes {
-                    bytes: [0; 8],
-                    len: 0,
-                };
-                if begins {
-                    out.push(SYSEX_BEGIN);
-                }
-                for &byte in payload {
-                    out.push(byte);
-                }
-                if ends {
-                    out.push(SYSEX_FINISH);
-                }
-                Some(out)
-            }
+        let [head, ..] = words;
+        let [_, status, ..] = head.to_be_bytes();
+        match MessageType::of(head) {
+            MessageType::SYSTEM if status >= 0xF0 => Bytes::short(head),
+            MessageType::MIDI1 if status < 0xF0 => Bytes::short(head),
+            MessageType::SYSEX7 => SysEx7::decode(words).map(Bytes::sysex),
             _ => None,
         }
     }
 
-    fn from_slice(bytes: &[u8; 3], length: usize) -> Bytes {
-        let mut out = Bytes {
-            bytes: [0; 8],
-            len: 0,
-        };
-        for &byte in bytes.iter().take(length) {
-            out.push(byte);
+    /// How many bytes a MIDI 1.0 message with `status` takes, the status
+    /// included: 3 for a note, a controller or a bend, 2 for a program
+    /// change or channel pressure, 1 for a tune request or a real-time
+    /// message. `None` for a data byte, for a SysEx's start or end, whose
+    /// end decides its length, and for an undefined status.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hapto_ump::Bytes;
+    ///
+    /// assert_eq!(Bytes::length_of(0x90), Some(3)); // a note-on
+    /// assert_eq!(Bytes::length_of(0xC0), Some(2)); // a program change
+    /// assert_eq!(Bytes::length_of(0xF8), Some(1)); // the clock
+    /// assert_eq!(Bytes::length_of(0xF0), None); // a SysEx
+    /// ```
+    pub const fn length_of(status: u8) -> Option<usize> {
+        match status {
+            0x80..=0xBF | 0xE0..=0xEF | 0xF2 => Some(3),
+            0xC0..=0xDF | 0xF1 | 0xF3 => Some(2),
+            0xF6 | 0xF8 | 0xFA..=0xFC | 0xFE | 0xFF => Some(1),
+            _ => None,
         }
-        out
     }
 
-    fn push(&mut self, byte: u8) {
-        if let Some(slot) = self.bytes.get_mut(usize::from(self.len)) {
-            *slot = byte;
-            self.len = self.len.saturating_add(1);
+    /// A one-word packet's message: its status and the data bytes its
+    /// length takes.
+    fn short(head: u32) -> Option<Bytes> {
+        let [_, status, first, second] = head.to_be_bytes();
+        let length = Bytes::length_of(status)?;
+        let mut out = Bytes::default();
+        for byte in [status, first & 0x7F, second & 0x7F]
+            .into_iter()
+            .take(length)
+        {
+            out.0.push(byte);
         }
+        Some(out)
+    }
+
+    /// A SysEx packet's part of its message, with 0xF0 where it begins one
+    /// and 0xF7 where it ends one.
+    fn sysex(packet: SysEx7) -> Bytes {
+        let mut out = Bytes::default();
+        if packet.form.begins() {
+            out.0.push(SYSEX_BEGIN);
+        }
+        for &byte in packet.data() {
+            out.0.push(byte);
+        }
+        if packet.form.ends() {
+            out.0.push(SYSEX_FINISH);
+        }
+        out
     }
 }
 
@@ -377,7 +330,7 @@ impl Deref for Bytes {
     type Target = [u8];
 
     fn deref(&self) -> &[u8] {
-        self.bytes.get(..usize::from(self.len)).unwrap_or(&[])
+        self.0.as_slice()
     }
 }
 

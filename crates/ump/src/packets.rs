@@ -1,34 +1,84 @@
-//! Packet framing: how many words a Universal MIDI Packet takes, and
-//! splitting a stream of words into packets.
+//! Packet framing: what a Universal MIDI Packet carries, how many words it
+//! takes, and splitting a stream of words into packets.
 
 use std::fmt;
 use std::iter::FusedIterator;
 
 use crate::Event;
 
-/// The number of 32-bit words in a packet of `message_type`, from the UMP
-/// 1.1 table: 1 to 4.
+/// A packet's message type: the top four bits of its first word, which say
+/// what the packet carries and how many words it takes.
 ///
-/// The reserved types have sizes too, so a reader can skip a packet it does
-/// not know. `None` for a value above 15, which is no message type.
+/// The named types are the ones the UMP 1.1 table defines. The rest are
+/// reserved, and have sizes too, so a reader can skip a packet it does not
+/// know.
 ///
 /// # Examples
 ///
 /// ```
-/// use hapto_ump::packet_words;
+/// use hapto_ump::{Event, MessageType};
 ///
-/// assert_eq!(packet_words(0x2), Some(1)); // MIDI 1.0 channel voice
-/// assert_eq!(packet_words(0x4), Some(2)); // MIDI 2.0 channel voice
-/// assert_eq!(packet_words(0x5), Some(4)); // SysEx8
-/// assert_eq!(packet_words(0x10), None);
+/// let note_on = Event::new(0, [0x2090_3C7F, 0, 0, 0]);
+/// match note_on.message_type() {
+///     MessageType::MIDI1 | MessageType::MIDI2 => {} // a channel voice message
+///     other => panic!("{other:?} is no note"),
+/// }
+/// assert_eq!(MessageType::MIDI2.words(), 2);
+/// assert_eq!(MessageType::new(0x10), None);
 /// ```
-pub const fn packet_words(message_type: u8) -> Option<usize> {
-    match message_type {
-        0x0..=0x2 | 0x6 | 0x7 => Some(1),
-        0x3 | 0x4 | 0x8..=0xA => Some(2),
-        0xB | 0xC => Some(3),
-        0x5 | 0xD..=0xF => Some(4),
-        _ => None,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct MessageType(u8);
+
+impl MessageType {
+    /// Utility messages, such as jitter-reduction timestamps: one word, on
+    /// no group.
+    pub const UTILITY: Self = MessageType(0x0);
+    /// System real-time and system common messages: one word.
+    pub const SYSTEM: Self = MessageType(0x1);
+    /// MIDI 1.0 channel voice messages, [`Midi1Voice`](crate::Midi1Voice):
+    /// one word.
+    pub const MIDI1: Self = MessageType(0x2);
+    /// 7-bit System Exclusive, [`SysEx7`](crate::SysEx7): two words.
+    pub const SYSEX7: Self = MessageType(0x3);
+    /// MIDI 2.0 channel voice messages,
+    /// [`ChannelVoice`](crate::ChannelVoice): two words.
+    pub const MIDI2: Self = MessageType(0x4);
+    /// 8-bit System Exclusive and mixed data sets: four words.
+    pub const SYSEX8: Self = MessageType(0x5);
+    /// Flex data, such as tempo and lyrics: four words.
+    pub const FLEX_DATA: Self = MessageType(0xD);
+    /// UMP stream messages, which describe the endpoint: four words, on no
+    /// group.
+    pub const STREAM: Self = MessageType(0xF);
+
+    /// The type numbered `value`; `None` above 15, which is no message type.
+    pub const fn new(value: u8) -> Option<Self> {
+        if value <= 0xF {
+            Some(MessageType(value))
+        } else {
+            None
+        }
+    }
+
+    /// The type of a packet whose first word is `first`.
+    pub const fn of(first: u32) -> Self {
+        MessageType((first >> 28) as u8)
+    }
+
+    /// Its number, 0 to 15.
+    pub const fn get(self) -> u8 {
+        self.0
+    }
+
+    /// The number of 32-bit words a packet of this type takes, 1 to 4, from
+    /// the UMP 1.1 table.
+    pub const fn words(self) -> usize {
+        match self.0 {
+            0x0..=0x2 | 0x6 | 0x7 => 1,
+            0x3 | 0x4 | 0x8..=0xA => 2,
+            0xB | 0xC => 3,
+            _ => 4,
+        }
     }
 }
 
@@ -43,14 +93,14 @@ pub const fn packet_words(message_type: u8) -> Option<usize> {
 /// // A MIDI 2.0 note-on is two words; the stream has only its first.
 /// let mut packets = Packets::new(&[0x4090_3C00], 0);
 /// let cut = packets.next().expect("one result").expect_err("the packet is cut");
-/// assert_eq!((cut.message_type, cut.needed, cut.available), (4, 2, 1));
+/// assert_eq!((cut.message_type.get(), cut.needed, cut.available), (4, 2, 1));
 /// assert_eq!(cut.to_string(), "a type 0x4 packet takes 2 words and 1 were left");
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Truncated {
     /// The packet's message type.
-    pub message_type: u8,
+    pub message_type: MessageType,
     /// The words that type takes.
     pub needed: usize,
     /// The words that were left.
@@ -62,7 +112,9 @@ impl fmt::Display for Truncated {
         write!(
             f,
             "a type {:#X} packet takes {} words and {} were left",
-            self.message_type, self.needed, self.available
+            self.message_type.get(),
+            self.needed,
+            self.available
         )
     }
 }
@@ -107,9 +159,8 @@ impl Iterator for Packets<'_> {
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     fn next(&mut self) -> Option<Self::Item> {
         let first = *self.words.first()?;
-        let message_type = (first >> 28) as u8;
-        // A four-bit type is always in the table.
-        let needed = packet_words(message_type).unwrap_or(1);
+        let message_type = MessageType::of(first);
+        let needed = message_type.words();
         let Some((packet, rest)) = self.words.split_at_checked(needed) else {
             let available = self.words.len();
             self.words = &[];

@@ -44,6 +44,8 @@ exporter.
   Each `Event` keeps its `Origin`, and `scale` moves values between the
   widths. Learn reads MIDI 2.0 alone: a MIDI 1.0 controller learns and plays
   as before once upgraded, but for controllers 0 and 32, which select a bank.
+  A packet's message type is a `MessageType`, whose constants name the UMP
+  table's types and whose `words` replaces `packet_words`.
 
 ### Added
 
@@ -116,9 +118,9 @@ exporter.
   at run time is a target of its own, `TargetId::RunTime`, named by an opaque
   `RunTimeId`.
 - `hapto-ump`: Universal MIDI Packets: a fixed-capacity event list per block,
-  the channel voice messages read from it and written back, the translation
-  between MIDI 1.0 and MIDI 2.0, and MIDI 1.0's byte stream read into packets
-  and written back.
+  the channel voice messages and 7-bit SysEx read from it and written back,
+  the translation between MIDI 1.0 and MIDI 2.0, and MIDI 1.0's byte stream
+  read into packets and written back.
 - `hapto-host`: the `Plugin` and `Processor` traits and `PluginInfo`, and
   `SavedState`, the saved block as JSON, which names Hapto's frame version and
   the plugin's own schema version apart. A load keeps unknown parameter ids and

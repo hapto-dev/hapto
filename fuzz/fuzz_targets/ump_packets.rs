@@ -5,7 +5,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use hapto_ump::{ChannelVoice, Midi1Voice, Packets, packet_words};
+use hapto_ump::{ChannelVoice, Midi1Voice, Packets};
 
 fuzz_target!(|data: &[u8]| {
     let words: Vec<u32> = data
@@ -20,7 +20,7 @@ fuzz_target!(|data: &[u8]| {
         match packet {
             Ok(event) => {
                 assert_eq!(event.offset, offset);
-                let size = packet_words((event.words[0] >> 28) as u8).expect("a four-bit type");
+                let size = event.message_type().words();
                 consumed += size;
                 if let Some(voice) = ChannelVoice::decode(event.words) {
                     assert_eq!(ChannelVoice::decode(voice.words()), Some(voice));

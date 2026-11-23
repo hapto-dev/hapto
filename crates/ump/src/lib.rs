@@ -10,8 +10,9 @@
 //! [`Origin`], so a value upgraded from MIDI 1.0 narrows back to what was
 //! sent through [`scale`]. [`ChannelVoice`] reads and writes the MIDI 2.0
 //! channel voice messages, [`Midi1Voice`] the MIDI 1.0 ones an exporter
-//! translates, [`packet_words`] says how long a packet of any message type
-//! is, and [`Packets`] splits a stream of words into events. Every packet
+//! translates, and [`SysEx7`] the System Exclusive both share.
+//! [`MessageType`] says what any packet carries and how long it is, and
+//! [`Packets`] splits a stream of words into events. Every packet
 //! carries its own status, so Hapto parses UMP alone. A device that speaks
 //! MIDI 1.0's byte stream meets it at the edge: [`ByteStream`] reads its
 //! bytes into packets, and [`Bytes`] writes a packet back as bytes.
@@ -65,18 +66,21 @@
     )
 )]
 
+mod buf;
 mod bytes;
 mod downgrade;
 mod midi1;
 mod packets;
 pub mod scale;
+mod sysex;
 mod upgrade;
 mod voice;
 
 pub use bytes::{ByteStream, Bytes};
 pub use downgrade::Downgrade;
 pub use midi1::{Midi1Message, Midi1Voice};
-pub use packets::{Packets, Truncated, packet_words};
+pub use packets::{MessageType, Packets, Truncated};
+pub use sysex::{SysEx7, SysExForm};
 pub use upgrade::Upgrade;
 pub use voice::{Attribute, Bank, ChannelMessage, ChannelVoice};
 
@@ -147,22 +151,38 @@ impl Event {
         }
     }
 
-    /// The packet's message type, 0 to 15: 2 for a MIDI 1.0 channel voice
-    /// message, 3 for SysEx7, 4 for a MIDI 2.0 channel voice message.
+    /// The packet's message type.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hapto_ump::{Event, MessageType};
+    ///
+    /// let note_on = Event::new(0, [0x2090_3C7F, 0, 0, 0]);
+    /// let sysex = Event::new(0, [0x3516_7E7F, 0x0D70_0201, 0, 0]);
+    /// assert_eq!(note_on.message_type(), MessageType::MIDI1);
+    /// assert_eq!(sysex.message_type(), MessageType::SYSEX7);
+    /// ```
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
+    pub fn message_type(&self) -> MessageType {
+        MessageType::of(self.words[0])
+    }
+
+    /// Whether the packet is a System Real Time message, status 0xF8 to
+    /// 0xFF, which may fall anywhere, inside a SysEx included.
     ///
     /// # Examples
     ///
     /// ```
     /// use hapto_ump::Event;
     ///
-    /// let note_on = Event::new(0, [0x2090_3C7F, 0, 0, 0]);
-    /// let sysex = Event::new(0, [0x3516_7E7F, 0x0D70_0201, 0, 0]);
-    /// assert_eq!(note_on.message_type(), 2);
-    /// assert_eq!(sysex.message_type(), 3);
+    /// assert!(Event::new(0, [0x10F8_0000, 0, 0, 0]).is_real_time()); // the clock
+    /// assert!(!Event::new(0, [0x10F2_0000, 0, 0, 0]).is_real_time()); // song position
     /// ```
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
-    pub fn message_type(&self) -> u8 {
-        (self.words[0] >> 28) as u8
+    pub fn is_real_time(&self) -> bool {
+        let [_, status, ..] = self.words[0].to_be_bytes();
+        self.message_type() == MessageType::SYSTEM && status >= 0xF8
     }
 
     /// The packet's group, 0 to 15. Meaningless for the message types that
@@ -208,14 +228,14 @@ impl Event {
 /// # Examples
 ///
 /// ```
-/// use hapto_ump::{Event, EventList};
+/// use hapto_ump::{Event, EventList, MessageType};
 ///
 /// let mut list = EventList::with_capacity(8);
 /// // A MIDI 1.0 note-on at frame 16.
 /// list.push(Event::new(16, [0x2090_3C7F, 0, 0, 0]));
 ///
 /// for event in list.as_slice() {
-///     assert_eq!((event.offset, event.message_type()), (16, 2));
+///     assert_eq!((event.offset, event.message_type()), (16, MessageType::MIDI1));
 /// }
 /// assert_eq!(list.dropped(), 0);
 /// ```
@@ -408,7 +428,7 @@ mod tests {
     #[test]
     fn the_header_names_the_type_and_group() {
         let sysex = Event::new(0, [0x3516_7E7F, 0x0D70_0201, 0, 0]);
-        assert_eq!(sysex.message_type(), 3);
+        assert_eq!(sysex.message_type(), MessageType::SYSEX7);
         assert_eq!(sysex.group(), 5);
         assert_eq!(sysex.channel_voice(), None);
     }

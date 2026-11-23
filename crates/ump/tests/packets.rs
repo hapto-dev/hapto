@@ -1,6 +1,6 @@
 //! Packet sizes and splitting a stream of words.
 
-use hapto_ump::{Packets, Truncated, packet_words};
+use hapto_ump::{MessageType, Packets, Truncated};
 use proptest::prelude::*;
 use proptest::test_runner::FileFailurePersistence;
 
@@ -29,14 +29,11 @@ const TABLE: [(u8, usize); 16] = [
 #[test]
 fn every_message_type_has_the_size_the_table_gives() {
     for (message_type, bits) in TABLE {
-        assert_eq!(
-            packet_words(message_type),
-            Some(bits / 32),
-            "{message_type:#X}"
-        );
+        let words = MessageType::new(message_type).map(MessageType::words);
+        assert_eq!(words, Some(bits / 32), "{message_type:#X}");
     }
     for message_type in 16..=u8::MAX {
-        assert_eq!(packet_words(message_type), None, "{message_type:#X}");
+        assert_eq!(MessageType::new(message_type), None, "{message_type:#X}");
     }
 }
 
@@ -96,7 +93,7 @@ fn a_cut_packet_is_refused_once_and_nothing_follows() {
         }
         let cut: Truncated = packets.next().expect("the cut packet").expect_err("cut");
         assert_eq!(
-            (cut.message_type, cut.needed, cut.available),
+            (cut.message_type.get(), cut.needed, cut.available),
             (message_type, needed, available)
         );
         assert_eq!(packets.next(), None, "nothing after a cut packet");
@@ -141,7 +138,7 @@ proptest! {
         for packet in Packets::new(&stream, 0) {
             match packet {
                 Ok(event) => {
-                    taken += packet_words(event.message_type()).expect("a type");
+                    taken += event.message_type().words();
                 }
                 Err(cut) => {
                     prop_assert_eq!(taken + cut.available, stream.len());
