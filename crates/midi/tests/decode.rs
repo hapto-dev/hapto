@@ -2,7 +2,8 @@
 //! their ids, a note's own messages, SysEx joined, and each message's line.
 
 use hapto_midi::{Centred, Channel, Decoder, Group, Key, Message, NoteId, Program, controller};
-use hapto_ump::{Event, Origin, scale};
+use hapto_ump::SysExForm::{self, Complete, Continue, End, Start};
+use hapto_ump::{Event, Origin, SysEx7, scale};
 use hapto_ump::{EventList, Midi1Message, Midi1Voice, Upgrade};
 use proptest::prelude::*;
 use proptest::test_runner::FileFailurePersistence;
@@ -352,21 +353,10 @@ fn midi_1_reads_as_nothing_since_it_is_upgraded_before() {
     assert_eq!(decode(&mut decoder, [0x10F8_0000, 0]), []);
 }
 
-/// A 7-bit SysEx packet: `status` and the `bytes` it carries.
-fn sysex(group: u32, status: u32, bytes: &[u8]) -> [u32; 2] {
-    let mut padded = [0_u32; 6];
-    for (slot, &byte) in padded.iter_mut().zip(bytes) {
-        *slot = u32::from(byte);
-    }
-    [
-        0x3000_0000
-            | group << 24
-            | status << 20
-            | (bytes.len() as u32) << 16
-            | padded[0] << 8
-            | padded[1],
-        padded[2] << 24 | padded[3] << 16 | padded[4] << 8 | padded[5],
-    ]
+/// A 7-bit SysEx packet on `group`, of `form`, carrying `bytes`.
+fn sysex(group: u8, form: SysExForm, bytes: &[u8]) -> [u32; 2] {
+    let [first, second, ..] = SysEx7::new(group, form, bytes).words();
+    [first, second]
 }
 
 fn data(messages: &[Message<'_>]) -> Vec<Vec<u8>> {
@@ -382,13 +372,16 @@ fn data(messages: &[Message<'_>]) -> Vec<Vec<u8>> {
 #[test]
 fn a_sysex_comes_whole_once_its_last_packet_does() {
     let mut decoder = Decoder::new();
-    let identity = decode(&mut decoder, sysex(0, 0, &[0x7E, 0x7F, 0x06, 0x01]));
+    let identity = decode(&mut decoder, sysex(0, Complete, &[0x7E, 0x7F, 0x06, 0x01]));
     assert_eq!(data(&identity), [vec![0x7E, 0x7F, 0x06, 0x01]]);
-    assert_eq!(decode(&mut decoder, sysex(0, 1, &[1, 2, 3, 4, 5, 6])), []);
+    assert_eq!(
+        decode(&mut decoder, sysex(0, Start, &[1, 2, 3, 4, 5, 6])),
+        []
+    );
     // A clock inside it changes nothing.
     assert_eq!(decode(&mut decoder, [0x10F8_0000, 0]), []);
-    assert_eq!(decode(&mut decoder, sysex(0, 2, &[7, 8])), []);
-    let whole = decode(&mut decoder, sysex(0, 3, &[9]));
+    assert_eq!(decode(&mut decoder, sysex(0, Continue, &[7, 8])), []);
+    let whole = decode(&mut decoder, sysex(0, End, &[9]));
     assert_eq!(data(&whole), [(1..=9).collect::<Vec<u8>>()]);
     assert_eq!(decoder.dropped(), 0);
 }
@@ -396,22 +389,22 @@ fn a_sysex_comes_whole_once_its_last_packet_does() {
 #[test]
 fn a_sysex_too_long_cut_short_or_begun_elsewhere_is_dropped_and_counted() {
     let mut decoder = Decoder::with_room(8, 4);
-    decode(&mut decoder, sysex(0, 1, &[1, 2, 3]));
+    decode(&mut decoder, sysex(0, Start, &[1, 2, 3]));
     assert_eq!(
-        decode(&mut decoder, sysex(0, 3, &[4, 5])),
+        decode(&mut decoder, sysex(0, End, &[4, 5])),
         [],
         "past the buffer"
     );
     assert_eq!(decoder.dropped(), 1);
     // A note on its group cuts one short.
-    decode(&mut decoder, sysex(0, 1, &[1]));
+    decode(&mut decoder, sysex(0, Start, &[1]));
     decode(&mut decoder, on(60, 0xFFFF));
-    assert_eq!(decode(&mut decoder, sysex(0, 3, &[2])), []);
+    assert_eq!(decode(&mut decoder, sysex(0, End, &[2])), []);
     assert_eq!(decoder.dropped(), 2);
     // One begun on another group while one is under way.
-    decode(&mut decoder, sysex(0, 1, &[1]));
-    assert_eq!(decode(&mut decoder, sysex(1, 0, &[9])), []);
-    let whole = decode(&mut decoder, sysex(0, 3, &[2]));
+    decode(&mut decoder, sysex(0, Start, &[1]));
+    assert_eq!(decode(&mut decoder, sysex(1, Complete, &[9])), []);
+    let whole = decode(&mut decoder, sysex(0, End, &[2]));
     assert_eq!((data(&whole), decoder.dropped()), (vec![vec![1, 2]], 3));
 }
 
@@ -436,7 +429,7 @@ fn each_message_is_one_line_in_musicians_numbers() {
             "pressure 0.000 for C#4, channel 1, group 1, no note",
         ),
         (
-            sysex(2, 0, &[0x7E, 0x7F]),
+            sysex(2, Complete, &[0x7E, 0x7F]),
             "SysEx of 2 bytes: 7E 7F, group 3",
         ),
     ];

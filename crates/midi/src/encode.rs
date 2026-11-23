@@ -15,7 +15,7 @@
 )]
 
 use hapto_ump::scale::up_14_to_32;
-use hapto_ump::{Attribute, Bank, ChannelMessage, ChannelVoice};
+use hapto_ump::{Attribute, Bank, ChannelMessage, ChannelVoice, SysEx7};
 
 use crate::message::{Message, NoteKey};
 use crate::values::{Centred, Channel, Group, Pitch};
@@ -27,7 +27,7 @@ const PER_NOTE_PITCH: u8 = 3;
 /// as a SysEx needs, six bytes each.
 pub(crate) fn encode(message: &Message<'_>, mut send: impl FnMut([u32; 4])) {
     if let Message::SysEx { group, data } = *message {
-        sysex(group, data, send);
+        SysEx7::packets(group.index() as u8, data, send);
         return;
     }
     if let Some(voice) = voice(message) {
@@ -220,41 +220,6 @@ fn channel_wide(message: &Message<'_>) -> Option<ChannelVoice> {
         channel: channel.index() as u8,
         message,
     })
-}
-
-/// A SysEx's bytes as 7-bit SysEx packets: one whole, or a first, middle
-/// ones and a last, six bytes each.
-fn sysex(group: Group, data: &[u8], mut send: impl FnMut([u32; 4])) {
-    let group = group.index() as u32;
-    let last = data.len().saturating_sub(1) / 6;
-    let mut chunks = data.chunks(6).enumerate().peekable();
-    if chunks.peek().is_none() {
-        send(sysex7(group, 0x0, &[]));
-    }
-    for (index, chunk) in chunks {
-        let status = match (index, last) {
-            (0, 0) => 0x0,
-            (0, _) => 0x1,
-            (i, l) if i == l => 0x3,
-            _ => 0x2,
-        };
-        send(sysex7(group, status, chunk));
-    }
-}
-
-fn sysex7(group: u32, status: u32, chunk: &[u8]) -> [u32; 4] {
-    let mut bytes = [0_u32; 6];
-    for (slot, &byte) in bytes.iter_mut().zip(chunk) {
-        *slot = u32::from(byte & 0x7F);
-    }
-    let [b1, b2, b3, b4, b5, b6] = bytes;
-    let count = chunk.len().min(6) as u32;
-    [
-        0x3 << 28 | (group & 0xF) << 24 | status << 20 | count << 16 | b1 << 8 | b2,
-        b3 << 24 | b4 << 16 | b5 << 8 | b6,
-        0,
-        0,
-    ]
 }
 
 /// A value from 0 to 1 as 32 bits, held to the ends.

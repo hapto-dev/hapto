@@ -20,7 +20,7 @@
 use std::error::Error;
 use std::fmt;
 
-use hapto_ump::{Event, EventList, Upgrade};
+use hapto_ump::{Event, EventList, SysEx7, SysExForm, Upgrade};
 
 use crate::Instant;
 use crate::backend;
@@ -412,20 +412,9 @@ impl InputsReader {
 /// bytes, six bytes a packet, and one more for what the stream held.
 pub(crate) const BURST: usize = 172;
 
-/// The SysEx7 statuses a run of packets turns on.
-const SYSEX_START: u32 = 0x1;
-const SYSEX_CONTINUE: u32 = 0x2;
-const SYSEX_END: u32 = 0x3;
-
-/// A SysEx7 packet's status, or `None` for any other packet.
-fn sysex_status(words: [u32; 4]) -> Option<u32> {
-    (words[0] >> 28 == 0x3).then_some((words[0] >> 20) & 0xF)
-}
-
-/// Whether `words` is a real-time system message, which may fall inside a
-/// SysEx.
-fn real_time(words: [u32; 4]) -> bool {
-    words[0] >> 28 == 0x1 && (words[0] >> 16) & 0xFF >= 0xF8
+/// A SysEx7 packet's form, or `None` for any other packet.
+fn sysex_form(words: [u32; 4]) -> Option<SysExForm> {
+    SysEx7::decode(words).map(|packet| packet.form)
 }
 
 /// What `ring` has ready for a block that starts at `now`: when its next
@@ -442,7 +431,7 @@ fn ready(ring: &Consumer, now: Instant) -> Option<(Instant, usize)> {
     if at >= now {
         return None;
     }
-    if sysex_status(words) != Some(SYSEX_START) {
+    if sysex_form(words) != Some(SysExForm::Start) {
         return Some((at, 1));
     }
     let mut latest = at;
@@ -451,10 +440,10 @@ fn ready(ring: &Consumer, now: Instant) -> Option<(Instant, usize)> {
         if when >= now {
             return None;
         }
-        match sysex_status(words) {
-            Some(SYSEX_END) => return Some((when, index.saturating_add(1))),
-            Some(SYSEX_CONTINUE) => latest = when,
-            _ if real_time(words) => {}
+        match sysex_form(words) {
+            Some(SysExForm::End) => return Some((when, index.saturating_add(1))),
+            Some(SysExForm::Continue) => latest = when,
+            _ if Event::new(0, words).is_real_time() => {}
             // A SysEx the device dropped part way, then something else:
             // what came of it goes as it is.
             _ => return Some((latest, index)),

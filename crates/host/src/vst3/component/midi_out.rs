@@ -36,7 +36,7 @@ use ::vst3::Steinberg::Vst::{
     PolyPressureEvent,
 };
 use ::vst3::Steinberg::{int32, kResultOk, uint8};
-use hapto_ump::{ChannelMessage, Downgrade, Event, Midi1Message, Midi1Voice, Origin};
+use hapto_ump::{ChannelMessage, Downgrade, Event, MessageType, Midi1Message, Midi1Voice, Origin};
 
 use super::midi::{
     EXPRESSIONS, Named, Notes, PER_NOTE_PITCH, SYSEX, TUNING_REACH, expression_of_volume,
@@ -279,15 +279,15 @@ fn expression(
 /// for, which is counted.
 fn midi_1(packet: &Event, out: &mut Out, add: &mut impl FnMut(VstEvent) -> bool) {
     let sent = match packet.message_type() {
-        0x2 => match packet.midi1_voice() {
+        MessageType::MIDI1 => match packet.midi1_voice() {
             Some(voice) => midi_1_event(packet.offset, voice).is_some_and(&mut *add),
             None => false,
         },
-        0x3 => {
+        MessageType::SYSEX7 => {
             sysex(packet, out, add);
             return;
         }
-        0x1 => system_event(packet.offset, packet.words[0]).is_some_and(&mut *add),
+        MessageType::SYSTEM => system_event(packet.offset, packet.words[0]).is_some_and(&mut *add),
         _ => false,
     };
     if !sent {
@@ -402,25 +402,19 @@ fn midi_1_event(offset: u32, voice: Midi1Voice) -> Option<VstEvent> {
 /// One 7-bit SysEx packet, joined with the ones before it; the whole
 /// message goes out once its last packet does, from the block's room.
 fn sysex(packet: &Event, out: &mut Out, add: &mut impl FnMut(VstEvent) -> bool) {
-    let [head, second, ..] = packet.words;
-    let status = (head >> 20) & 0xF;
-    let count = (((head >> 16) & 0xF) as usize).min(6);
-    let payload = [
-        (head >> 8) as u8 & 0x7F,
-        head as u8 & 0x7F,
-        (second >> 24) as u8 & 0x7F,
-        (second >> 16) as u8 & 0x7F,
-        (second >> 8) as u8 & 0x7F,
-        second as u8 & 0x7F,
-    ];
-    let bytes = payload.get(..count).unwrap_or(&[]);
+    let Some(part) = packet.sysex7() else {
+        // A reserved status: no part of any message.
+        out.lose();
+        return;
+    };
+    let bytes = part.data();
     // No room made: a plugin that declares no MIDI out sends none.
     if out.joining.capacity() == 0 {
         out.lose();
         return;
     }
     // A whole or first packet begins a message.
-    if matches!(status, 0 | 1) {
+    if part.form.begins() {
         out.joining.clear();
         out.joining.push(0xF0);
         out.over = false;
@@ -436,7 +430,7 @@ fn sysex(packet: &Event, out: &mut Out, add: &mut impl FnMut(VstEvent) -> bool) 
     } else {
         out.over = true;
     }
-    if !matches!(status, 0 | 3) {
+    if !part.form.ends() {
         return;
     }
     out.joining.push(0xF7);

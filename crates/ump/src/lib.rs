@@ -142,14 +142,14 @@ pub enum Origin {
     /// the host's name for the note, which the words have no room for.
     ///
     /// ```
-    /// use hapto_ump::{Event, Origin};
+    /// use hapto_ump::{Event, MessageType, Origin};
     ///
     /// // A note-on whose host named its note 7.
     /// let event = Event {
     ///     origin: Origin::Note { id: 7 },
     ///     ..Event::new(0, [0x4090_3C00, 0xFFFF_0000, 0, 0])
     /// };
-    /// assert_eq!(event.message_type(), 4);
+    /// assert_eq!(event.message_type(), MessageType::MIDI2);
     /// ```
     Note {
         /// The host's id for the note, below `0x8000_0000`.

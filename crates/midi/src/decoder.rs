@@ -18,7 +18,9 @@
 use std::fmt;
 
 use hapto_ump::scale::down_32_to_14;
-use hapto_ump::{Attribute, ChannelMessage, ChannelVoice, Event, Origin};
+use hapto_ump::{
+    Attribute, ChannelMessage, ChannelVoice, Event, MessageType, Origin, SysEx7, SysExForm,
+};
 
 use crate::message::{Message, NoteKey, NoteOff, NoteOn};
 use crate::values::{Centred, Channel, Group, Key, NoteId, Pitch, Program};
@@ -266,13 +268,16 @@ impl Decoder {
     /// What `event` decoded to, the note-offs' ids in [`ended`](Self::ended)
     /// and a whole SysEx in [`sysex_bytes`](Self::sysex_bytes).
     pub(crate) fn read(&mut self, event: &Event) -> Decoded {
-        let head = event.words[0];
-        match head >> 28 {
+        match event.message_type() {
             // Real time may fall inside a SysEx, and so may the groupless
             // utility and stream messages.
-            0x0 | 0xF => Decoded::Nothing,
-            0x1 if (head >> 16) & 0xFF >= 0xF8 => Decoded::Nothing,
-            0x3 => self.sysex(event.words),
+            MessageType::UTILITY | MessageType::STREAM => Decoded::Nothing,
+            _ if event.is_real_time() => Decoded::Nothing,
+            MessageType::SYSEX7 => match event.sysex7() {
+                Some(packet) => self.sysex(packet),
+                // A reserved status: part of no message.
+                None => Decoded::Nothing,
+            },
             _ => {
                 // Anything else on a SysEx's group ends it, cut short.
                 if self.sysex_group == Some(Group::field(event.group())) {
@@ -571,22 +576,11 @@ impl Decoder {
     }
 
     /// One 7-bit SysEx packet.
-    fn sysex(&mut self, words: [u32; 4]) -> Decoded {
-        let head = words[0];
-        let group = Group::field(((head >> 24) & 0xF) as u8);
-        let count = (((head >> 16) & 0xF) as usize).min(6);
-        let payload = [
-            (head >> 8) as u8,
-            head as u8,
-            (words[1] >> 24) as u8,
-            (words[1] >> 16) as u8,
-            (words[1] >> 8) as u8,
-            words[1] as u8,
-        ];
-        let bytes = payload.get(..count).unwrap_or(&[]);
-        let status = (head >> 20) & 0xF;
-        match status {
-            COMPLETE | START => {
+    fn sysex(&mut self, packet: SysEx7) -> Decoded {
+        let group = Group::field(packet.group);
+        let bytes = packet.data();
+        match packet.form {
+            SysExForm::Complete | SysExForm::Start => {
                 if let Some(under_way) = self.sysex_group {
                     if under_way != group {
                         // One under way on another group keeps the buffer.
@@ -600,15 +594,15 @@ impl Decoder {
                 self.sysex_over = false;
                 self.sysex_group = Some(group);
                 self.append(bytes);
-                if status == COMPLETE {
+                if packet.form.ends() {
                     self.finish(group)
                 } else {
                     Decoded::Nothing
                 }
             }
-            CONTINUE | END if self.sysex_group == Some(group) => {
+            SysExForm::Continue | SysExForm::End if self.sysex_group == Some(group) => {
                 self.append(bytes);
-                if status == END {
+                if packet.form.ends() {
                     self.finish(group)
                 } else {
                     Decoded::Nothing
@@ -649,13 +643,6 @@ impl Decoder {
         self.dropped = self.dropped.saturating_add(1);
     }
 }
-
-/// The SysEx7 statuses: the whole message in one packet, or its first,
-/// middle and last packets.
-const COMPLETE: u32 = 0x0;
-const START: u32 = 0x1;
-const CONTINUE: u32 = 0x2;
-const END: u32 = 0x3;
 
 /// MIDI 2.0's registered per-note controller for a note's absolute pitch,
 /// 7.25.

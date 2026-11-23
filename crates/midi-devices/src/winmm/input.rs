@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::{self, JoinHandle};
 
-use hapto_ump::ByteStream;
+use hapto_ump::{ByteStream, Bytes};
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
 use windows::Win32::Media::Audio::{
     CALLBACK_FUNCTION, HMIDIIN, MIDIHDR, midiInAddBuffer, midiInClose, midiInOpen,
@@ -193,11 +193,8 @@ impl Shared {
                 // A whole message, running status filled in: its status in
                 // the low byte, then its data.
                 let packed = (first as u32).to_le_bytes();
-                let length = match packed[0] {
-                    0xF6 | 0xF8..=0xFF => 1,
-                    0xC0..=0xDF | 0xF1 | 0xF3 => 2,
-                    _ => 3,
-                };
+                // An undefined status alone, which the stream drops.
+                let length = Bytes::length_of(packed[0]).unwrap_or(1);
                 self.read(at, packed.get(..length).unwrap_or(&[]));
             }
             MM_MIM_LONGDATA | MM_MIM_LONGERROR => {

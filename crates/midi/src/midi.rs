@@ -17,7 +17,7 @@
 
 use std::fmt;
 
-use hapto_ump::{Event, EventList, Origin};
+use hapto_ump::{Event, EventList, Origin, SysEx7};
 
 use crate::decoder::{Decoded, Decoder};
 use crate::encode::encode;
@@ -527,8 +527,7 @@ impl<'a> MidiOut<'a> {
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn forward(&mut self, frame: usize, message: &Message<'_>) {
         if let Message::SysEx { data, .. } = message {
-            // Six bytes a packet, and one packet for none.
-            let needed = data.len().div_ceil(6).max(1);
+            let needed = SysEx7::count(data.len());
             let room = self
                 .packets
                 .capacity()

@@ -1,4 +1,4 @@
-use hapto_ump::{ChannelMessage, Origin, scale};
+use hapto_ump::{ChannelMessage, Origin, SysExForm, scale};
 
 use super::*;
 
@@ -153,39 +153,34 @@ fn a_new_device_on_an_input_starts_its_translation_over() {
     assert_eq!(read(&mut reader, at(20), 10), []);
 }
 
-/// A 7-bit SysEx packet: `status` and `count` bytes of `tag`.
-fn sysex(status: u32, count: u32, tag: u32) -> [u32; 4] {
-    [
-        0x3000_0000 | status << 20 | count << 16 | tag << 8 | tag,
-        0,
-        0,
-        0,
-    ]
+/// A 7-bit SysEx packet of `form`: `count` bytes of `tag`, held to 7 bits.
+fn sysex(form: SysExForm, count: usize, tag: u32) -> [u32; 4] {
+    SysEx7::new(0, form, &[(tag & 0x7F) as u8; 6][..count]).words()
 }
 
 #[test]
 fn a_sysex_waits_until_whole_while_other_inputs_go_on() {
     let (mut producers, mut reader) = rig(16);
     read(&mut reader, at(0), 10);
-    producers[0].push(at(1), sysex(SYSEX_START, 6, 1));
-    producers[0].push(at(2), sysex(SYSEX_CONTINUE, 6, 2));
+    producers[0].push(at(1), sysex(SysExForm::Start, 6, 1));
+    producers[0].push(at(2), sysex(SysExForm::Continue, 6, 2));
     producers[1].push(at(3), tagged(9));
     let first = read(&mut reader, at(10), 10);
     assert_eq!(tags(&first), [(3, 9)], "the other input's message goes on");
-    producers[0].push(at(14), sysex(SYSEX_END, 2, 3));
+    producers[0].push(at(14), sysex(SysExForm::End, 2, 3));
     producers[1].push(at(16), tagged(8));
     let second = read(&mut reader, at(20), 10);
     // The whole SysEx, at the frame its end came, then the rest in order.
     let statuses: Vec<_> = second
         .iter()
-        .map(|event| (event.offset, sysex_status(event.words)))
+        .map(|event| (event.offset, sysex_form(event.words)))
         .collect();
     assert_eq!(
         statuses,
         [
-            (4, Some(SYSEX_START)),
-            (4, Some(SYSEX_CONTINUE)),
-            (4, Some(SYSEX_END)),
+            (4, Some(SysExForm::Start)),
+            (4, Some(SysExForm::Continue)),
+            (4, Some(SysExForm::End)),
             (6, None)
         ]
     );
@@ -195,9 +190,9 @@ fn a_sysex_waits_until_whole_while_other_inputs_go_on() {
 fn a_real_time_message_inside_a_sysex_goes_with_it() {
     let (mut producers, mut reader) = rig(16);
     let clock = [0x10F8_0000, 0, 0, 0];
-    producers[0].push(at(1), sysex(SYSEX_START, 6, 1));
+    producers[0].push(at(1), sysex(SysExForm::Start, 6, 1));
     producers[0].push(at(2), clock);
-    producers[0].push(at(3), sysex(SYSEX_END, 1, 2));
+    producers[0].push(at(3), sysex(SysExForm::End, 1, 2));
     let words: Vec<u32> = read(&mut reader, at(10), 10)
         .iter()
         .map(|event| event.words[0])
@@ -205,9 +200,9 @@ fn a_real_time_message_inside_a_sysex_goes_with_it() {
     assert_eq!(
         words,
         [
-            sysex(SYSEX_START, 6, 1)[0],
+            sysex(SysExForm::Start, 6, 1)[0],
             clock[0],
-            sysex(SYSEX_END, 1, 2)[0]
+            sysex(SysExForm::End, 1, 2)[0]
         ]
     );
 }
@@ -216,9 +211,9 @@ fn a_real_time_message_inside_a_sysex_goes_with_it() {
 fn a_sysex_longer_than_the_room_goes_out_as_it_comes() {
     // Room for 4 packets, all of them the SysEx so far.
     let (mut producers, mut reader) = rig(4);
-    producers[0].push(at(1), sysex(SYSEX_START, 6, 1));
+    producers[0].push(at(1), sysex(SysExForm::Start, 6, 1));
     for tag in 2..5 {
-        producers[0].push(at(u64::from(tag)), sysex(SYSEX_CONTINUE, 6, tag));
+        producers[0].push(at(u64::from(tag)), sysex(SysExForm::Continue, 6, tag));
     }
     assert_eq!(read(&mut reader, at(10), 10).len(), 4);
 }
@@ -229,9 +224,9 @@ fn a_held_sysex_goes_out_while_a_devices_next_buffer_still_fits() {
     // once fewer than a burst's packets of room are left, past 340 held.
     let held = |count: u32| {
         let (mut producers, mut reader) = rig(512);
-        producers[0].push(at(1), sysex(SYSEX_START, 6, 1));
+        producers[0].push(at(1), sysex(SysExForm::Start, 6, 1));
         for tag in 2..=count {
-            producers[0].push(at(2), sysex(SYSEX_CONTINUE, 6, tag));
+            producers[0].push(at(2), sysex(SysExForm::Continue, 6, tag));
         }
         let mut out = EventList::with_capacity(512);
         reader.read(at(10), 10, &mut out);
@@ -248,13 +243,13 @@ fn a_held_sysex_goes_out_while_a_devices_next_buffer_still_fits() {
 #[test]
 fn a_sysex_the_device_dropped_part_way_goes_as_it_is() {
     let (mut producers, mut reader) = rig(8);
-    producers[0].push(at(1), sysex(SYSEX_START, 6, 1));
+    producers[0].push(at(1), sysex(SysExForm::Start, 6, 1));
     producers[0].push(at(2), tagged(5));
     let statuses: Vec<_> = read(&mut reader, at(10), 10)
         .iter()
-        .map(|event| sysex_status(event.words))
+        .map(|event| sysex_form(event.words))
         .collect();
-    assert_eq!(statuses, [Some(SYSEX_START), None]);
+    assert_eq!(statuses, [Some(SysExForm::Start), None]);
 }
 
 #[test]

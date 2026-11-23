@@ -46,7 +46,7 @@ use ::vst3::Steinberg::{
 use hapto_midi::controller;
 use hapto_params::RESERVED_HOST_IDS;
 use hapto_ump::{
-    Attribute, ByteStream, ChannelMessage, ChannelVoice, Midi1Message, Midi1Voice, Origin,
+    Attribute, ChannelMessage, ChannelVoice, Midi1Message, Midi1Voice, Origin, SysEx7,
 };
 
 use super::Component;
@@ -570,17 +570,14 @@ fn expression(value: &NoteExpressionValueEvent, offset: u32, notes: &Notes, midi
 }
 
 /// A SysEx's bytes, with or without its F0 and F7, as 7-bit SysEx packets
-/// on the first group.
+/// on the first group: one message, each byte held to 7 bits, since a
+/// format's SysEx event is one.
 fn sysex(bytes: &[u8], offset: u32, midi: &mut MidiIn<'_>) {
-    let mut stream = ByteStream::new(0);
-    let mut send = |words| midi.push(hapto_ump::Event::new(offset, words));
-    if bytes.first() != Some(&0xF0) {
-        stream.read(&[0xF0], &mut send);
-    }
-    stream.read(bytes, &mut send);
-    if bytes.last() != Some(&0xF7) {
-        stream.read(&[0xF7], &mut send);
-    }
+    let data = bytes.strip_prefix(&[0xF0]).unwrap_or(bytes);
+    let data = data.strip_suffix(&[0xF7]).unwrap_or(data);
+    SysEx7::packets(0, data, |words| {
+        midi.push(hapto_ump::Event::new(offset, words));
+    });
 }
 
 /// A note's channel and key, if both are in range.

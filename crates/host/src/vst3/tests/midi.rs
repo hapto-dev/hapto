@@ -263,6 +263,30 @@ fn a_sysex_reaches_the_plugin_whole() {
 }
 
 #[test]
+fn a_sysex_with_a_status_byte_inside_stays_one_message() {
+    let mut host = running();
+    // 0x90 is a note-on's status, which a byte stream would read as one.
+    let events = [BusEvent::SysEx {
+        offset: 2,
+        bytes: &[0xF0, 0x7E, 0x90, 0x3C, 0x7F, 0xF7],
+    }];
+    play(&mut host, &events, &[]);
+    let heard = host.component().heard(|midi| {
+        midi.iter()
+            .map(|(frame, message)| match message {
+                Message::SysEx { data, .. } => (frame, data.to_vec()),
+                other => panic!("not a SysEx: {other}"),
+            })
+            .collect::<Vec<_>>()
+    });
+    assert_eq!(
+        heard.expect("active"),
+        [(2, vec![0x7E, 0x10, 0x3C, 0x7F])],
+        "one message, each byte held to 7 bits"
+    );
+}
+
+#[test]
 fn a_controller_comes_through_its_proxy_as_midi_1_upgraded_and_before_a_note_at_its_frame() {
     let mut host = running();
     let volume = host.midi_mapping(0, 7).expect("mapped");

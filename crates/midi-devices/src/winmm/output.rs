@@ -15,7 +15,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{self, JoinHandle};
 
-use hapto_ump::Bytes;
+use hapto_ump::{Bytes, SysEx7};
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
 use windows::Win32::Media::Audio::{
     CALLBACK_EVENT, HMIDIOUT, MHDR_DONE, MIDIERR_NODEVICE, MIDIHDR, midiOutClose, midiOutLongMsg,
@@ -122,10 +122,9 @@ impl Sysex {
     /// Adds one 7-bit SysEx packet, whose bytes `Bytes` gave, F0 and F7
     /// among them where it begins or ends one. `dropped` is the ring's
     /// dropped count now.
-    fn join(&mut self, words: [u32; 4], bytes: &[u8], dropped: u64) -> Joined {
-        let status = (words[0] >> 20) & 0xF;
-        let group = ((words[0] >> 24) & 0xF) as u8;
-        let (begins, ends) = (matches!(status, 0 | 1), matches!(status, 0 | 3));
+    fn join(&mut self, packet: SysEx7, bytes: &[u8], dropped: u64) -> Joined {
+        let group = packet.group;
+        let (begins, ends) = (packet.form.begins(), packet.form.ends());
         if group != self.group && !self.bytes.is_empty() {
             // Another group's SysEx while one is under way: a device takes
             // one at a time, so it is dropped, counted at its end.
@@ -381,8 +380,8 @@ fn send(handle: Handle, shared: &Shared, signal: &Signal, consumer: Consumer) ->
         let Some(bytes) = Bytes::of(words) else {
             continue;
         };
-        if words[0] >> 28 == 0x3 {
-            match sysex.join(words, &bytes, consumer.dropped()) {
+        if let Some(packet) = SysEx7::decode(words) {
+            match sysex.join(packet, &bytes, consumer.dropped()) {
                 Joined::Part => {}
                 Joined::Whole => {
                     if !sysex.send(handle, shared) {
