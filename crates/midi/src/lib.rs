@@ -13,12 +13,13 @@
 //! - A [`NoteId`] names a note from its note-on to its note-off, and a
 //!   per-note message names its note with a [`NoteKey`].
 //!
-//! A block's audio cut at each message is its [`Spans`].
+//! A block's audio cut at each message is its [`Spans`]. An instrument's
+//! notes play on its [`Voice`]s, which [`Poly`] gives them.
 //!
-//! The crate is in the core tier, on `hapto-ump` and `hapto-audio`, and
-//! depends on nothing else. Decoding, reading a block, cutting it into spans
-//! and sending are fit for the audio thread: they allocate nothing and never
-//! panic.
+//! The crate is in the core tier, on `hapto-ump`, `hapto-audio` and
+//! `hapto-params`, and depends on nothing else. Decoding, reading a block,
+//! cutting it into spans, sending and playing voices are fit for the audio
+//! thread: they allocate nothing and never panic.
 //!
 //! # Examples
 //!
@@ -71,6 +72,7 @@ mod message;
 mod midi;
 mod spans;
 mod values;
+mod voices;
 
 pub use channels::PerChannel;
 pub use controller::{Controller, ControllerValue};
@@ -79,3 +81,4 @@ pub use message::{Message, NoteKey, NoteOff, NoteOn};
 pub use midi::{BLOCK_SYSEX_BYTES, Iter, MESSAGES, Midi, MidiList, MidiOut, Packets, packets_of};
 pub use spans::{Span, Spans};
 pub use values::{Centred, Channel, Group, Key, NoteId, Pedal, Pitch, Program};
+pub use voices::{Expression, Poly, ToPlay, Tuning, Voice, VoiceAudio, VoiceFrame};

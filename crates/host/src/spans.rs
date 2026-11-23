@@ -1,5 +1,7 @@
-//! A block cut into spans: `Spans` itself is hapto-midi's, since it is only
-//! audio and MIDI, and a block makes them.
+//! A block cut into spans, or played by voices: `Spans` and `Poly` are
+//! hapto-midi's, since each is only audio and MIDI, and a block makes them.
+
+use hapto_midi::ToPlay;
 
 use crate::layout::Layout;
 use crate::{Block, MidiOut, Spans};
@@ -90,5 +92,15 @@ impl<'a, L: Layout> Block<'a, L> {
     /// ```
     pub fn spans_and_out(self) -> (Spans<'a, L>, MidiOut<'a>) {
         (Spans::new(self.audio, self.midi), self.midi_out)
+    }
+}
+
+/// A block's audio and MIDI, for [`Poly::play`](hapto_midi::Poly::play):
+/// `self.voices.play(block)`. What the block sends is dropped; a plugin that
+/// sends hands the two over itself, `(block.audio, block.midi)`, and keeps
+/// `block.midi_out`.
+impl<'a, L: Layout> From<Block<'a, L>> for ToPlay<'a, L> {
+    fn from(block: Block<'a, L>) -> Self {
+        ToPlay::new(block.audio, block.midi)
     }
 }

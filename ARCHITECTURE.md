@@ -52,7 +52,10 @@ reading how Hapto works inside, start with
   `Midi` and `MidiOut` (`midi.rs`), the encoder that writes a message back as
   packets (`encode.rs`), the controllers, typed (`controller.rs`), and a
   block's audio cut at each message, its [spans](docs/glossary.md#span)
-  (`spans.rs`).
+  (`spans.rs`), and an instrument's voices (`voices/`): `Poly` and the
+  `Voice` trait (`poly.rs`, `mod.rs`), what a note plays at (`expression.rs`,
+  `tuning.rs`) from what its channel and its key keep (`state.rs`), and the
+  audio a voice renders into (`audio.rs`).
 - `crates/audio`: a block's audio as a processor sees it: the layouts, the
   channels a main bus has as a type (`layout.rs`); `Audio`, the channels a
   block lends, walked by frame or by channel (`audio.rs`, `frame.rs`); and

@@ -1487,6 +1487,22 @@ move its line here; when a decision gains code, add one.
 - test `crates/midi/tests/decode.rs`: module, `a_note_off_ends_the_notes_its_key_has`, `a_notes_own_message_names_its_key_and_the_newest_note_on_it`, `a_sysex_too_long_cut_short_or_begun_elsewhere_is_dropped_and_counted`, `each_message_is_one_line_in_musicians_numbers`, `a_note_past_a_full_table_takes_the_oldest_notes_place`, `all_notes_off_ends_its_channels_notes_in_the_table_and_no_others`
 - test `crates/midi/tests/alloc_gate.rs`: module
 
+### D117. An instrument's voices
+
+[Record section](decisions.md#d117-an-instruments-voices)
+
+- `crates/midi/src/voices/mod.rs`: module, `Voice`
+- `crates/midi/src/voices/poly.rs`: module, `Poly`, `Poly::play`, `Poly::handle`, `Poly::render`, `Hold`, `Sounding::rank`, `ToPlay`
+- `crates/midi/src/voices/state.rs`: module, `ChannelState`, `NoteControls`, `Keys`, `NOTE_CONTROLS`
+- `crates/midi/src/voices/expression.rs`: module, `Expression`, `Expression::get`, `Expression::modulated`
+- `crates/midi/src/voices/audio.rs`: module, `VoiceAudio`, `VoiceFrame`
+- `crates/midi/src/voices/tuning.rs`: module, `Tuning`
+- `crates/audio/src/frame.rs`: `AddSample`
+- `crates/audio/src/audio.rs`: `Audio::reborrow`
+- `crates/host/src/spans.rs`: module
+- test `crates/midi/src/voices/tests.rs`: module
+- test `crates/midi/src/voices/audio.rs`: `the_centre_is_full_level_on_both_sides_and_a_side_fades_away_from_it`
+
 ## Parameters
 
 ### P1. One store per parameter

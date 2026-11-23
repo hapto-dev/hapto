@@ -197,6 +197,22 @@ window anywhere but Windows.
   test or a tool to hand a host. `NoteOn::with_key` moves a note, its own
   pitch with it, and `NoteOn::with_id` with `NoteId::own` names a note a
   plugin sends beside the host's.
+- `hapto-midi`: an instrument's voices. `Poly` gives each note one of a
+  plugin's `Voice`s, and `self.voices.play(block)` plays a block with them,
+  cut at each message, answering `Status::Sleep` once none sounds; `handle`
+  and `render` do the two halves inside a loop over spans. Notes are named by
+  id, a key may sound twice, a voice is taken idle first, then released,
+  then held by a pedal alone, then the oldest, and controllers 120 to 127 act
+  as MIDI 1.0 defines them. A voice renders by its note's `Expression`: its
+  pitch from its key in a `Tuning`, or its own, with every bend, range and
+  tuning added, its pressure, timbre, pan and damper, which follows half
+  pedal, and any controller with `get`, the note's own before its channel's.
+  Per-note controllers belong to the key, as MIDI 2.0 keeps them, but for a
+  note its host names. It renders into a `VoiceAudio`, the span's audio in
+  the processor's layout, whose frames place a mono voice by its pan.
+  `AddSample::add_scaled` adds a sample at a gain per channel, and
+  `Audio::reborrow` lends audio again. `Spans` and `Span` are hapto-midi's,
+  and `Status` hapto-audio's, both re-exported where they were.
 - `hapto-midi-devices`: the computer's MIDI devices as UMP, for an app that runs
   a plugin with no host. A device is named by an id that survives the system's
   renumbering, the list's changes are told at the main thread's tick, and each

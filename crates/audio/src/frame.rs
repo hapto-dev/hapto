@@ -120,6 +120,25 @@ impl fmt::Debug for Frame<'_> {
 pub trait AddSample {
     /// Adds `sample` to each of the frame's channels.
     fn add(self, sample: f32);
+
+    /// Adds `sample` into each of the frame's channels at that channel's
+    /// gain, the first gain for the first channel: a mono voice placed
+    /// between the speakers. A channel past the last gain gets none of it.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hapto_audio::layout::Stereo;
+    /// use hapto_audio::{AddSample, AudioBuf};
+    ///
+    /// // Hard left.
+    /// let mut buffer = AudioBuf::<Stereo>::new(2);
+    /// for frame in buffer.audio().frames_mut() {
+    ///     frame.add_scaled(0.5, &[1.0, 0.0]);
+    /// }
+    /// assert_eq!(buffer.channels(), [[0.5, 0.5], [0.0, 0.0]]);
+    /// ```
+    fn add_scaled(self, sample: f32, gains: &[f32]);
 }
 
 impl<const N: usize> AddSample for [&mut f32; N] {
@@ -128,10 +147,22 @@ impl<const N: usize> AddSample for [&mut f32; N] {
             *channel += sample;
         }
     }
+
+    fn add_scaled(self, sample: f32, gains: &[f32]) {
+        for (channel, gain) in self.into_iter().zip(gains) {
+            *channel += sample * gain;
+        }
+    }
 }
 
 impl AddSample for Frame<'_> {
     fn add(self, sample: f32) {
         Frame::add(self, sample);
+    }
+
+    fn add_scaled(self, sample: f32, gains: &[f32]) {
+        for (channel, gain) in self.samples.into_iter().flatten().zip(gains) {
+            *channel += sample * gain;
+        }
     }
 }

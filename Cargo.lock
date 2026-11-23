@@ -916,6 +916,7 @@ name = "hapto-midi"
 version = "0.1.0"
 dependencies = [
  "hapto-audio",
+ "hapto-params",
  "hapto-testkit",
  "hapto-ump",
  "proptest",
