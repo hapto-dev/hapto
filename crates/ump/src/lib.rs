@@ -69,6 +69,7 @@
 mod buf;
 mod bytes;
 mod downgrade;
+mod head;
 mod midi1;
 mod packets;
 pub mod scale;
@@ -96,7 +97,7 @@ pub use voice::{Attribute, Bank, ChannelMessage, ChannelVoice};
 /// let message = ChannelMessage::NoteOn { note: 60, velocity: u16::MAX, attribute: Attribute::NONE };
 /// assert_eq!(event.channel_voice(), Some(ChannelVoice { group: 0, channel: 0, message }));
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct Event {
     /// The frame it happens at, from the start of the block.
     pub offset: u32,
@@ -108,11 +109,9 @@ pub struct Event {
 
 /// Where a packet came from before it reached a block.
 ///
-/// Everything above the exporters reads MIDI 2.0, so a packet's protocol is
-/// no longer in its words. Its origin keeps what the words lost: a value
-/// upgraded from MIDI 1.0 narrows back to its 7 or 14 bits exactly, as the
-/// specification's round trip guarantees, for a reader that needs the
-/// value as it was sent.
+/// Once upgraded, a packet's words no longer say which protocol sent it, so
+/// its origin does, for a reader that needs a value as it was sent: see
+/// [`scale`].
 ///
 /// # Examples
 ///
@@ -181,8 +180,8 @@ impl Event {
     /// ```
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn is_real_time(&self) -> bool {
-        let [_, status, ..] = self.words[0].to_be_bytes();
-        self.message_type() == MessageType::SYSTEM && status >= 0xF8
+        let head = head::Head::read(self.words[0]);
+        head.kind == MessageType::SYSTEM && head.status >= 0xF8
     }
 
     /// The packet's group, 0 to 15. Meaningless for the message types that
@@ -199,7 +198,7 @@ impl Event {
     /// ```
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn group(&self) -> u8 {
-        ((self.words[0] >> 24) & 0xF) as u8
+        head::Head::read(self.words[0]).group
     }
 
     /// The MIDI 2.0 channel voice message this packet carries, as
@@ -210,8 +209,7 @@ impl Event {
     }
 
     /// The MIDI 1.0 channel voice message this packet carries, as
-    /// [`Midi1Voice::decode`] reads it: for an exporter's translation, since
-    /// nothing above it reads MIDI 1.0.
+    /// [`Midi1Voice::decode`] reads it, for an exporter's translation.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn midi1_voice(&self) -> Option<Midi1Voice> {
         Midi1Voice::decode(self.words)

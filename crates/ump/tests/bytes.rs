@@ -279,8 +279,8 @@ fn sent() -> impl Strategy<Value = Sent> {
     ]
 }
 
-/// A stream of messages, with running status where it applies, cut into
-/// reads at `cuts`.
+/// A stream of messages, with running status where it applies, and the
+/// packets it reads as.
 fn stream(messages: &[Sent]) -> (Vec<u8>, Vec<[u32; 4]>) {
     let mut running = None;
     let mut bytes = Vec::new();

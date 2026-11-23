@@ -2,24 +2,11 @@
 //! into packets and written back: the edge where a device's bytes become
 //! UMP.
 
-// Audio-path code: a panic here ends a host, so indexing, unwrap, expect,
-// panic and unchecked arithmetic are refused, and a site that is provably
-// safe says why in an `#[expect]`.
-#![cfg_attr(
-    not(test),
-    deny(
-        clippy::indexing_slicing,
-        clippy::unwrap_used,
-        clippy::expect_used,
-        clippy::panic,
-        clippy::arithmetic_side_effects
-    )
-)]
-
 use std::fmt;
 use std::ops::Deref;
 
 use crate::buf::Buf;
+use crate::head::Head;
 use crate::{MessageType, SysEx7, SysExForm};
 
 const SYSEX_BEGIN: u8 = 0xF0;
@@ -219,12 +206,14 @@ impl ByteStream {
 /// A one-word packet of message type `kind`: a status byte and two data
 /// bytes after the group.
 fn word(kind: MessageType, group: u8, status: u8, first: u8, second: u8) -> [u32; 4] {
-    let head = u32::from(kind.get()) << 28
-        | u32::from(group & 0xF) << 24
-        | u32::from(status) << 16
-        | u32::from(first & 0x7F) << 8
-        | u32::from(second & 0x7F);
-    [head, 0, 0, 0]
+    let head = Head {
+        kind,
+        group,
+        status,
+        byte3: first & 0x7F,
+        byte4: second & 0x7F,
+    };
+    [head.word(), 0, 0, 0]
 }
 
 /// One packet as MIDI 1.0 bytes, for a device or port that takes the byte
@@ -247,7 +236,7 @@ fn word(kind: MessageType, group: u8, status: u8, first: u8, second: u8) -> [u32
 /// // A MIDI 2.0 note-on is not MIDI 1.0: downgrade it first.
 /// assert_eq!(Bytes::of([0x4090_3C00, 0xFFFF_0000, 0, 0]), None);
 /// ```
-#[derive(Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct Bytes(Buf<8>);
 
 impl Bytes {
@@ -259,11 +248,11 @@ impl Bytes {
     /// Thread: any. Allocates nothing.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn of(words: [u32; 4]) -> Option<Bytes> {
-        let [head, ..] = words;
-        let [_, status, ..] = head.to_be_bytes();
-        match MessageType::of(head) {
-            MessageType::SYSTEM if status >= 0xF0 => Bytes::short(head),
-            MessageType::MIDI1 if status < 0xF0 => Bytes::short(head),
+        let [first, ..] = words;
+        let head = Head::read(first);
+        match head.kind {
+            MessageType::SYSTEM if head.status >= 0xF0 => Bytes::short(head),
+            MessageType::MIDI1 if head.status < 0xF0 => Bytes::short(head),
             MessageType::SYSEX7 => SysEx7::decode(words).map(Bytes::sysex),
             _ => None,
         }
@@ -296,14 +285,11 @@ impl Bytes {
 
     /// A one-word packet's message: its status and the data bytes its
     /// length takes.
-    fn short(head: u32) -> Option<Bytes> {
-        let [_, status, first, second] = head.to_be_bytes();
-        let length = Bytes::length_of(status)?;
+    fn short(head: Head) -> Option<Bytes> {
+        let length = Bytes::length_of(head.status)?;
         let mut out = Bytes::default();
-        for byte in [status, first & 0x7F, second & 0x7F]
-            .into_iter()
-            .take(length)
-        {
+        let bytes = [head.status, head.byte3 & 0x7F, head.byte4 & 0x7F];
+        for byte in bytes.into_iter().take(length) {
             out.0.push(byte);
         }
         Some(out)

@@ -8,9 +8,15 @@ use proptest::test_runner::FileFailurePersistence;
 /// Checks that `words` reads as `message` on group 0, channel 0, and that
 /// the message writes back to the same words.
 fn reads_back(words: [u32; 4], message: ChannelMessage) {
+    reads_back_on(0, 0, words, message);
+}
+
+/// Checks that `words` reads as `message` on `group` and `channel`, and that
+/// the message writes back to the same words.
+fn reads_back_on(group: u8, channel: u8, words: [u32; 4], message: ChannelMessage) {
     let expected = ChannelVoice {
-        group: 0,
-        channel: 0,
+        group,
+        channel,
         message,
     };
     assert_eq!(ChannelVoice::decode(words), Some(expected), "{words:08x?}");
@@ -24,20 +30,12 @@ fn known_midi_2_note_and_channel_packets_read_as_their_messages() {
         ChannelPressure, NoteOff, NoteOn, PitchBend, PolyPressure, ProgramChange,
     };
     // Group 2, channel 5, note 64, full velocity.
-    let on = ChannelVoice {
-        group: 2,
-        channel: 5,
-        message: NoteOn {
-            note: 64,
-            velocity: 0xFFFF,
-            attribute: Attribute::NONE,
-        },
+    let on = NoteOn {
+        note: 64,
+        velocity: 0xFFFF,
+        attribute: Attribute::NONE,
     };
-    assert_eq!(
-        ChannelVoice::decode([0x4295_4000, 0xFFFF_0000, 0, 0]),
-        Some(on)
-    );
-    assert_eq!(on.words(), [0x4295_4000, 0xFFFF_0000, 0, 0]);
+    reads_back_on(2, 5, [0x4295_4000, 0xFFFF_0000, 0, 0], on);
     // A pitch 7.9 attribute is type 3.
     let pitch = Attribute {
         kind: 3,

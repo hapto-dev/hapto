@@ -1,26 +1,21 @@
 //! MIDI 2.0 channel voice messages (message type 4), read from and written
 //! to packets.
 
-use crate::Event;
+use crate::head::{
+    CHANNEL_PRESSURE, CONTROL_CHANGE, Head, NOTE_OFF, NOTE_ON, PITCH_BEND, POLY_PRESSURE,
+    PROGRAM_CHANGE,
+};
+use crate::{Event, MessageType};
 
-/// MIDI 2.0 channel voice messages, two words.
-const MIDI2: u32 = 0x4;
-
-const REGISTERED_PER_NOTE: u32 = 0x0;
-const ASSIGNABLE_PER_NOTE: u32 = 0x1;
-const REGISTERED_CONTROLLER: u32 = 0x2;
-const ASSIGNABLE_CONTROLLER: u32 = 0x3;
-const RELATIVE_REGISTERED: u32 = 0x4;
-const RELATIVE_ASSIGNABLE: u32 = 0x5;
-const PER_NOTE_PITCH_BEND: u32 = 0x6;
-const NOTE_OFF: u32 = 0x8;
-const NOTE_ON: u32 = 0x9;
-const POLY_PRESSURE: u32 = 0xA;
-const CONTROL_CHANGE: u32 = 0xB;
-const PROGRAM_CHANGE: u32 = 0xC;
-const CHANNEL_PRESSURE: u32 = 0xD;
-const PITCH_BEND: u32 = 0xE;
-const PER_NOTE_MANAGEMENT: u32 = 0xF;
+// The statuses MIDI 2.0 alone has.
+const REGISTERED_PER_NOTE: u8 = 0x0;
+const ASSIGNABLE_PER_NOTE: u8 = 0x1;
+const REGISTERED_CONTROLLER: u8 = 0x2;
+const ASSIGNABLE_CONTROLLER: u8 = 0x3;
+const RELATIVE_REGISTERED: u8 = 0x4;
+const RELATIVE_ASSIGNABLE: u8 = 0x5;
+const PER_NOTE_PITCH_BEND: u8 = 0x6;
+const PER_NOTE_MANAGEMENT: u8 = 0xF;
 
 /// A MIDI 2.0 channel voice message, with the group and channel it came on.
 ///
@@ -37,7 +32,7 @@ const PER_NOTE_MANAGEMENT: u32 = 0xF;
 /// };
 /// assert_eq!(voice.words(), [0x4295_4000, 0xFFFF_0000, 0, 0]);
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ChannelVoice {
     /// The UMP group, 0 to 15.
     pub group: u8,
@@ -48,9 +43,8 @@ pub struct ChannelVoice {
 }
 
 /// The MIDI 2.0 channel voice messages, each value at the width MIDI 2.0
-/// sends it: nothing here rescales. Everything above the exporters reads
-/// MIDI in this form, since an exporter upgrades MIDI 1.0 on the way in
-/// (see [`Upgrade`](crate::Upgrade)).
+/// sends it: nothing here rescales. This is the form the [crate](crate)
+/// says everything above the exporters reads.
 ///
 /// A note, controller, bank or index field is 7 bits, but a per-note
 /// controller's index, which is 8.
@@ -66,7 +60,7 @@ pub struct ChannelVoice {
 /// }
 /// assert!(sounds(ChannelMessage::NoteOn { note: 60, velocity: 0, attribute: Attribute::NONE }));
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum ChannelMessage {
     /// A note ends.
@@ -256,20 +250,19 @@ impl ChannelVoice {
     /// ```
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn decode(words: [u32; 4]) -> Option<Self> {
-        let [head, data, ..] = words;
-        if head >> 28 != MIDI2 {
+        let [first, data, ..] = words;
+        let head = Head::read(first);
+        if head.kind != MessageType::MIDI2 {
             return None;
         }
-        let status = (head >> 20) & 0xF;
-        let byte3 = ((head >> 8) & 0xFF) as u8;
-        let byte4 = (head & 0xFF) as u8;
+        let (byte3, byte4) = (head.byte3, head.byte4);
         let (seven3, seven4) = (byte3 & 0x7F, byte4 & 0x7F);
         let attribute = Attribute {
             kind: byte4,
             data: (data & 0xFFFF) as u16,
         };
         let velocity = (data >> 16) as u16;
-        let message = match status {
+        let message = match head.voice_status() {
             NOTE_OFF => ChannelMessage::NoteOff {
                 note: seven3,
                 velocity,
@@ -339,8 +332,8 @@ impl ChannelVoice {
             _ => return None,
         };
         Some(ChannelVoice {
-            group: ((head >> 24) & 0xF) as u8,
-            channel: ((head >> 16) & 0xF) as u8,
+            group: head.group,
+            channel: head.channel(),
             message,
         })
     }
@@ -362,22 +355,18 @@ impl ChannelVoice {
     /// ```
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn words(&self) -> [u32; 4] {
-        let seven = |byte: u8| u32::from(byte & 0x7F);
-        let head = |status: u32, byte3: u32, byte4: u32| {
-            MIDI2 << 28
-                | u32::from(self.group & 0xF) << 24
-                | status << 20
-                | u32::from(self.channel & 0xF) << 16
-                | byte3 << 8
-                | byte4
+        let seven = |byte: u8| byte & 0x7F;
+        let head = |status: u8, byte3: u8, byte4: u8| {
+            let (group, channel) = (self.group, self.channel);
+            Head::voice(MessageType::MIDI2, group, status, channel, byte3, byte4).word()
         };
-        let note = |status: u32, note: u8, velocity: u16, attribute: Attribute| {
+        let note = |status: u8, note: u8, velocity: u16, attribute: Attribute| {
             (
-                head(status, seven(note), u32::from(attribute.kind)),
+                head(status, seven(note), attribute.kind),
                 u32::from(velocity) << 16 | u32::from(attribute.data),
             )
         };
-        let controller = |status: u32, bank: u8, index: u8| head(status, seven(bank), seven(index));
+        let controller = |status: u8, bank: u8, index: u8| head(status, seven(bank), seven(index));
         let (head, data) = match self.message {
             ChannelMessage::NoteOff {
                 note: key,
@@ -397,10 +386,13 @@ impl ChannelVoice {
             }
             ChannelMessage::ProgramChange { program, bank } => {
                 let (valid, banks) = match bank {
-                    Some(Bank { msb, lsb }) => (1, seven(msb) << 8 | seven(lsb)),
+                    Some(Bank { msb, lsb }) => {
+                        (1, u32::from(seven(msb)) << 8 | u32::from(seven(lsb)))
+                    }
                     None => (0, 0),
                 };
-                (head(PROGRAM_CHANGE, 0, valid), seven(program) << 24 | banks)
+                let data = u32::from(seven(program)) << 24 | banks;
+                (head(PROGRAM_CHANGE, 0, valid), data)
             }
             ChannelMessage::ChannelPressure { value } => (head(CHANNEL_PRESSURE, 0, 0), value),
             ChannelMessage::PitchBend { value } => (head(PITCH_BEND, 0, 0), value),
@@ -426,14 +418,12 @@ impl ChannelVoice {
                 controller(RELATIVE_ASSIGNABLE, bank, index),
                 change.cast_unsigned(),
             ),
-            ChannelMessage::RegisteredPerNoteController { note, index, value } => (
-                head(REGISTERED_PER_NOTE, seven(note), u32::from(index)),
-                value,
-            ),
-            ChannelMessage::AssignablePerNoteController { note, index, value } => (
-                head(ASSIGNABLE_PER_NOTE, seven(note), u32::from(index)),
-                value,
-            ),
+            ChannelMessage::RegisteredPerNoteController { note, index, value } => {
+                (head(REGISTERED_PER_NOTE, seven(note), index), value)
+            }
+            ChannelMessage::AssignablePerNoteController { note, index, value } => {
+                (head(ASSIGNABLE_PER_NOTE, seven(note), index), value)
+            }
             ChannelMessage::PerNotePitchBend { note, value } => {
                 (head(PER_NOTE_PITCH_BEND, seven(note), 0), value)
             }
@@ -442,7 +432,7 @@ impl ChannelVoice {
                 detach,
                 reset,
             } => {
-                let flags = u32::from(detach) << 1 | u32::from(reset);
+                let flags = u8::from(detach) << 1 | u8::from(reset);
                 (head(PER_NOTE_MANAGEMENT, seven(note), flags), 0)
             }
         };

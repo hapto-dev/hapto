@@ -2,18 +2,11 @@
 //! to packets: what an exporter upgrades on the way in and downgrades on
 //! the way out.
 
-use crate::Event;
-
-/// MIDI 1.0 channel voice messages, one word.
-const MIDI1: u32 = 0x2;
-
-const NOTE_OFF: u32 = 0x8;
-const NOTE_ON: u32 = 0x9;
-const POLY_PRESSURE: u32 = 0xA;
-const CONTROL_CHANGE: u32 = 0xB;
-const PROGRAM_CHANGE: u32 = 0xC;
-const CHANNEL_PRESSURE: u32 = 0xD;
-const PITCH_BEND: u32 = 0xE;
+use crate::head::{
+    CHANNEL_PRESSURE, CONTROL_CHANGE, Head, NOTE_OFF, NOTE_ON, PITCH_BEND, POLY_PRESSURE,
+    PROGRAM_CHANGE, join_14, split_14,
+};
+use crate::{Event, MessageType};
 
 /// A MIDI 1.0 channel voice message, with the group and channel it came on.
 ///
@@ -26,7 +19,7 @@ const PITCH_BEND: u32 = 0xE;
 /// let voice = Midi1Voice { group: 0, channel: 0, message: Midi1Message::NoteOn { note: 60, velocity: 127 } };
 /// assert_eq!(voice.words(), [0x2090_3C7F, 0, 0, 0]);
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Midi1Voice {
     /// The UMP group, 0 to 15.
     pub group: u8,
@@ -41,13 +34,17 @@ pub struct Midi1Voice {
 /// # Examples
 ///
 /// ```
-/// use hapto_ump::Midi1Message;
+/// use hapto_ump::{ChannelMessage, EventList, Midi1Message, Midi1Voice, Upgrade};
 ///
-/// // MIDI 1.0 reads a velocity of 0 as a note-off.
-/// let quiet = Midi1Message::NoteOn { note: 60, velocity: 0 };
-/// # let _ = quiet;
+/// // MIDI 1.0 reads a velocity of 0 as a note-off, and the upgrade sends one.
+/// let message = Midi1Message::NoteOn { note: 60, velocity: 0 };
+/// let quiet = Midi1Voice { group: 0, channel: 0, message };
+/// let mut out = EventList::with_capacity(4);
+/// Upgrade::new().block(&[quiet.event(0)], 0, &mut out);
+/// let upgraded = out.as_slice()[0].channel_voice().map(|voice| voice.message);
+/// assert!(matches!(upgraded, Some(ChannelMessage::NoteOff { note: 60, .. })));
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum Midi1Message {
     /// A note ends.
@@ -109,13 +106,13 @@ impl Midi1Voice {
     /// ```
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn decode(words: [u32; 4]) -> Option<Self> {
-        let [head, ..] = words;
-        if head >> 28 != MIDI1 {
+        let [first, ..] = words;
+        let head = Head::read(first);
+        if head.kind != MessageType::MIDI1 {
             return None;
         }
-        let byte3 = ((head >> 8) & 0x7F) as u8;
-        let byte4 = (head & 0x7F) as u8;
-        let message = match (head >> 20) & 0xF {
+        let (byte3, byte4) = (head.byte3 & 0x7F, head.byte4 & 0x7F);
+        let message = match head.voice_status() {
             NOTE_OFF => Midi1Message::NoteOff {
                 note: byte3,
                 velocity: byte4,
@@ -135,13 +132,13 @@ impl Midi1Voice {
             PROGRAM_CHANGE => Midi1Message::ProgramChange { program: byte3 },
             CHANNEL_PRESSURE => Midi1Message::ChannelPressure { value: byte3 },
             PITCH_BEND => Midi1Message::PitchBend {
-                value: u16::from(byte4) << 7 | u16::from(byte3),
+                value: join_14(byte3, byte4),
             },
             _ => return None,
         };
         Some(Midi1Voice {
-            group: ((head >> 24) & 0xF) as u8,
-            channel: ((head >> 16) & 0xF) as u8,
+            group: head.group,
+            channel: head.channel(),
             message,
         })
     }
@@ -159,35 +156,30 @@ impl Midi1Voice {
     /// ```
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn words(&self) -> [u32; 4] {
-        let seven = |byte: u8| u32::from(byte & 0x7F);
-        let head = |status: u32, byte3: u32, byte4: u32| {
-            MIDI1 << 28
-                | u32::from(self.group & 0xF) << 24
-                | status << 20
-                | u32::from(self.channel & 0xF) << 16
-                | byte3 << 8
-                | byte4
-        };
-        let head = match self.message {
-            Midi1Message::NoteOff { note, velocity } => {
-                head(NOTE_OFF, seven(note), seven(velocity))
-            }
-            Midi1Message::NoteOn { note, velocity } => head(NOTE_ON, seven(note), seven(velocity)),
-            Midi1Message::PolyPressure { note, value } => {
-                head(POLY_PRESSURE, seven(note), seven(value))
-            }
+        let (status, byte3, byte4) = match self.message {
+            Midi1Message::NoteOff { note, velocity } => (NOTE_OFF, note, velocity),
+            Midi1Message::NoteOn { note, velocity } => (NOTE_ON, note, velocity),
+            Midi1Message::PolyPressure { note, value } => (POLY_PRESSURE, note, value),
             Midi1Message::ControlChange { controller, value } => {
-                head(CONTROL_CHANGE, seven(controller), seven(value))
+                (CONTROL_CHANGE, controller, value)
             }
-            Midi1Message::ProgramChange { program } => head(PROGRAM_CHANGE, seven(program), 0),
-            Midi1Message::ChannelPressure { value } => head(CHANNEL_PRESSURE, seven(value), 0),
-            Midi1Message::PitchBend { value } => head(
-                PITCH_BEND,
-                u32::from(value) & 0x7F,
-                (u32::from(value) >> 7) & 0x7F,
-            ),
+            Midi1Message::ProgramChange { program } => (PROGRAM_CHANGE, program, 0),
+            Midi1Message::ChannelPressure { value } => (CHANNEL_PRESSURE, value, 0),
+            Midi1Message::PitchBend { value } => {
+                let (low, high) = split_14(value);
+                (PITCH_BEND, low, high)
+            }
         };
-        [head, 0, 0, 0]
+        let (group, channel) = (self.group, self.channel);
+        let head = Head::voice(
+            MessageType::MIDI1,
+            group,
+            status,
+            channel,
+            byte3 & 0x7F,
+            byte4 & 0x7F,
+        );
+        [head.word(), 0, 0, 0]
     }
 
     /// The packet as an event at `offset`, as a MIDI 1.0 source sends it,

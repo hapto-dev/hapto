@@ -1,6 +1,7 @@
 //! MIDI 1.0 upgraded to MIDI 2.0 on the way in, by the Default Translation
 //! in appendix D.3 of the UMP and MIDI 2.0 Protocol specification.
 
+use crate::head::join_14;
 use crate::scale::{up_7_to_16, up_7_to_32, up_14_to_32};
 use crate::{
     Attribute, Bank, ChannelMessage, ChannelVoice, Event, EventList, Midi1Message, Midi1Voice,
@@ -13,11 +14,10 @@ const RESET_ALL_CONTROLLERS: u8 = 121;
 /// The null parameter number's two bytes: it selects nothing.
 const NULL: u8 = 127;
 
-/// Upgrades MIDI 1.0 to MIDI 2.0, as an exporter does on the way in, so
-/// nothing above it ever reads MIDI 1.0.
+/// Upgrades MIDI 1.0 to MIDI 2.0, as an exporter does on the way in.
 ///
-/// It follows the specification's Default Translation. Values upscale by
-/// Min-Center-Max, so each narrows back to what was sent, and every packet
+/// It follows the specification's Default Translation. Values upscale as
+/// [`scale`](crate::scale) says, and every packet
 /// it makes is marked [`Origin::Midi1`], or [`Origin::Midi1HighByte`] for
 /// a data entry high byte sent with no low byte. A note-on at velocity 0
 /// becomes a note-off at `0x8000`. The pair of a 14-bit controller stays two
@@ -460,7 +460,7 @@ impl Entry {
             index,
         } = self.number;
         let low = self.low.unwrap_or(0);
-        let value = up_14_to_32(u16::from(self.high & 0x7F) << 7 | u16::from(low & 0x7F));
+        let value = up_14_to_32(join_14(low, self.high));
         if registered {
             ChannelMessage::RegisteredController { bank, index, value }
         } else {

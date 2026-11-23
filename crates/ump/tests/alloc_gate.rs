@@ -215,14 +215,16 @@ fn splitting_words_and_decoding_and_encoding_voices_does_not_allocate() {
 
 #[test]
 fn upgrading_and_downgrading_a_block_does_not_allocate() {
-    let at_frames = |events: &mut dyn Iterator<Item = Event>| -> Vec<Event> {
-        events
-            .zip(0..)
-            .map(|(event, offset)| Event { offset, ..event })
-            .collect()
-    };
-    let sent = at_frames(&mut midi1_voices().iter().map(|voice| voice.event(0)));
-    let midi2 = at_frames(&mut voices().iter().map(|voice| voice.event(0)));
+    let sent: Vec<Event> = midi1_voices()
+        .iter()
+        .zip(0..)
+        .map(|(voice, offset)| voice.event(offset))
+        .collect();
+    let midi2: Vec<Event> = voices()
+        .iter()
+        .zip(0..)
+        .map(|(voice, offset)| voice.event(offset))
+        .collect();
     // Making an upgrade allocates its channels' state; using it does not.
     let mut upgrade = Upgrade::new();
     let mut downgrade = Downgrade::new();

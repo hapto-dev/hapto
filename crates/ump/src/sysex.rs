@@ -1,6 +1,7 @@
 //! 7-bit System Exclusive packets: a SysEx message six bytes at a time.
 
 use crate::buf::Buf;
+use crate::head::Head;
 use crate::{Event, MessageType};
 
 /// Where a [`SysEx7`] packet's bytes fall in their message.
@@ -53,7 +54,7 @@ impl SysExForm {
         }
     }
 
-    const fn status(self) -> u32 {
+    const fn status(self) -> u8 {
         match self {
             SysExForm::Complete => 0x0,
             SysExForm::Start => 0x1,
@@ -63,7 +64,7 @@ impl SysExForm {
     }
 
     /// The form a packet's status names; `None` for the reserved 4 to 15.
-    const fn from_status(status: u32) -> Option<SysExForm> {
+    const fn from_status(status: u8) -> Option<SysExForm> {
         match status {
             0x0 => Some(SysExForm::Complete),
             0x1 => Some(SysExForm::Start),
@@ -138,20 +139,18 @@ impl SysEx7 {
     /// Thread: any. Allocates nothing.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn decode(words: [u32; 4]) -> Option<Self> {
-        let [head, second, ..] = words;
-        if MessageType::of(head) != MessageType::SYSEX7 {
+        let [first, second, ..] = words;
+        let head = Head::read(first);
+        if head.kind != MessageType::SYSEX7 {
             return None;
         }
-        let form = SysExForm::from_status((head >> 20) & 0xF)?;
-        let count = (((head >> 16) & 0xF) as usize).min(Self::MAX_DATA);
-        let [_, _, b1, b2] = head.to_be_bytes();
+        // A SysEx7 packet's status byte holds its form, then its count.
+        let form = SysExForm::from_status(head.status >> 4)?;
+        let count = usize::from(head.status & 0xF).min(Self::MAX_DATA);
         let [b3, b4, b5, b6] = second.to_be_bytes();
-        let bytes = [b1, b2, b3, b4, b5, b6];
-        Some(SysEx7::new(
-            ((head >> 24) & 0xF) as u8,
-            form,
-            bytes.get(..count).unwrap_or(&[]),
-        ))
+        let bytes = [head.byte3, head.byte4, b3, b4, b5, b6];
+        let data = bytes.get(..count).unwrap_or(&[]);
+        Some(SysEx7::new(head.group, form, data))
     }
 
     /// Its bytes, at most six.
@@ -167,13 +166,14 @@ impl SysEx7 {
         }
         let [b1, b2, b3, b4, b5, b6] = bytes;
         let count = self.data().len() as u8;
-        let head = u32::from_be_bytes([
-            (MessageType::SYSEX7.get() << 4) | (self.group & 0xF),
-            ((self.form.status() as u8) << 4) | count,
-            b1,
-            b2,
-        ]);
-        [head, u32::from_be_bytes([b3, b4, b5, b6]), 0, 0]
+        let head = Head {
+            kind: MessageType::SYSEX7,
+            group: self.group,
+            status: self.form.status() << 4 | count,
+            byte3: b1,
+            byte4: b2,
+        };
+        [head.word(), u32::from_be_bytes([b3, b4, b5, b6]), 0, 0]
     }
 
     /// It as an event at frame `offset`.
