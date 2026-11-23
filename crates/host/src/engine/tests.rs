@@ -433,6 +433,7 @@ macro_rules! through_every_shell {
 }
 
 // After the macro, which its bodies run through.
+mod before_activation;
 mod told;
 
 through_every_shell!(

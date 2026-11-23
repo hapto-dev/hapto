@@ -232,7 +232,10 @@ pub trait Plugin: 'static {
     /// Builds the processor for `setup`.
     ///
     /// Everything the audio thread will touch is allocated here, at a fixed
-    /// capacity.
+    /// capacity. When the plugin keeps its [`Parts`], Hapto
+    /// [ticks](crate::Driver::tick) them first, so a session the host loaded
+    /// before it activates is already applied, and the processor can be
+    /// built from it.
     ///
     /// Thread: main.
     fn activate(&mut self, setup: &ProcessSetup) -> Self::Processor;

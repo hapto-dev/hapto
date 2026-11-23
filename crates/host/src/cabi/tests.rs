@@ -1582,7 +1582,8 @@ fn a_release_refused_on_another_thread_drops_learn_s_audio_side_there() {
 }
 
 thread_local! {
-    /// The instance [`Busy`] has its host tick from inside its activation.
+    /// The instance [`Busy`] has its host load into and tick from inside its
+    /// activation.
     static BUSY: Cell<*mut HaptoInstance> = const { Cell::new(std::ptr::null_mut()) };
     /// What [`Busy`]'s participant holds, and how many idles it had.
     static BUSY_ZOOM: Rc<RefCell<Option<Json>>> = Rc::default();
@@ -1606,8 +1607,9 @@ impl hapto_session::Participant for Restored {
     }
 }
 
-/// Keeps its parts and a participant, and has its host tick it from inside
-/// its activation, as a host's nested message loop would.
+/// Keeps its parts and a participant, and has its host load a block and
+/// tick it from inside its activation, as a host's nested message loop
+/// would.
 struct Busy {
     _parts: Parts,
     _participant: Rc<RefCell<Restored>>,
@@ -1633,10 +1635,20 @@ impl Plugin for Busy {
     }
 
     fn activate(&mut self, _: &ProcessSetup) -> Through {
-        // SAFETY: the live instance the test made, ticked on its main
-        // thread from inside one of its own calls, as the header lets a
-        // host's nested message loop.
-        unsafe { (plugin::<Busy>().idle)(BUSY.get()) };
+        // The load comes here, after the activation ticked the parts
+        // itself, so only the nested tick could apply it.
+        let block = br#"{"haptoStateVersion": 1, "parameters": {}, "extra": {"zoom": 2}}"#;
+        // SAFETY: the live instance the test made, loaded into and ticked on
+        // its main thread from inside one of its own calls, as the header
+        // lets a host's nested message loop; `block` is valid for the call.
+        unsafe {
+            assert!((plugin::<Busy>().load)(
+                BUSY.get(),
+                block.as_ptr(),
+                block.len()
+            ));
+            (plugin::<Busy>().idle)(BUSY.get());
+        }
         Through
     }
 
@@ -1649,8 +1661,6 @@ impl Plugin for Busy {
 fn a_tick_while_the_plugin_is_busy_skips_hapto_s_tick_and_its_idle() {
     let host = TestHost::<Busy>::new();
     BUSY.set(host.instance());
-    let block = br#"{"haptoStateVersion": 1, "parameters": {}, "extra": {"zoom": 2}}"#;
-    assert_eq!(host.load(block), Ok(()));
     assert_eq!(host.activate(48_000.0, 64, Width::STEREO), Ok(()));
     assert_eq!(BUSY_IDLES.with(Cell::get), 0, "the nested tick ran no idle");
     assert_eq!(

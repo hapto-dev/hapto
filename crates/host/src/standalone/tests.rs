@@ -6,7 +6,7 @@ use std::cell::{Cell, RefCell};
 use std::error::Error;
 use std::num::NonZeroIsize;
 
-use hapto_params::{Declarer, Float, FloatDecl, Params};
+use hapto_params::{Declarer, Float, FloatDecl, Params, Value};
 use raw_window_handle::{
     HandleError, HasWindowHandle, RawWindowHandle, Win32WindowHandle, WindowHandle,
 };
@@ -409,6 +409,72 @@ fn the_saved_block_carries_the_parameters_between_runs() {
     assert_eq!(refused.to_string(), LoadError::NotJson.to_string());
     assert_eq!((second.latency(), second.tail()), (0, Tail::None));
     second.reset();
+}
+
+thread_local! {
+    /// The value the last [`Trimmed`] saves under `trim`.
+    static TRIM: RefCell<Option<Value<f32>>> = const { RefCell::new(None) };
+}
+
+/// Keeps its parts, and scales by a saved value it reads as it activates.
+struct Trimmed {
+    _parts: Parts,
+    trim: Value<f32>,
+}
+
+/// Scales every channel by the trim its activation found.
+struct Fixed(f32);
+
+impl Processor for Fixed {
+    type Layout = AnyLayout;
+
+    fn process(&mut self, mut block: Block<'_, AnyLayout>) -> Status {
+        block.audio.apply_gain(self.0);
+        Status::Continue
+    }
+}
+
+impl Plugin for Trimmed {
+    const INFO: PluginInfo = Amp::INFO;
+    type Params = Level;
+    type Processor = Fixed;
+
+    fn new(_params: Level, mut parts: Parts) -> Self {
+        let trim = parts.saved_value("trim", 1.0_f32).expect("a free key");
+        TRIM.set(Some(trim.clone()));
+        Trimmed {
+            _parts: parts,
+            trim,
+        }
+    }
+
+    fn activate(&mut self, _setup: &ProcessSetup) -> Fixed {
+        Fixed(self.trim.get())
+    }
+}
+
+#[test]
+fn a_load_before_an_activation_plays_in_the_first_block() {
+    let first = Standalone::<Trimmed>::new();
+    TRIM.with_borrow(|trim| trim.as_ref().expect("made").set(0.25));
+    first.tick();
+    let saved = first.save();
+    drop(first);
+    // As the app starts: the saved block, then the audio, and no tick yet.
+    let second = Standalone::<Trimmed>::new();
+    second.load(&saved).expect("the saved block");
+    second
+        .activate(48_000.0, 64, Width::STEREO)
+        .expect("stereo");
+    let mut audio = second.audio();
+    let input = [1.0_f32; 4];
+    let (mut left, mut right) = ([0.0_f32; 4], [0.0_f32; 4]);
+    audio.process(
+        &[&input[..], &input[..]],
+        &mut [&mut left[..], &mut right[..]],
+    );
+    assert_eq!((left, right), ([0.25; 4], [0.25; 4]));
+    assert_eq!(second.faults(), 0);
 }
 
 /// The amp at its state's version 1, with a migration and an activation that

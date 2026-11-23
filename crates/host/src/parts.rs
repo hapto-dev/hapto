@@ -28,8 +28,9 @@ use saved::{SavedValue, Synced};
 ///
 /// Hapto builds them for each instance and hands them to [`Plugin::new`], with
 /// the parameters the plugin's [`Params`](Plugin::Params) declared, and ticks
-/// them before each [`idle`](Plugin::idle) for as long as the plugin keeps
-/// them ([`Driver::tick`] says what the tick does). They hold the main
+/// them before each [`idle`](Plugin::idle) and each
+/// [`activate`](Plugin::activate) for as long as the plugin keeps them
+/// ([`Driver::tick`] says what the tick does). They hold the main
 /// thread's handles, so a plugin that keeps them is not `Send`. One that
 /// wants to be drops them and keeps its parameters, which are.
 ///
@@ -530,11 +531,13 @@ impl Parts {
 ///
 /// Hapto makes one for each instance before [`Plugin::new`] takes the parts.
 /// Through it the engine [ticks](Self::tick) the parts before each
-/// [`idle`](Plugin::idle), and takes learn's [audio side](Self::learn_audio)
-/// at each activation, which it runs over each block's MIDI before the
-/// processor. So a plugin never ticks its parts and its processor never
-/// runs learn. It is public for a test that builds a plugin with no host,
-/// which does both as the engine would. Clones share the link.
+/// [`idle`](Plugin::idle) and before each [`activate`](Plugin::activate),
+/// so a processor is built from a session the host's load restored. After
+/// each activation it takes learn's [audio side](Self::learn_audio), which
+/// it runs over each block's MIDI before the processor. So a plugin never
+/// ticks its parts and its processor never runs learn. It is public for a
+/// test that builds a plugin with no host, which does both as the engine
+/// would. Clones share the link.
 ///
 /// # Examples
 ///
@@ -647,9 +650,10 @@ impl Driver {
     /// The engine takes one at each activation and runs it over each block's
     /// MIDI before the processor's call. The one it replaces keeps the
     /// mappings it last read until it is dropped, off the audio thread, with
-    /// the activation it served. A test with no host takes one after
-    /// [`Plugin::activate`] and runs it before each block it hands the
-    /// processor; the [`idle`](Plugin::idle) example does.
+    /// the activation it served. A test with no host [ticks](Self::tick),
+    /// calls [`Plugin::activate`], then takes one and runs it before each
+    /// block it hands the processor; the [`idle`](Plugin::idle) example
+    /// does.
     ///
     /// Thread: main.
     ///
