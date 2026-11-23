@@ -57,6 +57,7 @@
 )]
 
 mod packets;
+pub mod scale;
 mod voice;
 
 pub use packets::{Packets, Truncated, packet_words};
