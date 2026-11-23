@@ -45,6 +45,9 @@
 //! assert_eq!(ended.id, note.id);
 //! ```
 
+// The nightly real-time sanitizer lane marks the calls the audio thread makes.
+#![cfg_attr(hapto_rtsan, feature(sanitize))]
+
 pub mod controller;
 mod decoder;
 mod encode;

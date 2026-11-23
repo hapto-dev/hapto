@@ -168,12 +168,13 @@ on the main thread and never grown.
 
 Allocation is checked by test. Each crate with audio-thread code has a test
 target named `alloc_gate` (`tests/alloc_gate.rs`): `hapto-host`, `hapto-learn`,
-`hapto-params`, `hapto-ump`, `hapto-audio`, `hapto-standalone`, and the example
-EQ and gain. `hapto-testkit` has one too, which checks the gate itself, and so
-does `hapto-bridge`, whose tick runs on every main-thread tick of an open editor
-and allocates nothing while nothing moved. `hapto-standalone`'s audio path is
-private to the crate, so its gate reaches it through `hapto_standalone::gate`, a
-hidden module open to the gate alone. Each:
+`hapto-params`, `hapto-ump`, `hapto-midi`, `hapto-midi-devices`, `hapto-audio`,
+`hapto-standalone`, and the example EQ and gain. `hapto-testkit` has one too,
+which checks the gate itself, and so does `hapto-bridge`, whose tick runs on
+every main-thread tick of an open editor and allocates nothing while nothing
+moved. `hapto-standalone`'s audio path is private to the crate, so its gate
+reaches it through `hapto_standalone::gate`, a hidden module open to the gate
+alone. Each:
 
 1. installs the counting allocator once: `hapto_testkit::install_alloc_gate!();`
 2. builds and activates what it tests outside the gate, where allocating is
@@ -297,14 +298,18 @@ audio thread's entry points. These carry it, in `hapto-host`:
   marks are compiled on Windows and macOS and never run under the sanitizer.
 
 The parameter store's audio-side reads and writes (`crates/params/src/set.rs`,
-`host_events.rs`), learn's audio side (`crates/learn/src/audio.rs`) and the UMP
+`host_events.rs`), learn's audio side (`crates/learn/src/audio.rs`), the UMP
 crate's event list and readers (`crates/ump/src/lib.rs`, `packets.rs`,
-`voice.rs`) carry marks of their own. The lane runs every crate's allocation
-gate, so the gates of the parameters, learn and UMP crates check those marks
-under the sanitizer too, as well as through the exporters. The plugin's
-processor runs below the exporters' marks in the lane's tests. A processor's
-`process` is a trait method, so a plugin would mark its own impl, as the
-example EQ's block could.
+`voice.rs`), the MIDI crate's decoder and block lists
+(`crates/midi/src/decoder.rs`, `midi.rs`) and the devices crate's clock, rings,
+reader, writer and output signal (`crates/midi-devices/src/clock.rs`, `ring.rs`,
+`inputs.rs`, `outputs.rs`, `winmm/signal.rs`, `none.rs`) carry marks of their
+own. The lane runs every crate's allocation gate, so the gates of the
+parameters, learn, UMP, MIDI and devices crates check those marks under the
+sanitizer too, as well as through the exporters. The plugin's processor runs
+below the exporters' marks in the lane's tests. A processor's `process` is a
+trait method, so a plugin would mark its own impl, as the example EQ's block
+could.
 
 A panic on the audio path allocates its payload, and std's hook writes it to
 stderr, inside a marked call, so the sanitizer reports it. It happens only

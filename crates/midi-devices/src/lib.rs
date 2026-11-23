@@ -44,6 +44,9 @@
 //! reader.read(Instant::now(), 512, &mut block);
 //! ```
 
+// The nightly real-time sanitizer lane marks the calls the audio thread makes.
+#![cfg_attr(hapto_rtsan, feature(sanitize))]
+
 mod clock;
 mod devices;
 mod id;

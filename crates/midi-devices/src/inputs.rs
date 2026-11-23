@@ -2,6 +2,21 @@
 //! block on the audio thread, merged on one group as a host hands a plugin
 //! its MIDI.
 
+// Audio-path code: the reader runs on the audio thread, where a panic ends
+// the app's audio, so indexing, unwrap, expect, panic and unchecked
+// arithmetic are refused, and a site that is provably safe says why in an
+// `#[expect]`.
+#![cfg_attr(
+    not(test),
+    deny(
+        clippy::indexing_slicing,
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::arithmetic_side_effects
+    )
+)]
+
 use std::error::Error;
 use std::fmt;
 
@@ -410,7 +425,7 @@ fn ready(ring: &Consumer, now: Instant) -> Option<(Instant, usize)> {
             return None;
         }
         match sysex_status(words) {
-            Some(SYSEX_END) => return Some((when, index + 1)),
+            Some(SYSEX_END) => return Some((when, index.saturating_add(1))),
             Some(SYSEX_CONTINUE) => latest = when,
             _ if real_time(words) => {}
             // A SysEx the device dropped part way, then something else:
