@@ -236,7 +236,8 @@ c_consts! {
     pub const ABI_VERSION = 3 => "HAPTO_ABI_VERSION";
     /// In `HaptoProcess`'s `flags`: the caller takes MIDI 1.0 out alone, as
     /// JUCE's `MidiBuffer` does, so the plugin downgrades what it sends, by
-    /// the specification's Default Translation.
+    /// the specification's Default Translation, and writes MIDI 1.0's
+    /// packets alone: channel and system messages, and 7-bit SysEx.
     pub const MIDI_OUT_1 = 1 => "HAPTO_MIDI_OUT_1";
     /// A parameter whose value is a number in a range, continuous or
     /// stepped; a stepped range stays continuous to the host.
@@ -558,7 +559,8 @@ c_structs! {
         /// last frame.
         pub midi_in: *const HaptoPacket,
         /// Room for the block's MIDI out: `midi_out_capacity` packets, which
-        /// the plugin writes in time order; null for none.
+        /// the plugin writes in the order it sent them, each at a frame of
+        /// the block; null for none.
         pub midi_out: *mut HaptoPacket,
         /// Where the plugin answers how many packets it wrote to
         /// `midi_out`, every block; null when `midi_out` is.

@@ -642,7 +642,13 @@ unsafe fn send_out(block: &HaptoProcess, sent: &[Event]) {
     if block.flags & MIDI_OUT_1 != 0 {
         let mut downgrade = Downgrade::new();
         for event in sent {
-            downgrade.translate(event, &mut put);
+            // The downgrade passes on what is no channel voice message, and
+            // MIDI 1.0 has a place for its system messages and SysEx alone.
+            downgrade.translate(event, |packet: Event| {
+                if matches!(packet.message_type(), 0x1..=0x3) {
+                    put(packet);
+                }
+            });
         }
     } else {
         for &event in sent {

@@ -1412,17 +1412,24 @@ the adapter checks and no other compatibility promise. Panics are caught at
 every entry point (D60), and the processor flushes denormals inside `process`
 (D61).
 
-**MIDI.** A block's MIDI passes as Universal MIDI Packets both ways (C5), each
-a `HaptoPacket` of a frame and four words. The caller lends the packets in, MIDI
+**MIDI.** A block's MIDI passes as Universal MIDI Packets both ways (C5), each a
+`HaptoPacket` of a frame and four words. The caller lends the packets in, MIDI
 1.0 or MIDI 2.0 as its host sends them, which the engine upgrades (D114), and
 room for the packets out, into which the plugin writes what it sent and answers
-how many, every block. A caller that takes MIDI 1.0 alone sets
-`HAPTO_MIDI_OUT_1`, and the plugin downgrades what it sends. The JUCE adapter
-does both, since a `MidiBuffer` holds MIDI 1.0: it reads the host's messages
-into packets on the first group, and writes the plugin's back, joining a SysEx
-again, all in room it makes in `prepareToPlay`. What a downgrade drops is what
-MIDI 1.0 has no message for, as the specification's Default Translation says,
-so the caller gets no count of it: its host could not take what was dropped.
+how many, every block, each in the order it sent them at a frame of the block. A
+caller that takes MIDI 1.0 alone sets `HAPTO_MIDI_OUT_1`, and the plugin
+downgrades what it sends and writes MIDI 1.0's packets alone: channel and system
+messages, and 7-bit SysEx. The JUCE adapter does both, since a `MidiBuffer`
+holds MIDI 1.0: it reads the host's messages into packets on the first group,
+and writes the plugin's back, joining a SysEx again, all in room it makes in
+`prepareToPlay`. That room includes a `MidiBuffer` for the plugin's MIDI out,
+which the first block after swaps into the host's buffer: JUCE's wrappers keep
+one for an instance, so it keeps the room, and writing into it never allocates.
+A SysEx out is at most 65,529 bytes, since a `MidiBuffer` walks its messages by
+a 16-bit size that counts its 6-byte header too; a longer one is dropped. What a
+downgrade drops is what MIDI 1.0 has no message for, as the specification's
+Default Translation says, so the caller gets no count of it: its host could not
+take what was dropped.
 
 **Alternatives.** The alternatives were one exported function per call, or a
 table filled in by the adapter. For the main thread, they were:

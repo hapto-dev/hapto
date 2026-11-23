@@ -55,7 +55,8 @@ extern "C" {
 
 // In `HaptoProcess`'s `flags`: the caller takes MIDI 1.0 out alone, as
 // JUCE's `MidiBuffer` does, so the plugin downgrades what it sends, by
-// the specification's Default Translation.
+// the specification's Default Translation, and writes MIDI 1.0's
+// packets alone: channel and system messages, and 7-bit SysEx.
 #define HAPTO_MIDI_OUT_1 1u
 
 // A parameter whose value is a number in a range, continuous or
@@ -184,7 +185,8 @@ typedef struct HaptoProcess {
     // last frame.
     const HaptoPacket* midi_in;
     // Room for the block's MIDI out: `midi_out_capacity` packets, which
-    // the plugin writes in time order; null for none.
+    // the plugin writes in the order it sent them, each at a frame of
+    // the block; null for none.
     HaptoPacket* midi_out;
     // Where the plugin answers how many packets it wrote to
     // `midi_out`, every block; null when `midi_out` is.

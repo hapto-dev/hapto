@@ -4,6 +4,7 @@
 #include <cstring>
 #include <limits>
 #include <memory>
+#include <utility>
 
 namespace hapto
 {
@@ -11,10 +12,18 @@ namespace hapto
 namespace
 {
 
+// What a MidiBuffer stores beside each message's bytes: its frame and size.
+constexpr std::size_t eventHeader = sizeof (juce::int32) + sizeof (juce::uint16);
 // The most MIDI packets one block carries each way, and the longest SysEx
-// the plugin may send whole.
+// the plugin may send whole, F0 and F7 included. A MidiBuffer walks its
+// messages by a 16-bit size that counts the header too, so a longer one,
+// which addEvent still takes, would break the walk.
 constexpr std::size_t midiRoom = 2048;
-constexpr std::size_t sysexRoom = 64 * 1024;
+constexpr std::size_t sysexRoom = 65535 - eventHeader;
+// The most bytes one block's MIDI out takes in a MidiBuffer: each packet a
+// message of its own, at most six bytes and a SysEx's F0 and F7, and one
+// SysEx the block ends that began in an earlier block.
+constexpr std::size_t midiOutBytes = midiRoom * (eventHeader + 8) + eventHeader + sysexRoom;
 
 // One whole MIDI 1.0 message, as a MidiBuffer holds it, as Universal MIDI
 // Packets on the first group, written to `packets` from `count` while they
@@ -263,6 +272,9 @@ void PluginProcessor::prepareToPlay (double sampleRate, int maximumExpectedSampl
     midiOut_.assign (midiRoom, HaptoPacket {});
     sysexOut_.clear();
     sysexOut_.reserve (sysexRoom);
+    midiOutRoom_.clear();
+    midiOutRoom_.ensureSize (midiOutBytes);
+    swapOutRoom_ = true;
 }
 
 void PluginProcessor::releaseResources()
@@ -298,12 +310,17 @@ void PluginProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
 {
     // The buffer carries the block's MIDI in and takes its MIDI out: what came
     // in goes to the plugin as packets, and only what the plugin sends goes
-    // back out. Clearing keeps the buffer's storage, so it does not allocate.
+    // back out. Clearing keeps the buffer's storage.
     std::uint32_t received = 0;
     for (const auto message : midi)
         addPackets (midiIn_, received, message.data, message.numBytes,
                     static_cast<std::uint32_t> (juce::jmax (0, message.samplePosition)));
     midi.clear();
+    // The first block after prepareToPlay hands the host's buffer the room
+    // made there, so writing the plugin's MIDI into it allocates nothing.
+    // JUCE's wrappers keep one buffer for an instance, which keeps the room.
+    if (std::exchange (swapOutRoom_, false))
+        midi.swapWith (midiOutRoom_);
     bypassing_ = false;
     if (instance_ == nullptr)
     {
@@ -369,7 +386,7 @@ void PluginProcessor::addMessage (juce::MidiBuffer& midi, const HaptoPacket& pac
                 sysexOut_.push_back (0xF0);
                 sysexOverflow_ = false;
             }
-            if (sysexOut_.size() + count + 1 > sysexOut_.capacity())
+            if (sysexOut_.size() + count + 1 > sysexRoom)
                 sysexOverflow_ = true;
             if (! sysexOverflow_)
                 sysexOut_.insert (sysexOut_.end(), data.begin(), data.begin() + count);

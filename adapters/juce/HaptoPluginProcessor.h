@@ -131,6 +131,10 @@ private:
     std::vector<juce::uint8> sysexOut_;
     // Whether the SysEx being joined outgrew its room, and is dropped.
     bool sysexOverflow_ = false;
+    // Room for a block's MIDI out in a MidiBuffer, made in prepareToPlay and
+    // swapped into the host's buffer at the next block, which then holds it.
+    juce::MidiBuffer midiOutRoom_;
+    bool swapOutRoom_ = false;
 
     // Whether the last block was bypassed, so a bypass that starts clears
     // the delay line instead of replaying the end of the last one. Audio

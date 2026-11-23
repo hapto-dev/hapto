@@ -63,8 +63,10 @@ exporter.
   Packets both ways, so `HAPTO_ABI_VERSION` is 3. `HaptoProcess` gains the
   packets in and the room for packets out, each a `HaptoPacket` of a frame and
   four words, with `HAPTO_MIDI_OUT_1` for a caller that takes MIDI 1.0 out
-  alone, and `HaptoProcess::NONE` fills what a Rust caller leaves out. The
-  JUCE adapter passes the host's `MidiBuffer` in and the plugin's MIDI back.
+  alone, which then gets MIDI 1.0's packets alone, and `HaptoProcess::NONE`
+  fills what a Rust caller leaves out. The JUCE adapter passes the host's
+  `MidiBuffer` in and the plugin's MIDI back, in room it makes before the
+  first block.
 - **Breaking.** A processor reads its block's MIDI decoded: `block.midi` is
   a `Midi`, each `Message` at its frame with the packets it came in, and
   `block.midi_out` a `MidiOut`, which sends messages or packets, in place of

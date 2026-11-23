@@ -61,6 +61,43 @@ impl Plugin for Thru {
     }
 }
 
+/// Sends on every packet it gets, whatever its type.
+struct Echo;
+
+struct EchoProcessor;
+
+impl Processor for EchoProcessor {
+    type Layout = Stereo;
+
+    fn process(&mut self, mut block: Block<'_, Stereo>) -> Status {
+        block.midi_out.extend(block.midi.packets());
+        Status::Continue
+    }
+}
+
+impl Plugin for Echo {
+    const INFO: PluginInfo = PluginInfo {
+        name: "Echo",
+        id: "dev.hapto.echo",
+        vst3_class_id: [6; 16],
+        au_codes: AuCodes {
+            subtype: *b"echo",
+            manufacturer: *b"Hapt",
+        },
+        ..Thru::INFO
+    };
+    type Params = ();
+    type Processor = EchoProcessor;
+
+    fn new(_: (), _parts: Parts) -> Self {
+        Echo
+    }
+
+    fn activate(&mut self, _: &ProcessSetup) -> EchoProcessor {
+        EchoProcessor
+    }
+}
+
 fn packet(frame: u32, first: u32) -> HaptoPacket {
     HaptoPacket {
         frame,
@@ -75,8 +112,8 @@ const EMPTY: HaptoPacket = HaptoPacket {
 
 /// One block of 16 frames with `midi_in`, room for `room` packets out, and
 /// what came out.
-fn play(
-    host: &TestHost<Thru>,
+fn play<P: Plugin>(
+    host: &TestHost<P>,
     midi_in: &[HaptoPacket],
     room: usize,
     midi_1_out: bool,
@@ -126,6 +163,28 @@ fn a_caller_that_takes_midi_1_alone_gets_it_back_as_it_sent_it() {
     assert_eq!(
         words,
         [(0, 0x2090_3C7F), (5, 0x20B0_0764), (9, 0x2080_3C40)]
+    );
+}
+
+#[test]
+fn a_caller_that_takes_midi_1_alone_gets_no_packet_midi_1_has_no_place_for() {
+    let host = TestHost::<Echo>::new();
+    assert_eq!(host.activate(48_000.0, 16, Width::STEREO), Ok(()));
+    // A note-on, then flex data, a utility message and SysEx8, which MIDI
+    // 1.0 has no place for.
+    let sent = [
+        packet(0, 0x2090_3C7F),
+        packet(1, 0xD010_0000),
+        packet(2, 0x0020_0010),
+        packet(3, 0x5001_0000),
+    ];
+    let types =
+        |out: &[HaptoPacket]| -> Vec<u32> { out.iter().map(|p| p.words[0] >> 28).collect() };
+    assert_eq!(types(&play(&host, &sent, 8, true)), [0x2]);
+    assert_eq!(
+        types(&play(&host, &sent, 8, false)),
+        [0x4, 0xD, 0x0, 0x5],
+        "every packet, to a caller that takes MIDI 2.0"
     );
 }
 
