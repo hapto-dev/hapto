@@ -40,10 +40,10 @@ jobs:
       fail-fast: false
       matrix:
         # A pull request takes macOS alone, and only the steps that show its
-        # code lints and passes: Clippy with all features, and the tests in
-        # debug. That leg is the gate's one build of the VST3 exporter; a
-        # developer's Windows machine shows the rest. The full run takes
-        # both systems and every step.
+        # code lints and passes: Clippy with all features, Clippy of the MIDI
+        # devices for Windows, and the tests in debug. That leg is the gate's
+        # one build of the VST3 exporter; a developer's Windows machine shows
+        # the rest. The full run takes both systems and every step.
         os: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '["windows-2025", "macos-15"]' || '["macos-15"]') }}
     runs-on: ${{ matrix.os }}
     env:
@@ -67,6 +67,14 @@ jobs:
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Clippy (all features)
         run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      # The MIDI devices' WinMM backend builds for Windows alone, so the
+      # macOS leg checks it for Windows too, with no linking: the crate's
+      # dependencies are Rust alone, which builds for any target from here.
+      - name: Clippy (the MIDI devices for Windows)
+        if: runner.os == 'macOS'
+        run: |
+          rustup target add x86_64-pc-windows-msvc
+          cargo clippy -p hapto-midi-devices --all-targets --target x86_64-pc-windows-msvc --locked -- -D warnings
       # Release builds drop debug assertions, so the code and the lints that
       # see it differ from the debug build's.
       - name: Clippy (release)
