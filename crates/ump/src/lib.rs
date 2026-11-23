@@ -68,6 +68,7 @@
 
 mod buf;
 mod bytes;
+pub mod controller;
 mod downgrade;
 mod head;
 mod midi1;

@@ -1,6 +1,10 @@
 //! MIDI 1.0 upgraded to MIDI 2.0 on the way in, by the Default Translation
 //! in appendix D.3 of the UMP and MIDI 2.0 Protocol specification.
 
+use crate::controller::{
+    BANK_SELECT, BANK_SELECT_LSB, DATA_DECREMENT, DATA_ENTRY, DATA_ENTRY_LSB, DATA_INCREMENT,
+    NRPN_LSB, NRPN_MSB, RESET_ALL_CONTROLLERS, RPN_LSB, RPN_MSB, is_parameter_number,
+};
 use crate::head::join_14;
 use crate::scale::{up_7_to_16, up_7_to_32, up_14_to_32};
 use crate::{
@@ -8,9 +12,6 @@ use crate::{
     Origin,
 };
 
-/// MIDI 1.0's Reset All Controllers, which also sets the parameter number to
-/// null (RP-015).
-const RESET_ALL_CONTROLLERS: u8 = 121;
 /// The null parameter number's two bytes: it selects nothing.
 const NULL: u8 = 127;
 
@@ -83,42 +84,77 @@ struct Channel {
     bank: [Option<u8>; 2],
 }
 
-/// Which parameter number data entry is for.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-enum Selected {
-    #[default]
-    None,
-    Nrpn,
-    Rpn,
+/// Which kind of parameter number: registered, MIDI 1.0's RPN, or
+/// assignable, its NRPN.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    Registered,
+    Assignable,
+}
+
+impl Kind {
+    /// The kind an address byte selects, and whether the byte is the
+    /// address's most significant.
+    const fn of_address(controller: u8) -> (Kind, bool) {
+        match controller {
+            RPN_MSB => (Kind::Registered, true),
+            RPN_LSB => (Kind::Registered, false),
+            NRPN_MSB => (Kind::Assignable, true),
+            _ => (Kind::Assignable, false),
+        }
+    }
+
+    /// Its address's two controllers, the most significant first.
+    const fn address(self) -> [u8; 2] {
+        match self {
+            Kind::Registered => [RPN_MSB, RPN_LSB],
+            Kind::Assignable => [NRPN_MSB, NRPN_LSB],
+        }
+    }
+
+    /// The MIDI 2.0 controller it is at `bank` and `index`.
+    const fn message(self, bank: u8, index: u8, value: u32) -> ChannelMessage {
+        match self {
+            Kind::Registered => ChannelMessage::RegisteredController { bank, index, value },
+            Kind::Assignable => ChannelMessage::AssignableController { bank, index, value },
+        }
+    }
 }
 
 /// A channel's RPN and NRPN state.
 #[derive(Debug, Clone, Copy, Default)]
 struct Numbers {
-    /// Controllers 99 and 98.
+    /// An NRPN's address bytes, 99 and 98.
     nrpn: [Option<u8>; 2],
-    /// Controllers 101 and 100.
+    /// An RPN's address bytes, 101 and 100.
     rpn: [Option<u8>; 2],
     /// The address byte sent since the last data entry or completed
     /// address: its partner completes the address with it.
     unpaired: Option<u8>,
-    selected: Selected,
-    /// The latest data entry high byte, with the number it was sent under.
-    /// A low byte under that number refines it, however often its address
-    /// is sent again; one under another number never does.
-    high: Option<(Number, u8)>,
+    /// The kind data entry is for, if an address selects one.
+    selected: Option<Kind>,
+    /// The latest data entry high byte. A low byte under its number refines
+    /// it, however often the address is sent again; one under another
+    /// number never does.
+    high: Option<Held>,
     /// A low byte that arrived before its number's high byte, which MIDI 1.0
     /// allows; that high byte completes it.
     early_low: Option<(Number, u8)>,
-    /// Whether `high` is still to go out.
+}
+
+/// A data entry high byte held, with the number it was sent under.
+#[derive(Debug, Clone, Copy)]
+struct Held {
+    number: Number,
+    value: u8,
+    /// Whether it is still to go out, having had no low byte yet.
     pending: bool,
 }
 
-/// A parameter number: registered (an RPN) or assignable (an NRPN), with its
-/// bank and index.
+/// A parameter number: its kind, its bank and its index.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Number {
-    registered: bool,
+    kind: Kind,
     bank: u8,
     index: u8,
 }
@@ -135,33 +171,37 @@ struct Entry {
 impl Numbers {
     /// The selected number, when its address is whole.
     fn number(&self) -> Option<Number> {
-        let (registered, bytes) = match self.selected {
-            Selected::None => return None,
-            Selected::Nrpn => (false, self.nrpn),
-            Selected::Rpn => (true, self.rpn),
+        let kind = self.selected?;
+        let bytes = match kind {
+            Kind::Registered => self.rpn,
+            Kind::Assignable => self.nrpn,
         };
         let [Some(bank), Some(index)] = bytes else {
             return None;
         };
-        Some(Number {
-            registered,
-            bank,
-            index,
-        })
+        Some(Number { kind, bank, index })
     }
 
-    /// The high byte still to go out, with no low byte, which leaves it no
-    /// longer pending.
-    fn flush(&mut self) -> Option<Entry> {
-        if !std::mem::take(&mut self.pending) {
-            return None;
+    /// The address bytes held for `kind`.
+    fn address(&mut self, kind: Kind) -> &mut [Option<u8>; 2] {
+        match kind {
+            Kind::Registered => &mut self.rpn,
+            Kind::Assignable => &mut self.nrpn,
         }
-        let (number, high) = self.high?;
-        Some(Entry {
-            number,
-            high,
-            low: None,
-        })
+    }
+
+    /// Sends the high byte still to go out, with no low byte, which leaves
+    /// it no longer pending.
+    fn flush(&mut self, send: &mut impl FnMut(ChannelMessage, Origin)) {
+        if let Some(held) = self.high.as_mut().filter(|held| held.pending) {
+            held.pending = false;
+            Entry {
+                number: held.number,
+                high: held.value,
+                low: None,
+            }
+            .send(send);
+        }
     }
 
     /// An address byte, 99 or 98 for an NRPN, 101 or 100 for an RPN.
@@ -173,95 +213,90 @@ impl Numbers {
     /// address already used. A low byte with nothing to pair with changes
     /// the low byte under the high byte held. 127 and 127 select nothing.
     fn address_byte(&mut self, controller: u8, value: u8) {
-        let partner = match controller {
-            99 => 98,
-            98 => 99,
-            101 => 100,
-            _ => 101,
-        };
+        let (kind, most) = Kind::of_address(controller);
+        let [msb, lsb] = kind.address();
+        let partner = if most { lsb } else { msb };
         let pairs = self.unpaired == Some(partner);
-        let (bytes, selected) = if matches!(controller, 99 | 98) {
-            (&mut self.nrpn, Selected::Nrpn)
-        } else {
-            (&mut self.rpn, Selected::Rpn)
-        };
-        if matches!(controller, 99 | 101) {
-            if !pairs {
-                bytes[1] = None;
-            }
-            bytes[0] = Some(value);
+        let bytes = self.address(kind);
+        if most {
+            let low = if pairs { bytes[1] } else { None };
+            *bytes = [Some(value), low];
         } else {
             bytes[1] = Some(value);
         }
         let null = *bytes == [Some(NULL), Some(NULL)];
         self.unpaired = (!pairs).then_some(controller);
-        self.selected = if null { Selected::None } else { selected };
+        self.selected = (!null).then_some(kind);
     }
 
-    /// A control change to a parameter-number controller, and what it sends
-    /// out, up to two entries: the one it ends, then its own.
-    fn control(&mut self, controller: u8, value: u8) -> [Option<Entry>; 2] {
+    /// A control change to a parameter-number controller or Reset All
+    /// Controllers, sending what it ends, then what it completes.
+    fn control(
+        &mut self,
+        controller: u8,
+        value: u8,
+        send: &mut impl FnMut(ChannelMessage, Origin),
+    ) {
         match controller {
-            98..=101 => {
+            NRPN_LSB..=RPN_MSB => {
                 // A new address ends the message the last high byte began.
-                let ended = self.flush();
+                self.flush(send);
                 self.address_byte(controller, value);
-                [ended, None]
             }
-            6 => {
+            DATA_ENTRY => {
                 self.unpaired = None;
                 // Another high byte ends the last one's message.
-                let ended = self.flush();
+                self.flush(send);
                 // A low byte sent first is spent here, even by a data entry
                 // that selects nothing.
                 let early = self.early_low.take();
                 let Some(number) = self.number() else {
                     self.high = None;
-                    return [ended, None];
+                    return;
                 };
-                self.high = Some((number, value));
-                let own = match early {
-                    Some((under, low)) if under == number => Some(Entry {
+                let complete = matches!(early, Some((under, _)) if under == number);
+                self.high = Some(Held {
+                    number,
+                    value,
+                    pending: !complete,
+                });
+                if let Some((_, low)) = early.filter(|_| complete) {
+                    Entry {
                         number,
                         high: value,
                         low: Some(low),
-                    }),
-                    _ => {
-                        self.pending = true;
-                        None
                     }
-                };
-                [ended, own]
-            }
-            38 => {
-                self.unpaired = None;
-                let Some(number) = self.number() else {
-                    return [None, None];
-                };
-                match self.high {
-                    Some((under, high)) if under == number => {
-                        self.pending = false;
-                        [
-                            Some(Entry {
-                                number,
-                                high,
-                                low: Some(value),
-                            }),
-                            None,
-                        ]
-                    }
-                    _ => {
-                        self.early_low = Some((number, value));
-                        [None, None]
-                    }
+                    .send(send);
                 }
             }
-            // Increment and decrement (96, 97) step the parameter, so a high
-            // byte held goes out first, in the order sent. An address byte
-            // held before one pairs with no byte after it.
+            DATA_ENTRY_LSB => {
+                self.unpaired = None;
+                let Some(number) = self.number() else {
+                    return;
+                };
+                match self.high.as_mut() {
+                    Some(held) if held.number == number => {
+                        held.pending = false;
+                        Entry {
+                            number,
+                            high: held.value,
+                            low: Some(value),
+                        }
+                        .send(send);
+                    }
+                    _ => self.early_low = Some((number, value)),
+                }
+            }
+            RESET_ALL_CONTROLLERS => {
+                self.flush(send);
+                *self = Numbers::default();
+            }
+            // Increment and decrement step the parameter, so a high byte held
+            // goes out first, in the order sent. An address byte held before
+            // one pairs with no byte after it.
             _ => {
                 self.unpaired = None;
-                [self.flush(), None]
+                self.flush(send);
             }
         }
     }
@@ -330,32 +365,21 @@ impl Channel {
             value: up_7_to_32(value),
         };
         match controller {
-            0 => self.bank[0] = Some(value),
-            32 => self.bank[1] = Some(value),
-            6 | 38 | 96..=101 => {
-                for entry in self
-                    .numbers
-                    .control(controller, value)
-                    .into_iter()
-                    .flatten()
-                {
-                    send(entry.message(), entry.origin());
-                }
+            BANK_SELECT => self.bank[0] = Some(value),
+            BANK_SELECT_LSB => self.bank[1] = Some(value),
+            _ if is_parameter_number(controller) || controller == RESET_ALL_CONTROLLERS => {
+                self.numbers.control(controller, value, &mut send);
                 // Increment and decrement are controllers of their own in
-                // MIDI 2.0, with no parameter number to step.
-                if matches!(controller, 96 | 97) {
+                // MIDI 2.0, with no parameter number to step, and Reset All
+                // Controllers resets the rest.
+                if matches!(
+                    controller,
+                    DATA_INCREMENT | DATA_DECREMENT | RESET_ALL_CONTROLLERS
+                ) {
                     send(as_is, Origin::Midi1);
                 }
             }
-            _ => {
-                if controller == RESET_ALL_CONTROLLERS {
-                    if let Some(entry) = self.numbers.flush() {
-                        send(entry.message(), entry.origin());
-                    }
-                    self.numbers = Numbers::default();
-                }
-                send(as_is, Origin::Midi1);
-            }
+            _ => send(as_is, Origin::Midi1),
         }
     }
 }
@@ -413,17 +437,7 @@ impl Upgrade {
         else {
             return;
         };
-        state.translate(message, |message, origin| {
-            let voice = ChannelVoice {
-                group,
-                channel,
-                message,
-            };
-            out.push(Event {
-                origin,
-                ..voice.event(event.offset)
-            });
-        });
+        state.translate(message, sender(out, group, channel, event.offset));
     }
 
     /// Sends, at `last_frame`, every high byte still held: the end of a
@@ -435,46 +449,47 @@ impl Upgrade {
     pub fn end_block(&mut self, last_frame: u32, out: &mut EventList) {
         for (group, channels) in (0_u8..).zip(self.channels.iter_mut()) {
             for (channel, state) in (0_u8..).zip(channels.iter_mut()) {
-                if let Some(entry) = state.numbers.flush() {
-                    let voice = ChannelVoice {
-                        group,
-                        channel,
-                        message: entry.message(),
-                    };
-                    out.push(Event {
-                        origin: entry.origin(),
-                        ..voice.event(last_frame)
-                    });
-                }
+                state
+                    .numbers
+                    .flush(&mut sender(out, group, channel, last_frame));
             }
         }
     }
 }
 
-impl Entry {
-    /// The MIDI 2.0 controller it becomes.
-    fn message(self) -> ChannelMessage {
-        let Number {
-            registered,
-            bank,
-            index,
-        } = self.number;
-        let low = self.low.unwrap_or(0);
-        let value = up_14_to_32(join_14(low, self.high));
-        if registered {
-            ChannelMessage::RegisteredController { bank, index, value }
-        } else {
-            ChannelMessage::AssignableController { bank, index, value }
-        }
+/// Pushes each MIDI 2.0 message onto `out`, on `group` and `channel` at
+/// frame `offset`, with its origin.
+fn sender(
+    out: &mut EventList,
+    group: u8,
+    channel: u8,
+    offset: u32,
+) -> impl FnMut(ChannelMessage, Origin) {
+    move |message, origin| {
+        let voice = ChannelVoice {
+            group,
+            channel,
+            message,
+        };
+        out.push(Event {
+            origin,
+            ..voice.event(offset)
+        });
     }
+}
 
-    /// How it was sent: with its low byte, or as a high byte alone, which
-    /// goes out as if its low byte were 0.
-    fn origin(self) -> Origin {
-        if self.low.is_some() {
+impl Entry {
+    /// Sends the MIDI 2.0 controller it becomes, with how it was sent: with
+    /// its low byte, or as a high byte alone, which goes out as if its low
+    /// byte were 0.
+    fn send(self, send: &mut impl FnMut(ChannelMessage, Origin)) {
+        let Number { kind, bank, index } = self.number;
+        let value = up_14_to_32(join_14(self.low.unwrap_or(0), self.high));
+        let origin = if self.low.is_some() {
             Origin::Midi1
         } else {
             Origin::Midi1HighByte
-        }
+        };
+        send(kind.message(bank, index, value), origin);
     }
 }

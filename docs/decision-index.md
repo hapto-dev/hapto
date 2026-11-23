@@ -748,7 +748,8 @@ move its line here; when a decision gains code, add one.
 - `crates/learn/src/mappings.rs`: `Learn::poll`
 - `crates/learn/src/source.rs`: `Control::Cc`, `Control::PARSER_OWNED`
 - `crates/learn/src/parse.rs`: module, `parse`
-- `crates/ump/src/upgrade.rs`: module, `Numbers::address_byte`, `Numbers::control`, `Numbers::unpaired`, `Numbers::high`, `Number`, `Channel::control_change`, `RESET_ALL_CONTROLLERS`, `NULL`
+- `crates/ump/src/upgrade.rs`: module, `Numbers::address_byte`, `Numbers::control`, `Numbers::unpaired`, `Numbers::high`, `Number`, `Kind`, `Channel::control_change`, `NULL`
+- `crates/ump/src/controller.rs`: module, `RESET_ALL_CONTROLLERS`, `is_parameter_number`
 - test `crates/learn/src/parse.rs`: `upgraded_midi_1_parses_as_a_model_of_midi_1_0_reads_it`, `model`, `begins_an_address`
 - test `crates/ump/tests/translation.rs`: `an_address_reads_in_either_byte_order`, `the_null_number_and_a_lone_data_entry_send_nothing`, `reset_all_controllers_sends_what_is_held_then_forgets_the_address`, `a_low_byte_sent_first_waits_for_its_high_byte`, `an_address_sent_again_keeps_its_high_byte_for_the_low_byte`, `a_low_byte_never_takes_another_numbers_high_byte`
 - test `crates/learn/tests/capture.rs`: `a_14_bit_controller_pair_learns_its_high_byte`, `a_controller_32_to_63_learns_itself_a_tick_later_unless_its_high_byte_came_just_before`, `an_arm_between_a_pairs_halves_waits_through_polls_and_learns_the_high_byte_that_follows`, `a_capture_held_back_between_a_high_byte_and_its_low_byte_stops_the_pairing`, `data_increment_and_decrement_are_never_learned`
@@ -1366,7 +1367,7 @@ move its line here; when a decision gains code, add one.
 - `crates/ump/src/lib.rs`: module, `Origin`
 - `crates/ump/src/voice.rs`: `ChannelVoice`, `ChannelMessage`
 - `crates/ump/src/midi1.rs`: module, `Midi1Voice`, `Midi1Message`
-- `crates/ump/src/upgrade.rs`: module, `Upgrade`, `Numbers::control`, `Channel::translate`, `Entry::origin`
+- `crates/ump/src/upgrade.rs`: module, `Upgrade`, `Numbers::control`, `Channel::translate`, `Entry::send`
 - `crates/ump/src/downgrade.rs`: module, `Downgrade`
 - `crates/ump/src/scale.rs`: module
 - `crates/ump/src/bytes.rs`: module, `ByteStream`, `Bytes`
