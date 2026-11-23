@@ -7,8 +7,9 @@
 #![cfg(all(hapto_rtsan, feature = "cabi", feature = "test-host"))]
 
 use hapto_host::cabi::TestHost;
+use hapto_host::layout::{Stereo, Width};
 use hapto_host::{
-    AuCodes, Block, Category, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
+    AuCodes, Block, Category, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
 };
 use hapto_params::{Declarer, Float, FloatDecl, Params};
 
@@ -16,10 +17,12 @@ use hapto_params::{Declarer, Float, FloatDecl, Params};
 struct Allocates;
 
 impl Processor for Allocates {
-    fn process(&mut self, block: Block<'_, '_>) -> Status {
-        let scratch = std::hint::black_box(vec![0.0_f32; block.frames]);
-        for channel in block.channels.iter_mut() {
-            channel[..block.frames].copy_from_slice(&scratch);
+    type Layout = Stereo;
+
+    fn process(&mut self, mut block: Block<'_, Stereo>) -> Status {
+        let scratch = std::hint::black_box(vec![0.0_f32; block.audio.frames()]);
+        for channel in block.audio.channels_mut() {
+            channel.copy_from_slice(&scratch);
         }
         Status::Continue
     }
@@ -55,7 +58,7 @@ impl Plugin for Canary {
         },
         category: Category::Effect,
         features: &[],
-        layouts: &[Layout::STEREO],
+        layouts: &[],
         midi_input: false,
         midi_output: false,
     };
@@ -74,7 +77,7 @@ impl Plugin for Canary {
 #[test]
 fn an_allocation_inside_the_marked_process_aborts() {
     let host = TestHost::<Canary>::new();
-    assert_eq!(host.activate(48_000.0, 64, Layout::STEREO), Ok(()));
+    assert_eq!(host.activate(48_000.0, 64, Width::STEREO), Ok(()));
     let (mut left, mut right) = ([1.0_f32; 64], [1.0_f32; 64]);
     host.process_in_place(&mut [&mut left, &mut right], 64);
     // Reached only when the sanitizer let the allocation through.
