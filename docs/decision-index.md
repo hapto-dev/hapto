@@ -1428,10 +1428,15 @@ move its line here; when a decision gains code, add one.
 - `crates/midi-devices/src/winmm/mod.rs`: module, `interface`, `index_of`
 - `crates/midi-devices/src/winmm/watch.rs`: `Watch`, `changed`
 - `crates/midi-devices/src/winmm/input.rs`: module, `Shared::message`, `Input::shut`, `hand_back`, `callback`
+- `crates/midi-devices/src/outputs.rs`: `Outputs`, `Outputs::open`, `OutputsWriter::write`, `MAX_OUTPUTS`
+- `crates/midi-devices/src/winmm/output.rs`: module, `Sysex::join`, `Sysex::send`, `Output::shut`, `send`
 - `crates/standalone/src/midi.rs`: module, `Midi::reader`, `Midi::tick`
 - `crates/standalone/src/block.rs`: `Render`, `Player::with_midi`
 - test `crates/midi-devices/src/inputs/tests.rs`: module
 - test `crates/midi-devices/src/winmm/input/tests.rs`: module
+- test `crates/midi-devices/src/outputs/tests.rs`: module
+- test `crates/midi-devices/src/winmm/output/tests.rs`: module
+- test `crates/midi-devices/tests/by_hand.rs`: module
 - test `crates/midi-devices/src/devices.rs`: `a_notice_brings_four_looks_each_wait_twice_the_last`, `with_no_notice_the_list_is_read_every_two_seconds`
 - test `crates/midi-devices/src/ring.rs`: `loom_the_audio_thread_takes_what_the_device_pushed_in_order_and_whole`
 - test `crates/midi-devices/tests/alloc_gate.rs`: module

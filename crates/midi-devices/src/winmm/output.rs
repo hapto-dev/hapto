@@ -1,0 +1,375 @@
+//! One WinMM output, open: the thread that sends what the audio thread
+//! hands it, each message at its time, and its close.
+//!
+//! The audio thread never calls WinMM. It pushes packets into the output's
+//! ring, each stamped with when it is due, and the output's own thread
+//! takes them in turn: it sleeps until a packet is due, or for a moment
+//! while none waits, then sends it. A SysEx is joined from its packets and
+//! sent whole as one long message, which the thread waits on while the
+//! driver sends it, so a slow port holds up only its own output.
+
+use std::fmt;
+use std::ptr;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread::{self, JoinHandle};
+use std::time::Duration;
+
+use hapto_ump::Bytes;
+use windows::Win32::Foundation::{CloseHandle, HANDLE};
+use windows::Win32::Media::Audio::{
+    CALLBACK_EVENT, HMIDIOUT, MHDR_DONE, MIDIERR_NODEVICE, MIDIHDR, midiOutClose, midiOutLongMsg,
+    midiOutOpen, midiOutPrepareHeader, midiOutReset, midiOutShortMsg, midiOutUnprepareHeader,
+};
+use windows::Win32::Media::{MMSYSERR_NODRIVER, MMSYSERR_NOERROR};
+use windows::Win32::System::Threading::{CreateEventW, SetEvent, WaitForSingleObject};
+use windows::core::{PCWSTR, PSTR};
+
+use super::{CLOSE_TRIES, UNPREPARE_TRIES, refusal, retry};
+use crate::Instant;
+use crate::id::{Device, Direction};
+use crate::inputs::OpenError;
+use crate::ring::Consumer;
+
+/// How long the output's thread sleeps at most before it looks again: while
+/// nothing waits, and before a packet due later.
+const POLL: Duration = Duration::from_millis(1);
+/// How long it waits at a time for the driver to send a SysEx.
+const SYSEX_WAIT_MS: u32 = 10;
+/// The longest SysEx an output sends whole; a longer one is dropped and
+/// counted.
+pub(crate) const SYSEX_BYTES: usize = 64 * 1024;
+
+/// A WinMM output handle, which any thread may use.
+#[derive(Clone, Copy)]
+struct Handle(HMIDIOUT);
+
+// SAFETY: a WinMM handle is a token the system resolves, valid on any
+// thread; the output closes it only after its thread is done with it.
+unsafe impl Send for Handle {}
+
+/// An auto-reset event WinMM sets as it finishes with a SysEx, which the
+/// output's thread waits on.
+struct Done(HANDLE);
+
+// SAFETY: an event handle may be set and waited on from any thread.
+unsafe impl Send for Done {}
+// SAFETY: as above; setting and waiting need no exclusive access.
+unsafe impl Sync for Done {}
+
+impl Drop for Done {
+    fn drop(&mut self) {
+        // SAFETY: the event `CreateEventW` made, closed once, after the
+        // device that sets it is closed and the thread that waits is done.
+        let _ = unsafe { CloseHandle(self.0) };
+    }
+}
+
+/// What the output shares with its thread.
+struct Shared {
+    /// Tells the thread to end, resetting the device if a SysEx is under
+    /// way.
+    stop: AtomicBool,
+    /// Set when a send found the device gone: it left.
+    left: AtomicBool,
+    done: Done,
+}
+
+/// A SysEx header, aligned for its pointers and its flags: WinMM packs its
+/// structs.
+#[repr(C, align(8))]
+struct Header(MIDIHDR);
+
+/// A SysEx being joined from its packets, and the header WinMM sends it by.
+struct Sysex {
+    header: Box<Header>,
+    bytes: Vec<u8>,
+    /// Whether the SysEx outgrew its room, and is dropped.
+    over: bool,
+}
+
+/// What one SysEx packet came to.
+enum Joined {
+    /// More of it is to come.
+    Part,
+    /// It is whole, and in the buffer.
+    Whole,
+    /// It is whole, but outgrew the buffer or began before the output
+    /// opened, and is dropped.
+    Dropped,
+}
+
+impl Sysex {
+    fn new() -> Sysex {
+        Sysex {
+            header: Box::new(Header(MIDIHDR::default())),
+            bytes: Vec::with_capacity(SYSEX_BYTES),
+            over: false,
+        }
+    }
+
+    /// Adds one 7-bit SysEx packet, whose bytes `Bytes` gave, F0 and F7
+    /// among them where it begins or ends one.
+    fn join(&mut self, words: [u32; 4], bytes: &[u8]) -> Joined {
+        let status = (words[0] >> 20) & 0xF;
+        let (begins, ends) = (matches!(status, 0 | 1), matches!(status, 0 | 3));
+        if begins {
+            self.bytes.clear();
+            self.over = false;
+        } else if self.bytes.is_empty() {
+            // Its start came before the output opened.
+            self.over = true;
+        }
+        if self.bytes.len().saturating_add(bytes.len()) <= self.bytes.capacity() {
+            self.bytes.extend_from_slice(bytes);
+        } else {
+            self.over = true;
+        }
+        if !ends {
+            return Joined::Part;
+        }
+        if self.over {
+            self.bytes.clear();
+            Joined::Dropped
+        } else {
+            Joined::Whole
+        }
+    }
+
+    /// Sends the SysEx joined, and waits while the driver sends it: until
+    /// it is done, or a close resets the device, which hands it back.
+    /// Answers whether it went.
+    fn send(&mut self, handle: Handle, shared: &Shared) -> bool {
+        let size = size_of::<MIDIHDR>() as u32;
+        let length = u32::try_from(self.bytes.len()).unwrap_or(u32::MAX);
+        self.header.0 = MIDIHDR {
+            lpData: PSTR(self.bytes.as_mut_ptr()),
+            dwBufferLength: length,
+            dwBytesRecorded: length,
+            ..MIDIHDR::default()
+        };
+        let header = &raw mut self.header.0;
+        // SAFETY: the open handle, and the header, which points at the
+        // joined bytes; neither moves until it is unprepared below.
+        let prepared = unsafe { midiOutPrepareHeader(handle.0, header, size) };
+        if prepared != MMSYSERR_NOERROR {
+            self.bytes.clear();
+            return false;
+        }
+        // SAFETY: as above, the header prepared.
+        let sent = unsafe { midiOutLongMsg(handle.0, header, size) };
+        if sent == MMSYSERR_NOERROR {
+            let mut reset = false;
+            while !done(header) {
+                if !reset && shared.stop.load(Ordering::Acquire) {
+                    // SAFETY: the open handle; the reset hands the header
+                    // back marked done.
+                    unsafe { midiOutReset(handle.0) };
+                    reset = true;
+                }
+                // SAFETY: the shared event, which the device sets as it
+                // finishes with the header.
+                unsafe { WaitForSingleObject(shared.done.0, SYSEX_WAIT_MS) };
+            }
+        } else {
+            note_gone(shared, sent);
+        }
+        // SAFETY: the open handle and the header, done with.
+        retry(UNPREPARE_TRIES, || unsafe {
+            midiOutUnprepareHeader(handle.0, header, size)
+        });
+        self.bytes.clear();
+        sent == MMSYSERR_NOERROR
+    }
+}
+
+/// Whether the driver is done with the SysEx `header` holds.
+fn done(header: *const MIDIHDR) -> bool {
+    // SAFETY: the output's own header, alive while it sends. Its flags sit
+    // on a four-byte boundary of a header aligned to eight, and the driver
+    // writes them as it finishes, so each look reads them anew.
+    let flags = unsafe { ptr::read_volatile(&raw const (*header).dwFlags) };
+    flags & MHDR_DONE != 0
+}
+
+/// Marks the output left when `code` says its device is gone.
+fn note_gone(shared: &Shared, code: u32) {
+    if matches!(code, MMSYSERR_NODRIVER | MIDIERR_NODEVICE) {
+        shared.left.store(true, Ordering::Release);
+    }
+}
+
+/// An output, sending from its ring while open. It closes as it drops.
+pub(crate) struct Output {
+    handle: Handle,
+    /// `None` once closed.
+    shared: Option<Arc<Shared>>,
+    thread: Option<JoinHandle<Consumer>>,
+}
+
+impl fmt::Debug for Output {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Output")
+            .field("open", &self.shared.is_some())
+            .finish_non_exhaustive()
+    }
+}
+
+impl Output {
+    /// Opens `device` to send what `consumer`'s ring holds. On a refusal
+    /// the consumer comes back, unless the thread that would send could not
+    /// start, which took it.
+    pub(crate) fn open(
+        device: &Device,
+        consumer: Consumer,
+    ) -> Result<Output, (OpenError, Option<Consumer>)> {
+        let Some(index) = super::index_of(Direction::Output, device.id()) else {
+            return Err((OpenError::Gone, Some(consumer)));
+        };
+        // SAFETY: an unnamed auto-reset event, not set, with default
+        // security.
+        let Ok(event) = (unsafe { CreateEventW(None, false, false, PCWSTR::null()) }) else {
+            return Err((OpenError::NoMemory, Some(consumer)));
+        };
+        let shared = Arc::new(Shared {
+            stop: AtomicBool::new(false),
+            left: AtomicBool::new(false),
+            done: Done(event),
+        });
+        let mut handle = HMIDIOUT::default();
+        // SAFETY: the handle is written by the call. WinMM sets the event
+        // as it finishes with a SysEx; the event outlives the device, as
+        // `Shared` holds it until the close.
+        let opened = unsafe {
+            midiOutOpen(
+                &raw mut handle,
+                index,
+                Some(shared.done.0.0 as usize),
+                None,
+                CALLBACK_EVENT,
+            )
+        };
+        if opened != MMSYSERR_NOERROR {
+            return Err((refusal(opened), Some(consumer)));
+        }
+        let handle = Handle(handle);
+        consumer.set_reading(true);
+        let thread_shared = Arc::clone(&shared);
+        let started = thread::Builder::new()
+            .name("hapto midi out".to_owned())
+            .spawn(move || send(handle, &thread_shared, consumer));
+        let mut output = Output {
+            handle,
+            shared: Some(shared),
+            thread: None,
+        };
+        match started {
+            Ok(thread) => {
+                output.thread = Some(thread);
+                Ok(output)
+            }
+            Err(_) => {
+                output.shut();
+                Err((OpenError::NoMemory, None))
+            }
+        }
+    }
+
+    /// Whether the device left while open.
+    pub(crate) fn has_left(&self) -> bool {
+        self.shared
+            .as_ref()
+            .is_some_and(|shared| shared.left.load(Ordering::Acquire))
+    }
+
+    /// Closes the device and gives its ring's consumer back, with what it
+    /// had not sent dropped.
+    pub(crate) fn close(mut self) -> Option<Consumer> {
+        self.shut()
+    }
+
+    /// Stops the thread, then resets and closes the device. If the device
+    /// does not close, the event it sets is leaked rather than closed
+    /// under the driver.
+    fn shut(&mut self) -> Option<Consumer> {
+        let shared = self.shared.take()?;
+        shared.stop.store(true, Ordering::Release);
+        // SAFETY: the shared event, alive with it: wakes a thread that waits
+        // on a SysEx.
+        let _ = unsafe { SetEvent(shared.done.0) };
+        let consumer = self.thread.take().and_then(|thread| thread.join().ok());
+        let handle = self.handle.0;
+        // SAFETY: the open handle, which the stopped thread no longer uses.
+        // The reset turns off any note the device was told to play.
+        unsafe { midiOutReset(handle) };
+        // SAFETY: the open handle, closed once.
+        if !retry(CLOSE_TRIES, || unsafe { midiOutClose(handle) }) {
+            std::mem::forget(shared);
+        }
+        consumer
+    }
+}
+
+impl Drop for Output {
+    fn drop(&mut self) {
+        self.shut();
+    }
+}
+
+/// The output's thread: it sends each packet once its time comes, until
+/// the output stops it, and hands the ring back.
+fn send(handle: Handle, shared: &Shared, mut consumer: Consumer) -> Consumer {
+    let mut sysex = Sysex::new();
+    while !shared.stop.load(Ordering::Acquire) {
+        let Some((due, words)) = consumer.peek() else {
+            thread::sleep(POLL);
+            continue;
+        };
+        let now = Instant::now();
+        if due > now {
+            thread::sleep(due.since(now).min(POLL));
+            continue;
+        }
+        consumer.pop();
+        // The writer pushes only what MIDI 1.0's bytes carry.
+        let Some(bytes) = Bytes::of(words) else {
+            continue;
+        };
+        if words[0] >> 28 == 0x3 {
+            match sysex.join(words, &bytes) {
+                Joined::Part => {}
+                Joined::Whole => {
+                    if !sysex.send(handle, shared) {
+                        consumer.count_dropped();
+                    }
+                }
+                Joined::Dropped => consumer.count_dropped(),
+            }
+        } else {
+            short(handle, shared, &bytes);
+        }
+    }
+    consumer.set_reading(false);
+    consumer
+}
+
+/// Sends one message of up to three bytes, packed as WinMM takes it: the
+/// status in the low byte, then its data.
+fn short(handle: Handle, shared: &Shared, bytes: &[u8]) {
+    // SAFETY: the open handle.
+    let sent = unsafe { midiOutShortMsg(handle.0, pack(bytes)) };
+    note_gone(shared, sent);
+}
+
+/// Up to three bytes of a message, packed as WinMM takes them: the first,
+/// the status, in the low byte.
+fn pack(bytes: &[u8]) -> u32 {
+    bytes
+        .iter()
+        .take(3)
+        .rev()
+        .fold(0_u32, |packed, &byte| packed << 8 | u32::from(byte))
+}
+
+#[cfg(test)]
+mod tests;

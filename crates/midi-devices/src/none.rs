@@ -1,5 +1,5 @@
-//! A system Hapto reads no MIDI devices on yet: the list is empty, nothing
-//! changes, and an input never opens.
+//! A system Hapto reaches no MIDI devices on yet: the list is empty,
+//! nothing changes, and no input or output opens.
 
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -7,7 +7,7 @@ use std::sync::atomic::AtomicBool;
 
 use crate::id::Device;
 use crate::inputs::OpenError;
-use crate::ring::Producer;
+use crate::ring::{Consumer, Producer};
 
 pub(crate) fn list() -> Vec<Device> {
     Vec::new()
@@ -40,6 +40,27 @@ impl Input {
     }
 
     pub(crate) fn close(self) -> Option<Producer> {
+        match self.0 {}
+    }
+}
+
+/// An output that cannot be: no device opens here.
+#[derive(Debug)]
+pub(crate) struct Output(Infallible);
+
+impl Output {
+    pub(crate) fn open(
+        _device: &Device,
+        consumer: Consumer,
+    ) -> Result<Output, (OpenError, Option<Consumer>)> {
+        Err((OpenError::NoBackend, Some(consumer)))
+    }
+
+    pub(crate) fn has_left(&self) -> bool {
+        match self.0 {}
+    }
+
+    pub(crate) fn close(self) -> Option<Consumer> {
         match self.0 {}
     }
 }

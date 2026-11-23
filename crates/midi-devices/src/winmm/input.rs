@@ -12,23 +12,23 @@ use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
 
 use hapto_ump::ByteStream;
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
 use windows::Win32::Media::Audio::{
-    CALLBACK_FUNCTION, HMIDIIN, MIDIERR_STILLPLAYING, MIDIHDR, midiInAddBuffer, midiInClose,
-    midiInOpen, midiInPrepareHeader, midiInReset, midiInStart, midiInStop, midiInUnprepareHeader,
+    CALLBACK_FUNCTION, HMIDIIN, MIDIHDR, midiInAddBuffer, midiInClose, midiInOpen,
+    midiInPrepareHeader, midiInReset, midiInStart, midiInStop, midiInUnprepareHeader,
 };
 use windows::Win32::Media::{
     MM_MIM_CLOSE, MM_MIM_DATA, MM_MIM_ERROR, MM_MIM_LONGDATA, MM_MIM_LONGERROR, MM_MIM_MOREDATA,
-    MMSYSERR_ALLOCATED, MMSYSERR_BADDEVICEID, MMSYSERR_NOERROR, MMSYSERR_NOMEM,
+    MMSYSERR_NOERROR,
 };
 use windows::Win32::System::Threading::{CreateEventW, INFINITE, SetEvent, WaitForSingleObject};
 use windows::core::{PCWSTR, PSTR};
 
+use super::{CLOSE_TRIES, UNPREPARE_TRIES, refusal, retry};
 use crate::Instant;
-use crate::id::Device;
+use crate::id::{Device, Direction};
 use crate::inputs::OpenError;
 use crate::ring::Producer;
 
@@ -36,12 +36,6 @@ use crate::ring::Producer;
 /// is: a long SysEx fills them in turn, and each comes back to be read.
 const BUFFERS: usize = 16;
 const BUFFER_BYTES: usize = 1024;
-
-/// How often, and how far apart, a close asks again of a driver that is
-/// still busy with a buffer, as JUCE does.
-const UNPREPARE_TRIES: u32 = 10;
-const CLOSE_TRIES: u32 = 5;
-const RETRY_WAIT: Duration = Duration::from_millis(20);
 
 /// One SysEx buffer: its header, which WinMM reads and writes, and its
 /// bytes. Aligned for the header's pointers; WinMM packs its structs.
@@ -304,7 +298,7 @@ impl Input {
         device: &Device,
         producer: Producer,
     ) -> Result<Input, (OpenError, Option<Producer>)> {
-        let Some(index) = super::index_of(device.id()) else {
+        let Some(index) = super::index_of(Direction::Input, device.id()) else {
             return Err((OpenError::Gone, Some(producer)));
         };
         // SAFETY: an unnamed auto-reset event, not set, with default
@@ -465,29 +459,6 @@ fn hand_back(handle: Handle, buffers: Buffers, shared: &Shared) {
                 unsafe { midiInAddBuffer(handle.0, buffers.header(index), size) };
             }
         }
-    }
-}
-
-/// Runs `call` until it answers anything but "still busy", at most `tries`
-/// times, and says whether it succeeded.
-fn retry(tries: u32, mut call: impl FnMut() -> u32) -> bool {
-    for _ in 0..tries {
-        match call() {
-            MMSYSERR_NOERROR => return true,
-            MIDIERR_STILLPLAYING => thread::sleep(RETRY_WAIT),
-            _ => return false,
-        }
-    }
-    false
-}
-
-/// The refusal a WinMM error code means.
-fn refusal(code: u32) -> OpenError {
-    match code {
-        MMSYSERR_ALLOCATED => OpenError::InUse,
-        MMSYSERR_BADDEVICEID => OpenError::Gone,
-        MMSYSERR_NOMEM => OpenError::NoMemory,
-        other => OpenError::System(other),
     }
 }
 

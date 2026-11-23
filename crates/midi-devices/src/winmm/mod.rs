@@ -3,6 +3,7 @@
 //! each with why it holds.
 
 mod input;
+mod output;
 mod watch;
 
 use std::ffi::c_void;
@@ -15,9 +16,17 @@ use windows::Win32::Media::MMSYSERR_NOERROR;
 use windows::Win32::Media::Multimedia::{DRV_QUERYDEVICEINTERFACE, DRV_QUERYDEVICEINTERFACESIZE};
 
 pub(crate) use input::Input;
+pub(crate) use output::Output;
 pub(crate) use watch::Watch;
 
 use crate::id::{Device, DeviceId, Direction, named};
+use crate::inputs::OpenError;
+
+/// How often, and how far apart, a close asks again of a driver that is
+/// still busy with a buffer, as JUCE does.
+const UNPREPARE_TRIES: u32 = 10;
+const CLOSE_TRIES: u32 = 5;
+const RETRY_WAIT: std::time::Duration = std::time::Duration::from_millis(20);
 
 /// The longest device interface path read, in UTF-16 units, as JUCE reads
 /// it.
@@ -62,10 +71,11 @@ fn listed(direction: Direction) -> Vec<(Device, u32)> {
     named(direction, entries).into_iter().zip(indices).collect()
 }
 
-/// The index WinMM opens the input `id` names by now. The list is read
-/// again, since an index moves when another device comes or goes.
-pub(crate) fn index_of(id: &DeviceId) -> Option<u32> {
-    listed(Direction::Input)
+/// The index WinMM opens the device of `direction` that `id` names by now.
+/// The list is read again, since an index moves when another device comes
+/// or goes.
+pub(crate) fn index_of(direction: Direction, id: &DeviceId) -> Option<u32> {
+    listed(direction)
         .into_iter()
         .find(|(device, _)| device.id() == id)
         .map(|(_, index)| index)
@@ -140,4 +150,28 @@ fn text(units: &[u16]) -> String {
         .position(|&unit| unit == 0)
         .unwrap_or(units.len());
     String::from_utf16_lossy(units.get(..end).unwrap_or(units))
+}
+
+/// Runs `call` until it answers anything but "still busy", at most `tries`
+/// times, and says whether it succeeded.
+fn retry(tries: u32, mut call: impl FnMut() -> u32) -> bool {
+    for _ in 0..tries {
+        match call() {
+            MMSYSERR_NOERROR => return true,
+            windows::Win32::Media::Audio::MIDIERR_STILLPLAYING => std::thread::sleep(RETRY_WAIT),
+            _ => return false,
+        }
+    }
+    false
+}
+
+/// The refusal a WinMM error code means.
+fn refusal(code: u32) -> OpenError {
+    use windows::Win32::Media::{MMSYSERR_ALLOCATED, MMSYSERR_BADDEVICEID, MMSYSERR_NOMEM};
+    match code {
+        MMSYSERR_ALLOCATED => OpenError::InUse,
+        MMSYSERR_BADDEVICEID => OpenError::Gone,
+        MMSYSERR_NOMEM => OpenError::NoMemory,
+        other => OpenError::System(other),
+    }
 }

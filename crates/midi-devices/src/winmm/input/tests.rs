@@ -1,6 +1,8 @@
 //! The callback's reading, driven with the messages WinMM sends, so no
 //! device is needed.
 
+use windows::Win32::Media::{MMSYSERR_ALLOCATED, MMSYSERR_BADDEVICEID, MMSYSERR_NOMEM};
+
 use super::*;
 use crate::ring::{Consumer, ring};
 

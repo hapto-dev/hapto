@@ -3733,8 +3733,30 @@ message the reset sends does nothing, and if the close fails the buffers are
 leaked rather than freed under the driver. A device that leaves while open is
 closed at the next tick.
 
-Open: output to a device, and keeping a device's place in the app's settings
-from run to run.
+`Outputs` opens a device on the main thread and closes it there, up to 16 at
+once, and `OutputsWriter` hands each block's MIDI to every open one on the
+audio thread. It downgrades the block to MIDI 1.0 by the Default Translation
+(D114), since every device reached now takes MIDI 1.0 alone, and stamps each
+packet with when it is due: when the block's first frame is, plus its frame at
+the block's rate. Each output has a ring, the inputs' ring the other way, which
+the writer fills only while a device reads it, and every group goes to every
+output, as a MIDI 1.0 device has none. What MIDI 1.0 has no message for is
+counted, and so is what finds no room.
+
+A thread of each output's own sends each packet once its time comes, at once if
+that has passed: never earlier, and never dropped for being late. It sleeps
+until then, or for a millisecond while nothing waits, since the audio thread
+makes no call that could wake it. A SysEx is joined from its packets and sent
+whole as one long message, which that thread waits on while the driver sends
+it, so a slow port holds up only its own output. JUCE's standalone sends a
+block's MIDI from the audio thread instead, in one burst as the block ends,
+through calls that can block; its scheduler, which the standalone does not
+start, takes a lock and allocates on the audio thread, and drops what is 200
+ms late.
+
+Open: keeping a device's place in the app's settings from run to run, and MIDI
+out timed to land with the audio it goes with, which would add the output's
+latency to it.
 
 **Alternatives.** The alternatives were midir or RtMidi, whose MIDI 1.0 byte
 callbacks and list places fight both this design and D114; JUCE's lock and

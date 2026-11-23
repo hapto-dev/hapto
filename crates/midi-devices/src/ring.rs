@@ -1,7 +1,8 @@
-//! The hand-off from a device's thread to the audio thread: a ring of
+//! The hand-off between a device's thread and the audio thread: a ring of
 //! stamped packets with one producer and one consumer, whose slots are
 //! atomics, so neither side waits, locks or allocates and no `unsafe` is
-//! needed.
+//! needed. An input's device pushes and the audio thread takes; an output's
+//! audio thread pushes and its device takes.
 
 // Audio-path code: a panic here ends the app's audio, so indexing, unwrap,
 // expect, panic and unchecked arithmetic are refused, and a site that is
@@ -20,11 +21,11 @@
 #[cfg(loom)]
 use loom::sync::Arc;
 #[cfg(loom)]
-use loom::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering};
+use loom::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 #[cfg(not(loom))]
 use std::sync::Arc;
 #[cfg(not(loom))]
-use std::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 
 use crate::Instant;
 
@@ -47,6 +48,9 @@ struct Ring {
     /// Counts the devices that have pushed into the ring: a new one starts
     /// the stream over.
     generation: AtomicU32,
+    /// Whether a device takes from the ring now: an output's producer
+    /// pushes only while one does.
+    reading: AtomicBool,
 }
 
 /// Makes a ring with room for at least `room` packets, and at least one.
@@ -65,16 +69,18 @@ pub(crate) fn ring(room: usize) -> (Producer, Consumer) {
         tail: AtomicUsize::new(0),
         dropped: AtomicU64::new(0),
         generation: AtomicU32::new(0),
+        reading: AtomicBool::new(false),
     });
     (Producer(Arc::clone(&ring)), Consumer(ring))
 }
 
-/// The device's side: it pushes packets as they come.
+/// The pushing side: an input's device, as packets come, or an output's
+/// audio thread, as a block sends them.
 pub(crate) struct Producer(Arc<Ring>);
 
 impl Producer {
-    /// Adds a packet that came at `at`. With no room it is dropped and
-    /// counted. Thread: the device's. Allocates nothing.
+    /// Adds a packet stamped `at`. With no room it is dropped and counted.
+    /// Thread: the producer's. Allocates nothing.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub(crate) fn push(&mut self, at: Instant, words: [u32; 4]) {
         let ring = &*self.0;
@@ -104,12 +110,53 @@ impl Producer {
         // reads the new generation with it.
         self.0.generation.fetch_add(1, Ordering::Release);
     }
+
+    /// Whether a device takes from the ring now. Thread: the producer's.
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
+    pub(crate) fn is_read(&self) -> bool {
+        self.0.reading.load(Ordering::Acquire)
+    }
+
+    /// How many packets found no room, since the ring was made.
+    pub(crate) fn dropped(&self) -> u64 {
+        self.0.dropped.load(Ordering::Relaxed)
+    }
 }
 
-/// The audio thread's side: it takes packets in the order they came.
+/// The taking side: the audio thread, for an input, or an output's device:
+/// it takes packets in the order they were pushed.
 pub(crate) struct Consumer(Arc<Ring>);
 
 impl Consumer {
+    /// Says whether a device takes from the ring from now on.
+    pub(crate) fn set_reading(&self, reading: bool) {
+        // Release: a producer that sees it set sees the ring as the
+        // device found it.
+        self.0.reading.store(reading, Ordering::Release);
+    }
+
+    /// Takes every packet waiting, unread: what was pushed before a device
+    /// took the ring is not its to send.
+    pub(crate) fn clear(&mut self) {
+        let ring = &*self.0;
+        // Acquire and release as in `pop`, for every slot at once.
+        let head = ring.head.load(Ordering::Acquire);
+        ring.tail.store(head, Ordering::Release);
+    }
+
+    /// Counts a message the consumer had no room for, as a full ring
+    /// counts a packet.
+    #[cfg_attr(
+        all(not(windows), not(test)),
+        expect(
+            dead_code,
+            reason = "only a backend's output counts what it drops, and this system has none"
+        )
+    )]
+    pub(crate) fn count_dropped(&self) {
+        self.0.dropped.fetch_add(1, Ordering::Relaxed);
+    }
+
     /// The oldest packet not taken yet, and when it came. Thread: audio.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub(crate) fn peek(&self) -> Option<(Instant, [u32; 4])> {
@@ -222,6 +269,23 @@ mod tests {
         assert_eq!(consumer.generation(), 0);
         producer.renew();
         assert_eq!(consumer.generation(), 1);
+    }
+
+    #[test]
+    fn a_clear_takes_every_packet_waiting_and_reading_is_told_across() {
+        let (mut producer, mut consumer) = ring(4);
+        assert!(!producer.is_read());
+        consumer.set_reading(true);
+        assert!(producer.is_read());
+        for tag in 0..3 {
+            producer.push(Instant::from_nanos(u64::from(tag)), packet(tag));
+        }
+        consumer.clear();
+        assert_eq!(consumer.len(), 0);
+        consumer.count_dropped();
+        assert_eq!(consumer.dropped(), 1);
+        producer.push(Instant::from_nanos(9), packet(9));
+        assert_eq!(consumer.peek().map(|(at, _)| at.nanos()), Some(9));
     }
 
     #[test]

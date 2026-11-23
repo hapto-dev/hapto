@@ -178,7 +178,10 @@ exporter.
   or allocates, then into each block at the frames its messages came at. Every
   device is merged on group 1, as a host hands a plugin its MIDI, each upgraded
   to MIDI 2.0 with a translation of its own, and a SysEx reaches a block whole.
-  WinMM is its backend, on Windows.
+  `Outputs` opens devices to send to, and `OutputsWriter` hands each block's
+  MIDI to them from the audio thread, downgraded to MIDI 1.0, each message
+  sent at its frame's time by a thread of its output's own. WinMM is its
+  backend, on Windows.
 - `hapto-ump`: `Upgrade::reset` forgets what an upgrade holds, in place, for a
   new source.
 - `hapto-ump`: Universal MIDI Packets: a fixed-capacity event list per block,

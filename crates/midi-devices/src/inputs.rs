@@ -127,13 +127,16 @@ impl fmt::Debug for Inputs {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum OpenError {
-    /// The device takes MIDI and sends none.
+    /// The device takes MIDI and sends none, so it cannot be read.
     NotAnInput,
+    /// The device sends MIDI and takes none, so nothing can be sent to it.
+    NotAnOutput,
     /// The device is not in the system's list now.
     Gone,
-    /// Another app holds it: WinMM lets one app at a time read a device.
+    /// Another app holds it: WinMM lets one app at a time open a device.
     InUse,
-    /// [`MAX_INPUTS`] devices are open already.
+    /// [`MAX_INPUTS`] inputs, or [`MAX_OUTPUTS`](crate::MAX_OUTPUTS)
+    /// outputs, are open already.
     NoRoom,
     /// The system had no memory for it.
     NoMemory,
@@ -147,6 +150,7 @@ impl fmt::Display for OpenError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             OpenError::NotAnInput => f.write_str("the device takes MIDI and sends none"),
+            OpenError::NotAnOutput => f.write_str("the device sends MIDI and takes none"),
             OpenError::Gone => f.write_str("the device is not there now"),
             OpenError::InUse => f.write_str("another app holds the device"),
             OpenError::NoRoom => write!(f, "{MAX_INPUTS} devices are open already"),
