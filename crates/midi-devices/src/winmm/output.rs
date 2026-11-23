@@ -165,9 +165,11 @@ impl Sysex {
                     reset = Some(Instant::now());
                 }
                 if reset.is_some_and(|at| Instant::now().since(at) > RESET_WAIT) {
-                    // A driver that never hands it back, a device unplugged
-                    // mid-SysEx say, may still read the header and its
-                    // bytes: they are left to it, and the device is gone.
+                    // A driver that never hands it back may still read the
+                    // header and its bytes: they are left to it, and the
+                    // device is gone. The WDM driver never returns from the
+                    // send at all for a device unplugged mid-SysEx, as the
+                    // open note on `Outputs` says, so this does not save it.
                     let header =
                         std::mem::replace(&mut self.header, Box::new(Header(MIDIHDR::default())));
                     Box::leak(header);

@@ -267,9 +267,26 @@ fn a_sysex_longer_than_the_inputs_room_comes_in_whole() {
     );
 }
 
+/// A note-on and its note-off on each of the first eight keys from middle C,
+/// at frame 0.
+fn notes() -> Vec<Event> {
+    (60..68)
+        .flat_map(|key: u32| {
+            [
+                Event::new(0, [0x4090_0000 | key << 8, 0x8000_0000, 0, 0]),
+                Event::new(0, [0x4080_0000 | key << 8, 0, 0, 0]),
+            ]
+        })
+        .collect()
+}
+
+/// Notes, not SysEx: through Windows 10's WDM driver, a device unplugged
+/// while a long SysEx goes out to it leaves the send stuck in the driver,
+/// and the process cannot end after it, as the open note on `Outputs` says.
+/// Short messages are safe, so they are what goes out as the device leaves.
 #[test]
-#[ignore = "by hand: unplug a USB MIDI device while long SysEx goes out to it, then plug it in"]
-fn a_device_unplugged_during_a_long_sysex_closes_at_once_and_opens_again() {
+#[ignore = "by hand: unplug a USB MIDI device while notes go out to it, then plug it in"]
+fn a_device_unplugged_while_notes_go_out_closes_at_once_and_opens_again() {
     let mut devices = Devices::new();
     let Some(device) = chosen(devices.outputs()).cloned() else {
         println!("no output to unplug here");
@@ -278,16 +295,11 @@ fn a_device_unplugged_during_a_long_sysex_closes_at_once_and_opens_again() {
     let name = device.name().to_owned();
     let (mut outputs, mut writer) = outputs(16384);
     outputs.open(&device).expect("it opens");
-    // 48 KB at a time: fifteen seconds of a MIDI cable's time.
-    let (_, events) = long_sysex(48 * 1024);
-    println!("unplug {name} within twenty seconds: SysEx goes out to it meanwhile");
-    let mut last: Option<std::time::Instant> = None;
+    let notes = notes();
+    println!("unplug {name} within twenty seconds: notes go out to it meanwhile");
     let mut closed_in = None;
     tick_until(&mut devices, Duration::from_secs(20), "unplug", |changes| {
-        if last.is_none_or(|at| at.elapsed() > Duration::from_millis(100)) {
-            writer.write(Instant::now(), 48_000.0, &events);
-            last = Some(std::time::Instant::now());
-        }
+        writer.write(Instant::now(), 48_000.0, &notes);
         let closing = std::time::Instant::now();
         let left = !outputs.tick().is_empty();
         let removed = changes.removed.iter().any(|gone| gone.id() == device.id());
@@ -301,9 +313,7 @@ fn a_device_unplugged_during_a_long_sysex_closes_at_once_and_opens_again() {
     });
     let closed_in = closed_in.expect("it closed");
     println!("closed in {closed_in:?}");
-    // A close waits a second for the driver to hand a SysEx back, then
-    // leaves it to the driver.
-    assert!(closed_in < Duration::from_secs(5), "a close does not hang");
+    assert!(closed_in < Duration::from_secs(2), "a close does not wait");
     assert_eq!(outputs.devices().count(), 0);
     println!("now plug {name} back in");
     tick_until(
@@ -318,8 +328,8 @@ fn a_device_unplugged_during_a_long_sysex_closes_at_once_and_opens_again() {
         .expect("listed again");
     assert_eq!(outputs.open(again), Ok(()), "it opens again");
     let dropped = writer.dropped();
-    writer.write(Instant::now(), 48_000.0, &events);
-    thread::sleep(Duration::from_secs(2));
-    assert_eq!(writer.dropped(), dropped, "a long SysEx goes out again");
+    writer.write(Instant::now(), 48_000.0, &notes);
+    thread::sleep(Duration::from_millis(500));
+    assert_eq!(writer.dropped(), dropped, "notes go out again");
     assert!(outputs.close(again.id()));
 }

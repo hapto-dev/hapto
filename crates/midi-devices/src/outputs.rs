@@ -137,6 +137,11 @@ pub fn outputs(room: usize) -> (Outputs, OutputsWriter) {
 /// is sent is closed once the system's list no longer shows it. Every output
 /// closes as this drops.
 ///
+/// Open: through Windows 10's WDM driver, a device unplugged while a long
+/// SysEx goes out to it leaves the send stuck in the driver for good, and
+/// every later look at the list of devices waits behind it, so a tick hangs.
+/// Short messages are safe. JUCE hangs the same way.
+///
 /// Thread: main.
 ///
 /// # Examples

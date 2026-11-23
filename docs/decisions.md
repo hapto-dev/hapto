@@ -3802,6 +3802,18 @@ block: a SysEx sleeps the audio thread until the driver has sent its last byte.
 Its scheduler, which the standalone does not start, takes a lock and allocates
 on the audio thread, and drops what is 200 ms late.
 
+Open: a device unplugged while a long message goes out to it. Through Windows
+10's WDM driver the send never returns: `midiOutLongMsg`, and `midiStreamOut`
+alike, waits on a write the driver never finishes, holding the device's handle.
+A reset from another thread waits behind it, and so does every later WinMM call
+that reads the list of devices again, for good: the app's tick hangs in the
+list, and the process cannot end until the driver lets go, which plugging the
+device back in does not make it do. Short messages are safe: once the device is
+gone each returns an error, and the list goes on. JUCE 9 hangs the same way, its
+writer in `sendMessageNow` and its message thread once its notice of the change
+reads the list again. A fix would keep WinMM's calls off the main thread, each
+with a time limit, and leave a stuck output behind; it waits for a decision.
+
 Neither timing is better at everything, so the app's binary chooses
 (decided 23 November). A message from an input is placed in a block by when it
 came, here as in JUCE, so it plays a block late and keeps its timing within
