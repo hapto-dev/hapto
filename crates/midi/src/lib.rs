@@ -13,16 +13,12 @@
 //! - A [`NoteId`] names a note from its note-on to its note-off, and a
 //!   per-note message names its note with a [`NoteKey`].
 //!
-//! The [`controller`] module names MIDI's controllers.
+//! A block's audio cut at each message is its [`Spans`].
 //!
-//! A block's MIDI is a [`Midi`], with its messages, each at its frame, and
-//! their packets. It reads them from a [`MidiList`], which the engine
-//! decodes each block into once. A block sends
-//! MIDI through its [`MidiOut`].
-//!
-//! The crate is in the core tier and depends only on `hapto-ump`. Decoding,
-//! reading a block and sending are safe on the audio thread, because they
-//! allocate nothing and never panic.
+//! The crate is in the core tier, on `hapto-ump` and `hapto-audio`, and
+//! depends on nothing else. Decoding, reading a block, cutting it into spans
+//! and sending are fit for the audio thread: they allocate nothing and never
+//! panic.
 //!
 //! # Examples
 //!
@@ -73,6 +69,7 @@ mod decoder;
 mod encode;
 mod message;
 mod midi;
+mod spans;
 mod values;
 
 pub use channels::PerChannel;
@@ -80,4 +77,5 @@ pub use controller::{Controller, ControllerValue};
 pub use decoder::{Decoder, Messages, NOTES, SYSEX_BYTES};
 pub use message::{Message, NoteKey, NoteOff, NoteOn};
 pub use midi::{BLOCK_SYSEX_BYTES, Iter, MESSAGES, Midi, MidiList, MidiOut, Packets, packets_of};
+pub use spans::{Span, Spans};
 pub use values::{Centred, Channel, Group, Key, NoteId, Pedal, Pitch, Program};

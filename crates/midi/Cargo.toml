@@ -13,6 +13,7 @@ categories = ["multimedia::audio"]
 publish.workspace = true
 
 [dependencies]
+hapto-audio.workspace = true
 hapto-ump.workspace = true
 
 [dev-dependencies]

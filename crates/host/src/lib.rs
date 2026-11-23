@@ -173,7 +173,6 @@ pub use editor::{Editor, Size};
 pub use faults::boundary_faults;
 #[doc(hidden)]
 pub use faults::report_line;
-pub use spans::{Span, Spans};
 // Inlined: a block's audio is `hapto_audio`'s, shown here as this crate's.
 #[doc(inline)]
 pub use hapto_audio::{AddSample, Audio, AudioBuf, Frame, layout};
@@ -235,7 +234,7 @@ pub use hapto_macros::manifest_info;
 /// MIDI in musicians' terms: the messages that a block's [`Midi`] holds, and
 /// their values.
 pub use hapto_midi as midi;
-pub use hapto_midi::{Message, Midi, MidiOut};
+pub use hapto_midi::{Message, Midi, MidiOut, Span, Spans};
 pub use info::{AuCodes, Category, Feature, PluginInfo};
 #[doc(hidden)]
 pub use info::{first_width, widths};

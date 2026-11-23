@@ -50,13 +50,16 @@ reading how Hapto works inside, start with
   each its own type (`values.rs`), the messages (`message.rs`), the decoder
   that reads packets into them (`decoder.rs`), a block's MIDI in and out,
   `Midi` and `MidiOut` (`midi.rs`), the encoder that writes a message back as
-  packets (`encode.rs`), and the controllers, typed (`controller.rs`).
+  packets (`encode.rs`), the controllers, typed (`controller.rs`), and a
+  block's audio cut at each message, its [spans](docs/glossary.md#span)
+  (`spans.rs`).
 - `crates/audio`: a block's audio as a processor sees it: the layouts, the
   channels a main bus has as a type (`layout.rs`); `Audio`, the channels a
   block lends, walked by frame or by channel (`audio.rs`, `frame.rs`); and
-  `AudioBuf`, audio of its own for tests (`buf.rs`). `host` re-exports them.
-- `crates/host`: the `Plugin` trait, a block and its
-  [spans](docs/glossary.md#span) (`audio.rs`, `spans.rs`), the
+  `AudioBuf`, audio of its own for tests (`buf.rs`); and the `Status` a block
+  answers (`status.rs`). `host` re-exports them.
+- `crates/host`: the `Plugin` trait, a block, which makes its spans
+  (`audio.rs`, `spans.rs`), the
   [parts](docs/glossary.md#parts) Hapto
   builds for each instance (`parts.rs`, with the parameters a plugin makes at
   run time in `parts/run_time.rs`), the saved block (`SavedState`), which

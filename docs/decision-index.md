@@ -255,7 +255,8 @@ move its line here; when a decision gains code, add one.
 - test `crates/midi/tests/block.rs`: `a_note_its_host_named_goes_out_under_the_hosts_id_and_one_made_up_under_none`
 - `crates/host/src/audio.rs`: `Block`
 - `crates/host/src/engine/process.rs`: `pieces`
-- `crates/host/src/spans.rs`: module, `Spans`, `Spans::at_most`, `Span`, `Block::spans`
+- `crates/midi/src/spans.rs`: module, `Spans`, `Spans::new`, `Spans::at_most`, `Span`
+- `crates/host/src/spans.rs`: module, `Block::spans`, `Block::spans_and_out`
 - `crates/audio/src/audio.rs`: `Audio::split_at`
 - `crates/midi/src/midi.rs`: `MidiList::read`, `MidiList::between`, `Midi`, `Midi::between`, `MidiOut`
 - test `crates/host/tests/spans.rs`: module, `spans_cover_the_block_once_with_every_message_where_it_arrived`
