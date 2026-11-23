@@ -254,7 +254,8 @@ fn the_apps_midi_inputs_reach_the_plugin_in_its_blocks() {
     assert!(inputs.push(0, Instant::from_nanos(0), [0x2090_3C7F, 0, 0, 0]));
     assert!(inputs.push(4, Instant::from_nanos(1), [0x2090_3E7F, 0, 0, 0]));
     let mut buffer = vec![0.0_f32; 128 * 2];
-    player.play(&mut buffer);
+    // A second into the stream, well after the packets came.
+    player.play_at(&mut buffer, Instant::from_nanos(1_000_000_000));
     let blocks = listener.blocks.lock().expect("not poisoned").clone();
     assert_eq!(blocks.len(), 2);
     assert_eq!(blocks[0], (64, vec![(0, 0x4090_3C00), (0, 0x4090_3E00)]));
@@ -270,7 +271,8 @@ fn a_plugin_with_no_channels_is_given_each_blocks_frames_and_its_midi() {
         Player::new(listener.clone(), Width::new(0, 0), 2, 48_000.0, 64, plan).with_midi(reader);
     assert!(inputs.push(0, Instant::from_nanos(0), [0x2090_3C7F, 0, 0, 0]));
     let mut buffer = vec![9.0_f32; 128 * 2];
-    player.play(&mut buffer);
+    // A second into the stream, well after the packets came.
+    player.play_at(&mut buffer, Instant::from_nanos(1_000_000_000));
     let blocks = listener.blocks.lock().expect("not poisoned").clone();
     assert_eq!(
         blocks,
@@ -278,6 +280,40 @@ fn a_plugin_with_no_channels_is_given_each_blocks_frames_and_its_midi() {
         "the frames, with no channel to carry them"
     );
     assert!(buffer.iter().all(|&sample| sample == 0.0), "silence out");
+}
+
+#[test]
+fn each_block_of_a_buffer_reads_its_own_share_of_the_time_since_the_last() {
+    let listener = Listener::default();
+    // Blocks as the device asks, of at most 1024: a buffer of 1920 frames,
+    // 40 ms at 48 kHz, plays as blocks of 1024 and 896.
+    let plan = Plan::new(Blocks::Device, Signal::Silence);
+    let (mut inputs, reader) = inputs(16);
+    let mut player =
+        Player::new(listener.clone(), Width::STEREO, 2, 48_000.0, 1024, plan).with_midi(reader);
+    let at = |millis: u64| Instant::from_nanos(millis * 1_000_000);
+    let mut buffer = vec![0.0_f32; 1920 * 2];
+    player.play_at(&mut buffer, at(1000));
+    // A note 10 ms into the next buffer's time, and one 35 ms in: the first
+    // block reads the first 21.3 ms, the second the rest.
+    assert!(inputs.push(0, at(1010), [0x2090_3C7F, 0, 0, 0]));
+    assert!(inputs.push(0, at(1035), [0x2090_3E7F, 0, 0, 0]));
+    player.play_at(&mut buffer, at(1040));
+    let blocks = listener.blocks.lock().expect("not poisoned").clone();
+    let [_, _, (first, early), (second, late)] = blocks.as_slice() else {
+        panic!("two blocks a buffer: {blocks:?}");
+    };
+    assert_eq!((*first, *second), (1024, 896));
+    let frame = |packets: &[(u32, u32)]| packets.first().map(|&(frame, _)| frame);
+    // 10 of the first block's 21.3 ms, and 13.7 of the second's 18.7.
+    assert!(
+        frame(early).is_some_and(|f| f.abs_diff(480) <= 1),
+        "{early:?}"
+    );
+    assert!(
+        frame(late).is_some_and(|f| f.abs_diff(656) <= 1),
+        "{late:?}"
+    );
 }
 
 /// Sends a note-on at the first frame of every block it plays.

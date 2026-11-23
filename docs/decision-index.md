@@ -1438,10 +1438,12 @@ move its line here; when a decision gains code, add one.
 - `crates/midi-devices/src/outputs.rs`: `Timing`, `Outputs`, `Outputs::open`, `OutputsWriter::write`, `MAX_OUTPUTS`
 - `crates/midi-devices/src/winmm/output.rs`: module, `Sysex::join`, `Sysex::send`, `Output::shut`, `send`, `Reading`, `RESET_WAIT`
 - `crates/midi-devices/src/winmm/signal.rs`: module, `Signal`, `Timer::wait`
-- `crates/standalone/src/midi.rs`: module, `Midi::streams`, `Midi::tick`, `follow`
+- `crates/standalone/src/midi.rs`: module, `Midi::streams`, `Midi::stop`, `Midi::tick`, `follow`, `Said`, `LEFT_WAIT`
+- test `crates/standalone/src/midi.rs`: `a_device_is_said_open_or_refused_once_until_it_changes`
+- `crates/standalone/src/app.rs`: `start_audio`, `App::silence`
 - `crates/standalone/src/routing.rs`: `MidiDevices`, `plan`
 - `crates/standalone/src/lib.rs`: `App`
-- `crates/standalone/src/block.rs`: `Render`, `Player::with_midi`, `Player::with_midi_out`, `Player::block_start`
+- `crates/standalone/src/block.rs`: `Render`, `Player::with_midi`, `Player::with_midi_out`, `Player::block_start`, `Player::input_until`, `Player::play_at`
 - test `crates/midi-devices/src/inputs/tests.rs`: module
 - test `crates/midi-devices/src/winmm/input/tests.rs`: module
 - test `crates/midi-devices/src/outputs/tests.rs`: module
@@ -1453,7 +1455,7 @@ move its line here; when a decision gains code, add one.
 - test `crates/midi-devices/src/devices.rs`: `a_notice_brings_four_looks_each_wait_twice_the_last`, `with_no_notice_the_list_is_read_every_two_seconds`
 - test `crates/midi-devices/src/ring.rs`: `loom_the_audio_thread_takes_what_the_device_pushed_in_order_and_whole`
 - test `crates/midi-devices/tests/alloc_gate.rs`: module
-- test `crates/standalone/src/block/tests.rs`: `the_apps_midi_inputs_reach_the_plugin_in_its_blocks`, `at_frames_each_blocks_midi_is_due_where_its_frames_fall_in_the_devices_buffer`
+- test `crates/standalone/src/block/tests.rs`: `the_apps_midi_inputs_reach_the_plugin_in_its_blocks`, `at_frames_each_blocks_midi_is_due_where_its_frames_fall_in_the_devices_buffer`, `each_block_of_a_buffer_reads_its_own_share_of_the_time_since_the_last`
 - test `crates/standalone/src/routing/tests.rs`: module
 
 ### D116. MIDI in musicians' terms

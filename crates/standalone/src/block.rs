@@ -285,6 +285,8 @@ pub(crate) struct Player<R> {
     asked: Instant,
     /// How many frames of that buffer the parts before this one fill.
     ahead: usize,
+    /// How many frames that buffer holds.
+    buffer: usize,
 }
 
 impl<R: Render> Player<R> {
@@ -321,6 +323,7 @@ impl<R: Render> Player<R> {
             sample_rate,
             asked: Instant::from_nanos(0),
             ahead: 0,
+            buffer: 0,
         }
     }
 
@@ -343,9 +346,15 @@ impl<R: Render> Player<R> {
     /// Fills `data`, the device's interleaved buffer, with the plugin's
     /// output for the next frames.
     pub(crate) fn play(&mut self, data: &mut [f32]) {
+        self.play_at(data, Instant::now());
+    }
+
+    /// [`play`](Self::play), the device having asked at `asked`.
+    pub(crate) fn play_at(&mut self, data: &mut [f32], asked: Instant) {
         let width = self.device_channels;
-        self.asked = Instant::now();
+        self.asked = asked;
         self.ahead = 0;
+        self.buffer = data.len() / width;
         for part in data.chunks_mut(self.part * width) {
             let frames = part.len() / width;
             while self.queued < frames {
@@ -368,9 +377,22 @@ impl<R: Render> Player<R> {
         Instant::from_nanos(self.asked.nanos().saturating_add(after as u64))
     }
 
+    /// The time up to which a block of `length` frames rendered now reads
+    /// the app's MIDI in: where its frames end on the stream's timeline, a
+    /// device buffer back, and never past when the device asked. So the
+    /// blocks one buffer holds each read their own share of the time since
+    /// the last, as long as they are.
+    fn input_until(&self, length: usize) -> Instant {
+        let end = (self.ahead + self.queued + length) as f64 - self.buffer as f64;
+        let after = end * 1e9 / self.sample_rate.max(1.0);
+        let until = (self.asked.nanos() as f64 + after).max(0.0);
+        Instant::from_nanos(until as u64).min(self.asked)
+    }
+
     /// Renders a block of `length` frames onto the queue.
     fn play_block(&mut self, length: usize) {
         let start = self.block_start();
+        let until = self.input_until(length);
         self.signal.set(self.plan.signal());
         if let Some((first, rest)) = self.inputs.split_first_mut() {
             let first = &mut first[..length];
@@ -391,7 +413,7 @@ impl<R: Render> Player<R> {
         let midi = match &mut self.midi {
             Some(MidiIn { reader, block }) => {
                 block.clear();
-                reader.read(Instant::now(), length, block);
+                reader.read(until, length, block);
                 block.as_slice()
             }
             None => &[],

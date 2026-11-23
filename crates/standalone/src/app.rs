@@ -144,7 +144,8 @@ fn start_audio<P: Plugin>(
         BLOCK,
         Plan::new(Blocks::Device, signal),
     );
-    let (reader, writer) = midi.map_or((None, None), Midi::streams);
+    let mut midi = midi;
+    let (reader, writer) = midi.as_deref_mut().map_or((None, None), Midi::streams);
     let player = match reader {
         Some(reader) => player.with_midi(reader),
         None => player,
@@ -153,9 +154,13 @@ fn start_audio<P: Plugin>(
         Some(writer) => player.with_midi_out(writer),
         None => player,
     };
-    let stream = output
-        .start(rate, player)
-        .inspect_err(|_| plugin.deactivate())?;
+    let stream = output.start(rate, player).inspect_err(|_| {
+        plugin.deactivate();
+        // No stream plays the devices: they go back to other apps.
+        if let Some(midi) = midi {
+            midi.stop();
+        }
+    })?;
     Ok(Audio { stream, output })
 }
 
@@ -447,6 +452,11 @@ impl<P: Plugin> App<P> {
     fn silence(&mut self) {
         drop(self.audio.take());
         self.plugin.deactivate();
+        // No stream reads or writes the devices now: they go back to other
+        // apps, and the outputs' notes end.
+        if let Some(midi) = &mut self.midi {
+            midi.stop();
+        }
     }
 
     /// Says in the window's title whether the audio is `stopped`.

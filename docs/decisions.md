@@ -3817,19 +3817,30 @@ Which devices the app opens is its binary's to say, in code: `App`'s
 device the system lists and of each that appears later, and `App::midi` hands
 out a `MidiDevices` handle that changes them while the app runs, from any
 thread, and tells which devices are listed and open. A change applies at the
-app's next tick, on its main thread: the devices that now pass open and the
-ones open that no longer pass close, each with a line. Every input opens by
-default, as before, and no output, for a plugin that takes MIDI or sends it:
-opening every output would loop a plugin's MIDI back to it through a virtual
-port that is both an input and an output, drive gear no one asked it to, and
-hold every port from other apps. JUCE's standalone opens none either way until
-its settings dialog picks them, a single output among them. Hapto adds no
-command-line flags for it, as an app's command line is its author's, and no
-settings of its own. `App::midi_out_timing` sets the outputs' timing, and the
-handle changes it as it runs. The player stamps each block's MIDI out where its
-first frame falls in the device's stream: when the device asked for the
-buffer, plus the frames the parts of it before this one and the queue hold, so
-at frames, blocks rendered back to back keep the spacing of their audio.
+app's next tick, on its main thread: the devices that now pass open and the ones
+open that no longer pass close, each with a line. Every input opens by default,
+as before, and no output, for a plugin that takes MIDI or sends it: opening
+every output would loop a plugin's MIDI back to it through a virtual port that
+is both an input and an output, drive gear no one asked it to, and hold every
+port from other apps. JUCE's standalone opens none either way until its settings
+dialog picks them, a single output among them. Hapto adds no command-line flags
+for it, as an app's command line is its author's, and no settings of its own.
+`App::midi_out_timing` sets the outputs' timing, and the handle changes it as it
+runs. The player stamps each block's MIDI out where its first frame falls in the
+device's stream: when the device asked for the buffer, plus the frames the parts
+of it before this one and the queue hold, so at frames, blocks rendered back to
+back keep the spacing of their audio. Each block reads MIDI in up to where its
+frames end on that timeline, a buffer back, so the blocks one buffer holds each
+read their own share of the time.
+
+The devices are open while a stream plays: when the audio stops, or a stream
+does not start, they close, so their ports go back to other apps and each
+output's reset ends its notes, and the next stream opens them again. A line
+says each device that opens, is refused, closes or leaves, once until that
+changes, so a stream that starts again, or keeps failing to, says nothing new.
+A device that left stays out of what opens for five seconds, while the
+system's list may still show it, and comes back sooner if the list does. The
+app matches devices by their id, whatever their names.
 
 Open: keeping a device's place in the app's settings from run to run, and MIDI
 out timed to land with the audio it goes with, which would add the output's
