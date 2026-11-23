@@ -1,24 +1,10 @@
 //! From messages back to MIDI 2.0 packets: what a block sends.
 
-// Audio-path code: a panic here ends a host, so indexing, unwrap, expect,
-// panic and unchecked arithmetic are refused, and a site that is provably
-// safe says why in an `#[expect]`.
-#![cfg_attr(
-    not(test),
-    deny(
-        clippy::indexing_slicing,
-        clippy::unwrap_used,
-        clippy::expect_used,
-        clippy::panic,
-        clippy::arithmetic_side_effects
-    )
-)]
-
 use hapto_ump::scale::up_14_to_32;
 use hapto_ump::{Attribute, Bank, ChannelMessage, ChannelVoice, SysEx7};
 
 use crate::message::{Message, NoteKey};
-use crate::values::{Centred, Channel, Group, Pitch};
+use crate::values::{Centred, Channel, Group, Pitch, held};
 
 /// MIDI 2.0's registered per-note controller for a note's absolute pitch.
 const PER_NOTE_PITCH: u8 = 3;
@@ -254,11 +240,7 @@ fn pitch_7_25(pitch: Pitch) -> u32 {
 /// and cents, as MIDI 1.0 sends them, upscaled as the specification does.
 fn bend_range(semitones: f32) -> u32 {
     // In whole cents, so 1.999 carries to 2 semitones, and none for NaN.
-    let cents = if semitones.is_nan() {
-        0
-    } else {
-        (semitones.clamp(0.0, 127.99) * 100.0).round() as u16
-    };
+    let cents = (held(semitones, 0.0, 127.99, 0.0) * 100.0).round() as u16;
     let (whole, cents) = (
         cents.checked_div(100).unwrap_or(0),
         cents.checked_rem(100).unwrap_or(0),

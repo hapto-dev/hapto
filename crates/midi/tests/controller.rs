@@ -173,3 +173,15 @@ fn a_controllers_message_reads_back_as_it_was_sent() {
     let read = controller::FINE_TUNING.read(&fine).expect("a tuning").get();
     assert!((read - 0.25).abs() < 1e-6, "{read}");
 }
+
+#[test]
+fn a_value_that_is_not_a_number_reads_as_each_types_rest() {
+    use hapto_midi::ControllerValue;
+    assert_eq!(f32::from_unit(f32::NAN), 0.0);
+    assert_eq!(Centred::from_unit(f32::NAN), Centred::CENTRE);
+    assert_eq!(Centred::new(f32::NAN), Centred::CENTRE);
+    assert_eq!(Pedal::new(f32::NAN), Pedal::UP);
+    // In range, each is held to its ends.
+    assert_eq!(Centred::from_unit(2.0), Centred::new(1.0));
+    assert_eq!(f32::from_unit(-1.0), 0.0);
+}

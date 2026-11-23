@@ -40,7 +40,7 @@ impl fmt::Display for Key {
             "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
         ];
         let name = NAMES.get(usize::from(self.0 % 12)).copied().unwrap_or("?");
-        write!(f, "{name}{}", i16::from(self.0 / 12) - 1)
+        write!(f, "{name}{}", i16::from(self.0 / 12).saturating_sub(1))
     }
 }
 
@@ -69,7 +69,7 @@ impl Group {
     /// If `number` is not 1 to 16: in a `const`, at compile time.
     pub const fn number(number: u8) -> Self {
         assert!(number >= 1 && number <= 16, "groups are 1 to 16");
-        Group(number - 1)
+        Group(number.saturating_sub(1))
     }
 
     /// The group a packet's group field names, 0 to 15.
@@ -115,7 +115,7 @@ impl Channel {
     /// If `number` is not 1 to 16: in a `const`, at compile time.
     pub const fn number(number: u8) -> Self {
         assert!(number >= 1 && number <= 16, "channels are 1 to 16");
-        Channel(number - 1)
+        Channel(number.saturating_sub(1))
     }
 
     /// The channel a packet's channel field names, 0 to 15.
@@ -159,7 +159,7 @@ impl Program {
     /// If `number` is not 1 to 128: in a `const`, at compile time.
     pub const fn number(number: u8) -> Self {
         assert!(number >= 1 && number <= 128, "programs are 1 to 128");
-        Program(number - 1)
+        Program(number.saturating_sub(1))
     }
 
     /// The program MIDI sends as `wire`, 0 to 127, masked to 7 bits.
@@ -205,20 +205,16 @@ impl Centred {
     /// `value`, held to -1 to 1; a value that is not a number is the
     /// centre.
     pub fn new(value: f32) -> Self {
-        if value.is_nan() {
-            Centred::CENTRE
-        } else {
-            Centred(value.clamp(-1.0, 1.0))
-        }
+        Centred(held(value, -1.0, 1.0, 0.0))
     }
 
     /// The value MIDI 2.0's 32 bits carry, its centre at `0x8000_0000`.
     pub(crate) fn from_bits(bits: u32) -> Self {
         const CENTRE: u32 = 0x8000_0000;
         let value = if bits >= CENTRE {
-            f64::from(bits - CENTRE) / f64::from(u32::MAX - CENTRE)
+            f64::from(bits.saturating_sub(CENTRE)) / f64::from(u32::MAX - CENTRE)
         } else {
-            -(f64::from(CENTRE - bits) / f64::from(CENTRE))
+            -(f64::from(CENTRE.saturating_sub(bits)) / f64::from(CENTRE))
         };
         Centred(value as f32)
     }
@@ -263,11 +259,7 @@ impl Pedal {
     /// A pedal `depth` down, held to 0 to 1; a depth that is not a number
     /// is up.
     pub fn new(depth: f32) -> Self {
-        if depth.is_nan() {
-            Pedal::UP
-        } else {
-            Pedal(depth.clamp(0.0, 1.0))
-        }
+        Pedal(held(depth, 0.0, 1.0, 0.0))
     }
 
     /// Whether it is down, as MIDI 1.0 reads a pedal: from the middle on.
@@ -411,6 +403,16 @@ impl fmt::Display for NoteId {
         } else {
             write!(f, "note {}", self.0 & !MADE_UP)
         }
+    }
+}
+
+/// `value` held to `low` to `high`, or `if_nan` for a value that is not a
+/// number.
+pub(crate) fn held(value: f32, low: f32, high: f32, if_nan: f32) -> f32 {
+    if value.is_nan() {
+        if_nan
+    } else {
+        value.clamp(low, high)
     }
 }
 

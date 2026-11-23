@@ -25,7 +25,7 @@
 use hapto_ump::scale::up_7_to_32;
 
 use crate::message::{Message, NoteKey};
-use crate::values::{Centred, Channel, Group, Pedal};
+use crate::values::{Centred, Channel, Group, Pedal, held};
 
 /// A controller, typed by the value it carries: a channel's control
 /// change, or a registered or assignable controller (MIDI 1.0's RPN and
@@ -156,11 +156,7 @@ pub trait ControllerValue: Copy {
 /// From 0 to 1, as it comes.
 impl ControllerValue for f32 {
     fn from_unit(unit: f32) -> Self {
-        if unit.is_nan() {
-            0.0
-        } else {
-            unit.clamp(0.0, 1.0)
-        }
+        held(unit, 0.0, 1.0, 0.0)
     }
 
     fn to_unit(self) -> f32 {
@@ -171,7 +167,8 @@ impl ControllerValue for f32 {
 /// -1 to 1, 0 at the middle, MIDI 2.0's centre.
 impl ControllerValue for Centred {
     fn from_unit(unit: f32) -> Self {
-        Centred::new(f32::from_unit(unit).mul_add(2.0, -1.0))
+        // Not a number is the centre, as `Centred::new` reads it.
+        Centred::new(unit.mul_add(2.0, -1.0))
     }
 
     fn to_unit(self) -> f32 {

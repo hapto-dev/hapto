@@ -47,6 +47,19 @@
 
 // The nightly real-time sanitizer lane marks the calls the audio thread makes.
 #![cfg_attr(hapto_rtsan, feature(sanitize))]
+// A panic on the audio path ends a host, so the crate refuses indexing,
+// unwrap, expect, panic and unchecked arithmetic outside its unit tests, and
+// a site that is provably safe says why in an `#[expect]`.
+#![cfg_attr(
+    not(test),
+    deny(
+        clippy::indexing_slicing,
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::arithmetic_side_effects
+    )
+)]
 
 pub mod controller;
 mod decoder;

@@ -1,20 +1,6 @@
 //! From packets to messages: what the engine runs over every block, and a
 //! plugin may run on its main thread or in a test.
 
-// Audio-path code: a panic here ends a host, so indexing, unwrap, expect,
-// panic and unchecked arithmetic are refused, and a site that is provably
-// safe says why in an `#[expect]`.
-#![cfg_attr(
-    not(test),
-    deny(
-        clippy::indexing_slicing,
-        clippy::unwrap_used,
-        clippy::expect_used,
-        clippy::panic,
-        clippy::arithmetic_side_effects
-    )
-)]
-
 use std::fmt;
 
 use hapto_ump::scale::down_32_to_14;

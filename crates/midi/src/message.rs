@@ -76,8 +76,10 @@ impl NoteOn {
         let mut attribute = self.attribute;
         if attribute.kind == PITCH_7_9 {
             // 7.9 fixed point: a key is 512.
-            let shift = (i32::from(key.number()) - i32::from(self.key.number())) * 512;
-            let moved = (i32::from(attribute.data) + shift).clamp(0, i32::from(u16::MAX));
+            let keys = i32::from(key.number()).saturating_sub(i32::from(self.key.number()));
+            let moved = i32::from(attribute.data)
+                .saturating_add(keys.saturating_mul(512))
+                .clamp(0, i32::from(u16::MAX));
             attribute.data = u16::try_from(moved).unwrap_or(u16::MAX);
         }
         NoteOn {

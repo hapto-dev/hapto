@@ -1,20 +1,6 @@
 //! A block's MIDI: its packets decoded once into messages, each at its
 //! frame, read as often as needed; and the MIDI a block sends.
 
-// Audio-path code: a panic here ends a host, so indexing, unwrap, expect,
-// panic and unchecked arithmetic are refused, and a site that is provably
-// safe says why in an `#[expect]`.
-#![cfg_attr(
-    not(test),
-    deny(
-        clippy::indexing_slicing,
-        clippy::unwrap_used,
-        clippy::expect_used,
-        clippy::panic,
-        clippy::arithmetic_side_effects
-    )
-)]
-
 use std::fmt;
 
 use hapto_ump::{Event, EventList, Origin, SysEx7};
