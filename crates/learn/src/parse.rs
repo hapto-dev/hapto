@@ -162,10 +162,13 @@ mod tests {
     /// Hapto's deviations, each the upgrade's or the parser's documented
     /// choice:
     ///
-    /// 1. A 99 that begins an address forgets the latched 98, which belonged
-    ///    to an address already used ([`begins_an_address`]).
-    /// 2. A 38 before any 6 since the address waits, and the first 6 carries
-    ///    it. MIDI 1.0 would refine the receiver's own high byte, which learn
+    /// 1. An address high byte (99, 101) that begins an address forgets the
+    ///    latched low byte, which belonged to an address already used
+    ///    ([`begins_an_address`]).
+    /// 2. A 38 refines the newest 6 only when that 6 was sent under the same
+    ///    number, however often the address was sent between. Otherwise it
+    ///    waits, and the next 6 under its number carries it. MIDI 1.0 would
+    ///    refine the receiver's own high byte for that number, which learn
     ///    does not hold.
     /// 3. Increment and decrement (96, 97) drive nothing, since learn holds no
     ///    value to step.
@@ -183,10 +186,65 @@ mod tests {
         if !matches!(controller, 6 | 38) {
             return None;
         }
-        let earlier = match earlier.iter().rposition(|&(c, _)| c == 121) {
-            Some(reset) => &earlier[reset + 1..],
-            None => earlier,
+        let earlier = since_reset(earlier);
+        // Learn reads NRPNs alone.
+        let Some(Number::Nrpn(nrpn)) = number(earlier) else {
+            return None;
         };
+        let nonzero = |low: u8| (low != 0).then_some(low);
+        let newest_high = earlier.iter().rposition(|&(c, _)| c == 6);
+        // The number each 6 or 38 in `earlier` was sent under.
+        let under = |at: usize| number(&earlier[..at]);
+        if controller == 38 {
+            // Deviation 2: another number's high byte waits.
+            let at = newest_high?;
+            if under(at) != Some(Number::Nrpn(nrpn)) {
+                return None;
+            }
+            let high = earlier[at].1;
+            return Some((
+                Control::Nrpn(nrpn),
+                Value::Nrpn {
+                    high,
+                    low: nonzero(value),
+                },
+            ));
+        }
+        // Zero, as MIDI 1.0 says, unless deviation 2 holds a 38 for it: the
+        // newest 38 since the last 6 that came before its own number's high
+        // byte.
+        let held = newest_high.and_then(under);
+        let start = newest_high.map_or(0, |at| at + 1);
+        let early = (start..earlier.len())
+            .rev()
+            .filter(|&at| earlier[at].0 == 38)
+            .map(|at| (under(at), earlier[at].1))
+            .find(|&(sent, _)| sent.is_some() && sent != held);
+        let low = early
+            .filter(|&(sent, _)| sent == Some(Number::Nrpn(nrpn)))
+            .and_then(|(_, low)| nonzero(low));
+        Some((Control::Nrpn(nrpn), Value::Nrpn { high: value, low }))
+    }
+
+    /// A parameter number, as MIDI 1.0 selects it.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum Number {
+        Nrpn(u16),
+        Rpn(u16),
+    }
+
+    /// What follows the newest Reset All Controllers in `history`, which
+    /// forgets the address (deviation 4).
+    fn since_reset(history: &[(u8, u8)]) -> &[(u8, u8)] {
+        match history.iter().rposition(|&(c, _)| c == 121) {
+            Some(reset) => &history[reset + 1..],
+            None => history,
+        }
+    }
+
+    /// The number the address bytes in `history` select, if any.
+    fn number(history: &[(u8, u8)]) -> Option<Number> {
+        let history = since_reset(history);
         let newest = |controller: u8, within: &[(u8, u8)]| {
             within
                 .iter()
@@ -194,56 +252,48 @@ mod tests {
                 .find(|&&(c, _)| c == controller)
                 .map(|&(_, v)| v)
         };
-        let address = earlier.iter().rposition(|&(c, _)| matches!(c, 98..=101))?;
-        if !matches!(earlier[address].0, 98 | 99) {
-            return None;
-        }
-        let high = newest(99, earlier)?;
-        let since_high = &earlier[earlier.iter().rposition(|&(c, _)| c == 99)? + 1..];
-        let forgotten = begins_an_address(earlier) && newest(98, since_high).is_none();
-        let low = newest(98, earlier).filter(|_| !forgotten)?;
+        let address = history.iter().rposition(|&(c, _)| matches!(c, 98..=101))?;
+        let (high_byte, low_byte) = if matches!(history[address].0, 98 | 99) {
+            (99, 98)
+        } else {
+            (101, 100)
+        };
+        let high = newest(high_byte, history)?;
+        let since_high = &history[history.iter().rposition(|&(c, _)| c == high_byte)? + 1..];
+        let forgotten = begins_an_address(history, high_byte, low_byte)
+            && newest(low_byte, since_high).is_none();
+        let low = newest(low_byte, history).filter(|_| !forgotten)?;
         if (high, low) == (127, 127) {
             return None;
         }
         let number = u16::from(high) << 7 | u16::from(low);
-        let since = &earlier[address + 1..];
-        if controller == 6 {
-            // Zero, as MIDI 1.0 says, unless deviation 2 holds a 38 for it.
-            let first_high = since.iter().all(|&(c, _)| c != 6);
-            let low = newest(38, since).filter(|&low| first_high && low != 0);
-            return Some((Control::Nrpn(number), Value::Nrpn { high: value, low }));
-        }
-        // A 38 with no 6 since the address waits for one (deviation 2).
-        let high = newest(6, since)?;
-        Some((
-            Control::Nrpn(number),
-            Value::Nrpn {
-                high,
-                low: (value != 0).then_some(value),
-            },
-        ))
+        Some(if high_byte == 99 {
+            Number::Nrpn(number)
+        } else {
+            Number::Rpn(number)
+        })
     }
 
-    /// Whether the newest 99 in `history` begins an address, rather than
-    /// completing one a 98 began.
+    /// Whether the newest `high_byte` (99 or 101) in `history` begins an
+    /// address, rather than completing one its `low_byte` began.
     ///
     /// Address bytes pair off two by two from the start of a run of them, and
     /// the first of a pair begins an address. A run ends at any other
     /// parameter-number message and at a byte that repeats the one before it,
     /// so within a run the bytes alternate.
-    fn begins_an_address(history: &[(u8, u8)]) -> bool {
-        let Some(at) = history.iter().rposition(|&(c, _)| c == 99) else {
+    fn begins_an_address(history: &[(u8, u8)], high_byte: u8, low_byte: u8) -> bool {
+        let Some(at) = history.iter().rposition(|&(c, _)| c == high_byte) else {
             return true;
         };
         let mut before_it = 0;
-        let mut later = 99;
+        let mut later = high_byte;
         for &(c, _) in history[..at].iter().rev() {
             match c {
-                98 | 99 if c != later => {
+                c if (c == high_byte || c == low_byte) && c != later => {
                     before_it += 1;
                     later = c;
                 }
-                98 | 99 | 6 | 38 | 96 | 97 | 100 | 101 => break,
+                6 | 38 | 96..=101 => break,
                 // Other controllers leave the address alone.
                 _ => {}
             }

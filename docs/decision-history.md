@@ -500,6 +500,13 @@ A lone controller 32 to 63 first waited one poll, and two polls with no block
 between learned it as itself before its high byte's block ran; it now waits as
 a lone NRPN high byte does, under D47's amended rule.
 
+Until 2026-11-23 any address byte dropped the data entry held, so a sender that
+names the address before every data byte played at 7 bits and its low byte
+never went out; an audit of the MIDI branches found it. The specification's
+Default Translation holds the latest high byte across addresses. The owner
+decided on 2026-11-23 to follow it for a number sent again and to keep the two
+departures that keep one parameter's high byte off another.
+
 ### D71. Learn after an unreadable midiLearn section
 
 [The decision](decisions.md#d71-learn-after-an-unreadable-midilearn-section)
@@ -1277,6 +1284,18 @@ alone, and the same gain takes 1,481.
 The owner's decision, on 2026-11-21, with D112: `hapto-midi` is to sit in the
 core, below `hapto-host`, and its voices take `Audio`, so the audio types sit
 below both.
+
+### D114. MIDI 2.0 inside
+
+[The decision](decisions.md#d114-midi-20-inside)
+
+An audit of the MIDI branches on 2026-11-23, checked against the UMP and MIDI
+2.0 Protocol specification v1.1.2, found that increment and decrement went out
+before a high byte held, so a receiver of the downgrade stepped the value
+before it, and that a bank select LSB sent alone was lost, where appendix D.3.4
+carries the bank select values current. Both were fixed that day, and the
+record named the upgrade's departures from the Default Translation, the
+owner's decision.
 
 ## Rules
 

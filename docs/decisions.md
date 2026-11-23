@@ -600,8 +600,8 @@ sender that never sends the low byte tops out at 0.99225.
 **Rust.** Follow MIDI 1.0: a high byte dispatches the 14-bit value with its low
 byte when one follows in its block, and otherwise at the end of the block with
 the low byte at 0, and a low byte a block later refines it (D114). A low byte
-sent before its high byte since the address changed waits, and the high byte
-then dispatches with it (D70). A binding whose capture saw no low byte
+sent before its number's high byte waits, and that high byte then dispatches
+with it (D70). A binding whose capture saw no low byte
 scales the high byte as 7-bit instead, so such a sender reaches 1.0. The binding
 records which, and the `midiLearn` section saves it from schema 1.
 
@@ -1587,8 +1587,12 @@ so a later 98 alone selects that NRPN again.
 
 Reset All Controllers (121) forgets both address bytes and the selection, where
 its recommended response (RP-015) sets the number to null, and still passes on
-as controller 121. A data entry low byte sent before its high byte waits, and
-the high byte takes it; an address change drops it.
+as controller 121. Data entry belongs to the number it was sent under. A high
+byte stays held when its address is sent again, so a low byte after it refines
+it, as the specification's Default Translation holds the latest high byte. The
+upgrade departs from that translation twice, so that one parameter's high byte
+never lands on another: a low byte never takes another number's high byte, and
+one sent before its own number's high byte waits for it.
 
 A controller 32 to 63 that comes right after the controller 32 below it on the
 same group and channel, with no other capture between, learns that one, the
@@ -3530,11 +3534,15 @@ program change that carries their bank, and an RPN or NRPN becomes one
 registered or assignable controller.
 
 The upgrade holds a data entry high byte (6) until its low byte (38), another
-high byte, a new address or the end of the block sends it. A pair one block
-carries becomes one message, a high byte alone goes out at the block's last
-frame with its low byte at 0, and a low byte a block later refines it. The null
-number (127, 127) translates to nothing, data increment and decrement (96, 97)
-pass on as controllers, and the address reads as D70 states.
+high byte, an address byte, data increment or decrement (96, 97) or the end of
+the block sends it, so a MIDI 1.0 receiver of the downgrade steps the value
+the high byte set. A pair one block carries becomes one message, a high byte
+alone goes out at the block's last frame with its low byte at 0, and a low
+byte a block later refines it. The null number (127, 127) translates to
+nothing, increment and decrement pass on as controllers, and the address and
+the departures from the Default Translation read as D70 states. A bank byte
+sent alone selects a bank with its partner at 0, since a program change carries
+the bank select values current.
 
 An exporter downgrades with `Downgrade` only for a destination that takes MIDI
 1.0 alone, by the same appendix. Values cut their low bits, a note-on that

@@ -220,6 +220,56 @@ fn a_low_byte_sent_first_waits_for_its_high_byte() {
 }
 
 #[test]
+fn an_address_sent_again_keeps_its_high_byte_for_the_low_byte() {
+    // D.3.3 holds the latest high byte, and a low byte goes out with it.
+    let mut up = Upgrade::new();
+    let sent = [
+        (0, cc(99, 2)),
+        (0, cc(98, 5)),
+        (1, cc(6, 100)),
+        // A sender that names the address before every data byte.
+        (2, cc(99, 2)),
+        (2, cc(98, 5)),
+        (3, cc(38, 3)),
+    ];
+    assert_eq!(
+        upgrade(&mut up, &sent),
+        [
+            (2, assignable(2, 5, 100 << 7)),
+            (3, assignable(2, 5, 100 << 7 | 3)),
+        ]
+    );
+    // A move of the low byte alone, a block later.
+    let fine = [(0, cc(99, 2)), (0, cc(98, 5)), (1, cc(38, 4))];
+    assert_eq!(
+        upgrade(&mut up, &fine),
+        [(1, assignable(2, 5, 100 << 7 | 4))]
+    );
+}
+
+#[test]
+fn a_low_byte_never_takes_another_numbers_high_byte() {
+    let sent = [
+        (0, cc(99, 2)),
+        (0, cc(98, 5)),
+        (0, cc(6, 100)),
+        (0, cc(38, 0)),
+        // Another number's low byte waits for that number's own high byte.
+        (1, cc(99, 7)),
+        (1, cc(98, 1)),
+        (2, cc(38, 3)),
+        (3, cc(6, 30)),
+    ];
+    assert_eq!(
+        upgrade(&mut Upgrade::new(), &sent),
+        [
+            (0, assignable(2, 5, 100 << 7)),
+            (3, assignable(7, 1, 30 << 7 | 3)),
+        ]
+    );
+}
+
+#[test]
 fn the_null_number_and_a_lone_data_entry_send_nothing() {
     let sent = [
         (0, cc(99, 127)),
@@ -281,6 +331,27 @@ fn increment_and_decrement_are_controllers_of_their_own() {
             ),
         ]
     );
+    // A high byte held goes out first, so a MIDI 1.0 receiver steps the
+    // value it sets rather than the one before.
+    let sent = [
+        (0, cc(99, 2)),
+        (0, cc(98, 5)),
+        (1, cc(6, 100)),
+        (2, cc(96, 1)),
+    ];
+    assert_eq!(
+        upgrade(&mut Upgrade::new(), &sent),
+        [
+            (2, assignable(2, 5, 100 << 7)),
+            (
+                2,
+                ChannelMessage::ControlChange {
+                    controller: 96,
+                    value: up
+                }
+            ),
+        ]
+    );
 }
 
 #[test]
@@ -309,6 +380,27 @@ fn bank_select_is_held_for_the_program_change_that_carries_it() {
         upgrade(&mut up, &[(0, program(7))]),
         [(0, ChannelMessage::ProgramChange { program: 7, bank })]
     );
+}
+
+#[test]
+fn a_bank_byte_sent_alone_selects_a_bank_with_its_partner_at_0() {
+    // D.3.4: a program change carries the bank select values current.
+    let program = one(Midi1Message::ProgramChange { program: 5 });
+    for (byte, bank) in [
+        (cc(0, 1), Bank { msb: 1, lsb: 0 }),
+        (cc(32, 2), Bank { msb: 0, lsb: 2 }),
+    ] {
+        assert_eq!(
+            upgrade(&mut Upgrade::new(), &[(0, byte), (0, program)]),
+            [(
+                0,
+                ChannelMessage::ProgramChange {
+                    program: 5,
+                    bank: Some(bank)
+                }
+            )]
+        );
+    }
 }
 
 #[test]

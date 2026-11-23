@@ -325,10 +325,27 @@ fn a_partial_nrpn_sequence_is_dropped() {
     let [high, low] = nrpn_address(300);
     rig.block(&[high, low, cc(6, 100)]);
     assert_eq!(rig.value(1), stored(fourteen(100 << 7)));
-    // A new address clears the data entry, so a low byte alone is partial.
-    let [high, low] = nrpn_address(300);
+    // Another number's low byte alone is partial: it never takes this
+    // number's high byte.
+    let [high, low] = nrpn_address(44);
     rig.block(&[high, low, cc(38, 5)]);
-    assert_eq!(rig.value(1), stored(fourteen(100 << 7)));
+    assert_eq!(
+        [rig.value(0), rig.value(1)],
+        [UNTOUCHED, stored(fourteen(100 << 7))]
+    );
+}
+
+#[test]
+fn an_address_sent_again_keeps_what_its_data_entry_holds() {
+    let mut rig = rig(1);
+    rig.map(0, Source::any(Control::Nrpn(300)));
+    let [high, low] = nrpn_address(300);
+    // A sender that names the address before every data byte.
+    rig.block(&[high, low, cc(38, 5)]);
+    rig.block(&[high, low, cc(6, 100)]);
+    assert_eq!(rig.value(0), stored(fourteen(100 << 7 | 5)));
+    rig.block(&[high, low, cc(38, 7)]);
+    assert_eq!(rig.value(0), stored(fourteen(100 << 7 | 7)));
 }
 
 #[test]
@@ -832,11 +849,12 @@ fn a_data_entry_low_byte_sent_first_waits_for_its_high_byte() {
 }
 
 #[test]
-fn a_new_address_drops_a_waiting_low_byte() {
+fn a_waiting_low_byte_waits_for_its_own_numbers_high_byte() {
     let mut rig = rig(1);
     rig.map(0, Source::any(Control::Nrpn(300)));
-    let [high, low] = nrpn_address(300);
+    let [high, low] = nrpn_address(44);
     rig.block(&[high, low, cc(38, 5)]);
+    let [high, low] = nrpn_address(300);
     rig.block(&[high, low, cc(6, 100)]);
     assert_eq!(rig.value(0), stored(fourteen(100 << 7)));
 }

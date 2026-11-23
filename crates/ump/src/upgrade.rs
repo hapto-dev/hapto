@@ -21,17 +21,25 @@ const NULL: u8 = 127;
 /// it makes is marked [`Origin::Midi1`]. A note-on at velocity 0 becomes a
 /// note-off at `0x8000`. The pair of a 14-bit controller stays two
 /// controllers. Bank select is held for the next program change, which
-/// carries it, and is not translated on its own.
+/// carries it, and is not translated on its own; a bank byte never sent
+/// reads as 0.
 ///
 /// An RPN or NRPN becomes one registered or assignable controller. Its
 /// data entry high byte (controller 6) is held, and the controller goes out
-/// when the low byte (38) arrives, when another high byte arrives, or when a
-/// new address starts. A high byte still held at the end of a block goes
-/// out at the block's last frame: the short timeout the specification
-/// allows, so a sender that never sends the low byte loses nothing. An
-/// address may come in either byte order, and a low byte sent before its
-/// high byte waits for it. The null number (127, 127) selects nothing, and
-/// Reset All Controllers forgets the address.
+/// when the low byte (38) arrives, when another high byte arrives, when an
+/// address byte arrives, or before data increment or decrement (96, 97). A
+/// high byte still held at the end of a block goes out at the block's last
+/// frame: the short timeout the specification allows, so a sender that
+/// never sends the low byte loses nothing. An address may come in either
+/// byte order, and the null number (127, 127) selects nothing. Reset All
+/// Controllers forgets the address.
+///
+/// A held byte belongs to the number it was sent under. A low byte refines
+/// its number's high byte however often the address is sent between, as
+/// the specification holds the latest high byte. The upgrade departs from
+/// the specification in two places, so that one parameter's high byte never
+/// lands on another: a low byte never takes the high byte of another number,
+/// and one sent before its own number's high byte waits for it.
 ///
 /// Other packets pass as they are. State is kept for every group and
 /// channel, made once and never grown, so [`block`](Self::block) allocates
@@ -94,42 +102,48 @@ struct Numbers {
     /// address: its partner completes the address with it.
     unpaired: Option<u8>,
     selected: Selected,
-    /// The data entry high byte since the address last changed.
-    high: Option<u8>,
-    /// A low byte that arrived before its high byte, which MIDI 1.0 allows;
-    /// the high byte completes it.
-    early_low: Option<u8>,
+    /// The latest data entry high byte, with the number it was sent under.
+    /// A low byte under that number refines it, however often its address
+    /// is sent again; one under another number never does.
+    high: Option<(Number, u8)>,
+    /// A low byte that arrived before its number's high byte, which MIDI 1.0
+    /// allows; that high byte completes it.
+    early_low: Option<(Number, u8)>,
     /// Whether `high` is still to go out.
     pending: bool,
+}
+
+/// A parameter number: registered (an RPN) or assignable (an NRPN), with its
+/// bank and index.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Number {
+    registered: bool,
+    bank: u8,
+    index: u8,
 }
 
 /// A data entry ready to go out: its number and its 14-bit value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Entry {
-    registered: bool,
-    bank: u8,
-    index: u8,
+    number: Number,
     value: u16,
 }
 
 impl Numbers {
-    /// The selected number's bank and index, when its address is whole.
-    fn number(&self) -> Option<(bool, u8, u8)> {
-        match (self.selected, self.nrpn, self.rpn) {
-            (Selected::Nrpn, [Some(bank), Some(index)], _) => Some((false, bank, index)),
-            (Selected::Rpn, _, [Some(bank), Some(index)]) => Some((true, bank, index)),
-            _ => None,
-        }
-    }
-
-    /// The selected number at `high` and `low`.
-    fn entry(&self, high: u8, low: u8) -> Option<Entry> {
-        let (registered, bank, index) = self.number()?;
-        Some(Entry {
+    /// The selected number, when its address is whole.
+    fn number(&self) -> Option<Number> {
+        let (registered, bytes) = match self.selected {
+            Selected::None => return None,
+            Selected::Nrpn => (false, self.nrpn),
+            Selected::Rpn => (true, self.rpn),
+        };
+        let [Some(bank), Some(index)] = bytes else {
+            return None;
+        };
+        Some(Number {
             registered,
             bank,
             index,
-            value: u16::from(high & 0x7F) << 7 | u16::from(low & 0x7F),
         })
     }
 
@@ -139,15 +153,8 @@ impl Numbers {
         if !std::mem::take(&mut self.pending) {
             return None;
         }
-        self.entry(self.high?, 0)
-    }
-
-    /// The address changed, so data entry starts over.
-    fn address_changed(&mut self, selected: Selected) {
-        self.selected = selected;
-        self.high = None;
-        self.early_low = None;
-        self.pending = false;
+        let (number, high) = self.high?;
+        Some(Entry::new(number, high, 0))
     }
 
     /// An address byte, 99 or 98 for an NRPN, 101 or 100 for an RPN.
@@ -181,7 +188,7 @@ impl Numbers {
         }
         let null = *bytes == [Some(NULL), Some(NULL)];
         self.unpaired = (!pairs).then_some(controller);
-        self.address_changed(if null { Selected::None } else { selected });
+        self.selected = if null { Selected::None } else { selected };
     }
 
     /// A control change to a parameter-number controller, and what it sends
@@ -201,11 +208,15 @@ impl Numbers {
                 // A low byte sent first is spent here, even by a data entry
                 // that selects nothing.
                 let early = self.early_low.take();
-                self.high = self.number().map(|_| value);
+                let Some(number) = self.number() else {
+                    self.high = None;
+                    return [ended, None];
+                };
+                self.high = Some((number, value));
                 let own = match early {
-                    Some(low) => self.entry(value, low),
-                    None => {
-                        self.pending = self.high.is_some();
+                    Some((under, low)) if under == number => Some(Entry::new(number, value, low)),
+                    _ => {
+                        self.pending = true;
                         None
                     }
                 };
@@ -213,25 +224,26 @@ impl Numbers {
             }
             38 => {
                 self.unpaired = None;
-                if self.number().is_none() {
+                let Some(number) = self.number() else {
                     return [None, None];
-                }
+                };
                 match self.high {
-                    Some(high) => {
+                    Some((under, high)) if under == number => {
                         self.pending = false;
-                        [self.entry(high, value), None]
+                        [Some(Entry::new(number, high, value)), None]
                     }
-                    None => {
-                        self.early_low = Some(value);
+                    _ => {
+                        self.early_low = Some((number, value));
                         [None, None]
                     }
                 }
             }
-            // Increment and decrement (96, 97) use the address: a byte held
-            // before one pairs with no byte after it.
+            // Increment and decrement (96, 97) step the parameter, so a high
+            // byte held goes out first, in the order sent. An address byte
+            // held before one pairs with no byte after it.
             _ => {
                 self.unpaired = None;
-                [None, None]
+                [self.flush(), None]
             }
         }
     }
@@ -268,10 +280,14 @@ impl Channel {
                 value: up_14_to_32(value),
             }),
             Midi1Message::ProgramChange { program } => {
-                let bank = self.bank[0].map(|msb| Bank {
-                    msb,
-                    lsb: self.bank[1].unwrap_or(0),
-                });
+                // Either byte alone selects a bank, its partner at 0.
+                let bank = match self.bank {
+                    [None, None] => None,
+                    [msb, lsb] => Some(Bank {
+                        msb: msb.unwrap_or(0),
+                        lsb: lsb.unwrap_or(0),
+                    }),
+                };
                 send(ChannelMessage::ProgramChange { program, bank });
             }
             Midi1Message::ControlChange { controller, value } => {
@@ -411,21 +427,26 @@ impl Upgrade {
 }
 
 impl Entry {
+    /// `number` at `high` and `low`.
+    fn new(number: Number, high: u8, low: u8) -> Self {
+        Entry {
+            number,
+            value: u16::from(high & 0x7F) << 7 | u16::from(low & 0x7F),
+        }
+    }
+
     /// The MIDI 2.0 controller it becomes.
     fn message(self) -> ChannelMessage {
+        let Number {
+            registered,
+            bank,
+            index,
+        } = self.number;
         let value = up_14_to_32(self.value);
-        if self.registered {
-            ChannelMessage::RegisteredController {
-                bank: self.bank,
-                index: self.index,
-                value,
-            }
+        if registered {
+            ChannelMessage::RegisteredController { bank, index, value }
         } else {
-            ChannelMessage::AssignableController {
-                bank: self.bank,
-                index: self.index,
-                value,
-            }
+            ChannelMessage::AssignableController { bank, index, value }
         }
     }
 }
