@@ -17,7 +17,7 @@
 
 use std::fmt;
 
-use hapto_ump::{Event, EventList};
+use hapto_ump::{Event, EventList, Origin};
 
 use crate::decoder::{Decoded, Decoder};
 use crate::encode::encode;
@@ -512,16 +512,23 @@ impl<'a> MidiOut<'a> {
     }
 
     /// Sends a message that arrived on to the next plugin, at `frame`: MIDI
-    /// thru, which is never implicit. A note keeps its attribute, and a
-    /// value goes at an `f32`'s precision: for the packets exactly as they
-    /// came, extend with [`Midi::packets`].
+    /// thru, which is never implicit. A note keeps its attribute, a note its
+    /// host named keeps the host's id, in the packet's origin, so the host
+    /// knows it again, and a value goes at an `f32`'s precision: for the
+    /// packets exactly as they came, extend with [`Midi::packets`].
     ///
     /// Thread: audio. Allocates nothing.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn forward(&mut self, frame: usize, message: &Message<'_>) {
         let offset = u32::try_from(frame).unwrap_or(u32::MAX);
+        let origin = named(message);
         let packets = &mut *self.packets;
-        encode(message, |words| packets.push(Event::new(offset, words)));
+        encode(message, |words| {
+            packets.push(Event {
+                origin,
+                ..Event::new(offset, words)
+            });
+        });
     }
 
     /// Sends `packet` as it is, at its own frame: for a plugin that keeps
@@ -534,6 +541,24 @@ impl<'a> MidiOut<'a> {
     pub fn dropped(&self) -> u32 {
         self.packets.dropped()
     }
+}
+
+/// Where a message's packets come from: the host's note id, for a note or
+/// a note's own message its host named, as the decoder found it.
+fn named(message: &Message<'_>) -> Origin {
+    let id = match message {
+        Message::NoteOn(on) => Some(on.id),
+        Message::NoteOff(off) => Some(off.id),
+        Message::NotePitch { note, .. }
+        | Message::NoteBend { note, .. }
+        | Message::NotePressure { note, .. }
+        | Message::NoteControl { note, .. }
+        | Message::NoteAssignable { note, .. }
+        | Message::NoteManagement { note, .. } => note.id,
+        _ => None,
+    };
+    id.filter(|id| id.is_hosts())
+        .map_or(Origin::Midi2, |id| Origin::Note { id: id.get() })
 }
 
 /// Sends each packet as it is, as [`MidiOut::send_packet`] does.

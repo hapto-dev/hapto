@@ -95,7 +95,7 @@ comments never cite an id: they state the reason in words, and
 | D56 | [Which hash names a parameter to hosts, and which ids does D22 reserve? (D31, P10)](#d56-the-hash-that-names-a-parameter) | 32-bit FNV-1a over the key's UTF-8 bytes with the top bit cleared. The builder refuses a key whose id another key already has, or that falls in `0x7FFF_0000` to `0x7FFF_FFFF`, the ids D22's proxies take. | decided |
 | D57 | [From what does a stepped range lay out its lattice? (P2, P4)](#d57-the-lattice-of-a-stepped-range) | From the decimals the range was written with, in whole numbers of its finest place, so every point of a decimal range, 0 dB included, lands on the nearest `f32` to its decimal. | decided |
 | D58 | [What does the plugin trait tell every host, beyond its parameters and state? (H5)](#d58-what-the-plugin-trait-tells-every-host) | `PluginInfo` gains the vendor's addresses, a description, `Feature`s and the main bus widths (D112); `Plugin` gains `latency`, `tail` and `deactivate`; `Processor::process` returns a `Status`. Deferred: whether the host is rendering offline or in real time, which `ProcessSetup` has no field for. | decided |
-| D59 | [What shape does the VST3 exporter give a plugin? (D51, D53, P7, C2)](#d59-the-shape-of-the-vst3-exporter) | One object that is both the audio processor and its own edit controller, a thin shell over an exporter core it shares with the C interface. The plugin is built at `initialize`, on the thread that calls it. The host's notes, note expressions and SysEx come in as MIDI 2.0, each note named by its `noteId`; MIDI out reaches no host yet. | decided |
+| D59 | [What shape does the VST3 exporter give a plugin? (D51, D53, P7, C2)](#d59-the-shape-of-the-vst3-exporter) | One object that is both the audio processor and its own edit controller, a thin shell over an exporter core it shares with the C interface. The plugin is built at `initialize`, on the thread that calls it. The host's notes, note expressions and SysEx come in as MIDI 2.0, each note named by its `noteId`, and the plugin's go back out as VST3's own events, its controllers as MIDI 1.0. | decided |
 | D60 | [What happens when plugin code panics inside a host's call? (P9)](#d60-a-panic-inside-a-hosts-call) | It is caught at every entry point that can panic and never unwinds into the host. A panic in the processor silences the instance's output until the next activation. | decided |
 | D61 | [Who flushes denormals to zero? (the comparison's fairness row)](#d61-who-flushes-denormals) | Every exporter, around every `process` call: FTZ and DAZ on x86, FZ on AArch64, restoring the host's setting after, so no plugin has to. | decided |
 | D62 | [What shape is the C interface the JUCE adapter is driven by? (H5, D51, D60)](#d62-the-c-interface-for-the-juce-adapter) | One exported symbol, `hapto_plugin`, answering a table of function pointers, as CLAP's entry point does: the plugin's layouts and every call into an instance, each with the thread it may run on. A block's MIDI passes as UMP both ways: MIDI 1.0 or 2.0 in, and out downgraded for a caller that takes MIDI 1.0 alone. | decided |
@@ -530,9 +530,10 @@ into messages, each at its frame, with the packets they came in beside them
 with the processor, so a note or a SysEx that spans blocks stays right; a block
 in pieces hands each piece its share, at frames from its own start. `midi_out`
 sends a message encoded anew, one that arrived on, as MIDI thru, which is never
-implicit, or packets as they are, all into one list in the order the plugin
-sends them, whose capacity `ProcessSetup::max_out_events` fixes at activation
-(past it, dropped and counted). `Block::spans` cuts a block at each frame a
+implicit, a note its host named keeping the host's id, or packets as they are,
+all into one list in the order the plugin sends them, whose capacity
+`ProcessSetup::max_out_events` fixes at activation (past it, dropped and
+counted). `Block::spans` cuts a block at each frame a
 message arrives at, and `Spans::at_most` caps a span's length, so a plugin acts
 on each message and renders on to the next. A plugin that never asks keeps its
 block whole, so a convolver or an FFT is never cut short; one that sends while
@@ -540,9 +541,9 @@ it spans makes its spans with `Spans::new` from the block's audio and MIDI and
 keeps the block's `midi_out`. A sidechain or transport joins `Block` later
 without changing the trait. `PluginInfo::midi_output` declares the output to
 the host. Parameter changes still reach the host through the exporter, never
-this list. The C interface carries the list to its host and MIDI in from it,
-the VST3 exporter brings MIDI in from its host and sends none yet, and the
-standalone app brings MIDI in from the computer's inputs (D59, D62, D115).
+this list. The C interface and the VST3 exporter carry the list to their host
+and MIDI in from it, and the standalone app brings MIDI in from the computer's
+inputs (D59, D62, D115).
 
 ### D24. Answering MIDI-CI
 
@@ -1246,7 +1247,25 @@ controllers of those numbers; and the vibrato as controller 77, vibrato depth.
 A note expression names its note alone, so the component keeps the channel and
 key of each note its host named, from block to block, and forgets them at an
 activation; one for a note it never saw is dropped. Controllers come through
-hidden proxies (D22). Open: what the plugin sends reaches no VST3 host yet.
+hidden proxies (D22).
+
+For a plugin that declares MIDI out, what it sent goes to the host's output
+events in the order it sent it, at or before the block's last frame. A note
+goes out as VST3's note events, under the host's `noteId` where the host named
+it and under none, -1, where the plugin made it up: a made-up id could meet one
+of the host's. A note's pressure goes out as a poly pressure event, and a
+note's registered controllers that the six note expressions stand for go out as
+note expressions, for a note its host named: its absolute pitch as the tuning,
+from its note-on's pitch, which the component keeps for each such note. VST3
+carries everything else only as MIDI 1.0 controllers, so it is downgraded by
+the specification's Default Translation (D114): a controller, channel
+pressure, the bend, its low 7 bits first, and a program change, each a legacy
+controller event. A SysEx goes out whole, joined from its packets in room the
+component makes when it is built, and kept until the next block, as the host
+reads its bytes until `process` returns. What VST3 has no event for is dropped
+and counted inside the component: a note's assignable controllers, its pitch
+bend and its management, a note's own message for a note no host named, and
+system messages.
 
 Edits reach the host right after each tick (C2), and so does a latency that
 moved, an activation's included, as `kLatencyChanged`. D53's timer is a

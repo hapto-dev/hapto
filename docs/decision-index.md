@@ -250,6 +250,8 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d23-how-the-processor-sends-midi)
 
+- `crates/midi/src/midi.rs`: `MidiOut::forward`, `named`
+- test `crates/midi/tests/block.rs`: `a_note_its_host_named_goes_out_under_the_hosts_id_and_one_made_up_under_none`
 - `crates/host/src/audio.rs`: `Block`
 - `crates/host/src/engine/process.rs`: `pieces`
 - `crates/host/src/spans.rs`: module, `Spans`, `Spans::at_most`, `Span`, `Block::spans`
@@ -623,6 +625,8 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d59-the-shape-of-the-vst3-exporter)
 
+- `crates/host/src/vst3/component/midi_out.rs`: module, `Out`, `write_events`, `native`, `expression`, `midi_1`, `midi_1_event`, `sysex`
+- test `crates/host/src/vst3/tests/midi_out.rs`: module
 - `crates/host/src/vst3/component/midi.rs`: `read_events`, `note_on`, `expression`, `Notes`
 - test `crates/host/src/vst3/tests/midi.rs`: `a_note_reaches_the_plugin_as_midi_2_named_by_the_hosts_id`, `a_note_on_s_tuning_is_its_pitch_and_its_expressions_name_it`, `a_sysex_reaches_the_plugin_whole`, `every_channel_offers_the_note_expressions_a_plugin_reads`, `a_note_expression_from_before_an_activation_names_no_note`
 - `crates/host/src/boundary.rs`: `MainThread`, `AudioSlot`

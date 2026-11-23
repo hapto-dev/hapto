@@ -14,10 +14,10 @@ use ::vst3::Steinberg::Vst::{
     IComponentHandlerTrait, IComponentTrait, IEditController, IEditControllerTrait, IEventList,
     IEventListTrait, IMidiMapping, IMidiMappingTrait, INoteExpressionController,
     INoteExpressionControllerTrait, IParamValueQueue, IParamValueQueueTrait, IParameterChanges,
-    IParameterChangesTrait, MediaTypes_, NoteExpressionTypeInfo, NoteExpressionValueEvent,
-    NoteOffEvent, NoteOnEvent, ParamID, ParamValue, ParameterInfo, ParameterInfo_::ParameterFlags_,
-    PolyPressureEvent, ProcessData, ProcessModes_, ProcessSetup as VstSetup, SpeakerArr,
-    SpeakerArrangement, String128, SymbolicSampleSizes_,
+    IParameterChangesTrait, LegacyMIDICCOutEvent, MediaTypes_, NoteExpressionTypeInfo,
+    NoteExpressionValueEvent, NoteOffEvent, NoteOnEvent, ParamID, ParamValue, ParameterInfo,
+    ParameterInfo_::ParameterFlags_, PolyPressureEvent, ProcessData, ProcessModes_,
+    ProcessSetup as VstSetup, SpeakerArr, SpeakerArrangement, String128, SymbolicSampleSizes_,
 };
 use ::vst3::Steinberg::{
     FIDString, IBStream, IBStreamTrait, IPluginBaseTrait, TBool, int32, int64, kInternalError,
@@ -705,6 +705,20 @@ impl<P: Plugin> TestHost<P> {
         (found == kResultTrue).then_some(id)
     }
 
+    /// Returns what the plugin sent in the last block, as the host's output
+    /// event list took it. A SysEx's bytes are the plugin's, which it keeps
+    /// until its next block, so this borrows the host until then.
+    pub fn sent(&mut self) -> Vec<BusEvent<'_>> {
+        let list = self.blocks.sent.list.borrow();
+        list.iter()
+            // SAFETY: a data event's bytes are in the component's room for
+            // the block's SysEx, which it clears at its next block alone;
+            // `&mut self` keeps any block from running, here or on an audio
+            // side, while the events borrow it.
+            .filter_map(|event| unsafe { BusEvent::from_vst(event) })
+            .collect()
+    }
+
     /// Returns the note expressions the plugin offers on `channel`, each its
     /// VST3 type and its title.
     pub fn note_expressions(&self, channel: i16) -> Vec<(u32, String)> {
@@ -834,6 +848,8 @@ struct Blocks {
     processor: ComPtr<IAudioProcessor>,
     changes: ComWrapper<Changes>,
     events: ComWrapper<Events>,
+    /// What the plugin sent in the last block.
+    sent: ComWrapper<Events>,
     inputs: Vec<*mut f32>,
     outputs: Vec<*mut f32>,
     /// The output bus's silence flags after the last block.
@@ -847,6 +863,7 @@ impl Blocks {
             processor,
             changes: ComWrapper::new(Changes::with_queues(64)),
             events: ComWrapper::new(Events::with_room(64)),
+            sent: ComWrapper::new(Events::with_room(64)),
             inputs: Vec::with_capacity(16),
             outputs: Vec::with_capacity(16),
             silence: 0,
@@ -980,6 +997,12 @@ impl Blocks {
             .as_com_ref::<IEventList>()
             .expect("events")
             .as_ptr();
+        self.sent.fill(&[]);
+        let sent = self
+            .sent
+            .as_com_ref::<IEventList>()
+            .expect("events")
+            .as_ptr();
         let mut data = ProcessData {
             processMode: ProcessModes_::kRealtime as int32,
             symbolicSampleSize: SymbolicSampleSizes_::kSample32 as int32,
@@ -991,7 +1014,7 @@ impl Blocks {
             inputParameterChanges: changes,
             outputParameterChanges: std::ptr::null_mut(),
             inputEvents: events,
-            outputEvents: std::ptr::null_mut(),
+            outputEvents: sent,
             processContext: std::ptr::null_mut(),
         };
         // SAFETY: the component is alive while this side holds its
@@ -1408,9 +1431,103 @@ pub enum BusEvent<'a> {
         /// Its bytes, F0 to F7.
         bytes: &'a [u8],
     },
+    /// A MIDI 1.0 controller, channel pressure, pitch bend or program
+    /// change, as VST3 carries the plugin's out: a host's input sends
+    /// these through the proxies instead.
+    Controller {
+        /// The frame of the block.
+        offset: i32,
+        /// The channel, 0 to 15.
+        channel: i16,
+        /// The controller, 0 to 127, then VST3's numbers: 128 channel
+        /// pressure, 129 the bend, 130 a program change.
+        controller: u8,
+        /// The value, 0 to 127: the bend's low 7 bits.
+        value: i8,
+        /// The bend's high 7 bits; 0 for any other.
+        value2: i8,
+    },
 }
 
-impl BusEvent<'_> {
+impl<'a> BusEvent<'a> {
+    /// The event VST3 carried, if it is one of these; a SysEx's bytes
+    /// borrowed for `'a`.
+    ///
+    /// # Safety
+    ///
+    /// A data event's bytes are valid for reading for `'a`.
+    unsafe fn from_vst(event: &Event) -> Option<BusEvent<'a>> {
+        let offset = event.sampleOffset;
+        Some(match event.r#type {
+            kind if kind == EventTypes_::kNoteOnEvent as u16 => {
+                // SAFETY: the type says which of the union's fields is set.
+                let on = unsafe { event.__field0.noteOn };
+                BusEvent::NoteOn {
+                    offset,
+                    channel: on.channel,
+                    pitch: on.pitch,
+                    velocity: on.velocity,
+                    tuning: on.tuning,
+                    id: on.noteId,
+                }
+            }
+            kind if kind == EventTypes_::kNoteOffEvent as u16 => {
+                // SAFETY: the type says which of the union's fields is set.
+                let off = unsafe { event.__field0.noteOff };
+                BusEvent::NoteOff {
+                    offset,
+                    channel: off.channel,
+                    pitch: off.pitch,
+                    velocity: off.velocity,
+                    id: off.noteId,
+                }
+            }
+            kind if kind == EventTypes_::kPolyPressureEvent as u16 => {
+                // SAFETY: the type says which of the union's fields is set.
+                let pressure = unsafe { event.__field0.polyPressure };
+                BusEvent::Pressure {
+                    offset,
+                    channel: pressure.channel,
+                    pitch: pressure.pitch,
+                    pressure: pressure.pressure,
+                    id: pressure.noteId,
+                }
+            }
+            kind if kind == EventTypes_::kNoteExpressionValueEvent as u16 => {
+                // SAFETY: the type says which of the union's fields is set.
+                let value = unsafe { event.__field0.noteExpressionValue };
+                BusEvent::Expression {
+                    offset,
+                    id: value.noteId,
+                    kind: value.typeId,
+                    value: value.value,
+                }
+            }
+            kind if kind == EventTypes_::kDataEvent as u16 => {
+                // SAFETY: the type says which of the union's fields is set.
+                let data = unsafe { event.__field0.data };
+                if data.bytes.is_null() {
+                    return None;
+                }
+                // SAFETY: this function's contract.
+                let bytes = unsafe { std::slice::from_raw_parts(data.bytes, data.size as usize) };
+                BusEvent::SysEx { offset, bytes }
+            }
+            kind if kind == EventTypes_::kLegacyMIDICCOutEvent as u16 => {
+                // SAFETY: the type says which of the union's fields is set.
+                let out = unsafe { event.__field0.midiCCOut };
+                BusEvent::Controller {
+                    offset,
+                    channel: i16::from(out.channel),
+                    controller: out.controlNumber,
+                    value: out.value,
+                    value2: out.value2,
+                }
+            }
+            _ => return None,
+        })
+    }
+
     /// The event as VST3 carries it, its bytes borrowed for as long as
     /// `self`'s are.
     fn to_vst(self) -> Event {
@@ -1491,6 +1608,22 @@ impl BusEvent<'_> {
                     size: u32::try_from(bytes.len()).unwrap_or(u32::MAX),
                     r#type: DataTypes_::kMidiSysEx as uint32,
                     bytes: bytes.as_ptr(),
+                };
+            }
+            BusEvent::Controller {
+                offset,
+                channel,
+                controller,
+                value,
+                value2,
+            } => {
+                event.sampleOffset = offset;
+                event.r#type = EventTypes_::kLegacyMIDICCOutEvent as u16;
+                event.__field0.midiCCOut = LegacyMIDICCOutEvent {
+                    controlNumber: controller,
+                    channel: i8::try_from(channel).unwrap_or(0),
+                    value,
+                    value2,
                 };
             }
         }

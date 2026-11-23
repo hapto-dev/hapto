@@ -34,6 +34,7 @@ use hapto_params::{HostEvent, ParamDecl, ParamId, ParamSet, audio_thread};
 mod buses;
 mod controller;
 mod midi;
+mod midi_out;
 
 use super::view;
 
@@ -116,6 +117,10 @@ pub(crate) struct Component<P: Plugin> {
     /// from block to block. The audio thread holds them in a block, and an
     /// activation clears them.
     notes: AudioSlot<midi::Notes>,
+    /// What sending the plugin's MIDI keeps from block to block: the notes
+    /// it sent under a host's id and the room for its SysEx. The audio
+    /// thread holds it in a block, and an activation clears it.
+    midi_out: AudioSlot<midi_out::Out>,
 }
 
 /// The engine's box, freed in the component's `Drop` when the engine says
@@ -152,6 +157,7 @@ impl<P: Plugin> Component<P> {
             timer,
             this: OnceLock::new(),
             notes: AudioSlot::new(midi::Notes::new()),
+            midi_out: AudioSlot::new(midi_out::Out::new(P::INFO.midi_output)),
         });
         if let Some(this) = component.as_com_ref::<IEditController>() {
             let _ = component.this.set(this.as_ptr() as usize);
@@ -234,6 +240,13 @@ impl<P: Plugin> Component<P> {
         self.engine()?.heard(read)
     }
 
+    /// What the plugin sent that VST3 had no event for, or the host
+    /// refused, since the component was made.
+    #[cfg(test)]
+    pub(crate) fn lost_out(&self) -> u64 {
+        self.midi_out.hold().lost()
+    }
+
     /// One main-thread tick, as the timer runs it; for the test host.
     #[cfg(any(test, feature = "test-host"))]
     pub(crate) fn tick(&self) {
@@ -313,6 +326,21 @@ impl<P: Plugin> Component<P> {
             }
         };
         let frames = usize::try_from(data.numSamples).unwrap_or(0);
+        let output_events = data.outputEvents;
+        let mut sending = self.midi_out.try_hold();
+        let sent = |packets: &[crate::Event]| {
+            if !P::INFO.midi_output {
+                return;
+            }
+            // SAFETY: the SDK makes `outputEvents` null or the host's
+            // `IEventList`, alive until `process` returns. `ComRef` borrows
+            // it for no longer than that.
+            let list = unsafe { ComRef::from_raw(output_events) };
+            if let (Some(list), Some(out)) = (list, sending.as_deref_mut()) {
+                // SAFETY: as above.
+                unsafe { midi_out::write_events(list, packets, frames, out) };
+            }
+        };
         // SAFETY: the caller's contract: `inputs` and `outputs` are null or
         // hold `numInputs` and `numOutputs` buses for this call, each
         // channel valid for `numSamples` floats. The setup is 32-bit
@@ -330,7 +358,7 @@ impl<P: Plugin> Component<P> {
         // or an input handed again as its output in place. A host that broke
         // it would get wrong audio, not an unsound access: `Channels` gives
         // no two channels a float in common.
-        match unsafe { engine.process(frames, inputs, outputs, writes, midi, |_| {}) } {
+        match unsafe { engine.process(frames, inputs, outputs, writes, midi, sent) } {
             Outcome::Empty => {}
             // SAFETY: as above, as `silence` requires.
             Outcome::Silent => unsafe { silence(data) },
@@ -552,6 +580,7 @@ impl<P: Plugin> IComponentTrait for Component<P> {
             let done = if state != 0 {
                 // Notes named before were for another activation.
                 self.notes.hold().clear();
+                self.midi_out.hold().clear();
                 let setup = main.setup().unwrap_or(Setup::FALLBACK);
                 engine.activate(&main, setup, engine.layout())
             } else {

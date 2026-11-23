@@ -5,7 +5,7 @@ use hapto_midi::{
     Centred, Channel, Decoder, Group, Key, Message, Midi, MidiList, MidiOut, NoteKey, NoteOn,
     Pitch, Program,
 };
-use hapto_ump::{Event, EventList};
+use hapto_ump::{Event, EventList, Origin};
 use proptest::prelude::*;
 use proptest::test_runner::FileFailurePersistence;
 
@@ -138,6 +138,31 @@ fn what_a_block_sends_goes_out_in_order_and_past_the_room_is_counted() {
             (3, 0x3032_0708)
         ]
     );
+}
+
+#[test]
+fn a_note_its_host_named_goes_out_under_the_hosts_id_and_one_made_up_under_none() {
+    // A host's note 7 on C4, a pressure on it, and its note-off, as a block
+    // decodes them, then a note the decoder makes up.
+    let named = |words: [u32; 2]| Event {
+        origin: Origin::Note { id: 7 },
+        ..Event::new(0, [words[0], words[1], 0, 0])
+    };
+    let mut list = EventList::with_capacity(8);
+    for words in [on(60), [0x40A0_3C00, u32::MAX], [0x4080_3C00, 0]] {
+        list.push(named(words));
+    }
+    list.push(Event::new(1, [0x4090_4000, 0xFFFF_0000, 0, 0]));
+    let mut midi = MidiList::new();
+    midi.read(&list, 16);
+    let mut sent = EventList::with_capacity(8);
+    let mut out = MidiOut::new(&mut sent);
+    for (frame, message) in midi.midi() {
+        out.forward(frame, &message);
+    }
+    let origins: Vec<Origin> = sent.as_slice().iter().map(|e| e.origin).collect();
+    let host = Origin::Note { id: 7 };
+    assert_eq!(origins, [host, host, host, Origin::Midi2]);
 }
 
 fn unit() -> impl Strategy<Value = f32> {

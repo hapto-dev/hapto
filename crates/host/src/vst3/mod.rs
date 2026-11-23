@@ -23,8 +23,9 @@
 //! - A plugin that takes MIDI gets its host's notes, note expressions and
 //!   SysEx as MIDI 2.0, each note named by VST3's `noteId`, and its
 //!   controllers through hidden proxy parameters, one for each channel and
-//!   controller, which `IMidiMapping` names. What the plugin sends reaches
-//!   no host yet.
+//!   controller, which `IMidiMapping` names. What a plugin that declares
+//!   MIDI out sends goes back as VST3's own note events and note
+//!   expressions, its controllers as MIDI 1.0.
 //! - On Windows the module stays loaded until the process ends once an
 //!   instance has leaked, since its timer's window outlives it, and once an
 //!   editor has opened, since its toolkit may leave the host something that

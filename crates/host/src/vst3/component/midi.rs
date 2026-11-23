@@ -60,9 +60,9 @@ const CHANNELS: u32 = 16;
 /// channel pressure and the pitch bend.
 const CONTROLLERS: u32 = ControllerNumbers_::kCountCtrlNumber as uint32;
 /// VST3's number for channel pressure.
-const PRESSURE: u32 = ControllerNumbers_::kAfterTouch as uint32;
+pub(super) const PRESSURE: u32 = ControllerNumbers_::kAfterTouch as uint32;
 /// VST3's number for the pitch bend.
-const BEND: u32 = ControllerNumbers_::kPitchBend as uint32;
+pub(super) const BEND: u32 = ControllerNumbers_::kPitchBend as uint32;
 /// The controllers that select a registered or assignable parameter: 98
 /// and 99 an assignable one's, 100 and 101 a registered one's. At one
 /// frame they go before the rest, so a data entry finds its address
@@ -85,23 +85,23 @@ const DATA: u16 = EventTypes_::kDataEvent as u16;
 const POLY_PRESSURE: u16 = EventTypes_::kPolyPressureEvent as u16;
 const EXPRESSION: u16 = EventTypes_::kNoteExpressionValueEvent as u16;
 /// A data event's type for SysEx.
-const SYSEX: u32 = DataTypes_::kMidiSysEx as uint32;
+pub(super) const SYSEX: u32 = DataTypes_::kMidiSysEx as uint32;
 
 /// MIDI 2.0's attribute type for a note-on's pitch, 7.9.
 const PITCH_7_9: u8 = 3;
 /// MIDI 2.0's registered per-note controller for a note's absolute pitch,
 /// 7.25.
-const PER_NOTE_PITCH: u8 = 3;
+pub(super) const PER_NOTE_PITCH: u8 = 3;
 /// MIDI 1.0's controller for vibrato depth, sound controller 8, which a
 /// note's vibrato becomes.
 const VIBRATO_DEPTH: u8 = 77;
 /// How far VST3's tuning expression reaches either way, in semitones.
-const TUNING_REACH: f64 = 120.0;
+pub(super) const TUNING_REACH: f64 = 120.0;
 
 /// The note expressions the component offers, in the order it lists them:
 /// each with its title, the per-note controller it becomes, its default and
 /// its flags.
-const EXPRESSIONS: [Expression; 6] = [
+pub(super) const EXPRESSIONS: [Expression; 6] = [
     Expression {
         id: NoteExpressionTypeIDs_::kVolumeTypeID,
         title: "Volume",
@@ -147,12 +147,12 @@ const EXPRESSIONS: [Expression; 6] = [
 ];
 
 /// A note expression the component offers.
-struct Expression {
-    id: u32,
+pub(super) struct Expression {
+    pub(super) id: u32,
     title: &'static str,
     /// The registered per-note controller it becomes: 3, a note's absolute
     /// pitch, for the tuning.
-    controller: u8,
+    pub(super) controller: u8,
     default: f64,
     flags: int32,
 }
@@ -227,12 +227,12 @@ pub(crate) struct Notes {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct Named {
-    id: int32,
-    channel: u8,
-    key: u8,
+pub(super) struct Named {
+    pub(super) id: int32,
+    pub(super) channel: u8,
+    pub(super) key: u8,
     /// The note-on's tuning, in cents.
-    cents: f32,
+    pub(super) cents: f32,
 }
 
 impl Notes {
@@ -248,7 +248,7 @@ impl Notes {
         self.named.clear();
     }
 
-    fn start(&mut self, note: Named) {
+    pub(super) fn start(&mut self, note: Named) {
         self.end(note.id);
         if self.named.len() == self.named.capacity() && !self.named.is_empty() {
             self.named.remove(0);
@@ -257,11 +257,11 @@ impl Notes {
         self.named.push(note);
     }
 
-    fn end(&mut self, id: int32) {
+    pub(super) fn end(&mut self, id: int32) {
         self.named.retain(|note| note.id != id);
     }
 
-    fn find(&self, id: int32) -> Option<Named> {
+    pub(super) fn find(&self, id: int32) -> Option<Named> {
         self.named.iter().rev().find(|note| note.id == id).copied()
     }
 }

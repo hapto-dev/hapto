@@ -2,7 +2,8 @@
 //! list a format exporter fills and a processor reads, a block's spans with
 //! their messages, a block through an
 //! exporter with learn's audio side in it, a block of the host's MIDI
-//! through the VST3 exporter, the standalone exporter's audio side around
+//! through the VST3 exporter, in and back out, the standalone exporter's
+//! audio side around
 //! the engine, and a plugin's idle tick when nothing changed, which every
 //! instance runs about 60 times a second.
 
@@ -81,6 +82,44 @@ impl Processor for Silent {
 
     fn process(&mut self, _: Block<'_, AnyLayout>) -> Status {
         Status::Sleep
+    }
+}
+
+/// Sends on every message it reads, at its frame.
+struct Echo;
+
+impl Processor for Echo {
+    type Layout = AnyLayout;
+
+    fn process(&mut self, block: Block<'_, AnyLayout>) -> Status {
+        let Block {
+            midi, mut midi_out, ..
+        } = block;
+        for (frame, message) in midi {
+            midi_out.forward(frame, &message);
+        }
+        Status::Continue
+    }
+}
+
+/// A plugin that takes MIDI and sends what it reads back out.
+struct Echoing;
+
+impl Plugin for Echoing {
+    const INFO: PluginInfo = PluginInfo {
+        id: "dev.hapto.echoing",
+        midi_output: true,
+        ..Listening::INFO
+    };
+    type Params = Gain;
+    type Processor = Echo;
+
+    fn new(_: Gain, _: Parts) -> Self {
+        Echoing
+    }
+
+    fn activate(&mut self, _: &ProcessSetup) -> Echo {
+        Echo
     }
 }
 
@@ -225,9 +264,22 @@ fn a_block_through_the_engine_with_learn_on_does_not_allocate() {
 #[cfg(all(feature = "vst3", feature = "test-host"))]
 #[test]
 fn a_block_of_notes_controllers_and_sysex_through_the_vst3_exporter_does_not_allocate() {
+    vst3_midi_blocks::<Listening>("blocks with MIDI in through the VST3 exporter");
+}
+
+#[cfg(all(feature = "vst3", feature = "test-host"))]
+#[test]
+fn a_plugin_sending_its_midi_back_through_the_vst3_exporter_does_not_allocate() {
+    vst3_midi_blocks::<Echoing>("blocks with MIDI in and back out through the VST3 exporter");
+}
+
+/// Blocks with a note, its expression and pressure, a SysEx and
+/// controllers through the VST3 exporter, after one that is let allocate.
+#[cfg(all(feature = "vst3", feature = "test-host"))]
+fn vst3_midi_blocks<P: Plugin>(what: &str) {
     use hapto_host::vst3::{BusEvent, TestHost};
 
-    let mut host = TestHost::<Listening>::new();
+    let mut host = TestHost::<P>::new();
     host.setup(48_000.0, 256).expect("set up");
     host.activate().expect("active");
     host.start().expect("started");
@@ -275,16 +327,13 @@ fn a_block_of_notes_controllers_and_sysex_through_the_vst3_exporter_does_not_all
     let first = &mut [&mut left[..256], &mut right[..256]];
     host.process_events(first, 256, &events, &queues)
         .expect("played");
-    assert_no_allocations(
-        "blocks with a note, its expression and pressure, a SysEx and controllers through the VST3 exporter",
-        || {
-            for frames in [256, 600, 1, 255] {
-                let block = &mut [&mut left[..frames], &mut right[..frames]];
-                host.process_events(block, frames, &events, &queues)
-                    .expect("played");
-            }
-        },
-    );
+    assert_no_allocations(what, || {
+        for frames in [256, 600, 1, 255] {
+            let block = &mut [&mut left[..frames], &mut right[..frames]];
+            host.process_events(block, frames, &events, &queues)
+                .expect("played");
+        }
+    });
     assert_eq!(host.faults(), 0);
 }
 
