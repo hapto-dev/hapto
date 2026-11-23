@@ -172,6 +172,7 @@ through_every_shell!(
     an_activation_while_active_applies_a_load_made_since_the_last,
     a_load_an_activation_applied_is_applied_once_and_never_told,
     a_participant_busy_at_an_activation_takes_the_load_at_the_next_tick,
+    a_change_an_activation_captures_is_told_at_the_next_tick_and_not_inside_it,
 );
 
 fn a_load_before_an_activation_plays_in_the_first_block<S: Shell>() {
@@ -239,5 +240,21 @@ fn a_participant_busy_at_an_activation_takes_the_load_at_the_next_tick<S: Shell>
     );
     assert_eq!(host.activate(), Ok(()));
     assert_eq!(host.play(0.0), [LOADED; 8]);
+    host.expect_faults(0);
+}
+
+fn a_change_an_activation_captures_is_told_at_the_next_tick_and_not_inside_it<S: Shell>() {
+    let mut host = S::create();
+    host.tick();
+    assert_eq!(host.heard(), Heard::default(), "a new instance");
+    kit(|kit| assert!(kit.parts.borrow().ui().write(&kit.drive, 500.0)));
+    assert_eq!(host.activate(), Ok(()));
+    assert_eq!(
+        host.heard(),
+        Heard::default(),
+        "the host is told nothing inside its own call"
+    );
+    host.tick();
+    assert_eq!(host.heard(), Heard { state: 1, other: 0 });
     host.expect_faults(0);
 }

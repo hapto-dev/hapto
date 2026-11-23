@@ -811,14 +811,6 @@ processor.
 The owner confirmed the decision on 2026-11-12 as built, the line a refused
 declaration writes included.
 
-On 2026-11-12 the owner also decided that a load stored before an activation
-is applied by that activation, and that it lands before the first tag, since a
-private number the processor reads is session state. Built on 2026-11-23: an
-activation ticks the parts before `Plugin::activate`. By then the standalone
-app loaded and started its audio with no tick between, so the gap had a
-caller. Three choices made while planning it wait for the owner: the parts'
-tick alone, at every activation, and a load while active left as it is.
-
 ### D92. When a saved plain value is captured
 
 [The decision](decisions.md#d92-when-a-saved-plain-value-is-captured)

@@ -531,9 +531,8 @@ impl Parts {
 ///
 /// Hapto makes one for each instance before [`Plugin::new`] takes the parts.
 /// Through it the engine [ticks](Self::tick) the parts before each
-/// [`idle`](Plugin::idle) and before each [`activate`](Plugin::activate),
-/// so a processor is built from a session the host's load restored. After
-/// each activation it takes learn's [audio side](Self::learn_audio), which
+/// [`idle`](Plugin::idle) and each [`activate`](Plugin::activate), and
+/// takes learn's [audio side](Self::learn_audio) at each activation, which
 /// it runs over each block's MIDI before the processor. So a plugin never
 /// ticks its parts and its processor never runs learn. It is public for a
 /// test that builds a plugin with no host, which does both as the engine

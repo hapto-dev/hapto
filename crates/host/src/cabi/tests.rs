@@ -1677,6 +1677,96 @@ fn a_tick_while_the_plugin_is_busy_skips_hapto_s_tick_and_its_idle() {
     assert_eq!(host.faults(), 0);
 }
 
+thread_local! {
+    /// The instance [`SelfActivating`] loads into and activates from inside its
+    /// first idle, and what that activation answered.
+    static SELF_ACTIVATING: Cell<*mut HaptoInstance> = const { Cell::new(std::ptr::null_mut()) };
+    static SELF_ACTIVATING_ACTIVATED: Cell<Option<bool>> = const { Cell::new(None) };
+    /// What [`SelfActivating`]'s participant holds.
+    static SELF_ACTIVATING_ZOOM: Rc<RefCell<Option<Json>>> = Rc::default();
+}
+
+/// Keeps its parts and a participant, and has its host load a block and
+/// activate it from inside its first idle, as a host's nested message loop
+/// would.
+struct SelfActivating {
+    _parts: Parts,
+    _participant: Rc<RefCell<Restored>>,
+    _registration: hapto_session::Registration,
+}
+
+impl Plugin for SelfActivating {
+    const INFO: PluginInfo = Probe::INFO;
+    type Params = Table;
+    type Processor = Through;
+
+    fn new(_: Table, parts: Parts) -> Self {
+        let participant = Rc::new(RefCell::new(Restored(SELF_ACTIVATING_ZOOM.with(Rc::clone))));
+        let registration = parts
+            .session()
+            .register("zoom", &participant)
+            .expect("registered");
+        SelfActivating {
+            _parts: parts,
+            _participant: participant,
+            _registration: registration,
+        }
+    }
+
+    fn activate(&mut self, _: &ProcessSetup) -> Through {
+        Through
+    }
+
+    fn idle(&mut self) {
+        if SELF_ACTIVATING_ACTIVATED.get().is_some() {
+            return;
+        }
+        let block = br#"{"haptoStateVersion": 1, "parameters": {}, "extra": {"zoom": 2}}"#;
+        let stereo = HaptoLayout {
+            inputs: 2,
+            outputs: 2,
+        };
+        let table = plugin::<SelfActivating>();
+        // SAFETY: the live instance the test made, loaded into and activated
+        // on its main thread from inside one of its own calls, as the header
+        // lets a host's nested message loop; `block` is valid for the call.
+        let activated = unsafe {
+            assert!((table.load)(
+                SELF_ACTIVATING.get(),
+                block.as_ptr(),
+                block.len()
+            ));
+            (table.activate)(SELF_ACTIVATING.get(), 48_000.0, 64, stereo)
+        };
+        SELF_ACTIVATING_ACTIVATED.set(Some(activated));
+    }
+}
+
+#[test]
+fn an_activation_refused_while_the_plugin_is_busy_ticks_no_parts() {
+    let host = TestHost::<SelfActivating>::new();
+    SELF_ACTIVATING.set(host.instance());
+    host.expect_faults(1);
+    host.idle();
+    assert_eq!(
+        SELF_ACTIVATING_ACTIVATED.get(),
+        Some(false),
+        "refused: the plugin is inside its idle"
+    );
+    assert_eq!(
+        SELF_ACTIVATING_ZOOM.with(|zoom| zoom.borrow().clone()),
+        None,
+        "and the parts were not ticked from inside the plugin's own call"
+    );
+    host.idle();
+    assert_eq!(
+        SELF_ACTIVATING_ZOOM.with(|zoom| zoom.borrow().clone()),
+        Some(Json::from(2)),
+        "the next tick applies the load"
+    );
+    assert_eq!(host.faults(), 1);
+}
+
 /// Creates an instance from `table` on another thread, then activates and
 /// destroys it on this one, and answers whether the activation took and the
 /// faults counted here.

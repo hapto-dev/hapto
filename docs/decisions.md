@@ -2230,8 +2230,7 @@ costs when nothing changed. A participant that is busy then, held by an
 editor's code that reached the host, keeps its section owed as at any tick:
 the processor is built from what it held, the load's parameters made at run
 time wait with it, and the next tick applies the load. An engine bound to no
-thread holds no driver, and its `Send` plugin no session state, so it has
-nothing to tick.
+thread holds no driver, so nothing is ticked there.
 
 Open: a load made while the plugin is active, followed by blocks with no tick,
 still plays the session from before it until the next tick. The listed
@@ -2542,9 +2541,9 @@ began after the load stored its sections has finished, the parts' tick, at an
 idle or at an activation (D91), assigns the load in one step. Each one
 declared before the load and still held takes the value held for its path, or
 its default, as a restore: a parameter made once in `new`, or an owner a
-participant kept. Every one still held takes the
-mapping held for its path, and one declared before the load with none held is
-left unmapped. So the result does not depend on whether the plugin's tree or
+participant kept. Every one still held takes the mapping held for its path,
+and one declared before the load with none held is left unmapped. So the
+result does not depend on whether the plugin's tree or
 learn applied first, or on where in a tick the load landed, and no mapping is
 refused as full for one of the tree the load replaced. Then the entries go; a
 save meanwhile writes them as loaded, and a parameter declared since the load
