@@ -8,8 +8,9 @@ hapto_testkit::install_alloc_gate!();
 use std::sync::Arc;
 
 use hapto_example_gain::Gain;
+use hapto_host::layout::Width;
 use hapto_host::vst3::TestHost;
-use hapto_host::{Block, Driver, EventList, Layout, Parts, Plugin, ProcessSetup, Processor};
+use hapto_host::{Audio, Block, Driver, EventList, Parts, Plugin, ProcessSetup, Processor};
 use hapto_params::host_id;
 use hapto_testkit::alloc::assert_no_allocations;
 use hapto_ump::{ChannelVoice, Voice};
@@ -40,13 +41,9 @@ fn learning_and_a_learned_controller_never_allocate() {
     let mut plugin = Gain::new(params, parts);
     let program = set.program();
     let [gain, mode, bypass] = [GAIN, MODE, BYPASS].map(|key| set.id(key).expect("declared"));
-    let mut processor = plugin.activate(&ProcessSetup {
-        sample_rate: 48_000.0,
-        max_frames: 256,
-        layout: Layout::STEREO,
-        max_events: 4,
-        max_out_events: 0,
-    });
+    let mut setup = ProcessSetup::new(48_000.0, 256, Width::STEREO);
+    setup.max_events = 4;
+    let mut processor = plugin.activate(&setup);
     // As an activation takes it, and as each block runs it.
     let mut learn = driver.learn_audio().expect("learn is on");
     let mut events = EventList::with_capacity(4);
@@ -58,7 +55,11 @@ fn learning_and_a_learned_controller_never_allocate() {
     assert_no_allocations("the first block, capturing a controller to learn", || {
         learn.process(&events);
         let mut channels: [&mut [f32]; 2] = [&mut left, &mut right];
-        processor.process(Block::new(&mut channels, 256, &events, &mut out));
+        processor.process(Block::new(
+            Audio::new(&mut channels, 256),
+            &events,
+            &mut out,
+        ));
     });
     driver.tick();
     assert!(
@@ -73,7 +74,11 @@ fn learning_and_a_learned_controller_never_allocate() {
         assert_no_allocations("a block, the learned controller moving the gain", || {
             learn.process(&events);
             let mut channels: [&mut [f32]; 2] = [&mut left, &mut right];
-            processor.process(Block::new(&mut channels, 256, &events, &mut out));
+            processor.process(Block::new(
+                Audio::new(&mut channels, 256),
+                &events,
+                &mut out,
+            ));
         });
     }
     // The last block's controller, 126 of 127, set the gain near the top of

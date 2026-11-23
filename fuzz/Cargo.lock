@@ -73,6 +73,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "hapto-audio"
+version = "0.1.0"
+
+[[package]]
 name = "hapto-bridge"
 version = "0.1.0"
 dependencies = [
@@ -98,6 +102,7 @@ dependencies = [
 name = "hapto-host"
 version = "0.1.0"
 dependencies = [
+ "hapto-audio",
  "hapto-learn",
  "hapto-params",
  "hapto-session",

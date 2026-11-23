@@ -5,9 +5,10 @@
 use std::sync::Arc;
 
 use hapto_example_gain::Gain;
+use hapto_host::layout::Width;
 use hapto_host::vst3::TestHost;
 use hapto_host::{
-    AuCodes, Block, Category, Driver, EventList, Layout, Parts, Plugin, PluginInfo, ProcessSetup,
+    AuCodes, Audio, Block, Category, Driver, EventList, Parts, Plugin, PluginInfo, ProcessSetup,
     Processor, SavedState,
 };
 use hapto_params::host_id;
@@ -54,7 +55,8 @@ fn the_manifest_gives_the_identity_hosts_know_the_gain_by() {
         },
         category: Category::Effect,
         features: &[],
-        layouts: &[Layout::STEREO],
+        // Its processor is in `Stereo`, which runs at its own width.
+        layouts: &[],
         midi_input: true,
         midi_output: false,
     };
@@ -177,13 +179,9 @@ fn two_lone_writes_are_two_steps_and_the_labels_sets_between_ticks_are_one() {
 #[test]
 fn a_learned_controller_drives_the_gain() {
     let (mut plugin, driver, saved) = built();
-    let mut processor = plugin.activate(&ProcessSetup {
-        sample_rate: 48_000.0,
-        max_frames: 8,
-        layout: Layout::STEREO,
-        max_events: 4,
-        max_out_events: 0,
-    });
+    let mut setup = ProcessSetup::new(48_000.0, 8, Width::STEREO);
+    setup.max_events = 4;
+    let mut processor = plugin.activate(&setup);
     // As an activation takes it, and as each block runs it.
     let mut learn = driver.learn_audio().expect("learn is on");
     let cc = |controller, value| {
@@ -204,7 +202,10 @@ fn a_learned_controller_drives_the_gain() {
         let (mut left, mut right) = ([0.5_f32; 8], [0.5_f32; 8]);
         let mut out = EventList::with_capacity(0);
         let mut channels = [&mut left[..], &mut right[..]];
-        Processor::process(processor, Block::new(&mut channels, 8, events, &mut out));
+        Processor::process(
+            processor,
+            Block::new(Audio::new(&mut channels, 8), events, &mut out),
+        );
         left[0]
     };
 

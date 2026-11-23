@@ -167,12 +167,12 @@ on the main thread and never grown.
 
 Allocation is checked by test. Each crate with audio-thread code has a test
 target named `alloc_gate` (`tests/alloc_gate.rs`): `hapto-host`, `hapto-learn`,
-`hapto-params`, `hapto-ump`, `hapto-standalone`, and the example EQ and gain.
-`hapto-testkit` has one too, which checks the gate itself, and so does
-`hapto-bridge`, whose tick runs on every main-thread tick of an open editor and
-allocates nothing while nothing moved. `hapto-standalone`'s audio path is
-private to the crate, so its gate reaches it through `hapto_standalone::gate`,
-a hidden module open to the gate alone. Each:
+`hapto-params`, `hapto-ump`, `hapto-audio`, `hapto-standalone`, and the example
+EQ and gain. `hapto-testkit` has one too, which checks the gate itself, and so
+does `hapto-bridge`, whose tick runs on every main-thread tick of an open editor
+and allocates nothing while nothing moved. `hapto-standalone`'s audio path is
+private to the crate, so its gate reaches it through `hapto_standalone::gate`, a
+hidden module open to the gate alone. Each:
 
 1. installs the counting allocator once: `hapto_testkit::install_alloc_gate!();`
 2. builds and activates what it tests outside the gate, where allocating is
@@ -702,12 +702,13 @@ the report. It says nothing about Windows- and macOS-only code.
 ## Benchmarks
 
 `scripts/run-benches.sh` runs the `iai` benchmarks of `hapto-ump`,
-`hapto-params`, `hapto-learn` and `hapto-example-eq` under valgrind with
-iai-callgrind and prints instruction counts, which do not vary with the
-machine's load. Given a base revision it records the base's counts, then fails
-if any count at the current revision is more than 2 % higher. A benchmark
-function is what is counted, so each hands back the state its setup made, and
-freeing it falls outside the count. A base without the benchmarks is run alone.
-On a pull request they cover the EQ's block, a host write, learn's dispatch and
-UMP decoding. Instruction counts say nothing about time or cache behaviour. The
-runner's version must equal the `iai-callgrind` dependency's.
+`hapto-audio`, `hapto-params`, `hapto-learn` and `hapto-example-eq` under
+valgrind with iai-callgrind and prints instruction counts, which do not vary
+with the machine's load. Given a base revision it records the base's counts,
+then fails if any count at the current revision is more than 2 % higher. A
+benchmark function is what is counted, so each hands back the state its setup
+made, and freeing it falls outside the count. A base without the benchmarks is
+run alone. On a pull request they cover the EQ's block, a host write, learn's
+dispatch, UMP decoding and walking audio by frame and by channel. Instruction
+counts say nothing about time or cache behaviour. The runner's version must
+equal the `iai-callgrind` dependency's.

@@ -14,8 +14,9 @@ use std::rc::Rc;
 
 use anyhow::{Context as _, Result, anyhow, bail};
 use cpal::ErrorKind;
+use hapto_host::layout::{AnyLayout, Width};
 use hapto_host::{
-    AuCodes, Block, Category, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
+    AuCodes, Block, Category, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
 };
 use hapto_params::{Declarer, Params};
 
@@ -232,7 +233,7 @@ fn system() -> Rc<System> {
 /// output, with `kept` settings, and the start's log taken.
 fn started(hosted: &dyn Hosted, system: &Rc<System>, kept: Option<&str>) -> Audio<Changing> {
     let device = Changing::opened(system).expect("a default");
-    let mut audio = Audio::with(device, Layout::STEREO, Signal::Silence, kept);
+    let mut audio = Audio::with(device, Width::STEREO, Signal::Silence, kept);
     audio.start_first(hosted);
     let _started = audio.events();
     audio
@@ -289,7 +290,9 @@ impl Params for NoParams {
 struct Through;
 
 impl Processor for Through {
-    fn process(&mut self, _block: Block<'_, '_>) -> Status {
+    type Layout = AnyLayout;
+
+    fn process(&mut self, _block: Block<'_, AnyLayout>) -> Status {
         Status::Continue
     }
 }
@@ -314,7 +317,7 @@ impl Plugin for Picky {
         },
         category: Category::Effect,
         features: &[],
-        layouts: &[Layout::STEREO],
+        layouts: &[Width::STEREO],
         midi_input: false,
         midi_output: false,
     };
@@ -341,7 +344,7 @@ const OWN: Settings = Settings {
 fn a_start_the_plugin_refuses_brings_back_the_settings_that_last_ran() {
     for format in Format::ALL {
         let hosted = host::<Picky>(format);
-        let mut audio = Audio::with(Silent::default(), Layout::STEREO, Signal::Silence, None);
+        let mut audio = Audio::with(Silent::default(), Width::STEREO, Signal::Silence, None);
         audio.start_first(&*hosted);
         assert_eq!(audio.running(), Some(OWN), "{format:?}");
         audio.stop(&*hosted);
@@ -366,7 +369,7 @@ fn kept_settings_the_plugin_refuses_fall_back_to_the_device_s_own() {
     for format in Format::ALL {
         let hosted = host::<Picky>(format);
         let kept = Some("192000 512 device");
-        let mut audio = Audio::with(Silent::default(), Layout::STEREO, Signal::Silence, kept);
+        let mut audio = Audio::with(Silent::default(), Width::STEREO, Signal::Silence, kept);
         assert_eq!(audio.settings().rate, 192_000, "the kept ones");
         audio.start_first(&*hosted);
         assert_eq!(audio.running(), Some(OWN), "{format:?}");
@@ -379,7 +382,7 @@ fn a_plugin_refused_even_at_the_device_s_own_settings_still_lets_the_dev_host_st
         let hosted = host::<Watched>(format);
         REFUSES.set(true);
         let kept = Some("96000 512 device");
-        let mut audio = Audio::with(Silent::default(), Layout::STEREO, Signal::Silence, kept);
+        let mut audio = Audio::with(Silent::default(), Width::STEREO, Signal::Silence, kept);
         audio.start_first(&*hosted);
         REFUSES.set(false);
         assert_eq!(audio.running(), None, "{format:?}: stopped");
@@ -399,7 +402,7 @@ fn a_plugin_refused_even_at_the_device_s_own_settings_still_lets_the_dev_host_st
 fn a_device_that_does_not_start_leaves_the_plugin_stopped() {
     for format in Format::ALL {
         let hosted = host::<Watched>(format);
-        let mut audio = Audio::with(Broken, Layout::STEREO, Signal::Silence, None);
+        let mut audio = Audio::with(Broken, Width::STEREO, Signal::Silence, None);
         audio.start_first(&*hosted);
         assert!(!ACTIVE.get(), "{format:?}: deactivated again");
         assert_eq!(audio.running(), None, "{format:?}");

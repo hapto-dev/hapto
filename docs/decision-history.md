@@ -737,6 +737,10 @@ the decision. Confirmed by the owner on 2026-11-07.
 Decided by the owner on 2026-11-07. The form before had `inputs` and `outputs`
 fields.
 
+On 2026-11-23 `ProcessSetup` became non-exhaustive, made with `new`, where a
+caller outside the crate had built it from its fields, so that the extra buses
+can join it before the first release fixes its shape.
+
 ### D88. A call a test host was refused
 
 [The decision](decisions.md#d88-a-call-a-test-host-was-refused)
@@ -1237,6 +1241,42 @@ settings a look changed are kept in the session.
 The review of that the same day found no test that a wait ends. Three now
 pin that Stop, Start or Reactivate ends it, that a plugin playing again
 waits no more, and that a move clears the note of an earlier refusal.
+
+### D112. The block's audio and the layout as a type
+
+[The decision](decisions.md#d112-the-blocks-audio-and-the-layout-as-a-type)
+
+The owner's decision, on 2026-11-21, from the MIDI design's exploration. The
+sketches drafted the block `hapto-midi` would write into, and the owner chose
+to change the audio API first, in a pull request of its own. The owner took
+each recommendation: `AnyLayout`, with its widths in `manifest_info!`'s
+`layouts`, for a plugin that offers several; the old struct renamed `Width`;
+and the channel slices held inline, up to 16, under one lifetime. `Audio` was
+named after the field that holds it, rather than JUCE's `AudioBuffer`, since
+the standard library names an owner `Buf`, and `AudioBuf` is the one that
+owns.
+
+Later on 2026-11-21, at the owner's ask for the API developers would love
+most, after asking how a gain would reach the third of four channels: the
+three typed layouts became one, `Bus<IN, OUT>`, with their names kept as
+aliases, so any fixed width is typed. A `Bus`'s channels became an array, as
+its frames are, so a channel is reached by its place and one it does not
+have fails to compile, where `channel_mut` returned an `Option` even in a
+layout whose count was known. `AnyLayout` kept its iterators.
+
+The review on 2026-11-22 read the benchmark lane's counts for 512 stereo
+frames: a gain walked by frame took 23,758 instructions against 1,285 by
+channel, since one iterator had served every layout, over 16 slots and a
+count read at run time. A `Bus` now splits its frames off its own channels
+alone, and the same gain takes 1,481.
+
+### D113. The audio types' crate
+
+[The decision](decisions.md#d113-the-audio-types-crate)
+
+The owner's decision, on 2026-11-21, with D112: `hapto-midi` is to sit in the
+core, below `hapto-host`, and its voices take `Audio`, so the audio types sit
+below both.
 
 ## Rules
 

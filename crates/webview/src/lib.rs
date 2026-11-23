@@ -59,10 +59,12 @@
 //! use hapto_host::{Editor, Plugin, Size};
 //! use hapto_params::Value;
 //! use hapto_webview::{Asset, Page};
-//! # use hapto_host::{AuCodes, Block, Category, Layout, Parts, PluginInfo, ProcessSetup, Processor, Status};
+//! # use hapto_host::layout::Stereo;
+//! # use hapto_host::{AuCodes, Block, Category, Parts, PluginInfo, ProcessSetup, Processor, Status};
 //! # struct Through;
 //! # impl Processor for Through {
-//! #     fn process(&mut self, _block: Block<'_, '_>) -> Status { Status::Continue }
+//! #     type Layout = Stereo;
+//! #     fn process(&mut self, _block: Block<'_, Stereo>) -> Status { Status::Continue }
 //! # }
 //!
 //! /// The page's built files: `include_bytes!` of each in a real plugin.
@@ -86,7 +88,7 @@
 //! #       au_codes: AuCodes { subtype: *b"panl", manufacturer: *b"Exmp" },
 //! #       category: Category::Effect,
 //! #       features: &[],
-//! #       layouts: &[Layout::STEREO],
+//! #       layouts: &[],
 //! #       midi_input: false,
 //! #       midi_output: false,
 //! #   };
@@ -144,7 +146,7 @@ pub use assets::Asset;
 ///
 /// ```
 /// # use hapto_params::{Kind, ParamDecl, ParamSet};
-/// use hapto_host::{AuCodes, Category, Layout, PluginInfo, Size};
+/// use hapto_host::{AuCodes, Category, PluginInfo, Size};
 /// use hapto_params::Value;
 /// use hapto_webview::{Asset, Page};
 ///
@@ -152,7 +154,7 @@ pub use assets::Asset;
 /// #     name: "Panel", vendor: "Example", url: "", email: "", description: "",
 /// #     version: "0.1.0", id: "dev.example.panel", vst3_class_id: [0; 16],
 /// #     au_codes: AuCodes { subtype: *b"panl", manufacturer: *b"Exmp" },
-/// #     category: Category::Effect, features: &[], layouts: &[Layout::STEREO],
+/// #     category: Category::Effect, features: &[], layouts: &[],
 /// #     midi_input: false, midi_output: false,
 /// # };
 /// # let set = ParamSet::from_decls([ParamDecl::new("gain", "Gain", Kind::Bool, 0.0)])?;
@@ -286,7 +288,7 @@ impl std::fmt::Debug for Page {
 
 #[cfg(test)]
 mod tests {
-    use hapto_host::{AuCodes, Category, Layout};
+    use hapto_host::{AuCodes, Category};
     use hapto_params::{Kind, ParamDecl, ParamSet};
 
     use super::*;
@@ -306,7 +308,7 @@ mod tests {
         },
         category: Category::Effect,
         features: &[],
-        layouts: &[Layout::STEREO],
+        layouts: &[],
         midi_input: false,
         midi_output: false,
     };

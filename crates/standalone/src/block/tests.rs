@@ -4,7 +4,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use hapto_host::Layout;
+use hapto_host::layout::Width;
 
 use super::{Plan, Player, RECENT, Render, preview};
 use crate::settings::Blocks;
@@ -34,7 +34,7 @@ fn player(blocks: Blocks, max: usize) -> (Player<Doubler>, Doubler, Arc<Plan>) {
     let plan = Plan::new(blocks, Signal::Sine);
     let player = Player::new(
         doubler.clone(),
-        Layout::STEREO,
+        Width::STEREO,
         2,
         48_000.0,
         max,
@@ -175,7 +175,7 @@ fn a_mono_plugin_plays_on_every_channel_and_a_missing_output_is_silent() {
     let mono = |outputs, channels| {
         Player::new(
             Doubler::default(),
-            Layout::new(0, outputs),
+            Width::new(0, outputs),
             channels,
             48_000.0,
             64,

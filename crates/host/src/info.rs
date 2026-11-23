@@ -3,16 +3,20 @@
 #[cfg(all(doctest, feature = "manifest"))]
 mod manifest_refusals;
 
+use crate::layout::{Layout, MAX_CHANNELS, Width};
+use crate::{Plugin, Processor};
+
 /// What kind of plugin it is.
 ///
 /// # Examples
 ///
 /// ```
-/// use hapto_host::{Category, Layout};
+/// use hapto_host::Category;
+/// use hapto_host::layout::{Layout, StereoOut};
 ///
 /// // An instrument has no input.
-/// let (category, layout) = (Category::Instrument, Layout::new(0, 2));
-/// assert_eq!((category, layout.inputs), (Category::Instrument, 0));
+/// let (category, width) = (Category::Instrument, StereoOut::WIDTHS[0]);
+/// assert_eq!((category, width.inputs), (Category::Instrument, 0));
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Category {
@@ -76,38 +80,62 @@ pub enum Feature {
     Synthesizer,
 }
 
-/// The channels of the main bus, in and out.
+/// The widths a plugin's main bus runs at, the first by default: its
+/// processor's [layout](Processor::Layout)'s own, or, for a processor in
+/// [`AnyLayout`](crate::layout::AnyLayout), the
+/// [`layouts`](PluginInfo::layouts) its info lists.
 ///
-/// The VST3 exporter offers a bus of one channel as mono and of two as
-/// stereo, and refuses to build a plugin that declares a wider one. The C
-/// interface takes any width. An instrument has no input: `inputs` is 0.
+/// Evaluated in a `const` block, as every exporter does, it fails to compile
+/// a plugin that lists widths beside a typed layout, lists none for
+/// `AnyLayout`, or offers a width of more than [`MAX_CHANNELS`] channels.
 ///
-/// # Examples
+/// # Panics
 ///
-/// ```
-/// use hapto_host::Layout;
-///
-/// // A plugin that runs as mono or as stereo; the first is the default.
-/// const LAYOUTS: &[Layout] = &[Layout::STEREO, Layout::MONO];
-/// assert_eq!(LAYOUTS[0], Layout::new(2, 2));
-/// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Layout {
-    /// Input channels.
-    pub inputs: usize,
-    /// Output channels.
-    pub outputs: usize,
+/// For such a plugin, which is the point.
+#[doc(hidden)]
+pub const fn widths<P: Plugin>() -> &'static [Width] {
+    offered(
+        <<P::Processor as Processor>::Layout as Layout>::WIDTHS,
+        P::INFO.layouts,
+    )
 }
 
-impl Layout {
-    /// One channel in, one out.
-    pub const MONO: Layout = Layout::new(1, 1);
-    /// Two channels in, two out.
-    pub const STEREO: Layout = Layout::new(2, 2);
+/// [`widths`], from a layout's own widths and those an info lists.
+const fn offered(typed: &'static [Width], listed: &'static [Width]) -> &'static [Width] {
+    let widths = match (typed.is_empty(), listed.is_empty()) {
+        (false, true) => typed,
+        (true, false) => listed,
+        (false, false) => panic!(
+            "a processor in a typed layout runs at that layout's own width: \
+             list `layouts` only for a processor in `AnyLayout`"
+        ),
+        (true, true) => panic!(
+            "a processor in `AnyLayout` runs at the widths its plugin lists: \
+             give `layouts` at least one"
+        ),
+    };
+    let mut index = 0;
+    while index < widths.len() {
+        if widths[index].channels() > MAX_CHANNELS {
+            panic!("a plugin offers a width of more than the 16 channels audio holds");
+        }
+        index += 1;
+    }
+    widths
+}
 
-    /// Creates a layout of `inputs` channels in and `outputs` out.
-    pub const fn new(inputs: usize, outputs: usize) -> Self {
-        Layout { inputs, outputs }
+/// The width an instance starts at, the first its plugin offers (see
+/// [`widths`]). Evaluated in a `const` block, it fails to compile as
+/// `widths` does.
+///
+/// # Panics
+///
+/// For a plugin `widths` refuses, which is the point.
+#[doc(hidden)]
+pub const fn first_width<P: Plugin>() -> Width {
+    match widths::<P>() {
+        [first, ..] => *first,
+        [] => panic!("a plugin offers at least one width"),
     }
 }
 
@@ -144,7 +172,8 @@ pub struct AuCodes {
 /// # Examples
 ///
 /// ```
-/// use hapto_host::{AuCodes, Category, Feature, Layout, PluginInfo};
+/// use hapto_host::layout::Width;
+/// use hapto_host::{AuCodes, Category, Feature, PluginInfo};
 ///
 /// const INFO: PluginInfo = PluginInfo {
 ///     name: "Tone",
@@ -159,11 +188,12 @@ pub struct AuCodes {
 ///     au_codes: AuCodes { subtype: *b"tone", manufacturer: *b"Exmp" },
 ///     category: Category::Effect,
 ///     features: &[Feature::Equalizer],
-///     layouts: &[Layout::STEREO, Layout::MONO],
+///     // For a processor in `AnyLayout`: stereo by default, or mono.
+///     layouts: &[Width::STEREO, Width::MONO],
 ///     midi_input: true,
 ///     midi_output: false,
 /// };
-/// assert_eq!(INFO.layouts[0], Layout::STEREO);
+/// assert_eq!(INFO.layouts[0], Width::STEREO);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PluginInfo {
@@ -195,10 +225,15 @@ pub struct PluginInfo {
     pub category: Category,
     /// What it does, finer: for a host's browser.
     pub features: &'static [Feature],
-    /// The main bus layouts it runs with, the first by default; at least
-    /// one. A host picks one before activation, and
-    /// [`ProcessSetup::layout`](crate::ProcessSetup::layout) reports it.
-    pub layouts: &'static [Layout],
+    /// For a processor in [`AnyLayout`](crate::layout::AnyLayout), the
+    /// widths its main bus runs at, the first by default; empty for a typed
+    /// layout, which runs at its own. A host picks one before activation,
+    /// and [`ProcessSetup::layout`](crate::ProcessSetup::layout) reports it.
+    ///
+    /// The VST3 exporter arranges a bus of one channel as mono and of two as
+    /// stereo, and refuses to build a plugin that offers a wider one. The C
+    /// interface takes any width up to [`MAX_CHANNELS`].
+    pub layouts: &'static [Width],
     /// Whether it takes MIDI input (for MIDI learn, or notes).
     ///
     /// Open: no exporter carries MIDI either way yet. The VST3 exporter shows
@@ -261,10 +296,12 @@ fn vst3_subcategory(feature: Feature, category: Category) -> &'static str {
     }
 }
 
-#[cfg(all(test, any(feature = "vst3", feature = "cabi")))]
+#[cfg(test)]
 mod tests {
     use super::*;
+    use crate::layout::Stereo;
 
+    #[cfg(any(feature = "vst3", feature = "cabi"))]
     #[test]
     fn drums_are_named_as_the_sdk_names_them() {
         assert_eq!(vst3_subcategory(Feature::Drum, Category::Effect), "Drums");
@@ -273,5 +310,27 @@ mod tests {
             "Drum"
         );
         assert_eq!(vst3_subcategory(Feature::Equalizer, Category::Effect), "EQ");
+    }
+
+    // An exporter evaluates `widths` while compiling, where these panics
+    // fail the build; called at run time, each is the test's.
+
+    #[test]
+    #[should_panic(expected = "list `layouts` only for a processor in `AnyLayout`")]
+    fn widths_listed_beside_a_typed_layout_are_refused() {
+        let _ = offered(Stereo::WIDTHS, &[Width::STEREO, Width::MONO]);
+    }
+
+    #[test]
+    #[should_panic(expected = "give `layouts` at least one")]
+    fn any_layout_with_no_width_listed_is_refused() {
+        let _ = offered(&[], &[]);
+    }
+
+    #[test]
+    #[should_panic(expected = "more than the 16 channels audio holds")]
+    fn a_width_of_more_channels_than_audio_holds_is_refused() {
+        const TOO_WIDE: &[Width] = &[Width::STEREO, Width::new(2, MAX_CHANNELS + 1)];
+        let _ = offered(&[], TOO_WIDE);
     }
 }

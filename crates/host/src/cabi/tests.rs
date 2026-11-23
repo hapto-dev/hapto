@@ -22,9 +22,10 @@ use super::{
 };
 use crate::boundary::tests::Watched;
 use crate::faults::{thread_faults, written};
+use crate::layout::{AnyLayout, MonoToStereo, Width};
 use crate::{
-    AuCodes, Block, Category, Feature, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor,
-    Status, Tail,
+    AuCodes, Block, Category, Feature, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
+    Tail,
 };
 use hapto_testkit::sync::{Latch, PATIENCE, wait_until};
 
@@ -120,17 +121,19 @@ impl Drop for ProbeProcessor {
 }
 
 impl Processor for ProbeProcessor {
-    fn process(&mut self, block: Block<'_, '_>) -> Status {
+    type Layout = AnyLayout;
+
+    fn process(&mut self, mut block: Block<'_, AnyLayout>) -> Status {
         assert!(!probe(|state| state.panic_in_process), "a processor's bug");
         let tiny = std::hint::black_box(f32::MIN_POSITIVE);
         let product = std::hint::black_box(tiny * std::hint::black_box(0.5));
         probe(|state| {
             state.flushed = Some(product == 0.0);
-            state.blocks.push(block.frames);
+            state.blocks.push(block.audio.frames());
         });
         let add = self.params.value(self.gain);
-        for channel in block.channels.iter_mut() {
-            for sample in &mut channel[..block.frames] {
+        for channel in block.audio.channels_mut() {
+            for sample in channel {
                 *sample += add;
             }
         }
@@ -164,7 +167,7 @@ impl Plugin for Probe {
         },
         category: Category::Effect,
         features: &[Feature::Equalizer, Feature::PitchShift],
-        layouts: &[Layout::STEREO, Layout::MONO],
+        layouts: &[Width::STEREO, Width::MONO],
         midi_input: false,
         midi_output: false,
     };
@@ -229,7 +232,7 @@ impl Plugin for Probe {
 /// block.
 fn running(max_frames: u32) -> TestHost<Probe> {
     let host = TestHost::<Probe>::new();
-    assert_eq!(host.activate(48_000.0, max_frames, Layout::STEREO), Ok(()));
+    assert_eq!(host.activate(48_000.0, max_frames, Width::STEREO), Ok(()));
     host
 }
 
@@ -245,7 +248,7 @@ unsafe impl Send for Shared {}
 fn the_table_lists_its_layouts_and_every_parameter() {
     let host = TestHost::<Probe>::new();
     assert_eq!(host.table().abi_version, ABI_VERSION);
-    assert_eq!(host.layouts(), [Layout::STEREO, Layout::MONO]);
+    assert_eq!(host.layouts(), [Width::STEREO, Width::MONO]);
     let mut layout = HaptoLayout {
         inputs: 7,
         outputs: 7,
@@ -375,37 +378,37 @@ fn activation_builds_a_processor_for_the_setup_and_layout() {
     let host = TestHost::<Probe>::new();
     assert_eq!(host.tail(), 100, "answered from creation");
     assert_eq!(
-        host.activate(48_000.0, 256, Layout::new(1, 2)),
+        host.activate(48_000.0, 256, Width::new(1, 2)),
         Err(Refused),
         "not a listed layout"
     );
     assert_eq!(
-        host.activate(f64::NAN, 256, Layout::STEREO),
+        host.activate(f64::NAN, 256, Width::STEREO),
         Err(Refused),
         "no rate"
     );
     assert_eq!(
-        host.activate(-1.0, 256, Layout::STEREO),
+        host.activate(-1.0, 256, Width::STEREO),
         Err(Refused),
         "a negative rate"
     );
     assert!(probe(|state| state.setups.is_empty()));
     probe(|state| state.latency = 32);
-    assert_eq!(host.activate(44_100.0, 256, Layout::MONO), Ok(()));
+    assert_eq!(host.activate(44_100.0, 256, Width::MONO), Ok(()));
     assert_eq!(host.latency(), 32, "read at activation");
     assert_eq!(
         probe(|state| state.setups.clone()),
         [ProcessSetup {
             sample_rate: 44_100.0,
             max_frames: 256,
-            layout: Layout::MONO,
+            layout: Width::MONO,
             max_events: 0,
             max_out_events: 0,
         }]
     );
     // A second activation replaces the processor, as JUCE calls
     // `prepareToPlay` again on a new rate.
-    assert_eq!(host.activate(96_000.0, 128, Layout::STEREO), Ok(()));
+    assert_eq!(host.activate(96_000.0, 128, Width::STEREO), Ok(()));
     assert_eq!(probe(|state| state.deactivations), 1, "the first went back");
     host.idle();
     assert_eq!(host.calls(), [], "the latency was read with the activation");
@@ -458,7 +461,7 @@ fn an_inactive_or_panicking_processor_plays_silence() {
     host.process_in_place(&mut [&mut left], 8);
     assert_eq!(left, [0.0; 8], "silent before any activation");
 
-    assert_eq!(host.activate(48_000.0, 8, Layout::MONO), Ok(()));
+    assert_eq!(host.activate(48_000.0, 8, Width::MONO), Ok(()));
     probe(|state| state.panic_in_process = true);
     host.expect_faults(1);
     let mut left = [5.0f32; 8];
@@ -470,7 +473,7 @@ fn an_inactive_or_panicking_processor_plays_silence() {
     assert_eq!(left, [0.0; 8], "and so is every block after it");
 
     assert_eq!(
-        host.activate(48_000.0, 8, Layout::MONO),
+        host.activate(48_000.0, 8, Width::MONO),
         Ok(()),
         "a fresh processor"
     );
@@ -542,10 +545,10 @@ fn a_panic_in_activate_or_idle_is_answered() {
     let host = TestHost::<Probe>::new();
     probe(|state| state.panic_in_activate = true);
     host.expect_faults(1);
-    assert_eq!(host.activate(48_000.0, 64, Layout::STEREO), Err(Refused));
+    assert_eq!(host.activate(48_000.0, 64, Width::STEREO), Err(Refused));
     probe(|state| state.panic_in_activate = false);
     assert_eq!(
-        host.activate(48_000.0, 64, Layout::STEREO),
+        host.activate(48_000.0, 64, Width::STEREO),
         Ok(()),
         "the next one works"
     );
@@ -1073,7 +1076,7 @@ fn deactivation_takes_the_processor_back_and_reads_the_answers() {
     probe(|state| state.tail = Some(Tail::Frames(7)));
     host.idle();
     assert_eq!(host.tail(), 7);
-    assert_eq!(host.activate(48_000.0, 8, Layout::STEREO), Ok(()));
+    assert_eq!(host.activate(48_000.0, 8, Width::STEREO), Ok(()));
     assert_eq!(
         probe(|state| state.deactivations),
         1,
@@ -1092,7 +1095,7 @@ fn an_activation_drops_a_reset_asked_of_the_processor_it_replaces() {
     let host = running(8);
     host.reset();
     assert_eq!(
-        host.activate(48_000.0, 8, Layout::STEREO),
+        host.activate(48_000.0, 8, Width::STEREO),
         Ok(()),
         "a fresh processor"
     );
@@ -1128,7 +1131,7 @@ impl Plugin for Instrument {
     const INFO: PluginInfo = PluginInfo {
         category: Category::Instrument,
         features: &[Feature::Synthesizer],
-        layouts: &[Layout::new(0, 2), Layout::new(1, 2)],
+        layouts: &[Width::new(0, 2), Width::new(1, 2)],
         midi_input: true,
         midi_output: false,
         ..Probe::INFO
@@ -1152,22 +1155,22 @@ impl Plugin for Instrument {
 #[test]
 fn an_instrument_plays_with_no_input_or_a_narrower_one() {
     let host = TestHost::<Instrument>::new();
-    assert_eq!(host.layouts(), [Layout::new(0, 2), Layout::new(1, 2)]);
+    assert_eq!(host.layouts(), [Width::new(0, 2), Width::new(1, 2)]);
     assert_eq!(
-        host.activate(48_000.0, 8, Layout::STEREO),
+        host.activate(48_000.0, 8, Width::STEREO),
         Err(Refused),
         "not a listed layout"
     );
-    assert_eq!(host.activate(48_000.0, 8, Layout::new(0, 2)), Ok(()));
+    assert_eq!(host.activate(48_000.0, 8, Width::new(0, 2)), Ok(()));
     let setup = probe(|state| state.setups[0]);
-    assert_eq!(setup.layout, Layout::new(0, 2));
+    assert_eq!(setup.layout, Width::new(0, 2));
     assert_eq!(setup.max_events, 2048, "it takes MIDI");
     host.set(GAIN, 0.75);
     let (mut left, mut right) = ([9.0f32; 8], [9.0f32; 8]);
     host.process(&[], &mut [&mut left, &mut right], 8);
     assert_eq!((left, right), ([12.0; 8], [12.0; 8]), "from silence");
 
-    assert_eq!(host.activate(48_000.0, 8, Layout::new(1, 2)), Ok(()));
+    assert_eq!(host.activate(48_000.0, 8, Width::new(1, 2)), Ok(()));
     let input = [1.0f32; 8];
     host.process(&[&input], &mut [&mut left, &mut right], 8);
     assert_eq!(
@@ -1184,6 +1187,62 @@ fn an_instrument_plays_with_no_input_or_a_narrower_one() {
     ] {
         assert!(settings.contains(line), "{line}\n{settings}");
     }
+}
+
+/// A processor in a typed layout of one channel in and two out: it sends
+/// its input out on both.
+struct Spreads;
+
+impl Processor for Spreads {
+    type Layout = MonoToStereo;
+
+    fn process(&mut self, mut block: Block<'_, MonoToStereo>) -> Status {
+        for [left, right] in block.audio.frames_mut() {
+            *right += *left;
+        }
+        Status::Continue
+    }
+}
+
+/// A plugin around [`Spreads`], whose typed layout says its width: its
+/// info lists none.
+struct Typed;
+
+impl Plugin for Typed {
+    const INFO: PluginInfo = PluginInfo {
+        layouts: &[],
+        ..Probe::INFO
+    };
+    type Params = Table;
+    type Processor = Spreads;
+
+    fn new(_: Table, _: Parts) -> Self {
+        Typed
+    }
+
+    fn activate(&mut self, _: &ProcessSetup) -> Spreads {
+        Spreads
+    }
+}
+
+#[test]
+fn a_typed_bus_wider_out_than_in_plays_at_its_own_width() {
+    let host = TestHost::<Typed>::new();
+    assert_eq!(host.layouts(), [Width::new(1, 2)], "none listed");
+    assert_eq!(
+        host.activate(48_000.0, 8, Width::STEREO),
+        Err(Refused),
+        "not the bus's width"
+    );
+    assert_eq!(host.activate(48_000.0, 8, Width::new(1, 2)), Ok(()));
+    let input = [0.5f32; 8];
+    let (mut left, mut right) = ([9.0f32; 8], [9.0f32; 8]);
+    host.process(&[&input], &mut [&mut left, &mut right], 8);
+    assert_eq!(
+        (left, right),
+        ([0.5; 8], [0.5; 8]),
+        "its audio holds two channels, the second silent on entry"
+    );
 }
 
 /// A host whose callbacks record their names and can re-enter the instance:
@@ -1411,7 +1470,9 @@ struct Mover(Arc<ParamSet>);
 struct Through;
 
 impl Processor for Through {
-    fn process(&mut self, _: Block<'_, '_>) -> Status {
+    type Layout = AnyLayout;
+
+    fn process(&mut self, _: Block<'_, AnyLayout>) -> Status {
         Status::Continue
     }
 }
@@ -1465,7 +1526,7 @@ fn an_unbound_instance_holds_no_driver_and_no_timer() {
 fn an_unbound_instance_takes_no_audio_side_of_learn() {
     let unbound = Instance::<Mover>::new_unbound(None, &crate::engine::LOAN_WAIT);
     let main = unbound.main().expect("lent here");
-    assert!(unbound.activate(&main, crate::engine::Setup::FALLBACK, Layout::STEREO));
+    assert!(unbound.activate(&main, crate::engine::Setup::FALLBACK, Width::STEREO));
     drop(main);
     assert_eq!(unbound.holds_learn_audio(), Some(false));
     assert_eq!(unbound.release(), crate::engine::Release::Free);
@@ -1499,7 +1560,7 @@ impl Plugin for Learner {
 fn a_release_refused_on_another_thread_drops_learn_s_audio_side_there() {
     let instance = Instance::<Learner>::new(None);
     let main = instance.main().expect("bound here");
-    assert!(instance.activate(&main, crate::engine::Setup::FALLBACK, Layout::STEREO));
+    assert!(instance.activate(&main, crate::engine::Setup::FALLBACK, Width::STEREO));
     drop(main);
     assert_eq!(instance.holds_learn_audio(), Some(true));
     let release = std::thread::scope(|scope| scope.spawn(|| instance.release()).join())
@@ -1590,7 +1651,7 @@ fn a_tick_while_the_plugin_is_busy_skips_hapto_s_tick_and_its_idle() {
     BUSY.set(host.instance());
     let block = br#"{"seamStateVersion": 1, "parameters": {}, "extra": {"zoom": 2}}"#;
     assert_eq!(host.load(block), Ok(()));
-    assert_eq!(host.activate(48_000.0, 64, Layout::STEREO), Ok(()));
+    assert_eq!(host.activate(48_000.0, 64, Width::STEREO), Ok(()));
     assert_eq!(BUSY_IDLES.with(Cell::get), 0, "the nested tick ran no idle");
     assert_eq!(
         BUSY_ZOOM.with(|zoom| zoom.borrow().clone()),
@@ -1650,11 +1711,11 @@ fn the_exported_table_lends_a_send_plugin_to_any_thread_and_keeps_any_other_wher
 #[test]
 fn an_activation_with_no_block_size_takes_the_fallbacks() {
     let host = TestHost::<Probe>::new();
-    assert_eq!(host.activate(96_000.0, 0, Layout::STEREO), Ok(()));
+    assert_eq!(host.activate(96_000.0, 0, Width::STEREO), Ok(()));
     let setup = probe(|state| state.setups[0]);
     assert_eq!((setup.sample_rate, setup.max_frames), (96_000.0, 1024));
     assert_eq!(
-        host.activate(48_000.0, super::MAX_FRAMES, Layout::STEREO),
+        host.activate(48_000.0, super::MAX_FRAMES, Width::STEREO),
         Ok(()),
         "at the limit"
     );
@@ -1665,7 +1726,7 @@ fn an_activation_past_the_block_size_limit_builds_for_the_limit() {
     let host = TestHost::<Probe>::new();
     for promised in [super::MAX_FRAMES + 1, u32::MAX] {
         assert_eq!(
-            host.activate(48_000.0, promised, Layout::STEREO),
+            host.activate(48_000.0, promised, Width::STEREO),
             Ok(()),
             "{promised} frames"
         );
@@ -1710,7 +1771,7 @@ fn a_moving_plugin_takes_main_thread_calls_from_any_thread_however_many_ticks_ra
     }
     assert!(elsewhere(), "and after a hundred");
     assert_eq!(
-        host.activate(48_000.0, 64, Layout::STEREO),
+        host.activate(48_000.0, 64, Width::STEREO),
         Ok(()),
         "and here"
     );
@@ -2099,7 +2160,9 @@ struct Stuck;
 struct StuckProcessor;
 
 impl Processor for StuckProcessor {
-    fn process(&mut self, _: Block<'_, '_>) -> Status {
+    type Layout = AnyLayout;
+
+    fn process(&mut self, _: Block<'_, AnyLayout>) -> Status {
         Status::Continue
     }
 }

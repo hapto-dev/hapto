@@ -402,7 +402,7 @@ mod tests {
     use std::rc::Rc;
 
     use hapto_bridge::Refusals;
-    use hapto_host::{AuCodes, Category, Layout, PluginInfo};
+    use hapto_host::{AuCodes, Category, PluginInfo};
     use hapto_params::{Kind, ParamDecl, ParamId, ParamSet, UiParams};
 
     use super::*;
@@ -423,7 +423,7 @@ mod tests {
         },
         category: Category::Effect,
         features: &[],
-        layouts: &[Layout::STEREO],
+        layouts: &[],
         midi_input: false,
         midi_output: false,
     };

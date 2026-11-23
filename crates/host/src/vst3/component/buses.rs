@@ -112,5 +112,5 @@ pub(super) fn channels_of(arrangement: SpeakerArrangement) -> Option<usize> {
 
 /// Whether the plugin has a main audio input bus.
 pub(super) fn has_input<P: Plugin>() -> bool {
-    P::INFO.layouts.iter().any(|layout| layout.inputs > 0)
+    crate::widths::<P>().iter().any(|layout| layout.inputs > 0)
 }

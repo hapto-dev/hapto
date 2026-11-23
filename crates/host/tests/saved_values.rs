@@ -6,9 +6,9 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
+use hapto_host::layout::{AnyLayout, Width};
 use hapto_host::{
-    AuCodes, Block, Category, Driver, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor,
-    Status,
+    AuCodes, Block, Category, Driver, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
 };
 use hapto_params::{Declarer, Params, Value};
 use hapto_session::{ApplyError, Participant, Section, SessionError};
@@ -27,7 +27,9 @@ impl Params for NoParams {
 struct Silent;
 
 impl Processor for Silent {
-    fn process(&mut self, _: Block<'_, '_>) -> Status {
+    type Layout = AnyLayout;
+
+    fn process(&mut self, _: Block<'_, AnyLayout>) -> Status {
         Status::Sleep
     }
 }
@@ -51,7 +53,7 @@ impl Plugin for Bare {
         },
         category: Category::Effect,
         features: &[],
-        layouts: &[Layout::STEREO],
+        layouts: &[Width::STEREO],
         midi_input: false,
         midi_output: false,
     };

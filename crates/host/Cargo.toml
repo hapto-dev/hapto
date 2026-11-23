@@ -49,6 +49,7 @@ test-host = []
 manifest = ["dep:hapto-macros", "hapto-macros/manifest"]
 
 [dependencies]
+hapto-audio.workspace = true
 hapto-learn.workspace = true
 hapto-macros = { workspace = true, optional = true }
 hapto-params.workspace = true

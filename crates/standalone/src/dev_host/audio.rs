@@ -25,7 +25,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use cpal::DeviceId;
-use hapto_host::Layout;
+use hapto_host::layout::Width;
 
 use super::hosted::Hosted;
 use super::message::AudioShown;
@@ -123,7 +123,7 @@ pub(crate) struct Audio<D: Device = Output> {
     device: String,
     /// The sample rates the device takes, which alone are offered.
     rates: Vec<u32>,
-    layout: Layout,
+    layout: Width,
     plan: Arc<Plan>,
     settings: Settings,
     /// The settings the plugin last started with, which a start it refuses
@@ -150,14 +150,14 @@ impl Audio {
     /// # Errors
     ///
     /// Returns why there is no device to play to.
-    pub(crate) fn open(layout: Layout, signal: Signal, kept: Option<&str>) -> Result<Audio> {
+    pub(crate) fn open(layout: Width, signal: Signal, kept: Option<&str>) -> Result<Audio> {
         Ok(Audio::with(Output::system_default()?, layout, signal, kept))
     }
 }
 
 impl<D: Device> Audio<D> {
     /// Plays to `output`, as [`open`](Audio::open) does to the system's.
-    pub(crate) fn with(output: D, layout: Layout, signal: Signal, kept: Option<&str>) -> Self {
+    pub(crate) fn with(output: D, layout: Width, signal: Signal, kept: Option<&str>) -> Self {
         let rates = output.rates();
         let settings = kept
             .and_then(|text| Settings::read(text, &rates))

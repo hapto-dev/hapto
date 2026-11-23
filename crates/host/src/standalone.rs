@@ -29,7 +29,8 @@ use raw_window_handle::{HandleError, HasWindowHandle};
 
 use crate::boundary::{ParentWindow, guard};
 use crate::engine::{EditorSlot, Engine, HostLink, Opened, Outcome, Release, Restart, Setup};
-use crate::{Layout, LoadError, Plugin, Size, Status, Tail};
+use crate::layout::Width;
+use crate::{LoadError, Plugin, Size, Status, Tail, widths};
 
 /// The most channels a block of the audio side carries each way: its lists
 /// of them live on the audio thread's stack, so a block allocates nothing.
@@ -69,7 +70,7 @@ impl HostLink for Link {
 /// use hapto_host::standalone::Standalone;
 ///
 /// let app = Standalone::<Gain>::new();
-/// app.activate(48_000.0, 4, Layout::STEREO)?;
+/// app.activate(48_000.0, 4, Width::STEREO)?;
 ///
 /// // The device's callback owns the audio side.
 /// let mut audio = app.audio();
@@ -120,14 +121,14 @@ impl<P: Plugin> Default for Standalone<P> {
 ///
 /// let app = Standalone::<Gain>::new();
 /// // The gain declares stereo only.
-/// let refused = app.activate(48_000.0, 512, Layout::MONO);
-/// assert_eq!(refused, Err(Refused::Layout(Layout::MONO)));
+/// let refused = app.activate(48_000.0, 512, Width::MONO);
+/// assert_eq!(refused, Err(Refused::Layout(Width::MONO)));
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[non_exhaustive]
 pub enum Refused {
     /// The plugin does not declare this layout.
-    Layout(Layout),
+    Layout(Width),
     /// A sample rate that is not a positive finite number.
     SampleRate(f64),
     /// The plugin is inside a call of its own, the app having called in from
@@ -228,9 +229,9 @@ impl<P: Plugin> Standalone<P> {
         &self,
         sample_rate: f64,
         max_frames: usize,
-        layout: Layout,
+        layout: Width,
     ) -> Result<(), Refused> {
-        if !P::INFO.layouts.contains(&layout) {
+        if !widths::<P>().contains(&layout) {
             return Err(Refused::Layout(layout));
         }
         let setup = Setup::new(sample_rate, max_frames).ok_or(Refused::SampleRate(sample_rate))?;

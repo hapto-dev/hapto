@@ -12,21 +12,23 @@
 /// A field the manifest gives, written in Rust as well.
 ///
 /// ```compile_fail
-/// use hapto_host::{Layout, PluginInfo};
+/// use hapto_host::PluginInfo;
+/// use hapto_host::layout::Width;
 ///
 /// const INFO: PluginInfo = hapto_host::manifest_info! {
 ///     name: "Tone",
-///     layouts: &[Layout::STEREO],
+///     layouts: &[Width::STEREO],
 ///     midi_input: false,
 ///     midi_output: false,
 /// };
 /// ```
 ///
 /// ```
-/// use hapto_host::{Layout, PluginInfo};
+/// use hapto_host::PluginInfo;
+/// use hapto_host::layout::Width;
 ///
 /// const INFO: PluginInfo = hapto_host::manifest_info! {
-///     layouts: &[Layout::STEREO],
+///     layouts: &[Width::STEREO],
 ///     midi_input: false,
 ///     midi_output: false,
 /// };
@@ -36,21 +38,36 @@ struct FieldTheManifestGives;
 /// A field written in neither place.
 ///
 /// ```compile_fail,E0063
-/// use hapto_host::{Layout, PluginInfo};
+/// use hapto_host::PluginInfo;
+/// use hapto_host::layout::Width;
 ///
 /// const INFO: PluginInfo = hapto_host::manifest_info! {
-///     layouts: &[Layout::STEREO],
+///     layouts: &[Width::STEREO],
 ///     midi_input: false,
 /// };
 /// ```
 ///
 /// ```
-/// use hapto_host::{Layout, PluginInfo};
+/// use hapto_host::PluginInfo;
+/// use hapto_host::layout::Width;
 ///
 /// const INFO: PluginInfo = hapto_host::manifest_info! {
-///     layouts: &[Layout::STEREO],
+///     layouts: &[Width::STEREO],
 ///     midi_input: false,
 ///     midi_output: false,
 /// };
+/// ```
+///
+/// `layouts` is the one field that may be left out: it is empty then, as a
+/// processor in a typed layout needs it.
+///
+/// ```
+/// use hapto_host::PluginInfo;
+///
+/// const INFO: PluginInfo = hapto_host::manifest_info! {
+///     midi_input: false,
+///     midi_output: false,
+/// };
+/// assert!(INFO.layouts.is_empty());
 /// ```
 struct FieldInNeither;

@@ -29,8 +29,9 @@ use std::time::{Duration, Instant};
 
 use hapto_example_eq::ExampleEq;
 use hapto_host::cabi::TestHost as CHost;
+use hapto_host::layout::Width;
 use hapto_host::vst3::TestHost as Vst3Host;
-use hapto_host::{Block, Event, EventList, Layout, Plugin, ProcessSetup, Processor};
+use hapto_host::{Audio, Block, Event, EventList, Plugin, ProcessSetup, Processor};
 use hapto_params::{ParamDecl, audio_thread, host_id};
 use hapto_testkit::alloc::assert_no_allocations;
 
@@ -126,15 +127,12 @@ struct Direct {
 }
 
 impl Direct {
-    fn open(layout: Layout, rate: f64) -> Self {
+    fn open(layout: Width, rate: f64) -> Self {
         let (mut plugin, saved) = built();
-        let processor = plugin.activate(&ProcessSetup {
-            sample_rate: rate,
-            max_frames: MAX_FRAMES,
-            layout,
-            max_events: EVENT_ROOM,
-            max_out_events: EVENT_ROOM,
-        });
+        let mut setup = ProcessSetup::new(rate, MAX_FRAMES, layout);
+        setup.max_events = EVENT_ROOM;
+        setup.max_out_events = EVENT_ROOM;
+        let processor = plugin.activate(&setup);
         Direct {
             plugin,
             processor: Some(processor),
@@ -168,8 +166,7 @@ impl Direct {
         let processor = self.processor.as_mut().expect("active");
         assert_no_allocations("the processor driven directly", || {
             processor.process(Block::new(
-                channels,
-                frames,
+                Audio::new(channels, frames),
                 &self.events,
                 &mut self.out_events,
             ));
@@ -189,7 +186,7 @@ impl Drop for Direct {
 trait Shell {
     const NAME: &'static str;
     /// Activates for blocks of at most `max_frames`.
-    fn open(layout: Layout, rate: f64, max_frames: usize) -> Self;
+    fn open(layout: Width, rate: f64, max_frames: usize) -> Self;
     /// Processes `channels` in place after `queues`, under the allocation
     /// gate.
     fn block(&mut self, channels: &mut [&mut [f32]], frames: usize, queues: &[Queue]);
@@ -202,7 +199,7 @@ struct Vst3 {
 impl Shell for Vst3 {
     const NAME: &'static str = "VST3";
 
-    fn open(layout: Layout, rate: f64, max_frames: usize) -> Self {
+    fn open(layout: Width, rate: f64, max_frames: usize) -> Self {
         let host = Vst3Host::<ExampleEq>::new();
         assert_eq!(host.arrange(layout), Ok(()));
         assert_eq!(host.setup(rate, max_frames), Ok(()));
@@ -234,7 +231,7 @@ struct CInterface {
 impl Shell for CInterface {
     const NAME: &'static str = "C interface";
 
-    fn open(layout: Layout, rate: f64, max_frames: usize) -> Self {
+    fn open(layout: Width, rate: f64, max_frames: usize) -> Self {
         let host = CHost::<ExampleEq>::new();
         let max_frames = u32::try_from(max_frames).expect("small");
         assert_eq!(host.activate(rate, max_frames, layout), Ok(()));
@@ -277,7 +274,7 @@ struct Tally {
 /// checks they agree and the output is clean.
 fn play<S: Shell>(
     rng: &mut Rng,
-    layout: Layout,
+    layout: Width,
     rate: f64,
     (max_frames, frames): (usize, usize),
     rounds: usize,
@@ -342,6 +339,12 @@ fn agree(got: f32, expected: f32) -> bool {
     got.to_bits() == expected.to_bits() || (got.abs() < SILENT && expected.abs() < SILENT)
 }
 
+/// The widths the exporters offer the EQ, whatever its processor's layout:
+/// the list `INFO` gives for `AnyLayout`, or a typed layout's own.
+fn offered() -> &'static [Width] {
+    hapto_host::widths::<ExampleEq>()
+}
+
 /// Fewer rounds for the long blocks, which cost more each.
 fn rounds_for(frames: usize) -> usize {
     if frames >= 4_096 { 8 } else { 24 }
@@ -351,7 +354,7 @@ fn rounds_for(frames: usize) -> usize {
 fn eight_block_sizes_and_six_rates_in_every_layout_through_both_exporters() {
     let mut rng = Rng(0x9E37_79B9_7F4A_7C15);
     let mut tally = Tally::default();
-    for layout in ExampleEq::INFO.layouts {
+    for layout in offered() {
         for rate in RATES {
             for frames in BLOCK_SIZES {
                 let (rounds, sizes) = (rounds_for(frames), (MAX_FRAMES, frames));
@@ -373,7 +376,7 @@ fn a_block_longer_than_the_setup_plays_in_pieces_through_both_exporters() {
     let sizes = (512, 1_500);
     let mut rng = Rng(0x2545_F491_4F6C_DD1D);
     let mut tally = Tally::default();
-    for layout in ExampleEq::INFO.layouts {
+    for layout in offered() {
         play::<Vst3>(&mut rng, *layout, 48_000.0, sizes, 24, &mut tally);
         play::<CInterface>(&mut rng, *layout, 48_000.0, sizes, 24, &mut tally);
     }
@@ -401,7 +404,7 @@ fn soak() {
     let mut rng = Rng(seed);
     let mut tally = Tally::default();
     let (mut sessions, deadline) = (0u64, Instant::now() + Duration::from_secs(seconds));
-    let layouts = ExampleEq::INFO.layouts;
+    let layouts = offered();
     while Instant::now() < deadline {
         let layout = layouts[rng.below(layouts.len())];
         let rate = RATES[rng.below(RATES.len())];

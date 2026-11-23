@@ -9,6 +9,7 @@ use serde_json::{Map, Value as Json};
 use crate::audio::{Block, ProcessSetup, Status};
 use crate::editor::Editor;
 use crate::info::PluginInfo;
+use crate::layout::Layout;
 use crate::parts::Parts;
 
 /// A plugin, written once for every format.
@@ -88,8 +89,9 @@ use crate::parts::Parts;
 /// A plugin with one parameter, a gain its processor applies:
 ///
 /// ```
+/// use hapto_host::layout::{Stereo, Width};
 /// use hapto_host::{
-///     AuCodes, Block, Category, EventList, Layout, Parts, Plugin, PluginInfo, ProcessSetup,
+///     Audio, AuCodes, Block, Category, EventList, Parts, Plugin, PluginInfo, ProcessSetup,
 ///     Processor, Status,
 /// };
 /// use hapto_params::{Declarer, Float, FloatDecl, Params};
@@ -112,11 +114,10 @@ use crate::parts::Parts;
 /// struct Level(GainParams);
 ///
 /// impl Processor for Level {
-///     fn process(&mut self, block: Block<'_, '_>) -> Status {
-///         let gain = 10.0_f32.powf(self.0.gain.get() / 20.0);
-///         for channel in block.channels.iter_mut() {
-///             channel.iter_mut().for_each(|sample| *sample *= gain);
-///         }
+///     type Layout = Stereo;
+///
+///     fn process(&mut self, mut block: Block<'_, Stereo>) -> Status {
+///         block.audio.apply_gain(10.0_f32.powf(self.0.gain.get() / 20.0));
 ///         Status::Continue
 ///     }
 /// }
@@ -139,7 +140,7 @@ use crate::parts::Parts;
 ///         au_codes: AuCodes { subtype: *b"gain", manufacturer: *b"Exmp" },
 ///         category: Category::Effect,
 ///         features: &[],
-///         layouts: &[Layout::STEREO],
+///         layouts: &[],
 ///         midi_input: false,
 ///         midi_output: false,
 ///     };
@@ -158,19 +159,13 @@ use crate::parts::Parts;
 /// // What an exporter does, here with no host.
 /// let (params, parts) = Parts::for_plugin::<Gain>()?;
 /// let mut plugin = Gain::new(params, parts);
-/// let setup = ProcessSetup {
-///     sample_rate: 48_000.0,
-///     max_frames: 64,
-///     layout: Layout::STEREO,
-///     max_events: 0,
-///     max_out_events: 0,
-/// };
+/// let setup = ProcessSetup::new(48_000.0, 64, Width::STEREO);
 /// let mut processor = plugin.activate(&setup);
 ///
 /// let (mut left, mut right) = ([0.5_f32; 64], [0.5_f32; 64]);
 /// let mut channels = [&mut left[..], &mut right[..]];
 /// let (events, mut out) = (EventList::with_capacity(0), EventList::with_capacity(0));
-/// let block = Block::new(&mut channels, 64, &events, &mut out);
+/// let block = Block::new(Audio::new(&mut channels, 64), &events, &mut out);
 /// assert_eq!(processor.process(block), Status::Continue);
 /// assert_eq!(left[0], 0.5, "0 dB");
 /// # Ok::<(), hapto_params::DeclError>(())
@@ -303,11 +298,13 @@ pub trait Plugin: 'static {
     /// controller and saves its mapping, before the synth's idle sees it.
     ///
     /// ```
+    /// use hapto_host::layout::StereoOut;
     /// use hapto_host::{Block, Driver, Parts, Plugin, ProcessSetup, Processor, Status};
     /// use hapto_learn::{Config, SESSION_KEY, Takes};
     /// use hapto_params::{Declarer, Float, FloatDecl, Params};
     /// use hapto_undo::{Bound, History};
-    /// # use hapto_host::{AuCodes, Category, Layout, PluginInfo};
+    /// # use hapto_host::layout::Width;
+    /// # use hapto_host::{Audio, AuCodes, Category, PluginInfo};
     /// # use hapto_ump::{ChannelVoice, EventList, Voice};
     ///
     /// struct SynthParams {
@@ -327,7 +324,9 @@ pub trait Plugin: 'static {
     /// struct Voices;
     ///
     /// impl Processor for Voices {
-    ///     fn process(&mut self, _block: Block<'_, '_>) -> Status {
+    ///     type Layout = StereoOut;
+    ///
+    ///     fn process(&mut self, _block: Block<'_, StereoOut>) -> Status {
     ///         Status::Sleep
     ///     }
     /// }
@@ -353,7 +352,7 @@ pub trait Plugin: 'static {
     /// #       au_codes: AuCodes { subtype: *b"synt", manufacturer: *b"Exmp" },
     /// #       category: Category::Instrument,
     /// #       features: &[],
-    /// #       layouts: &[Layout::new(0, 2)],
+    /// #       layouts: &[],
     /// #       midi_input: true,
     /// #       midi_output: false,
     /// #   };
@@ -394,13 +393,8 @@ pub trait Plugin: 'static {
     /// // The user arms learn and turns controller 74, which the host's block
     /// // brings. Learn's audio side runs over the block before the processor,
     /// // as the engine runs it.
-    /// # let setup = ProcessSetup {
-    /// #     sample_rate: 48_000.0,
-    /// #     max_frames: 1,
-    /// #     layout: Layout::new(0, 2),
-    /// #     max_events: 1,
-    /// #     max_out_events: 0,
-    /// # };
+    /// # let mut setup = ProcessSetup::new(48_000.0, 1, Width::new(0, 2));
+    /// # setup.max_events = 1;
     /// let mut voices = synth.activate(&setup);
     /// let mut learn = driver.learn_audio().expect("learn is on");
     /// synth.parts.learn().arm(cutoff, Takes::CONTROLLER)?;
@@ -411,7 +405,7 @@ pub trait Plugin: 'static {
     /// # let mut out = EventList::with_capacity(0);
     /// # let mut channels = [&mut left[..], &mut right[..]];
     /// learn.process(&events);
-    /// voices.process(Block::new(&mut channels, 1, &events, &mut out));
+    /// voices.process(Block::new(Audio::new(&mut channels, 1), &events, &mut out));
     /// assert!(!synth.cutoff_learned);
     /// tick(&mut synth);
     /// assert!(synth.cutoff_learned);
@@ -443,9 +437,8 @@ pub trait Plugin: 'static {
     /// use std::error::Error;
     ///
     /// use hapto_host::{Editor, ParentWindow, Parts, Plugin, Size};
-    /// # use hapto_host::{
-    /// #     AuCodes, Block, Category, Layout, PluginInfo, ProcessSetup, Processor, Status,
-    /// # };
+    /// # use hapto_host::layout::Stereo;
+    /// # use hapto_host::{AuCodes, Block, Category, PluginInfo, ProcessSetup, Processor, Status};
     /// use hapto_params::{Declarer, Float, FloatDecl, Params, UiParams};
     ///
     /// struct GainParams {
@@ -458,7 +451,8 @@ pub trait Plugin: 'static {
     /// # }
     /// # struct Level;
     /// # impl Processor for Level {
-    /// #     fn process(&mut self, _block: Block<'_, '_>) -> Status {
+    /// #     type Layout = Stereo;
+    /// #     fn process(&mut self, _block: Block<'_, Stereo>) -> Status {
     /// #         Status::Continue
     /// #     }
     /// # }
@@ -506,7 +500,7 @@ pub trait Plugin: 'static {
     /// #       au_codes: AuCodes { subtype: *b"gain", manufacturer: *b"Exmp" },
     /// #       category: Category::Effect,
     /// #       features: &[],
-    /// #       layouts: &[Layout::STEREO],
+    /// #       layouts: &[],
     /// #       midi_input: false,
     /// #       midi_output: false,
     /// #   };
@@ -576,7 +570,8 @@ pub enum Tail {
 /// # Examples
 ///
 /// ```
-/// use hapto_host::{Block, EventList, Processor, Status};
+/// use hapto_host::layout::Mono;
+/// use hapto_host::{Audio, Block, EventList, Processor, Status};
 ///
 /// /// A one-pole low-pass: it carries one sample from block to block.
 /// struct OnePole {
@@ -584,12 +579,12 @@ pub enum Tail {
 /// }
 ///
 /// impl Processor for OnePole {
-///     fn process(&mut self, block: Block<'_, '_>) -> Status {
-///         for channel in block.channels.iter_mut() {
-///             for sample in channel.iter_mut() {
-///                 self.state += 0.5 * (*sample - self.state);
-///                 *sample = self.state;
-///             }
+///     type Layout = Mono;
+///
+///     fn process(&mut self, mut block: Block<'_, Mono>) -> Status {
+///         for [sample] in block.audio.frames_mut() {
+///             self.state += 0.5 * (*sample - self.state);
+///             *sample = self.state;
 ///         }
 ///         Status::Continue
 ///     }
@@ -600,15 +595,23 @@ pub enum Tail {
 /// }
 ///
 /// let mut filter = OnePole { state: 0.0 };
-/// let (mut left, mut right) = ([1.0_f32; 4], [1.0_f32; 4]);
-/// let mut channels = [&mut left[..], &mut right[..]];
+/// let mut samples = [1.0_f32; 4];
+/// let mut channels = [&mut samples[..]];
 /// let (events, mut out) = (EventList::with_capacity(0), EventList::with_capacity(0));
-/// filter.process(Block::new(&mut channels, 4, &events, &mut out));
-/// assert_eq!(left, [0.5, 0.75, 0.875, 0.9375]);
+/// filter.process(Block::new(Audio::new(&mut channels, 4), &events, &mut out));
+/// assert_eq!(samples, [0.5, 0.75, 0.875, 0.9375]);
 /// filter.reset();
 /// assert_eq!(filter.state, 0.0);
 /// ```
 pub trait Processor: Send + 'static {
+    /// The main bus's channels, as a type: a [`Bus`](crate::layout::Bus)
+    /// for a processor that runs at one width, such as
+    /// [`Stereo`](crate::layout::Stereo) or `Bus<4, 4>`, whose frames and
+    /// channels are arrays that destructure, or
+    /// [`AnyLayout`](crate::layout::AnyLayout) for one that runs at each
+    /// width its plugin lists in [`PluginInfo::layouts`].
+    type Layout: Layout;
+
     /// Processes one block: its audio in place, its MIDI in, and any MIDI it
     /// sends (see [`Block`]).
     ///
@@ -625,7 +628,7 @@ pub trait Processor: Send + 'static {
     /// [`PluginInfo::midi_input`] says.
     ///
     /// Thread: audio. Never allocates, locks or makes a system call.
-    fn process(&mut self, block: Block<'_, '_>) -> Status;
+    fn process(&mut self, block: Block<'_, Self::Layout>) -> Status;
 
     /// Clears what the processor carries between blocks (tails, smoothing),
     /// without reallocating.

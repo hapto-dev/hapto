@@ -5,8 +5,9 @@ use hapto_learn::{Config, Control, Learn, Learned, Mapping, Source, Takes};
 use hapto_params::{Kind, ParamDecl, ParamId, ParamSet};
 use hapto_ump::{ChannelVoice, Voice};
 
-use super::{Audio, pieces};
-use crate::{Block, Event, Layout, Processor, Status};
+use super::{Active, pieces};
+use crate::layout::{AnyLayout, Width};
+use crate::{Block, Event, Processor, Status};
 
 /// What one piece handed the processor: its frames, each event's offset and
 /// tag, and the drops its list reported.
@@ -25,10 +26,12 @@ struct Echo {
 }
 
 impl Processor for Echo {
-    fn process(&mut self, block: Block<'_, '_>) -> Status {
+    type Layout = AnyLayout;
+
+    fn process(&mut self, block: Block<'_, AnyLayout>) -> Status {
         let events = block.events.as_slice().iter().map(tagged).collect();
         self.pieces.push(Piece {
-            frames: block.frames,
+            frames: block.audio.frames(),
             events,
             dropped: block.events.dropped(),
         });
@@ -52,9 +55,9 @@ fn tagged(event: &Event) -> (u32, u32) {
 }
 
 /// Room for 6 events in and 5 out, in pieces of up to 64 frames.
-fn audio() -> Audio<Echo> {
+fn audio() -> Active<Echo> {
     let max_frames = NonZeroUsize::new(64).expect("not 0");
-    Audio::around(Echo::default(), Layout::new(0, 0), max_frames, 6, 5)
+    Active::around(Echo::default(), Width::new(0, 0), max_frames, 6, 5)
 }
 
 #[test]
@@ -140,7 +143,9 @@ struct Reads {
 }
 
 impl Processor for Reads {
-    fn process(&mut self, block: Block<'_, '_>) -> Status {
+    type Layout = AnyLayout;
+
+    fn process(&mut self, block: Block<'_, AnyLayout>) -> Status {
         let events = block.events.as_slice().len();
         self.pieces.push((self.set.value(self.gain), events));
         Status::Continue
@@ -161,7 +166,7 @@ fn control_change(offset: u32, controller: u8, value: u8) -> Event {
 /// A gain from 0 to 1 that starts at 0, learn over it, and block state whose
 /// processor reads the gain, with learn's audio side in it, in pieces of up
 /// to 64 frames.
-fn learning() -> (Learn, Audio<Reads>, ParamId) {
+fn learning() -> (Learn, Active<Reads>, ParamId) {
     let decl = ParamDecl::new("gain", "Gain", Kind::continuous(0.0, 1.0, 0.0, None), 0.0);
     let set = ParamSet::from_decls([decl]).expect("valid");
     let gain = set.id("gain").expect("declared");
@@ -172,7 +177,7 @@ fn learning() -> (Learn, Audio<Reads>, ParamId) {
         pieces: Vec::new(),
     };
     let max_frames = NonZeroUsize::new(64).expect("not 0");
-    let mut audio = Audio::around(reads, Layout::new(0, 0), max_frames, 4, 0);
+    let mut audio = Active::around(reads, Width::new(0, 0), max_frames, 4, 0);
     audio.learn = Some(learn_audio);
     (learn, audio, gain)
 }

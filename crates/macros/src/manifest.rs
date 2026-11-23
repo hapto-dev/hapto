@@ -83,6 +83,16 @@ pub(crate) fn expand(input: Tokens) -> syn::Result<Tokens> {
     }
 }
 
+/// `layouts: &[],` when the fields leave `layouts` out: a processor in a
+/// typed layout runs at that layout's own width, so only a processor in
+/// `AnyLayout` lists any.
+fn default_layouts(fields: &Punctuated<FieldValue, Token![,]>) -> Option<Tokens> {
+    let given = fields
+        .iter()
+        .any(|field| matches!(&field.member, Member::Named(name) if name == "layouts"));
+    (!given).then(|| quote! { layouts: &[], })
+}
+
 /// Refuses a field written in Rust that the manifest gives, so each is
 /// written in one place.
 fn written_once(fields: &Punctuated<FieldValue, Token![,]>) -> syn::Result<()> {
@@ -153,6 +163,7 @@ fn info(
         .features
         .iter()
         .map(|feature| format_ident!("{}", feature));
+    let layouts = default_layouts(fields);
     quote! {
         {
             // Cargo builds the crate again when a file it includes changes.
@@ -172,6 +183,7 @@ fn info(
                 },
                 category: ::hapto_host::Category::#category,
                 features: &[#(::hapto_host::Feature::#features),*],
+                #layouts
                 #fields
             }
         }
@@ -681,7 +693,7 @@ features = ["equaliser", "delay", "delay"]
     #[test]
     fn a_field_the_manifest_gives_is_refused_in_rust() {
         let fields: Punctuated<FieldValue, Token![,]> = syn::parse_quote! {
-            layouts: &[Layout::STEREO],
+            layouts: &[Width::STEREO],
             name: "Gain",
             vst3_class_id: [0; 16],
             version: "1.0.0",
@@ -699,6 +711,23 @@ features = ["equaliser", "delay", "delay"]
                 "`version` is the package's own: set it in the manifest's [package]",
             ]
         );
+    }
+
+    #[test]
+    fn layouts_left_out_are_empty() {
+        let typed: Punctuated<FieldValue, Token![,]> = syn::parse_quote! {
+            midi_input: false,
+            midi_output: false,
+        };
+        let listed: Punctuated<FieldValue, Token![,]> = syn::parse_quote! {
+            layouts: &[Width::STEREO, Width::MONO],
+            midi_input: false,
+        };
+        assert_eq!(
+            default_layouts(&typed).map(|tokens| tokens.to_string()),
+            Some(quote! { layouts: &[], }.to_string())
+        );
+        assert!(default_layouts(&listed).is_none());
     }
 
     #[test]

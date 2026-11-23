@@ -41,6 +41,7 @@ LAYERS = {
     "hapto-macros": 0,
     "hapto-params": 1,
     "hapto-ump": 1,
+    "hapto-audio": 1,
     "hapto-undo": 2,
     "hapto-session": 2,
     "hapto-learn": 3,

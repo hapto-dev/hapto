@@ -810,6 +810,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "hapto-audio"
+version = "0.1.0"
+dependencies = [
+ "hapto-testkit",
+ "iai-callgrind",
+]
+
+[[package]]
 name = "hapto-bridge"
 version = "0.1.0"
 dependencies = [
@@ -851,6 +859,7 @@ dependencies = [
 name = "hapto-host"
 version = "0.1.0"
 dependencies = [
+ "hapto-audio",
  "hapto-learn",
  "hapto-macros",
  "hapto-params",

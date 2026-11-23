@@ -12,8 +12,9 @@ mod tests;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, AtomicU32, AtomicU64, Ordering};
 
+use hapto_host::Plugin;
+use hapto_host::layout::Width;
 use hapto_host::standalone::{MAX_CHANNELS, Standalone, StandaloneAudio};
-use hapto_host::{Layout, Plugin};
 
 use crate::settings::Blocks;
 use crate::signal::{Generator, Signal};
@@ -198,7 +199,7 @@ impl<P: Plugin> Player<StandaloneAudio<P>> {
     /// gate both make it here, so the gate runs what the app plays.
     pub(crate) fn of_app(
         plugin: &Standalone<P>,
-        layout: Layout,
+        layout: Width,
         device_channels: usize,
         sample_rate: f64,
         max: usize,
@@ -245,7 +246,7 @@ impl<R: Render> Player<R> {
     /// frames. A layout wider than [`MAX_CHANNELS`] plays its first ones.
     pub(crate) fn new(
         render: R,
-        layout: Layout,
+        layout: Width,
         device_channels: usize,
         sample_rate: f64,
         max: usize,

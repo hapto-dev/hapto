@@ -5,8 +5,9 @@
 
 use std::fmt;
 
+use hapto_host::Plugin;
+use hapto_host::layout::Width;
 use hapto_host::standalone::Standalone;
-use hapto_host::{Layout, Plugin};
 
 pub use crate::settings::Blocks;
 pub use crate::signal::Signal;
@@ -35,7 +36,7 @@ impl Callback {
     /// with `signal` on the inputs.
     pub fn app<P: Plugin>(
         plugin: &Standalone<P>,
-        layout: Layout,
+        layout: Width,
         device_channels: usize,
         sample_rate: f64,
         max: usize,
@@ -100,7 +101,7 @@ pub mod dev {
             max: usize,
         ) -> anyhow::Result<DevHost> {
             let hosted = host::<P>(format);
-            let layout = crate::app::first_layout::<P>();
+            let layout = hapto_host::first_width::<P>();
             let render = hosted.start(sample_rate, max, layout)?;
             let plan = Plan::new(Blocks::Device, Signal::Silence);
             let mut player = Player::new(

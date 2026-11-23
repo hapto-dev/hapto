@@ -73,9 +73,9 @@ use hapto_host::Plugin;
 /// A plugin crate's `src/bin/standalone.rs`:
 ///
 /// ```no_run
+/// # use hapto_host::layout::Stereo;
 /// # use hapto_host::{
-/// #     AuCodes, Block, Category, Layout, Parts, Plugin, PluginInfo, ProcessSetup, Processor,
-/// #     Status,
+/// #     AuCodes, Block, Category, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
 /// # };
 /// # use hapto_params::{Declarer, Params};
 /// # #[derive(Clone)]
@@ -87,7 +87,8 @@ use hapto_host::Plugin;
 /// # }
 /// # struct Pass;
 /// # impl Processor for Pass {
-/// #     fn process(&mut self, _: Block<'_, '_>) -> Status {
+/// #     type Layout = Stereo;
+/// #     fn process(&mut self, _: Block<'_, Stereo>) -> Status {
 /// #         Status::Continue
 /// #     }
 /// # }
@@ -97,7 +98,7 @@ use hapto_host::Plugin;
 /// #         name: "My Plugin", vendor: "Me", url: "", email: "", description: "",
 /// #         version: "0.1.0", id: "com.example.my-plugin", vst3_class_id: [0; 16],
 /// #         au_codes: AuCodes { subtype: *b"mypl", manufacturer: *b"Exmp" },
-/// #         category: Category::Effect, features: &[], layouts: &[Layout::STEREO],
+/// #         category: Category::Effect, features: &[], layouts: &[],
 /// #         midi_input: false, midi_output: false,
 /// #     };
 /// #     type Params = NoParams;

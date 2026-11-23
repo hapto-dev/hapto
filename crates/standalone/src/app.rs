@@ -11,8 +11,9 @@ use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, Result};
+use hapto_host::layout::Width;
 use hapto_host::standalone::{Standalone, StandaloneEditor};
-use hapto_host::{Layout, Plugin, Size};
+use hapto_host::{Plugin, Size};
 use winit::application::ApplicationHandler;
 use winit::dpi::{LogicalSize, PhysicalSize};
 use winit::event::WindowEvent;
@@ -74,7 +75,7 @@ pub(crate) fn run<P: Plugin>(options: &Options) -> Result<ExitCode> {
     if let Some(line) = load_saved(&mut session, &plugin) {
         eprintln!("{line}");
     }
-    if let Some(line) = silence_note(P::INFO.name, first_layout::<P>(), options.signal) {
+    if let Some(line) = silence_note(P::INFO.name, hapto_host::first_width::<P>(), options.signal) {
         eprintln!("{line}");
     }
     let audio = start_audio(&plugin, options.signal)?;
@@ -116,7 +117,7 @@ pub(crate) fn run<P: Plugin>(options: &Options) -> Result<ExitCode> {
 /// device that did not start.
 fn start_audio<P: Plugin>(plugin: &Standalone<P>, signal: Signal) -> Result<Audio> {
     let output = Output::system_default()?;
-    let (rate, layout) = (output.sample_rate(), first_layout::<P>());
+    let (rate, layout) = (output.sample_rate(), hapto_host::first_width::<P>());
     plugin
         .activate(f64::from(rate), BLOCK, layout)
         .context(P::INFO.name)?;
@@ -151,7 +152,7 @@ impl Audio {
 /// `layout`, that its inputs hear silence, when `signal` is silence: the
 /// first run of an effect is silent otherwise, with no word of why. An
 /// instrument, with no inputs, gets none.
-pub(crate) fn silence_note(name: &str, layout: Layout, signal: Signal) -> Option<String> {
+pub(crate) fn silence_note(name: &str, layout: Width, signal: Signal) -> Option<String> {
     (signal == Signal::Silence && layout.inputs > 0)
         .then(|| format!("{name}: its inputs hear silence; --signal sine plays a tone into them"))
 }
@@ -233,11 +234,6 @@ pub(crate) fn title(name: &str, shows: TitleShows) -> String {
 /// size it is restored to comes next.
 pub(crate) fn minimized(size: PhysicalSize<u32>) -> bool {
     size.width == 0 || size.height == 0
-}
-
-/// The layout the app plays: the plugin's first.
-pub(crate) fn first_layout<P: Plugin>() -> Layout {
-    P::INFO.layouts.first().copied().unwrap_or(Layout::STEREO)
 }
 
 /// Wakes the event loop to quit once stdin closes, as `cargo hapto dev` does

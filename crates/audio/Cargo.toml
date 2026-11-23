@@ -1,0 +1,24 @@
+[package]
+name = "hapto-audio"
+description = "A block's audio as a processor sees it: the layout as a type, and frames and channels to loop over"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords = ["audio", "plugin", "dsp", "buffer"]
+categories = ["multimedia::audio"]
+publish.workspace = true
+
+[dev-dependencies]
+hapto-testkit.workspace = true
+iai-callgrind.workspace = true
+
+[lints]
+workspace = true
+
+[[bench]]
+name = "iai"
+harness = false

@@ -25,8 +25,9 @@ use ::vst3::{Class, ComPtr, ComWrapper};
 
 use super::component::Component;
 use super::text::copy_utf16;
+use crate::Plugin;
 use crate::engine::timer::pump;
-use crate::{Layout, Plugin};
+use crate::layout::Width;
 
 #[cfg(windows)]
 mod child;
@@ -481,7 +482,7 @@ impl<P: Plugin> TestHost<P> {
     ///
     /// The [`Refused`] answer, for a layout the plugin does not declare, or
     /// while it is active.
-    pub fn arrange(&self, layout: Layout) -> Result<(), Refused> {
+    pub fn arrange(&self, layout: Width) -> Result<(), Refused> {
         let mut input = arrangement(layout.inputs);
         let mut output = arrangement(layout.outputs);
         let input_count = int32::from(layout.inputs > 0);
@@ -495,7 +496,7 @@ impl<P: Plugin> TestHost<P> {
     }
 
     /// Returns the main bus layout, read through `getBusArrangement`.
-    pub fn layout(&self) -> Layout {
+    pub fn layout(&self) -> Width {
         let count = |direction| {
             let mut arrangement: SpeakerArrangement = 0;
             // SAFETY: the component is alive while this host holds its
@@ -511,7 +512,7 @@ impl<P: Plugin> TestHost<P> {
                 0
             }
         };
-        Layout::new(
+        Width::new(
             count(BusDirections_::kInput as BusDirection),
             count(BusDirections_::kOutput as BusDirection),
         )

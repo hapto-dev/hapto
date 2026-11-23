@@ -4,7 +4,8 @@
 use std::sync::Arc;
 
 use hapto_example_eq::EqProcessor;
-use hapto_host::{Block, EventList, Layout, Plugin, ProcessSetup, Processor, SavedState};
+use hapto_host::layout::Width;
+use hapto_host::{Audio, Block, EventList, Plugin, ProcessSetup, Processor, SavedState};
 use hapto_params::{Kind, ParamDecl};
 
 mod common;
@@ -14,13 +15,7 @@ const RATE: f64 = 48_000.0;
 const MAX_FRAMES: usize = 512;
 
 fn setup() -> ProcessSetup {
-    ProcessSetup {
-        sample_rate: RATE,
-        max_frames: MAX_FRAMES,
-        layout: Layout::STEREO,
-        max_events: 0,
-        max_out_events: 0,
-    }
+    ProcessSetup::new(RATE, MAX_FRAMES, Width::STEREO)
 }
 
 /// Runs both channels through in blocks of at most [`MAX_FRAMES`].
@@ -33,7 +28,11 @@ fn run(processor: &mut EqProcessor, left: &mut [f32], right: &mut [f32]) {
     {
         let frames = left.len();
         let mut channels: [&mut [f32]; 2] = [left, right];
-        processor.process(Block::new(&mut channels, frames, &events, &mut out));
+        processor.process(Block::new(
+            Audio::new(&mut channels, frames),
+            &events,
+            &mut out,
+        ));
     }
 }
 
@@ -325,7 +324,7 @@ fn a_short_block_leaves_the_rest_of_the_buffer_alone() {
     let events = EventList::with_capacity(0);
     let mut out = EventList::with_capacity(0);
     let mut channels: [&mut [f32]; 2] = [&mut left, &mut right];
-    processor.process(Block::new(&mut channels, 32, &events, &mut out));
+    processor.process(Block::new(Audio::new(&mut channels, 32), &events, &mut out));
     for samples in [&left, &right] {
         assert!(samples[32..].iter().all(|&sample| sample == 0.5));
         assert!(samples[..32].iter().all(|&sample| sample != 0.5));

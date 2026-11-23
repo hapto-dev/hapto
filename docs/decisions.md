@@ -59,7 +59,7 @@ comments never cite an id: they state the reason in words, and
 | D20 | [What closes the window D13 opens between a restore's store and its apply? (U16, S5)](#d20-the-window-between-a-restores-store-and-its-apply) | Undo clears its history when either count has moved: at its first operation after a restore is stored, and again when that restore's apply completes. | decided |
 | D21 | [What does a learn binding record of where its MIDI came from? (L2, L9)](#d21-what-a-learn-binding-records-of-its-midi-source) | The UMP group and the channel, each with −1 meaning any, in the source and in every saved `midiLearn` entry from schema 1. | decided |
 | D22 | [How do controllers reach learn in VST3, which delivers them only as parameter changes? (L2, L3)](#d22-controllers-reaching-learn-in-vst3) | The VST3 exporter owns hidden proxy parameters in a reserved id range: a 16 × 130 grid listed through both `IMidiMapping` and `IMidiMapping2`, and a fixed pool for MIDI 2.0 assignable controllers. Checked in Cubase; still to build. | decided |
-| D23 | [How does the processor send MIDI?](#d23-how-the-processor-sends-midi) | `Processor::process` takes one `Block`: the channels in place, the frame count, the events in, and an events-out list whose capacity `ProcessSetup::max_out_events` fixes at activation. | decided |
+| D23 | [How does the processor send MIDI?](#d23-how-the-processor-sends-midi) | `Processor::process` takes one `Block`: its audio in place, the events in, and an events-out list whose capacity `ProcessSetup::max_out_events` fixes at activation. | decided |
 | D24 | [Who answers MIDI-CI when a plugin must answer for itself?](#d24-answering-midi-ci) | A VST3 host speaks MIDI-CI for the plugin, so the VST3 exporter projects declarations onto VST3's interfaces. Everywhere else a core-tier crate, `hapto-ci`, answers, later. | decided |
 | D25 | [Who owns the SysEx manufacturer ID that a MIDI-CI identity needs? (D24)](#d25-the-sysex-manufacturer-id) | None: a business answer. The working group's helper uses `0x7D`, which is reserved for non-commercial use. | held |
 | D26 | [How does a debug build load the page from a dev server? (B5)](#d26-loading-the-page-from-a-dev-server) | `HAPTO_PAGE_DEV_URL`, read in debug builds only: set, `hapto-webview` loads that URL, so Vite's hot reload works; unset, it serves the bundled page. | decided |
@@ -94,7 +94,7 @@ comments never cite an id: they state the reason in words, and
 | D55 | [What happens to a participant whose apply panics? (S7, D14)](#d55-a-participant-whose-apply-panics) | Catch and hold: the session contains the panic as it does a failed apply, and ignores the participant's captures until a later apply succeeds, so a half-built state is never saved. | decided |
 | D56 | [Which hash names a parameter to hosts, and which ids does D22 reserve? (D31, P10)](#d56-the-hash-that-names-a-parameter) | 32-bit FNV-1a over the key's UTF-8 bytes with the top bit cleared. The builder refuses a key whose id another key already has, or that falls in `0x7FFF_0000` to `0x7FFF_FFFF`, the ids D22's proxies take. | decided |
 | D57 | [From what does a stepped range lay out its lattice? (P2, P4)](#d57-the-lattice-of-a-stepped-range) | From the decimals the range was written with, in whole numbers of its finest place, so every point of a decimal range, 0 dB included, lands on the nearest `f32` to its decimal. | decided |
-| D58 | [What does the plugin trait tell every host, beyond its parameters and state? (H5)](#d58-what-the-plugin-trait-tells-every-host) | `PluginInfo` gains the vendor's addresses, a description, `Feature`s and the main bus `Layout`s; `Plugin` gains `latency`, `tail` and `deactivate`; `Processor::process` returns a `Status`. Deferred: whether the host is rendering offline or in real time, which `ProcessSetup` has no field for. | decided |
+| D58 | [What does the plugin trait tell every host, beyond its parameters and state? (H5)](#d58-what-the-plugin-trait-tells-every-host) | `PluginInfo` gains the vendor's addresses, a description, `Feature`s and the main bus widths (D112); `Plugin` gains `latency`, `tail` and `deactivate`; `Processor::process` returns a `Status`. Deferred: whether the host is rendering offline or in real time, which `ProcessSetup` has no field for. | decided |
 | D59 | [What shape does the VST3 exporter give a plugin? (D51, D53, P7, C2)](#d59-the-shape-of-the-vst3-exporter) | One object that is both the audio processor and its own edit controller, a thin shell over an exporter core it shares with the C interface. The plugin is built at `initialize`, on the thread that calls it. No MIDI events are delivered yet. | decided |
 | D60 | [What happens when plugin code panics inside a host's call? (P9)](#d60-a-panic-inside-a-hosts-call) | It is caught at every entry point that can panic and never unwinds into the host. A panic in the processor silences the instance's output until the next activation. | decided |
 | D61 | [Who flushes denormals to zero? (the comparison's fairness row)](#d61-who-flushes-denormals) | Every exporter, around every `process` call: FTZ and DAZ on x86, FZ on AArch64, restoring the host's setting after, so no plugin has to. | decided |
@@ -123,7 +123,7 @@ comments never cite an id: they state the reason in words, and
 | D84 | [Whose version does the saved block carry? (H1, H2, D80)](#d84-the-saved-blocks-two-versions) | Two, each its own: `seamStateVersion` is Hapto's frame, at 1, and `pluginStateVersion` the plugin's schema, 0 with no migration and when absent. A save writes both, each the higher of the block's and the build's. | decided |
 | D85 | [How does a migration say it cannot upgrade a block? (D80)](#d85-a-migration-that-cannot-upgrade-a-block) | It returns a `Result` whose error is a boxed `Error`, so it can use `?`, and `LoadError::MigrationFailed` carries the reason. | decided |
 | D86 | [How does `PluginInfo` hold the AU codes? (D64)](#d86-the-au-codes) | As one `AuCodes` with named `subtype` and `manufacturer` fields, so the two cannot be swapped unseen. | decided |
-| D87 | [How does `ProcessSetup` give the main bus? (D58)](#d87-the-main-bus-in-processsetup) | As one `layout: Layout`, the one of the plugin's layouts the host chose. | decided |
+| D87 | [How does `ProcessSetup` give the main bus? (D58)](#d87-the-main-bus-in-processsetup) | As one `layout: Width`, the width the host chose among those the processor's layout runs at. | decided |
 | D88 | [What does a test host answer for a call the plugin refused? (D60)](#d88-a-call-a-test-host-was-refused) | `Err(Refused)`: the VST3 host's carries the `tresult` it was answered, the C interface's stands for its `false`. | decided |
 | D89 | [How does plugin code name a parameter and read its value? (P1, P10)](#d89-how-plugin-code-names-a-parameter) | As a typed parameter, `Float`, `Bool` or `Choice<E>`, that carries its store and is read with `get`, as an `f32`, a `bool` or the plugin's enum, on any thread. `ParamSet::bind` makes one by key, once, and checks the declaration. `Changes` holds a stamp and asks once per block whether any of the parameters it is given moved. | decided |
 | D90 | [How does a plugin declare its parameters? (P1, P10, D89)](#d90-how-a-plugin-declares-its-parameters) | In one function that returns them: `Params::declare` adds each through a `Declarer`, and a typed declaration, `FloatDecl`, `BoolDecl` or `ChoiceDecl<E>`, hands back its kind of parameter. A mistake is a compile error where it can be, through `checked`, and otherwise one `DeclError` when `ParamSet::declare` builds the set. | decided |
@@ -133,7 +133,7 @@ comments never cite an id: they state the reason in words, and
 | D94 | [How does a plugin name a choice's values without writing `Choices`? (D89, D93)](#d94-a-derive-that-writes-choices) | `#[derive(Choices)]`, under the same `derive` feature: the labels and both mappings in the order of the variants, a label being the variant's name unless a `#[choice("...")]` mark gives one. A written discriminant must be the variant's position, and a bad label is refused on itself: `cargo check` evaluates both checks. | decided |
 | D95 | [When does a call at the plugin boundary panic, and when does it return a `Result`? (D90, D91)](#d95-mistakes-panic-failures-return-a-result) | A mistake fixed in the plugin's source, such as a call made twice or a switch turned on without what it needs, panics with what to change; a failure that can depend on data at run time returns a `Result`. So `Parts::undo` and `Parts::midi_learn` return no `Result`, and `Parts::saved_value` keeps one. | decided |
 | D96 | [How does a plugin make parameters while it runs, and how are they saved, undone and learned? (D89, D90, D91)](#d96-parameters-made-at-run-time) | `Parts::declare` and `Parts::add` make the same typed parameters from the same declarations, in no set and listed to no host. Writes, undo and learn reach them as they reach listed ones. A save writes each under its path with its learned mapping; a load writes none on the host's thread, and holds its entries for the declares its pass makes. | to confirm |
-| D97 | [Where does a plugin write who it is? (D58, D86)](#d97-a-plugins-identity-in-its-manifest) | In its manifest: `manifest_info!`, under `hapto-host`'s `manifest` feature, writes `PluginInfo` from `[package.metadata.hapto]` and the package's own version and description, checked while compiling. The layouts and MIDI flags stay in Rust, as the macro's fields. A `PluginInfo` written by hand still works. | to confirm |
+| D97 | [Where does a plugin write who it is? (D58, D86)](#d97-a-plugins-identity-in-its-manifest) | In its manifest: `manifest_info!`, under `hapto-host`'s `manifest` feature, writes `PluginInfo` from `[package.metadata.hapto]` and the package's own version and description, checked while compiling. The MIDI flags and, for a processor in `AnyLayout`, the layouts stay in Rust, as the macro's fields. A `PluginInfo` written by hand still works. | to confirm |
 | D98 | [What does the native side do with a page's write that names a key the plugin does not list? (B2)](#d98-a-page-write-naming-an-unknown-key) | It drops it unanswered and counts it in `Refusals`: no parameter has a state to answer with. | to confirm |
 | D99 | [What becomes of a page's call still running when a new page session starts? (B5)](#d99-a-call-across-page-sessions) | None can be: a command runs to its end inside the call, so its reply always goes to the session that asked. | to confirm |
 | D100 | [How does a plugin hand out an editor, and what ticks it? (D53)](#d100-a-plugins-editor-and-its-tick) | `Plugin::editor` returns an `Editor`, `None` by default; the trait knows no toolkit. The exporter drives it, and the plugin's one main-thread timer ticks an open editor after `Plugin::idle`. | to confirm |
@@ -148,6 +148,8 @@ comments never cite an id: they state the reason in words, and
 | D109 | [What builds, bundles, checks and runs a plugin crate outside this repository? (D27)](#d109-the-plugin-authors-command) | `cargo hapto`, a binary that runs Cargo, npm and Node and links no Hapto crate, so it serves any workspace: it writes a new plugin crate with fresh ids, finds the plugin crate, runs it while its author edits it, builds its page and module, lays out and installs its bundle, and validates it. It warns when the workspace locks another Hapto version than its own. | to confirm |
 | D110 | [How does a plugin run with no host, while its author works on it and as an app of its own? (D16, D100, D109)](#d110-the-standalone-exporter-and-app) | Through a standalone exporter over the same engine, which the app is the host of, and `hapto-standalone`, an app any plugin crate's binary runs: the editor in a window, a test signal to the audio output, the saved block kept between runs. Windows only, as the page is. | to confirm |
 | D111 | [How does a plugin's author see it through a plugin format while working on it, with no real host? (D109, D110)](#d111-the-dev-host) | The standalone app's dev host: the plugin through Hapto's own VST3 and C interface test hosts, in process, its editor as the exporter's view below a bar that names the format, with a settings window of what the host sees, a tab each. It changes the sample rate, of those the device takes, and the most frames a block holds by reactivating the plugin as a host does, cuts blocks by a plan, and logs what the plugin tells the host. A switch of format starts the app again with the saved block, and a block the plugin refused is kept for the next run. It stands in for no real host. | to confirm |
+| D112 | [How does a processor see its block's audio, and the widths it runs at? (D23, D97)](#d112-the-blocks-audio-and-the-layout-as-a-type) | As a type: `Processor::Layout` names the main bus's channels, a `Bus<IN, OUT>` at one width, with `Mono`, `Stereo` and the like for the common ones, or `AnyLayout` at each width `PluginInfo::layouts` lists. `Block::audio` lends the channels as `Audio`, walked by frame or by channel with no index or frame count, and in a `Bus` both are arrays that destructure. `Width` counts channels at run time, and `AudioBuf` owns audio for tests. | decided |
+| D113 | [Where do the audio types live? (D112)](#d113-the-audio-types-crate) | In `hapto-audio`, a core crate of layer 1 beside `hapto-params` and `hapto-ump`, which `hapto-host` re-exports, so code that only writes audio, such as a voice, needs no host. | decided |
 
 **Open.** D25 is held until `hapto-ci` needs it. It keeps its recommendation
 until decided, and no rule depends on it.
@@ -503,8 +505,8 @@ the pool after the Cubase check, or no learn in VST3 until a later stage.
 **Question and C++ Seam.** How does the processor send MIDI? JUCE's
 `processBlock` takes one `MidiBuffer`, read as input and replaced as output.
 
-**Rust.** `Processor::process` takes one `Block`: the channels in place, the
-frame count, the events in, and an events-out list whose capacity
+**Rust.** `Processor::process` takes one `Block`: its audio in place (D112),
+the events in, and an events-out list whose capacity
 `ProcessSetup::max_out_events` fixes at activation (past it, dropped and
 counted). A sidechain or transport joins `Block` later without changing the
 trait. `PluginInfo::midi_output` declares the output to the host. Parameter
@@ -1113,7 +1115,8 @@ each format.
 **Rust.** `PluginInfo` gains the vendor's web and contact addresses and a
 one-line description (any may be empty), `Feature`s finer than the category
 (each exporter names them in its format's words: VST3's `Fx\|EQ`), and the main
-bus `Layout`s the plugin runs with, the first by default.
+bus widths the plugin runs at, the first by default, which the processor's
+layout gives unless it is `AnyLayout` (D112).
 
 `Plugin` gains `latency` and `tail`, read on the main thread (the exporter reads
 both at creation and at each activation, deactivation and tick, answers the host
@@ -2023,9 +2026,13 @@ order nothing checked.
 JUCE's `prepareToPlay` took the rate and the block size; the channel counts came
 from the processor's buses.
 
-**Rust.** As one `layout: Layout`, the one of `PluginInfo::layouts` the host
-chose, which every exporter checks before it activates. The C interface's
+**Rust.** As one `layout: Width`, the width the host chose among those the
+processor's layout runs at (D112), which every exporter checks before it
+activates. The C interface's
 `HaptoLayout` and `hapto.h` are unchanged: only the Rust type is.
+`ProcessSetup` is made with `new`, which leaves no room for MIDI until a
+processor sets it, and is non-exhaustive, so the buses beyond the main one
+can join it without breaking a caller.
 
 **Alternatives.** The alternative was the two counts, `inputs` and `outputs`, it
 had, which a processor put back together by hand.
@@ -2572,9 +2579,11 @@ and saved sessions know the plugin by: the `name`, the `vendor`, the vendor's
 `features`, the last two in kebab case. The package's own `version` and
 `description` are the plugin's, so neither is written twice. The version must
 be `major.minor.patch`, so one with a pre-release part is refused. What the
-code relies on stays in Rust, beside it: the layouts and the MIDI flags are
-the macro's fields, written as a struct literal's, so a field written in
-neither place is the compiler's error, and one written in both is refused.
+code relies on stays in Rust, beside it: the MIDI flags and, for a processor
+in `AnyLayout`, the layouts (D112) are the macro's fields, written as a struct
+literal's, so a field written in neither place is the compiler's error, and
+one written in both is refused. Left out, `layouts` is empty, as a processor
+in a typed layout needs it.
 
 Cargo reads no `[package.metadata]` table, so the macro checks it while
 compiling. It refuses a key the table does not take, a value of the wrong type
@@ -3385,6 +3394,79 @@ build for each format; and switching format in the running app, which would
 need a test host's audio side that outlives the host.
 
 [History](decision-history.md#d111-the-dev-host)
+
+### D112. The block's audio and the layout as a type
+
+**Question and C++ Seam.** How does a processor see its block's audio, and
+the widths it runs at? (D23, D97) JUCE's `processBlock` takes an
+`AudioBuffer`, read by channel and sample index, and a plugin checks its
+buses at run time. Not checked against C++.
+
+**Rust.** A processor names its main bus's channels as a type,
+`Processor::Layout`, and its block lends them as `Audio`.
+
+- **The layouts.** A `Bus<IN, OUT>` runs at one width, up to 16 channels
+  each way, and its frames and its channels are arrays, so they destructure:
+  `for [left, right] in block.audio.frames_mut()` walks frames, and
+  `let [_, _, third, _] = block.audio.channels_mut()` reaches a channel by
+  its place, with no index and nothing to unwrap. A pattern that names a
+  channel the bus does not have fails to compile. The common widths have
+  names: `Mono`, `Stereo`, `StereoOut`, `MonoToStereo` and `NoAudio`.
+  `AnyLayout` runs at each width its plugin lists in `PluginInfo::layouts`,
+  which only it takes; a frame is a `Frame` of every channel, the channels
+  come as an iterator, and `channel_mut` reaches one by its number. The
+  trait is sealed. A plugin that lists widths beside a `Bus`, or none for
+  `AnyLayout`, fails to build. A `Bus` wider than stereo builds for the C
+  interface; the VST3 exporter arranges mono and stereo buses only.
+- **The audio.** `Block::audio` holds the channels in place, over the block's
+  frames: `frames_mut` walks a moment at a time across every channel, and
+  `channels_mut` a channel at a time, so audio code needs no index, frame
+  count or bounds check. A `Bus` splits its frames off its own channels and
+  no others, so a stereo gain walked by frame costs about what one walked by
+  channel does. `Audio` holds up to 16 channel slices inline, under one
+  lifetime and in safe Rust, and a plugin that offers a wider width fails to
+  build. A processor that writes its block's audio takes `mut block`, and
+  one in a typed layout lends it to code written for any layout, such as a
+  voice, through `as_any_layout`.
+- **Widths.** `Width`, the old `Layout` struct, counts channels at run time:
+  the width the host chose in `ProcessSetup::layout`, the C interface's
+  layout table and VST3's bus arrangements. The C ABI is unchanged.
+- **Audio of its own.** `AudioBuf` owns channels and lends them as `Audio`,
+  for tests and a plugin's scratch, as a `PathBuf` owns what a `Path`
+  borrows.
+
+Every processor names its layout: Rust has no default for an associated
+type. Stable Rust cannot work out an array's length from a generic count,
+so `hapto-audio` writes the `Layout` of each `Bus` up to 16 channels each
+way with a macro.
+
+**Open.** A plugin that offers several typed widths, as a set it matches on,
+takes `AnyLayout` until that set is designed. A `Frame` in `AnyLayout` is
+built and walked a slot at a time: the instruction-count benchmarks put a
+mono source added through 512 stereo frames at about 80 times a gain walked
+by channel. It is to be made cheaper before voices are built on it. A loop
+that does the same to every sample of a wide bus falls behind by frame: to
+vectorise it, LLVM checks at run time that no two channels overlap, and at
+16 channels it needs more checks than it makes, so the loop runs a sample at
+a time, about 6 times a walk by channel. Walked inside a function that takes
+each channel as its own `&mut`, the loop needs no checks; that is the way out
+if a plugin on a wide bus needs it. A typed set of widths is also to take a
+rule, such as any width whose inputs equal its outputs, and is to be designed
+with the extra buses: a sidechain, or a sampler's outputs the host turns on.
+Those arrive as layout types, not as a second associated type on
+`Processor`, which every processor would have to name, since Rust has no
+default for one. `PluginInfo::layouts` is then deprecated, not removed.
+
+### D113. The audio types' crate
+
+**Question and C++ Seam.** Where do the audio types live? (D112) JUCE keeps
+`AudioBuffer` in `juce_audio_basics`, below the module its processors are in.
+
+**Rust.** In `hapto-audio`, a core-tier crate of layer 1 that depends on
+nothing, beside `hapto-params` and `hapto-ump`. `hapto-host` re-exports its
+`layout` module, `Audio`, `AudioBuf` and `Frame`, so a plugin names none of it.
+Code that only writes audio, such as a voice MIDI is to drive, depends on it
+with no host below it.
 
 ## How to read this
 

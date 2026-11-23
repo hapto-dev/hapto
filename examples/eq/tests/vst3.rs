@@ -5,8 +5,9 @@
 use std::sync::LazyLock;
 
 use hapto_example_eq::ExampleEq;
+use hapto_host::layout::Width;
 use hapto_host::vst3::TestHost;
-use hapto_host::{Block, EventList, Layout, Plugin, ProcessSetup, Processor};
+use hapto_host::{Audio, Block, EventList, Plugin, ProcessSetup, Processor};
 use hapto_params::{Kind, ParamDecl, host_id};
 
 mod common;
@@ -49,22 +50,16 @@ fn the_host_lists_every_parameter_by_its_key_hash() {
         );
         assert!(info.can_automate && !info.is_bypass, "{}", decl.key);
     }
-    assert_eq!(host.layout(), Layout::STEREO);
-    assert_eq!(host.arrange(Layout::MONO), Ok(()), "mono too");
-    assert!(host.arrange(Layout::new(1, 2)).is_err());
+    assert_eq!(host.layout(), Width::STEREO);
+    assert_eq!(host.arrange(Width::MONO), Ok(()), "mono too");
+    assert!(host.arrange(Width::new(1, 2)).is_err());
 }
 
 #[test]
 fn audio_through_the_exporter_matches_the_processor_driven_directly() {
     let mut host = running();
     let (mut plugin, saved) = built();
-    let mut processor = plugin.activate(&ProcessSetup {
-        sample_rate: RATE,
-        max_frames: MAX_FRAMES,
-        layout: Layout::STEREO,
-        max_events: 0,
-        max_out_events: 0,
-    });
+    let mut processor = plugin.activate(&ProcessSetup::new(RATE, MAX_FRAMES, Width::STEREO));
     let writes = saved.set().audio();
     let (events, mut out_events) = (EventList::with_capacity(0), EventList::with_capacity(0));
 
@@ -94,7 +89,11 @@ fn audio_through_the_exporter_matches_the_processor_driven_directly() {
 
         let (mut expected_left, mut expected_right) = (left.clone(), right.clone());
         let mut channels: [&mut [f32]; 2] = [&mut expected_left, &mut expected_right];
-        processor.process(Block::new(&mut channels, frames, &events, &mut out_events));
+        processor.process(Block::new(
+            Audio::new(&mut channels, frames),
+            &events,
+            &mut out_events,
+        ));
 
         let (mut got_left, mut got_right) = (vec![0.0f32; frames], vec![0.0f32; frames]);
         if block % 2 == 0 {

@@ -36,8 +36,9 @@ a call to one of Hapto's locking types, a `Value` or a `Session` say, panics
 Three senses:
 
 - **A block**: one `process` call's audio and MIDI.
-  [`Block`](../crates/host/src/audio.rs) holds the channels in place, the frame
-  count and the events in and out.
+  [`Block`](../crates/host/src/audio.rs) holds its
+  [`Audio`](../crates/audio/src/audio.rs) in place, in the processor's
+  [layout](#layout), and the events in and out.
 - **The saved block**: the plugin's saved state, the JSON object a host stores
   and hands back ([`SavedState`](../crates/host/src/state.rs)). It names two
   versions: `seamStateVersion`, of the frame Hapto gives it, and
@@ -190,6 +191,13 @@ Several senses:
   made at run time, kept until the pass that applies the load has finished, for
   the parameters declared under their paths to be born holding
   ([state/run_time.rs](../crates/host/src/state/run_time.rs)).
+
+### Layout
+
+The channels a processor's main bus has, as a type it names as
+`Processor::Layout` ([layout.rs](../crates/audio/src/layout.rs)): a `Bus` at
+one [width](#width), whose frames and channels are arrays, such as `Stereo`,
+or `AnyLayout` at each width its plugin lists.
 
 ### Learned write
 
@@ -413,3 +421,9 @@ set and has none.
 One surface's view of one parameter, polled on each tick. It shows the store, or
 while a gesture is open the gesture's own value
 ([`Watch`](../crates/params/src/watch.rs)).
+
+### Width
+
+The channels a main bus has in and out, counted at run time:
+[`Width`](../crates/audio/src/layout.rs), what a host chooses among those a
+plugin offers. A block's audio holds the larger count, processed in place.
