@@ -13,7 +13,7 @@ use raw_window_handle::{
 
 use super::{LoadRefused, MAX_CHANNELS, OpenError, Refused, Standalone};
 use crate::faults::{thread_faults, written};
-use crate::layout::{AnyLayout, Stereo, Width};
+use crate::layout::{AnyLayout, NoAudio, Stereo, Width};
 use crate::{
     AuCodes, Block, Category, Editor, Event, LoadError, ParentWindow, Parts, Plugin, PluginInfo,
     ProcessSetup, Processor, Size, Status, Tail,
@@ -205,6 +205,7 @@ fn a_block_before_an_activation_is_silence_and_after_it_plays() {
     let played = audio.process(
         &[&input[..], &input[..]],
         &mut [&mut left[..], &mut right[..]],
+        8,
         &[],
         |_| {},
     );
@@ -215,6 +216,7 @@ fn a_block_before_an_activation_is_silence_and_after_it_plays() {
     let played = audio.process(
         &[&input[..], &input[..]],
         &mut [&mut left[..], &mut right[..]],
+        8,
         &[],
         |_| {},
     );
@@ -233,6 +235,7 @@ fn a_block_is_as_long_as_its_shortest_channel() {
     audio.process(
         &[&input[..], &input[..]],
         &mut [&mut left[..], &mut right[..]],
+        8,
         &[],
         |_| {},
     );
@@ -251,6 +254,7 @@ fn a_block_of_no_frames_does_not_play_and_its_outputs_are_silence() {
     let status = audio.process(
         &[&input[..], &empty[..]],
         &mut [&mut left[..], &mut right[..]],
+        8,
         &[],
         |_| {},
     );
@@ -266,7 +270,7 @@ fn channels_past_the_most_are_passed_over() {
     let mut audio = app.audio();
     let mut channels = vec![[3.0_f32; 4]; MAX_CHANNELS + 1];
     let mut outputs: Vec<&mut [f32]> = channels.iter_mut().map(|c| &mut c[..]).collect();
-    audio.process(&[], &mut outputs, &[], |_| {});
+    audio.process(&[], &mut outputs, 4, &[], |_| {});
     assert_eq!(channels[MAX_CHANNELS], [3.0; 4], "left as it was");
     assert_eq!(
         channels[2], [0.0; 4],
@@ -285,20 +289,26 @@ fn inputs_that_are_one_buffer_play_and_ones_that_share_part_of_one_do_not() {
     let same = [&input[..4], &input[..4]];
     assert!(
         audio
-            .process(&same, &mut [&mut left[..], &mut right[..]], &[], |_| {})
+            .process(&same, &mut [&mut left[..], &mut right[..]], 4, &[], |_| {})
             .is_some()
     );
     assert_eq!(left, [1.0; 4]);
     let shifted = [&input[..4], &input[2..6]];
     assert_eq!(
-        audio.process(&shifted, &mut [&mut left[..], &mut right[..]], &[], |_| {}),
+        audio.process(
+            &shifted,
+            &mut [&mut left[..], &mut right[..]],
+            4,
+            &[],
+            |_| {}
+        ),
         None
     );
     assert_eq!((left, right), ([0.0; 4], [0.0; 4]), "silence");
     let apart = [&input[..4], &input[4..]];
     assert!(
         audio
-            .process(&apart, &mut [&mut left[..], &mut right[..]], &[], |_| {})
+            .process(&apart, &mut [&mut left[..], &mut right[..]], 4, &[], |_| {})
             .is_some()
     );
     drop(audio);
@@ -399,6 +409,7 @@ fn the_saved_block_carries_the_parameters_between_runs() {
     audio.process(
         &[&input[..], &input[..]],
         &mut [&mut left[..], &mut right[..]],
+        4,
         &[],
         |_| {},
     );
@@ -482,6 +493,7 @@ fn a_load_before_an_activation_plays_in_the_first_block() {
     audio.process(
         &[&input[..], &input[..]],
         &mut [&mut left[..], &mut right[..]],
+        4,
         &[],
         |_| {},
     );
@@ -678,7 +690,13 @@ fn a_teardown_while_the_audio_thread_plays_leaks_the_engine_and_silences_it() {
             let (mut left, mut right) = ([0.0_f32; 64], [0.0_f32; 64]);
             while !stop.load(Ordering::Acquire) {
                 let inputs = [&input[..], &input[..]];
-                match audio.process(&inputs, &mut [&mut left[..], &mut right[..]], &[], |_| {}) {
+                match audio.process(
+                    &inputs,
+                    &mut [&mut left[..], &mut right[..]],
+                    64,
+                    &[],
+                    |_| {},
+                ) {
                     Some(_) => drop(played.fetch_add(1, Ordering::AcqRel)),
                     None => silenced.store(true, Ordering::Release),
                 }
@@ -812,6 +830,7 @@ fn what_the_plugin_sends_comes_back_at_its_frames_of_the_block_once_it_has_playe
     audio.process(
         &[],
         &mut [&mut left[..], &mut right[..]],
+        8,
         &[note],
         |packets| sent.extend_from_slice(packets),
     );
@@ -821,6 +840,7 @@ fn what_the_plugin_sends_comes_back_at_its_frames_of_the_block_once_it_has_playe
     audio.process(
         &[],
         &mut [&mut left[..], &mut right[..]],
+        8,
         &[volume, note],
         |packets| sent.extend_from_slice(packets),
     );
@@ -829,6 +849,66 @@ fn what_the_plugin_sends_comes_back_at_its_frames_of_the_block_once_it_has_playe
         .map(|event| (event.offset, event.words[0]))
         .collect();
     assert_eq!(sent, [(2, 0x40B0_0700), (6, 0x4090_3C00)]);
+}
+
+/// MIDI thru with no audio at all, as an arpeggiator is.
+struct Bare;
+
+impl Processor for Bare {
+    type Layout = NoAudio;
+
+    fn process(&mut self, block: Block<'_, NoAudio>) -> Status {
+        let Block {
+            midi, mut midi_out, ..
+        } = block;
+        for (frame, message) in midi {
+            midi_out.forward(frame, &message);
+        }
+        Status::Continue
+    }
+}
+
+struct BareThru;
+
+impl Plugin for BareThru {
+    const INFO: PluginInfo = PluginInfo {
+        name: "Bare thru",
+        id: "dev.test.bare-thru",
+        layouts: &[],
+        midi_input: true,
+        midi_output: true,
+        ..Amp::INFO
+    };
+    type Params = Level;
+    type Processor = Bare;
+
+    fn new(_params: Level, _parts: Parts) -> Self {
+        BareThru
+    }
+
+    fn activate(&mut self, _setup: &ProcessSetup) -> Bare {
+        Bare
+    }
+}
+
+#[test]
+fn a_plugin_with_no_channels_plays_its_midi_for_the_frames_it_is_given() {
+    let app = Standalone::<BareThru>::new();
+    assert_eq!(app.activate(48_000.0, 64, Width::new(0, 0)), Ok(()));
+    let mut audio = app.audio();
+    let note = Event::new(6, [0x4090_3C00, 0xFFFF_0000, 0, 0]);
+    let mut sent = Vec::new();
+    let played = audio.process(&[], &mut [], 8, &[note], |packets| {
+        sent.extend_from_slice(packets);
+    });
+    assert_eq!(played, Some(Status::Continue));
+    let sent: Vec<(u32, u32)> = sent
+        .iter()
+        .map(|event| (event.offset, event.words[0]))
+        .collect();
+    assert_eq!(sent, [(6, 0x4090_3C00)]);
+    // A block of no frames plays nothing, channels or not.
+    assert_eq!(audio.process(&[], &mut [], 0, &[note], |_| {}), None);
 }
 
 #[test]
@@ -858,6 +938,7 @@ fn the_apps_midi_reaches_the_processor_at_its_frames_and_midi_1_upgraded() {
     let played = audio.process(
         &[],
         &mut [&mut left[..], &mut right[..]],
+        8,
         &[midi1, midi2, late],
         |_| {},
     );

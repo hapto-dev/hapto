@@ -283,10 +283,10 @@ impl Render for Vst3Audio {
         &mut self,
         inputs: &[&[f32]],
         outputs: &mut [&mut [f32]],
+        frames: usize,
         _midi: &[Event],
         _sent: &mut dyn FnMut(&[Event]),
     ) {
-        let frames = block_length(inputs, outputs);
         let count = self.pending.take(&mut self.changes);
         let changes = self.changes.get(..count).unwrap_or_default();
         // A refusal is the exporter's to count as a fault, which the
@@ -427,20 +427,10 @@ impl Render for CabiAudio {
         &mut self,
         inputs: &[&[f32]],
         outputs: &mut [&mut [f32]],
+        frames: usize,
         _midi: &[Event],
         _sent: &mut dyn FnMut(&[Event]),
     ) {
-        let frames = block_length(inputs, outputs);
         let _status = self.side.process(inputs, outputs, frames);
     }
-}
-
-/// The frames a block holds: the [`Player`](crate::block::Player) gives
-/// every channel the same length.
-fn block_length(inputs: &[&[f32]], outputs: &[&mut [f32]]) -> usize {
-    outputs
-        .first()
-        .map(|c| c.len())
-        .or_else(|| inputs.first().map(|c| c.len()))
-        .unwrap_or(0)
 }

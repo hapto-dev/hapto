@@ -35,14 +35,15 @@ const MIDI_ROOM: usize = 2048;
 /// What the app plays its blocks through: a plugin's audio side, in any
 /// format.
 pub(crate) trait Render: Send + 'static {
-    /// Plays one block, each slice a channel, all as long, with `midi`, the
-    /// packets of the app's MIDI inputs at its frames, and hands `sent` what
-    /// the plugin sent, at its frames, once it has played. A block may hold
-    /// no frames.
+    /// Plays one block of `frames` frames, each slice a channel that long,
+    /// with `midi`, the packets of the app's MIDI inputs at its frames, and
+    /// hands `sent` what the plugin sent, at its frames, once it has played.
+    /// A plugin may have no channels, and a block may hold no frames.
     fn render(
         &mut self,
         inputs: &[&[f32]],
         outputs: &mut [&mut [f32]],
+        frames: usize,
         midi: &[Event],
         sent: &mut dyn FnMut(&[Event]),
     );
@@ -53,10 +54,11 @@ impl Render for Box<dyn Render> {
         &mut self,
         inputs: &[&[f32]],
         outputs: &mut [&mut [f32]],
+        frames: usize,
         midi: &[Event],
         sent: &mut dyn FnMut(&[Event]),
     ) {
-        (**self).render(inputs, outputs, midi, sent);
+        (**self).render(inputs, outputs, frames, midi, sent);
     }
 }
 
@@ -65,10 +67,11 @@ impl<P: hapto_host::Plugin> Render for StandaloneAudio<P> {
         &mut self,
         inputs: &[&[f32]],
         outputs: &mut [&mut [f32]],
+        frames: usize,
         midi: &[Event],
         sent: &mut dyn FnMut(&[Event]),
     ) {
-        self.process(inputs, outputs, midi, sent);
+        self.process(inputs, outputs, frames, midi, sent);
     }
 }
 
@@ -400,8 +403,13 @@ impl<R: Render> Player<R> {
                 writer.write(start, rate, packets);
             }
         };
-        self.render
-            .render(&inputs[..ins], &mut outputs[..outs], midi, &mut sent);
+        self.render.render(
+            &inputs[..ins],
+            &mut outputs[..outs],
+            length,
+            midi,
+            &mut sent,
+        );
         let at = self.queued;
         for (queue, output) in self.queue.iter_mut().zip(&self.outputs) {
             queue[at..at + length].copy_from_slice(&output[..length]);

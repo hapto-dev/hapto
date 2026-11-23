@@ -3322,25 +3322,25 @@ against C++.
 **Rust.** Through two pieces.
 
 - **The standalone exporter**, `hapto_host::standalone`, behind the `standalone`
-  feature: `Standalone` drives the engine every exporter drives, so
-  activation, the block, the tick, the saved block, faults and teardown keep
-  their rules. The app is the host: an edit lands in the parameter store with
-  no one to tell, and no automation reaches the plugin; the computer's MIDI
-  inputs reach one that takes MIDI, and what one that sends MIDI sent comes
-  back to the app once its block has played, at its frames, for the devices
-  the app sends to (D115). `Standalone` is made on the app's main thread and
-  is not `Send`. Its `StandaloneAudio`
-  side is `Send` for the device's callback and allocates nothing: its channel
-  lists live on the stack, up to 32 each way, and a block is as long as its
-  shortest channel. Inputs that share part of a buffer are refused, as the
-  engine takes channels that are one buffer or share nothing. A teardown with
-  an audio side still alive leaks the instance rather than free the plugin
-  where that side could reach it, and the leak is a fault; an editor may
-  outlive it, and the last to drop frees the plugin on the main thread.
-  A refused load says why, with the state's own reason, and a panic in a
-  load or an activation is refused as a panic, not taken for a busy plugin.
-  `StandaloneEditor` drives the editor's slot as the VST3 view does, in a
-  window the app keeps until it closes the editor.
+  feature: `Standalone` drives the engine every exporter drives, so activation,
+  the block, the tick, the saved block, faults and teardown keep their rules.
+  The app is the host: an edit lands in the parameter store with no one to tell,
+  and no automation reaches the plugin; the computer's MIDI inputs reach one
+  that takes MIDI, and what one that sends MIDI sent comes back to the app once
+  its block has played, at its frames, for the devices the app sends to (D115).
+  `Standalone` is made on the app's main thread and is not `Send`. Its
+  `StandaloneAudio` side is `Send` for the device's callback and allocates
+  nothing: its channel lists live on the stack, up to 32 each way. A block is as
+  long as the app says, as through the C interface, so a plugin with no channels
+  plays its MIDI, and a channel shorter than that shortens it. Inputs that share
+  part of a buffer are refused, as the engine takes channels that are one buffer
+  or share nothing. A teardown with an audio side still alive leaks the instance
+  rather than free the plugin where that side could reach it, and the leak is a
+  fault; an editor may outlive it, and the last to drop frees the plugin on the
+  main thread. A refused load says why, with the state's own reason, and a panic
+  in a load or an activation is refused as a panic, not taken for a busy plugin.
+  `StandaloneEditor` drives the editor's slot as the VST3 view does, in a window
+  the app keeps until it closes the editor.
 - **The app**, `hapto-standalone`: `hapto_standalone::main::<P>()`, which a
   plugin crate's binary calls, behind a `standalone` feature of the crate's so
   the module never links it, or an `App` the binary builds, which says the MIDI

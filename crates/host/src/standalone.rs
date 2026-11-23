@@ -77,8 +77,9 @@ impl HostLink for Link {
 /// let input = [1.0_f32; 4];
 /// let (mut left, mut right) = ([0.0_f32; 4], [0.0_f32; 4]);
 /// let inputs = [&input[..], &input[..]];
-/// // No MIDI in, and none of what it sends kept.
-/// audio.process(&inputs, &mut [&mut left[..], &mut right[..]], &[], |_| {});
+/// // Four frames, no MIDI in, and none of what it sends kept.
+/// let outputs = &mut [&mut left[..], &mut right[..]];
+/// audio.process(&inputs, outputs, 4, &[], |_| {});
 /// assert_eq!(left, [1.0; 4], "0 dB");
 ///
 /// // The app's tick, about 60 times a second; its saved block, between runs.
@@ -380,7 +381,7 @@ impl<P: Plugin> Drop for Standalone<P> {
 /// let [left, right] = &mut out;
 /// // Before an activation a block is silence.
 /// let block = &mut [&mut left[..], &mut right[..]];
-/// let played = audio.process(&[], block, &[], |_sent| {});
+/// let played = audio.process(&[], block, 8, &[], |_sent| {});
 /// assert_eq!(played, None);
 /// assert_eq!(out, [[0.0; 8]; 2]);
 /// ```
@@ -397,9 +398,10 @@ impl<P: Plugin> fmt::Debug for StandaloneAudio<P> {
 }
 
 impl<P: Plugin> StandaloneAudio<P> {
-    /// Plays one block from `inputs` into `outputs`, each a channel, with
-    /// `midi` as its MIDI in, and returns the processor's status; `None` for
-    /// a block that did not play, whose outputs are silence.
+    /// Plays one block of `frames` frames from `inputs` into `outputs`, each
+    /// a channel, with `midi` as its MIDI in, and returns the processor's
+    /// status; `None` for a block that did not play, whose outputs are
+    /// silence.
     ///
     /// `midi` is the app's packets for the block, each at a frame of it and
     /// in time order, MIDI 1.0 or MIDI 2.0: the engine upgrades MIDI 1.0 as
@@ -413,16 +415,18 @@ impl<P: Plugin> StandaloneAudio<P> {
     /// the block has played: for an app to send to its devices. It is not
     /// called for a block that did not play.
     ///
-    /// The block is as long as its shortest channel. Channels past
-    /// [`MAX_CHANNELS`] are passed over: an output among them is left as it
-    /// was, and an input is not read. The processor sees the activation's
-    /// layout: a missing input reads silence. Two inputs may be one buffer,
-    /// but inputs that share part of one are refused, and the block is
-    /// silence.
+    /// The block is `frames` long, so a plugin with no channels plays its
+    /// MIDI too, and a channel shorter than that shortens it to the
+    /// channel's length. Channels past [`MAX_CHANNELS`] are passed over: an
+    /// output among them is left as it was, and an input is not read. The
+    /// processor sees the activation's layout: a missing input reads
+    /// silence. Two inputs may be one buffer, but inputs that share part of
+    /// one are refused, and the block is silence.
     pub fn process(
         &mut self,
         inputs: &[&[f32]],
         outputs: &mut [&mut [f32]],
+        frames: usize,
         midi: &[Event],
         sent: impl FnOnce(&[Event]),
     ) -> Option<Status> {
@@ -432,8 +436,7 @@ impl<P: Plugin> StandaloneAudio<P> {
             .iter()
             .map(|c| c.len())
             .chain(outputs[..outs_len].iter().map(|c| c.len()))
-            .min()
-            .unwrap_or(0);
+            .fold(frames, usize::min);
         if partly_overlapping(ins, frames) {
             for channel in outputs[..outs_len].iter_mut() {
                 channel.fill(0.0);

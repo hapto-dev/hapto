@@ -125,6 +125,7 @@ fn play(render: &mut dyn Render, frames: usize) {
     render.render(
         &[&input, &input],
         &mut [&mut left, &mut right],
+        frames,
         &[],
         &mut |_| {},
     );

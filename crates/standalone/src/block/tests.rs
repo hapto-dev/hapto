@@ -24,11 +24,11 @@ impl Render for Doubler {
         &mut self,
         inputs: &[&[f32]],
         outputs: &mut [&mut [f32]],
+        frames: usize,
         _midi: &[Event],
         _sent: &mut dyn FnMut(&[Event]),
     ) {
-        let length = outputs.first().map_or(0, |c| c.len());
-        self.lengths.lock().expect("not poisoned").push(length);
+        self.lengths.lock().expect("not poisoned").push(frames);
         for (index, output) in outputs.iter_mut().enumerate() {
             for (frame, sample) in output.iter_mut().enumerate() {
                 *sample = inputs.get(index).map_or(0.25, |input| input[frame] * 2.0);
@@ -227,11 +227,11 @@ impl Render for Listener {
     fn render(
         &mut self,
         _inputs: &[&[f32]],
-        outputs: &mut [&mut [f32]],
+        _outputs: &mut [&mut [f32]],
+        frames: usize,
         midi: &[Event],
         _sent: &mut dyn FnMut(&[Event]),
     ) {
-        let length = outputs.first().map_or(0, |c| c.len());
         let packets = midi
             .iter()
             .map(|event| (event.offset, event.words[0]))
@@ -239,7 +239,7 @@ impl Render for Listener {
         self.blocks
             .lock()
             .expect("not poisoned")
-            .push((length, packets));
+            .push((frames, packets));
     }
 }
 
@@ -261,6 +261,25 @@ fn the_apps_midi_inputs_reach_the_plugin_in_its_blocks() {
     assert_eq!(blocks[1], (64, Vec::new()), "each packet once");
 }
 
+#[test]
+fn a_plugin_with_no_channels_is_given_each_blocks_frames_and_its_midi() {
+    let listener = Listener::default();
+    let plan = Plan::new(Blocks::Fixed, Signal::Silence);
+    let (mut inputs, reader) = inputs(16);
+    let mut player =
+        Player::new(listener.clone(), Width::new(0, 0), 2, 48_000.0, 64, plan).with_midi(reader);
+    assert!(inputs.push(0, Instant::from_nanos(0), [0x2090_3C7F, 0, 0, 0]));
+    let mut buffer = vec![9.0_f32; 128 * 2];
+    player.play(&mut buffer);
+    let blocks = listener.blocks.lock().expect("not poisoned").clone();
+    assert_eq!(
+        blocks,
+        [(64, vec![(0, 0x4090_3C00)]), (64, Vec::new())],
+        "the frames, with no channel to carry them"
+    );
+    assert!(buffer.iter().all(|&sample| sample == 0.0), "silence out");
+}
+
 /// Sends a note-on at the first frame of every block it plays.
 struct Sender;
 
@@ -269,6 +288,7 @@ impl Render for Sender {
         &mut self,
         _inputs: &[&[f32]],
         _outputs: &mut [&mut [f32]],
+        _frames: usize,
         _midi: &[Event],
         sent: &mut dyn FnMut(&[Event]),
     ) {
