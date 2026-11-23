@@ -91,6 +91,7 @@ version = "0.0.0"
 dependencies = [
  "hapto-bridge",
  "hapto-host",
+ "hapto-midi",
  "hapto-params",
  "hapto-session",
  "hapto-ump",
@@ -124,6 +125,13 @@ dependencies = [
  "loom",
  "serde_json",
  "triple_buffer",
+]
+
+[[package]]
+name = "hapto-midi"
+version = "0.1.0"
+dependencies = [
+ "hapto-ump",
 ]
 
 [[package]]

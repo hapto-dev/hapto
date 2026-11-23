@@ -45,6 +45,7 @@ LAYERS = {
     "hapto-audio": 1,
     "hapto-undo": 2,
     "hapto-session": 2,
+    "hapto-midi": 2,
     "hapto-learn": 3,
     "hapto-bridge": 3,
     "hapto-host": 4,

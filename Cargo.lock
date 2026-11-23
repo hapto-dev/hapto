@@ -901,6 +901,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "hapto-midi"
+version = "0.1.0"
+dependencies = [
+ "hapto-testkit",
+ "hapto-ump",
+ "proptest",
+]
+
+[[package]]
 name = "hapto-midi-devices"
 version = "0.1.0"
 dependencies = [

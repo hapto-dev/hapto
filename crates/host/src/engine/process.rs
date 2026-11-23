@@ -109,6 +109,10 @@ impl<R> Active<R> {
 /// The block's MIDI in, as an exporter fills it: each packet its host
 /// sent, at a frame of the block and in time order. A packet of MIDI 1.0 is
 /// upgraded to MIDI 2.0 as it arrives, so nothing above reads MIDI 1.0.
+#[cfg_attr(
+    not(any(feature = "standalone", test)),
+    expect(dead_code, reason = "only the standalone exporter hands over MIDI yet")
+)]
 pub(crate) struct MidiIn<'a> {
     events: &'a mut EventList,
     upgrade: &'a mut Upgrade,
@@ -118,6 +122,10 @@ impl MidiIn<'_> {
     /// Adds the host's next packet. Past the list's room it is dropped and
     /// counted.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
+    #[cfg_attr(
+        not(any(feature = "standalone", test)),
+        expect(dead_code, reason = "only the standalone exporter hands over MIDI yet")
+    )]
     pub(crate) fn push(&mut self, event: Event) {
         self.upgrade.event(&event, self.events);
     }

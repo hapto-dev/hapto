@@ -1,0 +1,490 @@
+//! What MIDI says, decoded: notes and controllers in MIDI 2.0's meanings,
+//! each value in the type it stands for.
+
+use std::fmt;
+
+use hapto_ump::Attribute;
+
+use crate::controller;
+use crate::values::{Centred, Channel, Group, Key, NoteId, Pitch, Program};
+
+/// MIDI 2.0's note attribute that carries a pitch: 7 bits of key and 9 of
+/// fraction.
+const PITCH_7_9: u8 = 3;
+
+/// A note starting.
+///
+/// # Examples
+///
+/// ```
+/// use hapto_midi::{Key, NoteOn};
+///
+/// // A note to play a voice on its own in a test.
+/// let note = NoteOn::new(Key::A4, 0.8);
+/// assert_eq!(note.pitch().hz(), 440.0);
+/// let off = note.off(0.5);
+/// assert_eq!((off.id, off.key), (note.id, Key::A4));
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NoteOn {
+    /// The note, until it ends.
+    pub id: NoteId,
+    /// The group it came on.
+    pub group: Group,
+    /// The channel it came on.
+    pub channel: Channel,
+    /// The key.
+    pub key: Key,
+    /// From 0 to 1. A MIDI 2.0 note-on at velocity 0 is still a note-on; a
+    /// MIDI 1.0 one is a note-off, as its upgrade reads it.
+    pub velocity: f32,
+    pub(crate) attribute: Attribute,
+}
+
+impl NoteOn {
+    /// A note-on for `key` on the first group and channel, with no
+    /// attribute, for testing a voice on its own.
+    pub fn new(key: Key, velocity: f32) -> Self {
+        NoteOn {
+            id: NoteId::made_up(0),
+            group: Group::FIRST,
+            channel: Channel::FIRST,
+            key,
+            velocity,
+            attribute: Attribute::NONE,
+        }
+    }
+
+    /// The note-off that ends this note, at `velocity`.
+    pub fn off(&self, velocity: f32) -> NoteOff {
+        NoteOff {
+            id: self.id,
+            group: self.group,
+            channel: self.channel,
+            key: self.key,
+            velocity,
+        }
+    }
+
+    /// The pitch the note asks for: its key in equal temperament, unless
+    /// the note-on carries a pitch of its own, as MIDI 2.0's pitch attribute
+    /// does.
+    pub fn pitch(&self) -> Pitch {
+        if self.attribute.kind == PITCH_7_9 {
+            Pitch::new(f32::from(self.attribute.data) / 512.0)
+        } else {
+            Pitch::of(self.key)
+        }
+    }
+
+    /// The note's attribute as it came, its type and data, for one Hapto
+    /// does not read itself; `None` for a note-on with none.
+    pub fn attribute(&self) -> Option<(u8, u16)> {
+        (self.attribute != Attribute::NONE).then_some((self.attribute.kind, self.attribute.data))
+    }
+}
+
+/// A note ending.
+///
+/// # Examples
+///
+/// ```
+/// use hapto_midi::{Key, NoteOn};
+///
+/// let off = NoteOn::new(Key::C4, 1.0).off(0.25);
+/// assert_eq!(off.velocity, 0.25);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NoteOff {
+    /// The note that ends.
+    pub id: NoteId,
+    /// The group it came on.
+    pub group: Group,
+    /// The channel it came on.
+    pub channel: Channel,
+    /// Its key.
+    pub key: Key,
+    /// From 0 to 1, and 0.5 when the sender gave none, as a MIDI 1.0
+    /// note-on at velocity 0 upgrades.
+    pub velocity: f32,
+}
+
+/// The key a per-note message names, and the note sounding on it.
+///
+/// MIDI 2.0 names a per-note message by its key, and lets it come before
+/// the key's note does, so a message may name a key with no note. With two
+/// notes on one key, it is for the newer: the older takes no more per-note
+/// messages, as MIDI 2.0's per-note management reads it.
+///
+/// # Examples
+///
+/// ```
+/// use hapto_midi::{Decoder, Message};
+/// use hapto_ump::Event;
+///
+/// // Pressure on C4 with no note sounding there.
+/// let pressure = Event::new(0, [0x40A0_3C00, 0x8000_0000, 0, 0]);
+/// let mut decoder = Decoder::new();
+/// let Some(Message::NotePressure { note, .. }) = decoder.decode(&pressure).next() else {
+///     panic!("a note's pressure");
+/// };
+/// assert_eq!((note.key.to_string(), note.id), ("C4".to_owned(), None));
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct NoteKey {
+    /// The group it came on.
+    pub group: Group,
+    /// The channel it came on.
+    pub channel: Channel,
+    /// The key it names.
+    pub key: Key,
+    /// The newest note sounding on the key, if one is.
+    pub id: Option<NoteId>,
+}
+
+/// What MIDI says, decoded: one note or controller change, in MIDI 2.0's
+/// meanings. Its `Display` is one line in the numbering musicians use.
+///
+/// A value from 0 to 1 is an `f32`, and one that rests at a centre is
+/// [`Centred`]. A note's own messages name their [`NoteKey`].
+///
+/// # Examples
+///
+/// ```
+/// use hapto_midi::{Decoder, Message, controller};
+/// use hapto_ump::Event;
+///
+/// // MIDI 2.0's controller 64, the sustain pedal, all the way down.
+/// let pedal = Event::new(0, [0x40B0_4000, u32::MAX, 0, 0]);
+/// let mut decoder = Decoder::new();
+/// let message = decoder.decode(&pedal).next().expect("a controller");
+/// assert!(matches!(
+///     message,
+///     Message::Control { controller: controller::SUSTAIN, value: 1.0, .. }
+/// ));
+/// assert_eq!(message.to_string(), "controller 64 (Sustain Pedal) 1.000, channel 1, group 1");
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
+pub enum Message<'a> {
+    /// A note starting.
+    NoteOn(NoteOn),
+    /// A note ending: one for each note a note-off ends, so a note-off for
+    /// a key with two notes on it is two.
+    NoteOff(NoteOff),
+    /// A note's pitch, absolute, so no bend range applies: MIDI 2.0's
+    /// registered per-note controller 3.
+    NotePitch {
+        /// The key, and its note.
+        note: NoteKey,
+        /// The pitch.
+        pitch: Pitch,
+    },
+    /// A note's own pitch bend, at rest at the centre.
+    NoteBend {
+        /// The key, and its note.
+        note: NoteKey,
+        /// The bend.
+        value: Centred,
+    },
+    /// A note's own pressure, polyphonic aftertouch.
+    NotePressure {
+        /// The key, and its note.
+        note: NoteKey,
+        /// From 0 to 1.
+        value: f32,
+    },
+    /// One of a note's own registered controllers, numbered as the
+    /// channel's are: 74 its brightness, 10 its pan.
+    NoteControl {
+        /// The key, and its note.
+        note: NoteKey,
+        /// The controller, 0 to 255; [`controller`] names them.
+        controller: u8,
+        /// From 0 to 1.
+        value: f32,
+    },
+    /// One of a note's own assignable controllers, which the instrument
+    /// defines.
+    NoteAssignable {
+        /// The key, and its note.
+        note: NoteKey,
+        /// The controller, 0 to 255.
+        index: u8,
+        /// From 0 to 1.
+        value: f32,
+    },
+    /// MIDI 2.0's per-note management for a key.
+    NoteManagement {
+        /// The key, and its note.
+        note: NoteKey,
+        /// The key's sounding notes take no more per-note messages.
+        detach: bool,
+        /// The key's per-note controllers return to their defaults.
+        reset: bool,
+    },
+    /// The channel's pitch bend, at rest at the centre.
+    Bend {
+        /// The group it came on.
+        group: Group,
+        /// The channel it came on.
+        channel: Channel,
+        /// The bend.
+        value: Centred,
+    },
+    /// How far a full bend reaches, in semitones either way: registered
+    /// parameter 0.
+    BendRange {
+        /// The group it came on.
+        group: Group,
+        /// The channel it came on.
+        channel: Channel,
+        /// The semitones, cents as a fraction.
+        semitones: f32,
+    },
+    /// The channel's pressure, channel aftertouch.
+    Pressure {
+        /// The group it came on.
+        group: Group,
+        /// The channel it came on.
+        channel: Channel,
+        /// From 0 to 1.
+        value: f32,
+    },
+    /// A control change.
+    Control {
+        /// The group it came on.
+        group: Group,
+        /// The channel it came on.
+        channel: Channel,
+        /// The controller, 0 to 127; [`controller`] names them.
+        controller: u8,
+        /// From 0 to 1.
+        value: f32,
+    },
+    /// A registered controller (MIDI 1.0's RPN), but for the bend range,
+    /// which is its own message.
+    Registered {
+        /// The group it came on.
+        group: Group,
+        /// The channel it came on.
+        channel: Channel,
+        /// The bank, 0 to 127.
+        bank: u8,
+        /// The controller in its bank, 0 to 127.
+        index: u8,
+        /// From 0 to 1.
+        value: f32,
+    },
+    /// An assignable controller (MIDI 1.0's NRPN), which the instrument
+    /// defines.
+    Assignable {
+        /// The group it came on.
+        group: Group,
+        /// The channel it came on.
+        channel: Channel,
+        /// The bank, 0 to 127.
+        bank: u8,
+        /// The controller in its bank, 0 to 127.
+        index: u8,
+        /// From 0 to 1.
+        value: f32,
+    },
+    /// A program change, with the bank it selects, if any.
+    Program {
+        /// The group it came on.
+        group: Group,
+        /// The channel it came on.
+        channel: Channel,
+        /// The program.
+        program: Program,
+        /// The bank: its two 7-bit halves as one number, 0 to 16383.
+        bank: Option<u16>,
+    },
+    /// A whole SysEx message, without its F0 and F7.
+    SysEx {
+        /// The group it came on.
+        group: Group,
+        /// Its bytes, from the decoder's buffer.
+        data: &'a [u8],
+    },
+}
+
+impl From<NoteOn> for Message<'_> {
+    fn from(note: NoteOn) -> Self {
+        Message::NoteOn(note)
+    }
+}
+
+impl From<NoteOff> for Message<'_> {
+    fn from(off: NoteOff) -> Self {
+        Message::NoteOff(off)
+    }
+}
+
+/// Where a channel's message came: ", channel 1, group 1".
+struct On(Group, Channel);
+
+impl fmt::Display for On {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, ", channel {}, group {}", self.1, self.0)
+    }
+}
+
+impl fmt::Display for NoteKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}{}", self.key, On(self.group, self.channel))?;
+        match self.id {
+            Some(id) => write!(f, ", {id}"),
+            None => f.write_str(", no note"),
+        }
+    }
+}
+
+/// A controller's number, with its name where MIDI 1.0 gives one.
+struct Named(u8);
+
+impl fmt::Display for Named {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match controller::name(self.0) {
+            Some(name) => write!(f, "{} ({name})", self.0),
+            None => write!(f, "{}", self.0),
+        }
+    }
+}
+
+/// The most of a SysEx message's bytes its line shows.
+const SHOWN_BYTES: usize = 16;
+
+impl fmt::Display for Message<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            Message::NoteOn(_)
+            | Message::NoteOff(_)
+            | Message::NotePitch { .. }
+            | Message::NoteBend { .. }
+            | Message::NotePressure { .. }
+            | Message::NoteControl { .. }
+            | Message::NoteAssignable { .. }
+            | Message::NoteManagement { .. } => self.fmt_note(f),
+            Message::Bend {
+                group,
+                channel,
+                value,
+            } => write!(f, "pitch bend {value}{}", On(group, channel)),
+            Message::BendRange {
+                group,
+                channel,
+                semitones,
+            } => write!(
+                f,
+                "pitch bend range {semitones:.2} semitones{}",
+                On(group, channel)
+            ),
+            Message::Pressure {
+                group,
+                channel,
+                value,
+            } => write!(f, "channel pressure {value:.3}{}", On(group, channel)),
+            Message::Control {
+                group,
+                channel,
+                controller,
+                value,
+            } => write!(
+                f,
+                "controller {} {value:.3}{}",
+                Named(controller),
+                On(group, channel)
+            ),
+            Message::Registered {
+                group,
+                channel,
+                bank,
+                index,
+                value,
+            } => write!(
+                f,
+                "registered controller {bank}:{index} {value:.3}{}",
+                On(group, channel)
+            ),
+            Message::Assignable {
+                group,
+                channel,
+                bank,
+                index,
+                value,
+            } => write!(
+                f,
+                "assignable controller {bank}:{index} {value:.3}{}",
+                On(group, channel)
+            ),
+            Message::Program {
+                group,
+                channel,
+                program,
+                bank,
+            } => {
+                write!(f, "program {program}")?;
+                if let Some(bank) = bank {
+                    write!(f, ", bank {bank}")?;
+                }
+                write!(f, "{}", On(group, channel))
+            }
+            Message::SysEx { group, data } => {
+                write!(f, "SysEx of {} bytes:", data.len())?;
+                for byte in data.iter().take(SHOWN_BYTES) {
+                    write!(f, " {byte:02X}")?;
+                }
+                if data.len() > SHOWN_BYTES {
+                    f.write_str(" ...")?;
+                }
+                write!(f, ", group {group}")
+            }
+        }
+    }
+}
+
+impl Message<'_> {
+    /// A note's message as its line: the rest go through `Display`.
+    fn fmt_note(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            Message::NoteOn(note) => write!(
+                f,
+                "note on {}, velocity {:.3}{}, {}",
+                note.key,
+                note.velocity,
+                On(note.group, note.channel),
+                note.id
+            ),
+            Message::NoteOff(off) => write!(
+                f,
+                "note off {}, velocity {:.3}{}, {}",
+                off.key,
+                off.velocity,
+                On(off.group, off.channel),
+                off.id
+            ),
+            Message::NotePitch { note, pitch } => write!(f, "pitch {pitch} for {note}"),
+            Message::NoteBend { note, value } => write!(f, "pitch bend {value} for {note}"),
+            Message::NotePressure { note, value } => write!(f, "pressure {value:.3} for {note}"),
+            Message::NoteControl {
+                note,
+                controller,
+                value,
+            } => write!(f, "controller {} {value:.3} for {note}", Named(controller)),
+            Message::NoteAssignable { note, index, value } => {
+                write!(f, "assignable controller {index} {value:.3} for {note}")
+            }
+            Message::NoteManagement {
+                note,
+                detach,
+                reset,
+            } => write!(
+                f,
+                "note management, detach {detach}, reset {reset}, for {note}"
+            ),
+            _ => Ok(()),
+        }
+    }
+}

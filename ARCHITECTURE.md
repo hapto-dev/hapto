@@ -42,11 +42,14 @@ reading how Hapto works inside, start with
   `mappings/session.rs`.
 - `crates/ump`: Universal MIDI Packets, the event list MIDI travels in, and
   MIDI 2.0's channel voice messages, which everything above the exporters
-  reads (`voice.rs`). An exporter is to translate MIDI 1.0's (`midi1.rs`) up
-  on the way in (`upgrade.rs`) and down on the way out (`downgrade.rs`), though
-  no exporter passes MIDI yet, and `scale.rs` moves values between the two
-  protocols' widths. A device's MIDI 1.0 byte stream becomes packets, and
-  packets bytes, in `bytes.rs`.
+  reads (`voice.rs`). An exporter translates MIDI 1.0's (`midi1.rs`) up on the
+  way in (`upgrade.rs`) and down on the way out (`downgrade.rs`), and
+  `scale.rs` moves values between the two protocols' widths. A device's MIDI
+  1.0 byte stream becomes packets, and packets bytes, in `bytes.rs`.
+- `crates/midi`: MIDI in musicians' terms: the values a message carries,
+  each its own type (`values.rs`), the messages (`message.rs`), the decoder
+  that reads packets into them (`decoder.rs`), and the controllers' names
+  (`controller.rs`).
 - `crates/audio`: a block's audio as a processor sees it: the layouts, the
   channels a main bus has as a type (`layout.rs`); `Audio`, the channels a
   block lends, walked by frame or by channel (`audio.rs`, `frame.rs`); and

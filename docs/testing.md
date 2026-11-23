@@ -683,8 +683,8 @@ exporter's save and load.
 `fuzz/` (outside the Cargo workspace; it needs a nightly compiler) holds six
 `cargo-fuzz` targets, one per input boundary:
 
-- `ump_packets`: splitting a stream, decoding each voice message, and encoding
-  it back;
+- `ump_packets`: splitting a stream, decoding each voice message and encoding
+  it back, and reading each packet into messages as a plugin's are;
 - `midi1_bytes`: a MIDI 1.0 device's byte stream read into packets, cut into
   reads anywhere, and written back as bytes that read the same;
 - `midi1_translation`: a host's MIDI 1.0 cut into blocks anywhere, upgraded,

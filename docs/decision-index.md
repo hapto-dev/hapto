@@ -1418,6 +1418,18 @@ move its line here; when a decision gains code, add one.
 - test `crates/midi-devices/tests/alloc_gate.rs`: module
 - test `crates/standalone/src/block/tests.rs`: `the_apps_midi_inputs_reach_the_plugin_in_its_blocks`
 
+### D116. MIDI in musicians' terms
+
+[Record section](decisions.md#d116-midi-in-musicians-terms)
+
+- `crates/midi/src/lib.rs`: module
+- `crates/midi/src/values.rs`: `Key`, `Group`, `Channel`, `Program`, `Centred`, `Pitch`, `NoteId`
+- `crates/midi/src/message.rs`: `Message`, `NoteOn`, `NoteOff`, `NoteKey`
+- `crates/midi/src/decoder.rs`: `Decoder`, `Decoder::decode`, `Messages`
+- `crates/midi/src/controller.rs`: module, `name`
+- test `crates/midi/tests/decode.rs`: module, `a_note_off_ends_the_notes_its_key_has`, `a_notes_own_message_names_its_key_and_the_newest_note_on_it`, `a_sysex_too_long_cut_short_or_begun_elsewhere_is_dropped_and_counted`, `each_message_is_one_line_in_musicians_numbers`
+- test `crates/midi/tests/alloc_gate.rs`: module
+
 ## Parameters
 
 ### P1. One store per parameter

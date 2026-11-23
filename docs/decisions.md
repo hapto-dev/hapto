@@ -152,6 +152,7 @@ comments never cite an id: they state the reason in words, and
 | D113 | [Where do the audio types live? (D112)](#d113-the-audio-types-crate) | In `hapto-audio`, a core crate of layer 1 beside `hapto-params` and `hapto-ump`, which `hapto-host` re-exports, so code that only writes audio, such as a voice, needs no host. | decided |
 | D114 | [Which MIDI does Hapto pass inside, and how does MIDI 1.0 reach it? (D10, D23, D70)](#d114-midi-20-inside) | MIDI 2.0: `ChannelVoice` reads and writes MIDI 2.0's channel voice messages alone. The engine upgrades MIDI 1.0 on the way in with `Upgrade`, for every exporter, and an exporter downgrades with `Downgrade` only for a destination that takes MIDI 1.0 alone, both by the specification's Default Translation. Each packet keeps its `Origin`, so learn reads a value upgraded from MIDI 1.0 at the width it was sent at. | decided |
 | D115 | [How does the standalone app reach the computer's MIDI devices? (D110, D114)](#d115-the-computers-midi-devices) | Through `hapto-midi-devices`, Hapto's own device layer, which only the app links: UMP alone, a device named by an id that survives the system's renumbering, the list's changes told at the tick, and each input read on the system's thread into a ring that never blocks, its packets placed at frames on the audio thread. Every input is merged on group 1, as a host hands a plugin its MIDI, each upgraded with a translation of its own, and a SysEx reaches a block whole. WinMM is its only backend so far. | decided |
+| D116 | [What does a plugin read of MIDI, and in what terms? (D10, D114)](#d116-midi-in-musicians-terms) | `hapto-midi`'s `Message`s, decoded from MIDI 2.0 in its meanings: values from 0 to 1 as `f32`, values with a centre as `Centred`, and keys, channels, groups and programs as types shown as musicians count them. Each note has a `NoteId` from its note-on to its note-off, a note's own message names its key and the newest note on it, and a SysEx comes whole. The `Decoder` keeps its tables fixed, so decoding allocates nothing; what overflows them is counted. | decided |
 
 **Open.** D25 is held until `hapto-ci` needs it. It keeps its recommendation
 until decided, and no rule depends on it.
@@ -3675,6 +3676,51 @@ differ from what a host hands a plugin; holding every other device while one
 sends a SysEx, which stalls them for a slow device's whole dump; and handing
 SysEx buffers back inside the callback, as JUCE, midir and RtMidi do against
 WinMM's documentation.
+
+### D116. MIDI in musicians' terms
+
+**Question and C++ Seam.** What does a plugin read of MIDI, and in what terms?
+(D10, D114) JUCE hands a processor `MidiMessage`s, MIDI 1.0 bytes with
+accessors: channels from 1 to 16, but notes as numbers, values at MIDI 1.0's
+widths, and a note named only by its key. The C++ Seam read MIDI 1.0 alone.
+
+**Rust.** `hapto-midi`'s `Message`s, a crate of layer 2 on `hapto-ump`.
+`Decoder` reads MIDI 2.0, which is all that reaches a plugin, into messages in
+MIDI 2.0's meanings. A value from 0 to 1 is an `f32`, and a value that rests at
+a centre, a bend or a brightness, is `Centred`, from -1 to 1 with MIDI 2.0's
+centre at exactly 0. `Key`, `Group`, `Channel` and `Program` are types of their
+own, stored as MIDI sends them and shown as musicians count them: middle C as
+C4, channels and groups from 1 to 16, programs from 1 to 128 as General MIDI
+numbers them. `controller` names MIDI's controllers. Every message's `Display`
+is one line in those numbers.
+
+A note is a `NoteId` from its note-on to its note-off: the host's own where its
+format names notes, otherwise one the decoder makes up, with the top bit set so
+it never meets a host's. A note-off ends every note on its key, one message for
+each. A note-off for a key with no note the decoder knows of still comes, under
+an id no note has, so a plugin that ends notes by key hears it. A note's own
+message names its `NoteKey`: its key, and the newest note sounding on it, since
+MIDI 2.0 lets a note's controllers come before its note does and gives a key's
+older note no more of them. Per-note management's detach leaves the key's
+notes without them until its next note-on. Registered parameter 0 is
+`BendRange`, in semitones, and a note's pitch comes with its note-on, as MIDI
+2.0's pitch attribute, or on its own, as registered per-note controller 3.
+
+A SysEx comes whole once its last packet does, from a buffer the decoder made.
+The decoder's tables are made with it, so decoding allocates nothing and never
+panics: a note past its table still sounds and is counted, and a SysEx past its
+buffer, cut short, or begun on another group while one is under way is dropped
+and counted.
+
+Open: the engine does not decode a block's MIDI yet, so a plugin reads its
+packets.
+
+**Alternatives.** The alternatives were MIDI 1.0 bytes with accessors, as JUCE
+hands them, which D114 rules out; values at their widths, raw, which leaves
+every plugin to scale them and to know which rest at a centre; a note named by
+its key alone, which loses the second note on a key and a host's note ids; and
+a note's own message named by its id alone, which has nowhere to put a
+controller sent before its note.
 
 ## How to read this
 

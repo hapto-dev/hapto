@@ -129,6 +129,13 @@ exporter.
   `TargetId`, a `ParamId`, a `CustomId` or a typed parameter. A parameter made
   at run time is a target of its own, `TargetId::RunTime`, named by an opaque
   `RunTimeId`.
+- `hapto-midi`: MIDI in musicians' terms. `Decoder` reads a block's MIDI 2.0
+  packets into `Message`s: notes with a `NoteId` from note-on to note-off,
+  their own messages naming their `NoteKey`, controllers, bend and its range,
+  pressure, programs with their bank, and SysEx joined whole. Values from 0
+  to 1 are `f32`, values with a centre `Centred`, and `Key`, `Group`,
+  `Channel` and `Program` show as musicians count them. Decoding allocates
+  nothing; what overflows its tables is counted.
 - `hapto-midi-devices`: the computer's MIDI devices as UMP, for an app that runs
   a plugin with no host. A device is named by an id that survives the system's
   renumbering, the list's changes are told at the main thread's tick, and each
