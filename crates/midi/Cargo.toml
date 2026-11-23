@@ -19,7 +19,12 @@ hapto-ump.workspace = true
 
 [dev-dependencies]
 hapto-testkit.workspace = true
+iai-callgrind.workspace = true
 proptest.workspace = true
 
 [lints]
 workspace = true
+
+[[bench]]
+name = "iai"
+harness = false

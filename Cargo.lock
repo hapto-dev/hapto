@@ -929,6 +929,7 @@ dependencies = [
  "hapto-params",
  "hapto-testkit",
  "hapto-ump",
+ "iai-callgrind",
  "proptest",
 ]
 
