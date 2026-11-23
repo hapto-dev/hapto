@@ -118,6 +118,41 @@ impl<'a, L: Layout> Audio<'a, L> {
         self.frames
     }
 
+    /// Splits it at frame `at`: the first part holds every channel's frames
+    /// before it, the second the rest, both in the same layout. Past its
+    /// end, the second is empty. Nothing is copied.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hapto_audio::{AudioBuf, layout::Stereo};
+    ///
+    /// let mut buffer = AudioBuf::<Stereo>::new(8);
+    /// let (mut early, mut late) = buffer.audio().split_at(3);
+    /// early.apply_gain(0.0);
+    /// late.add_to_all(std::iter::repeat(1.0));
+    /// assert_eq!((early.frames(), late.frames()), (3, 5));
+    /// assert_eq!(buffer.channels()[0], [0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0]);
+    /// ```
+    pub fn split_at(self, at: usize) -> (Audio<'a, L>, Audio<'a, L>) {
+        let at = at.min(self.frames);
+        let rest = self.frames.saturating_sub(at);
+        let mut first: [&'a mut [f32]; MAX_CHANNELS] = Default::default();
+        let mut second: [&'a mut [f32]; MAX_CHANNELS] = Default::default();
+        for ((channel, head), tail) in self.channels.into_iter().zip(&mut first).zip(&mut second) {
+            let (before, after) = channel.split_at_mut(at.min(channel.len()));
+            *head = before;
+            *tail = after;
+        }
+        let part = |channels: [&'a mut [f32]; MAX_CHANNELS], frames| Audio {
+            channels,
+            count: self.count,
+            frames,
+            layout: PhantomData,
+        };
+        (part(first, at), part(second, rest))
+    }
+
     /// Each frame in turn, one moment across every channel. In a
     /// [`Bus`](crate::layout::Bus) a frame is an array of the channels'
     /// samples, so `for [left, right] in audio.frames_mut()` destructures it;

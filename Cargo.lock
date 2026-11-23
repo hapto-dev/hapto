@@ -869,6 +869,7 @@ dependencies = [
  "hapto-ump",
  "hapto-undo",
  "loom",
+ "proptest",
  "raw-window-handle",
  "serde",
  "serde_json",

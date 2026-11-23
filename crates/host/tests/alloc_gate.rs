@@ -1,5 +1,6 @@
 //! What hapto-host runs over and over does not allocate: the per-block event
-//! list a format exporter fills and a processor reads, a block through an
+//! list a format exporter fills and a processor reads, a block's spans with
+//! their messages, a block through an
 //! exporter with learn's audio side in it, the standalone exporter's audio
 //! side around the engine, and a plugin's idle tick when nothing changed,
 //! which every instance runs about 60 times a second.
@@ -15,6 +16,35 @@ use hapto_learn::{Config, Control, Mapping, Source};
 use hapto_params::{Declarer, Float, FloatDecl, Params};
 use hapto_testkit::alloc::assert_no_allocations;
 use hapto_undo::Bound;
+
+#[test]
+fn walking_a_blocks_spans_does_not_allocate() {
+    use hapto_host::AudioBuf;
+    use hapto_host::layout::Stereo;
+    use hapto_host::midi::MidiList;
+
+    let mut packets = EventList::with_capacity(8);
+    for offset in [0, 3, 3, 40, 255] {
+        packets.push(Event::new(offset, [0x40D0_0000, offset, 0, 0]));
+    }
+    let mut list = MidiList::new();
+    let mut buffer = AudioBuf::<Stereo>::new(256);
+    let seen = assert_no_allocations("a block's spans walked", || {
+        let mut seen = (0, 0);
+        for most in [usize::MAX, 64, 1] {
+            list.read(&packets, 256);
+            for span in hapto_host::Spans::new(buffer.audio(), list.midi()).at_most(most) {
+                seen.0 += 1;
+                seen.1 += span.midi.messages().len();
+            }
+        }
+        seen
+    });
+    // Spans at frames 0, 3, 40 and 255: four whole; seven at most 64 frames
+    // long, the one from 40 cut at 104, 168 and 232; 256 one frame each;
+    // every message once each time.
+    assert_eq!(seen, (4 + 7 + 256, 3 * 5));
+}
 
 #[test]
 fn filling_and_reading_a_block_of_events_does_not_allocate() {

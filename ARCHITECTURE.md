@@ -54,7 +54,9 @@ reading how Hapto works inside, start with
   channels a main bus has as a type (`layout.rs`); `Audio`, the channels a
   block lends, walked by frame or by channel (`audio.rs`, `frame.rs`); and
   `AudioBuf`, audio of its own for tests (`buf.rs`). `host` re-exports them.
-- `crates/host`: the `Plugin` trait, the [parts](docs/glossary.md#parts) Hapto
+- `crates/host`: the `Plugin` trait, a block and its
+  [spans](docs/glossary.md#span) (`audio.rs`, `spans.rs`), the
+  [parts](docs/glossary.md#parts) Hapto
   builds for each instance (`parts.rs`, with the parameters a plugin makes at
   run time in `parts/run_time.rs`), the saved block (`SavedState`), which
   keeps those parameters by [path](docs/glossary.md#path)

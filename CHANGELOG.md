@@ -41,7 +41,11 @@ exporter.
   `block.events` and `block.out_events`. `Block::new` takes the two, and
   `Midi::default()` is a block with no MIDI. The engine decodes every block
   once, and a block in pieces hands each piece its share. `hapto_host::midi`
-  re-exports `hapto-midi`.
+  re-exports `hapto-midi`. `block.spans()` cuts a block into `Span`s at each
+  frame a message arrives at, each with its audio and the messages at its
+  first frame, and `Spans::at_most` caps their length; `Spans::new` makes
+  them for a plugin that sends too. `Audio::split_at` splits audio at a
+  frame.
 - **Breaking.** MIDI is MIDI 2.0 inside. `ChannelVoice` reads and writes MIDI
   2.0's channel voice messages alone, a `ChannelMessage` for each status MIDI
   2.0 has, and `Voice` with its MIDI 1.0 variants is gone. MIDI 1.0 becomes

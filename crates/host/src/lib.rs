@@ -127,6 +127,7 @@ mod editor;
 mod info;
 mod parts;
 mod plugin;
+mod spans;
 mod state;
 
 // The core every exporter shares: an exporter drives it, and nothing else
@@ -172,6 +173,7 @@ pub use editor::{Editor, Size};
 pub use faults::boundary_faults;
 #[doc(hidden)]
 pub use faults::report_line;
+pub use spans::{Span, Spans};
 // Inlined: a block's audio is `hapto_audio`'s, shown here as this crate's.
 #[doc(inline)]
 pub use hapto_audio::{Audio, AudioBuf, Frame, layout};

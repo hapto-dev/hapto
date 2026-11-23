@@ -247,7 +247,10 @@ move its line here; when a decision gains code, add one.
 
 - `crates/host/src/audio.rs`: `Block`
 - `crates/host/src/engine/process.rs`: `pieces`
-- `crates/midi/src/midi.rs`: `MidiList::read`, `MidiList::between`, `Midi`, `MidiOut`
+- `crates/host/src/spans.rs`: module, `Spans`, `Spans::at_most`, `Span`, `Block::spans`
+- `crates/audio/src/audio.rs`: `Audio::split_at`
+- `crates/midi/src/midi.rs`: `MidiList::read`, `MidiList::between`, `Midi`, `Midi::between`, `MidiOut`
+- test `crates/host/tests/spans.rs`: module, `spans_cover_the_block_once_with_every_message_where_it_arrived`
 - `crates/host/src/lib.rs`: module
 - `crates/ump/src/lib.rs`: `EventList::as_mut_slice`, `EventList::add_dropped`
 - test `crates/host/src/engine/process/tests.rs`: `each_piece_gets_its_own_events_and_what_it_sends_lands_at_the_block_s_frames`, `a_block_of_one_piece_hands_its_events_on_and_the_next_starts_clean`

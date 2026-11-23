@@ -76,6 +76,7 @@ loom.workspace = true
 
 [dev-dependencies]
 hapto-testkit.workspace = true
+proptest.workspace = true
 
 [lints]
 workspace = true

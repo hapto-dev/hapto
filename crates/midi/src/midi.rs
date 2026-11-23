@@ -165,26 +165,19 @@ impl MidiList {
 
     /// The whole block's MIDI.
     pub fn midi(&self) -> Midi<'_> {
-        self.between(0, usize::MAX)
+        Midi {
+            entries: &self.entries,
+            sysex: &self.sysex,
+            packets: &self.packets,
+            start: 0,
+            dropped: self.dropped,
+        }
     }
 
     /// The MIDI at frames `from` up to `to`, at frames from `from`. The
     /// block's drops come with the part that starts at frame 0.
     pub fn between(&self, from: usize, to: usize) -> Midi<'_> {
-        let from = u32::try_from(from).unwrap_or(u32::MAX);
-        let to = u32::try_from(to).unwrap_or(u32::MAX);
-        let within = |frame: u32| frame < from;
-        let first = self.entries.partition_point(|entry| within(entry.frame));
-        let end = self.entries.partition_point(|entry| entry.frame < to);
-        let first_packet = self.packets.partition_point(|packet| within(packet.offset));
-        let end_packet = self.packets.partition_point(|packet| packet.offset < to);
-        Midi {
-            entries: self.entries.get(first..end).unwrap_or(&[]),
-            sysex: &self.sysex,
-            packets: self.packets.get(first_packet..end_packet).unwrap_or(&[]),
-            start: from,
-            dropped: if from == 0 { self.dropped } else { 0 },
-        }
+        self.midi().between(from, to)
     }
 
     /// Forgets every note sounding and any SysEx under way, as at an
@@ -306,6 +299,52 @@ impl<'a> Midi<'a> {
             packets: self.packets.iter(),
             start: self.start,
         }
+    }
+
+    /// The messages alone, without their frames: for a part of a block in
+    /// which they all arrive at its first frame, a span's.
+    pub fn messages(&self) -> impl ExactSizeIterator<Item = Message<'a>> + use<'a> {
+        self.iter().map(|(_, message)| message)
+    }
+
+    /// The part of it at frames `from` up to `to`, at frames from `from`.
+    /// Its drops come with the part that starts at frame 0.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hapto_midi::MidiList;
+    /// use hapto_ump::{Event, EventList};
+    ///
+    /// let mut packets = EventList::with_capacity(2);
+    /// packets.push(Event::new(2, [0x40D0_0000, 0, 0, 0]));
+    /// packets.push(Event::new(6, [0x40D0_0000, u32::MAX, 0, 0]));
+    /// let mut list = MidiList::new();
+    /// list.read(&packets, 8);
+    /// let later = list.midi().between(4, 8);
+    /// assert_eq!((later.len(), later.first_frame()), (1, Some(2)));
+    /// ```
+    pub fn between(&self, from: usize, to: usize) -> Midi<'a> {
+        let base = u64::from(self.start);
+        let at =
+            |frame: usize| u32::try_from(base.saturating_add(frame as u64)).unwrap_or(u32::MAX);
+        let (from, to) = (at(from), at(to));
+        let first = self.entries.partition_point(|entry| entry.frame < from);
+        let end = self.entries.partition_point(|entry| entry.frame < to);
+        let first_packet = self.packets.partition_point(|packet| packet.offset < from);
+        let end_packet = self.packets.partition_point(|packet| packet.offset < to);
+        Midi {
+            entries: self.entries.get(first..end).unwrap_or(&[]),
+            sysex: self.sysex,
+            packets: self.packets.get(first_packet..end_packet).unwrap_or(&[]),
+            start: from,
+            dropped: if from == self.start { self.dropped } else { 0 },
+        }
+    }
+
+    /// The frame its first message arrives at, if any does.
+    pub fn first_frame(&self) -> Option<usize> {
+        self.iter().next().map(|(frame, _)| frame)
     }
 
     /// How many messages arrived.

@@ -40,7 +40,7 @@ Three senses:
 - **A block**: one `process` call's audio and MIDI.
   [`Block`](../crates/host/src/audio.rs) holds its
   [`Audio`](../crates/audio/src/audio.rs) in place, in the processor's
-  [layout](#layout), and the events in and out.
+  [layout](#layout), its MIDI in, decoded, and its MIDI out.
 - **The saved block**: the plugin's saved state, the JSON object a host stores
   and hands back ([`SavedState`](../crates/host/src/state.rs)). It names two
   versions: `haptoStateVersion`, of the frame Hapto gives it, and
@@ -281,7 +281,8 @@ parameter declared last under a path is the one a save writes
 
 Part of a block. A block longer than the activation's `max_frames` reaches the
 processor as several calls of at most that many frames
-([`ProcessSetup`](../crates/host/src/audio.rs)).
+([`ProcessSetup`](../crates/host/src/audio.rs)). Not a [span](#span), which a
+processor cuts its own block into.
 
 ### Reading
 
@@ -348,6 +349,14 @@ One participant's part of the saved block's `extra` object, a JSON value under
 its key ([`Section`](../crates/session/src/lib.rs)). A section no participant
 claims is kept and saved back, and applied to the next participant that
 registers its key.
+
+### Span
+
+Part of a block in which nothing arrives but at its first frame: a processor
+that asks cuts its block at each frame a MIDI message arrives at, and acts on
+each message before it renders on to the next
+([`Spans`](../crates/host/src/spans.rs)). Not a [piece](#piece), which the
+engine cuts a host's long block into.
 
 ### Snapshot
 

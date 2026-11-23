@@ -518,7 +518,12 @@ in pieces hands each piece its share, at frames from its own start. `midi_out`
 sends a message encoded anew, one that arrived on, as MIDI thru, which is never
 implicit, or packets as they are, all into one list in the order the plugin
 sends them, whose capacity `ProcessSetup::max_out_events` fixes at activation
-(past it, dropped and counted). A sidechain or transport joins `Block` later
+(past it, dropped and counted). `Block::spans` cuts a block at each frame a
+message arrives at, and `Spans::at_most` caps a span's length, so a plugin acts
+on each message and renders on to the next. A plugin that never asks keeps its
+block whole, so a convolver or an FFT is never cut short; one that sends while
+it spans makes its spans with `Spans::new` from the block's audio and MIDI and
+keeps the block's `midi_out`. A sidechain or transport joins `Block` later
 without changing the trait. `PluginInfo::midi_output` declares the output to
 the host. Parameter changes still reach the host through the exporter, never
 this list. No exporter sends the list yet, and only the standalone app brings
