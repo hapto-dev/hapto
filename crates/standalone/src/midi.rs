@@ -68,6 +68,7 @@ impl Midi {
         });
         let writer = self.sends.then(|| {
             let (mut outputs, writer) = hapto_midi_devices::outputs(ROOM);
+            outputs.set_timing(self.routing.timing());
             for device in self.devices.outputs().filter(|device| sends(device)) {
                 say(self.name, device, outputs.open(device));
             }
@@ -111,6 +112,7 @@ impl Midi {
             follow(self.name, &listed, Ends::In(inputs));
         }
         if let Some(outputs) = &mut self.outputs {
+            outputs.set_timing(self.routing.timing());
             let listed: Vec<(&Device, bool)> = self
                 .devices
                 .outputs()

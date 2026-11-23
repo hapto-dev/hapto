@@ -4,6 +4,7 @@
 
 mod input;
 mod output;
+mod signal;
 mod watch;
 
 use std::ffi::c_void;
@@ -17,6 +18,7 @@ use windows::Win32::Media::Multimedia::{DRV_QUERYDEVICEINTERFACE, DRV_QUERYDEVIC
 
 pub(crate) use input::Input;
 pub(crate) use output::Output;
+pub(crate) use signal::Signal;
 pub(crate) use watch::Watch;
 
 use crate::id::{Device, DeviceId, Direction, named};

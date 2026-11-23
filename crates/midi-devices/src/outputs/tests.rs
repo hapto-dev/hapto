@@ -19,8 +19,9 @@ fn first_words(taken: &[(Instant, [u32; 4])]) -> Vec<(Instant, u32)> {
 }
 
 #[test]
-fn a_block_goes_to_each_open_output_as_midi_1_due_at_its_frame() {
+fn at_frames_a_block_goes_to_each_open_output_as_midi_1_due_at_its_frame() {
     let (mut outputs, mut writer) = outputs(16);
+    outputs.set_timing(Timing::AtFrames);
     // Output 0 is read, as an open device reads it; output 1 has none.
     assert_eq!(outputs.take(0), Some(Vec::new()));
     let sent = [
@@ -39,6 +40,26 @@ fn a_block_goes_to_each_open_output_as_midi_1_due_at_its_frame() {
     );
     assert_eq!(outputs.take(1), Some(Vec::new()), "nothing for no device");
     assert_eq!((writer.dropped(), writer.lost()), (0, 0));
+}
+
+#[test]
+fn by_default_a_blocks_midi_is_due_at_once_as_juce_sends_it() {
+    let (mut outputs, mut writer) = outputs(16);
+    assert_eq!(outputs.timing(), Timing::Immediate);
+    outputs.take(0);
+    let sent = [
+        Event::new(0, [0x4090_3C00, 0xFFFF_0000, 0, 0]),
+        Event::new(480, [0x4080_3C00, 0, 0, 0]),
+    ];
+    writer.write(START, 48_000.0, &sent);
+    let taken = outputs.take(0).expect("no device there");
+    // Both due before any moment the clock can tell, so sent as they come,
+    // in the order the plugin sent them.
+    let at_once = Instant::from_nanos(0);
+    assert_eq!(
+        first_words(&taken),
+        [(at_once, 0x2090_3C7F), (at_once, 0x2080_3C00)]
+    );
 }
 
 #[test]
@@ -62,6 +83,7 @@ fn what_midi_1_has_no_message_for_is_lost_and_a_block_with_no_output_costs_nothi
 #[test]
 fn a_registered_controller_goes_out_as_its_four_and_a_sysex_as_its_packets() {
     let (mut outputs, mut writer) = outputs(16);
+    outputs.set_timing(Timing::AtFrames);
     outputs.take(0);
     // The bend range, 12 semitones, then a SysEx of eight bytes.
     let sent = [

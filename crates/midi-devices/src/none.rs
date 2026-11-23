@@ -44,6 +44,19 @@ impl Input {
     }
 }
 
+/// What would wake an output's thread, which no output here has.
+#[derive(Debug)]
+pub(crate) struct Signal;
+
+impl Signal {
+    pub(crate) fn new() -> Signal {
+        Signal
+    }
+
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
+    pub(crate) fn set(&self) {}
+}
+
 /// An output that cannot be: no device opens here.
 #[derive(Debug)]
 pub(crate) struct Output(Infallible);
@@ -52,6 +65,7 @@ impl Output {
     pub(crate) fn open(
         _device: &Device,
         consumer: Consumer,
+        _signal: Arc<Signal>,
     ) -> Result<Output, (OpenError, Option<Consumer>)> {
         Err((OpenError::NoBackend, Some(consumer)))
     }

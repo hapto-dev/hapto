@@ -3740,22 +3740,41 @@ closed at the next tick.
 once, and `OutputsWriter` hands each block's MIDI to every open one on the
 audio thread. It downgrades the block to MIDI 1.0 by the Default Translation
 (D114), since every device reached now takes MIDI 1.0 alone, and stamps each
-packet with when it is due: when the block's first frame is, plus its frame at
-the block's rate. Each output has a ring, the inputs' ring the other way, which
+packet with when it is due, as the outputs' `Timing` says. `Immediate`, the
+default, makes a block's MIDI due at once, so it goes out as soon as the block
+has played, as JUCE's standalone sends it. `AtFrames` makes each packet due
+when the block's first frame is, plus its frame at the block's rate. Each
+output has a ring, the inputs' ring the other way, which
 the writer fills only while a device reads it, and every group goes to every
 output, as a MIDI 1.0 device has none. What MIDI 1.0 has no message for is
 counted, and so is what finds no room.
 
 A thread of each output's own sends each packet once its time comes, at once if
-that has passed: never earlier, and never dropped for being late. It sleeps
-until then, or for a millisecond while nothing waits, since the audio thread
-makes no call that could wake it. A SysEx is joined from its packets and sent
-whole as one long message, which that thread waits on while the driver sends
-it, so a slow port holds up only its own output. JUCE's standalone sends a
-block's MIDI from the audio thread instead, in one burst as the block ends,
-through calls that can block; its scheduler, which the standalone does not
-start, takes a lock and allocates on the audio thread, and drops what is 200
-ms late.
+that has passed: never earlier, and never dropped for being late. Once a block
+has handed an output MIDI, the writer sets the output's signal, an event whose
+setting never blocks: the one call the audio thread makes, so a block's MIDI
+leaves the moment the block has played. The thread waits on that signal while
+nothing waits to be sent, and for a packet due later on a high-resolution
+timer of its own as well, which ends about a millisecond late, the same for
+every packet, so a block's spacing holds; a wait's own timeout follows the
+system's tick, about 15.6 ms. A SysEx is joined from its packets and sent whole
+as one long message, which that thread waits on while the driver sends it, so a
+slow port holds up only its own output. JUCE's standalone sends a block's MIDI
+from the audio thread instead, in one burst as the block ends, through calls
+that can block: a SysEx sleeps the audio thread until the driver has sent its
+last byte. Its scheduler, which the standalone does not start, takes a lock
+and allocates on the audio thread, and drops what is 200 ms late.
+
+Neither timing is better at everything, so the app's binary chooses
+(decided 23 November). A message from an input is placed in a block by when it
+came, here as in JUCE, so it plays a block late and keeps its timing within
+one. Sent at once, it reaches a device from no time to a block after it came,
+half a block on average, as in JUCE, but a block's spacing is lost: an
+arpeggio's notes and a clock's ticks land on the block grid, up to a block
+early. Sent at its frame, every message keeps its place, and one from an input
+goes out a block after it came, every time: half a block more on average, which
+live playing through a plugin could feel at large buffers. No one schedule has
+both, since keeping a block's spacing means waiting for its last frame.
 
 Which devices the app opens is its binary's to say, in code: `App`'s
 `midi_inputs` and `midi_outputs` take a filter each, which the app asks of each
@@ -3770,10 +3789,11 @@ port that is both an input and an output, drive gear no one asked it to, and
 hold every port from other apps. JUCE's standalone opens none either way until
 its settings dialog picks them, a single output among them. Hapto adds no
 command-line flags for it, as an app's command line is its author's, and no
-settings of its own. The player stamps each block's MIDI out where its first
-frame falls in the device's stream: when the device asked for the buffer, plus
-the frames the parts of it before this one and the queue hold, so blocks
-rendered back to back keep the spacing of their audio.
+settings of its own. `App::midi_out_timing` sets the outputs' timing, and the
+handle changes it as it runs. The player stamps each block's MIDI out where its
+first frame falls in the device's stream: when the device asked for the
+buffer, plus the frames the parts of it before this one and the queue hold, so
+at frames, blocks rendered back to back keep the spacing of their audio.
 
 Open: keeping a device's place in the app's settings from run to run, and MIDI
 out timed to land with the audio it goes with, which would add the output's

@@ -9,8 +9,9 @@
 //! merged on group 1 as a host hands a plugin its MIDI, at frames, stamped on
 //! one [`Instant`] clock. [`outputs`] makes the app's MIDI out: [`Outputs`]
 //! opens devices on the main thread, and [`OutputsWriter`] hands each block's
-//! MIDI to every one on the audio thread, each message due at its frame's
-//! time, which a thread of the device's own sends it at. A device's messages
+//! MIDI to every one on the audio thread, sent by a thread of the device's
+//! own as soon as its block has played, or each message at its frame's
+//! time, as [`Timing`] says. A device's messages
 //! travel between the system's thread and the audio thread through a ring
 //! that never waits, locks or allocates, either way.
 //!
@@ -67,4 +68,4 @@ pub use clock::Instant;
 pub use devices::{Changes, Devices};
 pub use id::{Device, DeviceId, Direction};
 pub use inputs::{Inputs, InputsReader, MAX_INPUTS, OpenError, inputs};
-pub use outputs::{MAX_OUTPUTS, Outputs, OutputsWriter, outputs};
+pub use outputs::{MAX_OUTPUTS, Outputs, OutputsWriter, Timing, outputs};

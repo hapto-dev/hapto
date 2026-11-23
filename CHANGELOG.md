@@ -182,8 +182,9 @@ exporter.
   device is merged on group 1, as a host hands a plugin its MIDI, each upgraded
   to MIDI 2.0 with a translation of its own, and a SysEx reaches a block whole.
   `Outputs` opens devices to send to, and `OutputsWriter` hands each block's
-  MIDI to them from the audio thread, downgraded to MIDI 1.0, each message
-  sent at its frame's time by a thread of its output's own. WinMM is its
+  MIDI to them from the audio thread, downgraded to MIDI 1.0, sent by a thread
+  of its output's own as soon as the block has played or, by `Timing`, each
+  message at its frame's time. WinMM is its
   backend, on Windows.
 - `hapto-ump`: `Upgrade::reset` forgets what an upgrade holds, in place, for a
   new source.
@@ -352,10 +353,11 @@ exporter.
   saved block kept between runs. A plugin that takes MIDI hears every MIDI
   input the computer has, merged as a host merges them, opened and closed as
   devices come and go, and a line names each, and one that sends MIDI sends
-  it to the outputs its binary chooses, each message at its time. `App` says
-  in code which devices open, a filter for each direction, every input and no
-  output by default, and its `MidiDevices` handle changes them while the app
-  runs, from any thread. Its title counts the plugin's faults. Its dev
+  it to the outputs its binary chooses, as soon as each block has played or
+  each message at its frame. `App` says in code which devices open, a filter
+  for each direction, every input and no output by default, and when they
+  send, and its `MidiDevices` handle changes them while the app runs, from
+  any thread. Its title counts the plugin's faults. Its dev
   host, `cargo hapto dev --host`, runs the plugin through the VST3 exporter or
   the C interface in process, in a window of the plugin's own with a bar that
   names the format, and a settings window of what the host sees, a tab each,

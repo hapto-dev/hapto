@@ -10,8 +10,11 @@ fn every_input_and_no_output_by_default_and_each_change_is_counted() {
     assert_eq!(changes, 0);
     midi.set_outputs(|_| true);
     midi.set_inputs(|_| false);
+    assert_eq!(midi.timing(), hapto_midi_devices::Timing::Immediate);
+    midi.set_timing(hapto_midi_devices::Timing::AtFrames);
     let (changes, _, _) = midi.filters();
-    assert_eq!(changes, 2, "two changes to apply");
+    assert_eq!(changes, 3, "three changes to apply");
+    assert_eq!(midi.timing(), hapto_midi_devices::Timing::AtFrames);
     assert!(midi.listed().is_empty() && midi.open().is_empty());
 }
 

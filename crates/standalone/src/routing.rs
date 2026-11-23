@@ -8,22 +8,24 @@ mod tests;
 use std::fmt;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use hapto_midi_devices::Device;
+use hapto_midi_devices::{Device, Timing};
 
 /// A filter: whether the app opens a device.
 type Filter = Arc<dyn Fn(&Device) -> bool + Send + Sync>;
 
 /// The app's MIDI devices, as the author's code reaches them: which ones
-/// the app opens, and which are listed and open now. Made by
-/// [`App::midi`](crate::App::midi), and cheap to clone and send to another
-/// thread, where a plugin's page or a thread of the author's own changes
-/// them while the app runs.
+/// the app opens, when its outputs send, and which are listed and open
+/// now. Made by [`App::midi`](crate::App::midi), and cheap to clone and
+/// send to another thread, where a plugin's page or a thread of the
+/// author's own changes them while the app runs.
 ///
 /// A filter is asked of each device the system lists, and of each that
 /// appears later. A change applies at the app's next tick, on its main
 /// thread: the devices that now pass open, and the ones open that no longer
 /// pass close. Every input opens by default, and no output, and only for a
-/// plugin that takes MIDI, or sends it.
+/// plugin that takes MIDI, or sends it. The outputs send each block's MIDI
+/// as soon as it has played, at the least latency, unless
+/// [`set_timing`](Self::set_timing) has them keep each message's frame.
 ///
 /// # Examples
 ///
@@ -49,6 +51,7 @@ pub struct MidiDevices {
 struct Routing {
     inputs: Filter,
     outputs: Filter,
+    timing: Timing,
     /// Counts the changes, so the app applies each once.
     changes: u64,
     /// The system's devices, and the ones open, as of the app's last tick.
@@ -73,6 +76,7 @@ impl MidiDevices {
             shared: Arc::new(Mutex::new(Routing {
                 inputs: Arc::new(|_| true),
                 outputs: Arc::new(|_| false),
+                timing: Timing::default(),
                 changes: 0,
                 listed: Vec::new(),
                 open: Vec::new(),
@@ -96,6 +100,20 @@ impl MidiDevices {
         routing.changes = routing.changes.wrapping_add(1);
     }
 
+    /// From now on, has the outputs send as `timing` says: each block's
+    /// MIDI as soon as it has played, the default, or each message at its
+    /// frame's time, for an arpeggiator, a sequencer or a clock.
+    pub fn set_timing(&self, timing: Timing) {
+        let mut routing = self.lock();
+        routing.timing = timing;
+        routing.changes = routing.changes.wrapping_add(1);
+    }
+
+    /// When the outputs send.
+    pub fn timing(&self) -> Timing {
+        self.lock().timing
+    }
+
     /// The system's MIDI devices, inputs and outputs, as of the app's last
     /// tick.
     pub fn listed(&self) -> Vec<Device> {
@@ -110,6 +128,7 @@ impl MidiDevices {
 
     /// The filters, and how many changes they are past: the app's main
     /// thread calls them with no lock held, so a filter may reach this.
+    /// The timing comes with [`timing`](Self::timing).
     #[cfg_attr(
         all(not(windows), not(test)),
         expect(dead_code, reason = "the app that applies them runs on Windows alone")

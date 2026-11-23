@@ -1428,8 +1428,9 @@ move its line here; when a decision gains code, add one.
 - `crates/midi-devices/src/winmm/mod.rs`: module, `interface`, `index_of`
 - `crates/midi-devices/src/winmm/watch.rs`: `Watch`, `changed`
 - `crates/midi-devices/src/winmm/input.rs`: module, `Shared::message`, `Input::shut`, `hand_back`, `callback`
-- `crates/midi-devices/src/outputs.rs`: `Outputs`, `Outputs::open`, `OutputsWriter::write`, `MAX_OUTPUTS`
+- `crates/midi-devices/src/outputs.rs`: `Timing`, `Outputs`, `Outputs::open`, `OutputsWriter::write`, `MAX_OUTPUTS`
 - `crates/midi-devices/src/winmm/output.rs`: module, `Sysex::join`, `Sysex::send`, `Output::shut`, `send`
+- `crates/midi-devices/src/winmm/signal.rs`: module, `Signal`, `Timer::wait`
 - `crates/standalone/src/midi.rs`: module, `Midi::streams`, `Midi::tick`, `follow`
 - `crates/standalone/src/routing.rs`: `MidiDevices`, `plan`
 - `crates/standalone/src/lib.rs`: `App`
@@ -1438,13 +1439,14 @@ move its line here; when a decision gains code, add one.
 - test `crates/midi-devices/src/winmm/input/tests.rs`: module
 - test `crates/midi-devices/src/outputs/tests.rs`: module
 - test `crates/midi-devices/src/winmm/output/tests.rs`: module
+- test `crates/midi-devices/src/winmm/signal/tests.rs`: module
 - test `crates/midi-devices/tests/by_hand.rs`: module
 - `crates/host/src/standalone.rs`: `StandaloneAudio::process`
 - test `crates/host/src/standalone/tests.rs`: `what_the_plugin_sends_comes_back_at_its_frames_of_the_block_once_it_has_played`
 - test `crates/midi-devices/src/devices.rs`: `a_notice_brings_four_looks_each_wait_twice_the_last`, `with_no_notice_the_list_is_read_every_two_seconds`
 - test `crates/midi-devices/src/ring.rs`: `loom_the_audio_thread_takes_what_the_device_pushed_in_order_and_whole`
 - test `crates/midi-devices/tests/alloc_gate.rs`: module
-- test `crates/standalone/src/block/tests.rs`: `the_apps_midi_inputs_reach_the_plugin_in_its_blocks`, `each_blocks_midi_is_due_where_its_frames_fall_in_the_devices_buffer`
+- test `crates/standalone/src/block/tests.rs`: `the_apps_midi_inputs_reach_the_plugin_in_its_blocks`, `at_frames_each_blocks_midi_is_due_where_its_frames_fall_in_the_devices_buffer`
 - test `crates/standalone/src/routing/tests.rs`: module
 
 ### D116. MIDI in musicians' terms

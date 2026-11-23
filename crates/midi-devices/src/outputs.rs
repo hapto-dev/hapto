@@ -1,6 +1,7 @@
 //! The app's MIDI out: devices opened on the main thread, the audio
 //! thread's writer that hands each block's MIDI to every one, and a thread
-//! of each device's own that sends it at its time.
+//! of each device's own that sends it as soon as its block has played, or
+//! each message at its frame's time.
 
 // Audio-path code: a panic here ends the app's audio, so indexing, unwrap,
 // expect, panic and unchecked arithmetic are refused, and a site that is
@@ -17,6 +18,8 @@
 )]
 
 use std::fmt;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, Ordering};
 
 use hapto_ump::{Bytes, Downgrade, Event};
 
@@ -28,6 +31,55 @@ use crate::ring::{Consumer, Producer, ring};
 
 /// How many outputs may be open at once.
 pub const MAX_OUTPUTS: usize = 16;
+
+/// When an output sends a block's MIDI.
+///
+/// A message from an input is placed in a block by when it came, so it
+/// plays a block late, and keeps its timing within one. Sent at once, the
+/// block's MIDI reaches a device as soon as the block has played, as JUCE's
+/// standalone sends it: the least latency, from no time to a block after
+/// its input, but each message a block's length or less early of its frame,
+/// so a block's spacing is lost. Sent at its frame's time, each message
+/// keeps its place: an arpeggio stays even and a clock steady, and a
+/// message from an input goes out a block after it came, every time.
+///
+/// # Examples
+///
+/// ```
+/// use hapto_midi_devices::{Timing, outputs};
+///
+/// let (outputs, _writer) = outputs(1024);
+/// assert_eq!(outputs.timing(), Timing::Immediate);
+/// // A sequencer's notes keep their spacing.
+/// outputs.set_timing(Timing::AtFrames);
+/// assert_eq!(outputs.timing(), Timing::AtFrames);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub enum Timing {
+    /// As soon as its block has played, as JUCE sends it: the least
+    /// latency.
+    #[default]
+    Immediate,
+    /// Each message at its frame's time: the block's spacing kept.
+    AtFrames,
+}
+
+impl Timing {
+    const fn index(self) -> u8 {
+        match self {
+            Timing::Immediate => 0,
+            Timing::AtFrames => 1,
+        }
+    }
+
+    const fn from_index(index: u8) -> Timing {
+        match index {
+            1 => Timing::AtFrames,
+            _ => Timing::Immediate,
+        }
+    }
+}
 
 /// Makes the app's MIDI out, with room in each output for `room` packets
 /// waiting to go, and splits it into its two sides: [`Outputs`], which opens
@@ -58,11 +110,18 @@ pub const MAX_OUTPUTS: usize = 16;
 /// ```
 pub fn outputs(room: usize) -> (Outputs, OutputsWriter) {
     let (producers, consumers): (Vec<_>, Vec<_>) = (0..MAX_OUTPUTS).map(|_| ring(room)).unzip();
+    let signals: Vec<Arc<backend::Signal>> = (0..MAX_OUTPUTS)
+        .map(|_| Arc::new(backend::Signal::new()))
+        .collect();
+    let timing = Arc::new(AtomicU8::new(Timing::default().index()));
     let outputs = Outputs {
         slots: consumers.into_iter().map(Slot::Free).collect(),
+        signals: signals.iter().map(Arc::clone).collect(),
+        timing: Arc::clone(&timing),
     };
     let writer = OutputsWriter {
-        rings: producers.into_boxed_slice(),
+        rings: producers.into_iter().zip(signals).collect(),
+        timing,
         lost: 0,
     };
     (outputs, writer)
@@ -96,6 +155,10 @@ pub fn outputs(room: usize) -> (Outputs, OutputsWriter) {
 /// ```
 pub struct Outputs {
     slots: Vec<Slot>,
+    /// What wakes each output's thread, the writer setting it.
+    signals: Box<[Arc<backend::Signal>]>,
+    /// When the writer has the outputs send, shared with it.
+    timing: Arc<AtomicU8>,
 }
 
 enum Slot {
@@ -126,17 +189,18 @@ impl Outputs {
         if self.is_open(device.id()) {
             return Ok(());
         }
-        let slot = self
+        let (slot, signal) = self
             .slots
             .iter_mut()
-            .find(|slot| matches!(slot, Slot::Free(_)))
+            .zip(self.signals.iter())
+            .find(|(slot, _)| matches!(slot, Slot::Free(_)))
             .ok_or(OpenError::NoRoom)?;
         let Slot::Free(mut consumer) = std::mem::replace(slot, Slot::Lost) else {
             return Err(OpenError::NoRoom);
         };
         // What a block pushed before the device came is not its to send.
         consumer.clear();
-        match backend::Output::open(device, consumer) {
+        match backend::Output::open(device, consumer, Arc::clone(signal)) {
             Ok(output) => {
                 *slot = Slot::Open(device.clone(), output);
                 Ok(())
@@ -167,6 +231,16 @@ impl Outputs {
     /// Whether the device `id` names is open.
     pub fn is_open(&self, id: &DeviceId) -> bool {
         self.devices().any(|device| device.id() == id)
+    }
+
+    /// From the next block on, has every output send as `timing` says.
+    pub fn set_timing(&self, timing: Timing) {
+        self.timing.store(timing.index(), Ordering::Relaxed);
+    }
+
+    /// When the outputs send a block's MIDI.
+    pub fn timing(&self) -> Timing {
+        Timing::from_index(self.timing.load(Ordering::Relaxed))
     }
 
     /// The devices open now.
@@ -215,7 +289,8 @@ impl Outputs {
 }
 
 /// The audio thread's side of the app's MIDI out: it hands each block's
-/// MIDI to every open output, each packet due at its frame's time.
+/// MIDI to every open output, due as soon as the block has played, or each
+/// packet at its frame's time, as the outputs' [`Timing`] says.
 ///
 /// The plugin's MIDI 2.0 is downgraded to MIDI 1.0 here, by the
 /// specification's Default Translation, since every device on the systems
@@ -223,7 +298,9 @@ impl Outputs {
 /// is dropped and counted in [`lost`](Self::lost). A packet goes to every
 /// open output in the order the plugin sent it, and an output's thread
 /// sends it once its time comes, at once if that has passed: never earlier,
-/// and never dropped for being late.
+/// and never dropped for being late. Once a block has handed an output its
+/// MIDI, the writer wakes the output's thread, a signal that never blocks:
+/// so the block's first message leaves the moment the block has played.
 ///
 /// # Examples
 ///
@@ -239,7 +316,9 @@ impl Outputs {
 /// assert_eq!((writer.dropped(), writer.lost()), (0, 0));
 /// ```
 pub struct OutputsWriter {
-    rings: Box<[Producer]>,
+    /// Each output's ring, and what wakes its thread.
+    rings: Box<[(Producer, Arc<backend::Signal>)]>,
+    timing: Arc<AtomicU8>,
     lost: u64,
 }
 
@@ -253,24 +332,32 @@ impl fmt::Debug for OutputsWriter {
 }
 
 impl OutputsWriter {
-    /// Hands `sent`, a block's MIDI, to every open output: each packet due
-    /// at `start`, when the block's first frame is, plus its frame at
-    /// `rate` frames a second. Past an output's room a packet is dropped
-    /// and counted in [`dropped`](Self::dropped).
+    /// Hands `sent`, a block's MIDI, to every open output: due at once,
+    /// or, at [`Timing::AtFrames`], each packet at `start`, when the
+    /// block's first frame is, plus its frame at `rate` frames a second.
+    /// Past an output's room a packet is dropped and counted in
+    /// [`dropped`](Self::dropped).
     ///
-    /// Thread: audio. Allocates nothing.
+    /// Thread: audio. Allocates nothing, and wakes each output it handed
+    /// MIDI with a signal that never blocks.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn write(&mut self, start: Instant, rate: f64, sent: &[Event]) {
-        if !self.rings.iter().any(Producer::is_read) {
+        if sent.is_empty() || !self.rings.iter().any(|(ring, _)| ring.is_read()) {
             return;
         }
+        let at_frames = Timing::from_index(self.timing.load(Ordering::Relaxed)) == Timing::AtFrames;
         let nanos_per_frame = if rate > 0.0 { 1e9 / rate } else { 0.0 };
         let mut downgrade = Downgrade::new();
-        let mut lost = 0_u64;
+        let (mut lost, mut pushed) = (0_u64, false);
         let rings = &mut self.rings;
         for event in sent {
-            let after = (f64::from(event.offset) * nanos_per_frame) as u64;
-            let due = Instant::from_nanos(start.nanos().saturating_add(after));
+            // Due at once: no moment is earlier than the clock's start.
+            let due = if at_frames {
+                let after = (f64::from(event.offset) * nanos_per_frame) as u64;
+                Instant::from_nanos(start.nanos().saturating_add(after))
+            } else {
+                Instant::from_nanos(0)
+            };
             downgrade.translate(event, |packet| {
                 // A packet MIDI 1.0's bytes cannot carry: a utility or
                 // stream message, or 8-bit SysEx.
@@ -278,10 +365,16 @@ impl OutputsWriter {
                     lost = lost.saturating_add(1);
                     return;
                 }
-                for ring in rings.iter_mut().filter(|ring| ring.is_read()) {
+                for (ring, _) in rings.iter_mut().filter(|(ring, _)| ring.is_read()) {
                     ring.push(due, packet.words);
+                    pushed = true;
                 }
             });
+        }
+        if pushed {
+            for (_, signal) in rings.iter().filter(|(ring, _)| ring.is_read()) {
+                signal.set();
+            }
         }
         self.lost = self
             .lost
@@ -293,7 +386,7 @@ impl OutputsWriter {
     /// SysEx longer than its device sends whole, since it was made: the
     /// device sends too slowly for what the plugin sends.
     pub fn dropped(&self) -> u64 {
-        self.rings.iter().map(Producer::dropped).sum()
+        self.rings.iter().map(|(ring, _)| ring.dropped()).sum()
     }
 
     /// How many messages MIDI 1.0 had no message for, since it was made.

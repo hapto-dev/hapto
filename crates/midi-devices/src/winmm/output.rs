@@ -2,18 +2,18 @@
 //! hands it, each message at its time, and its close.
 //!
 //! The audio thread never calls WinMM. It pushes packets into the output's
-//! ring, each stamped with when it is due, and the output's own thread
-//! takes them in turn: it sleeps until a packet is due, or for a moment
-//! while none waits, then sends it. A SysEx is joined from its packets and
-//! sent whole as one long message, which the thread waits on while the
-//! driver sends it, so a slow port holds up only its own output.
+//! ring, each stamped with when it is due, and sets the output's signal,
+//! and the output's own thread takes them in turn: it sleeps until the next
+//! is due or the signal wakes it, then sends what is due. A SysEx is joined
+//! from its packets and sent whole as one long message, which the thread
+//! waits on while the driver sends it, so a slow port holds up only its own
+//! output.
 
 use std::fmt;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
 
 use hapto_ump::Bytes;
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
@@ -25,16 +25,15 @@ use windows::Win32::Media::{MMSYSERR_NODRIVER, MMSYSERR_NOERROR};
 use windows::Win32::System::Threading::{CreateEventW, SetEvent, WaitForSingleObject};
 use windows::core::{PCWSTR, PSTR};
 
+use super::signal::{Signal, Timer};
 use super::{CLOSE_TRIES, UNPREPARE_TRIES, refusal, retry};
 use crate::Instant;
 use crate::id::{Device, Direction};
 use crate::inputs::OpenError;
 use crate::ring::Consumer;
 
-/// How long the output's thread sleeps at most before it looks again: while
-/// nothing waits, and before a packet due later.
-const POLL: Duration = Duration::from_millis(1);
-/// How long it waits at a time for the driver to send a SysEx.
+/// How long the output's thread waits at a time for the driver to send a
+/// SysEx.
 const SYSEX_WAIT_MS: u32 = 10;
 /// The longest SysEx an output sends whole; a longer one is dropped and
 /// counted.
@@ -205,6 +204,8 @@ pub(crate) struct Output {
     /// `None` once closed.
     shared: Option<Arc<Shared>>,
     thread: Option<JoinHandle<Consumer>>,
+    /// What wakes the thread: the audio thread sets it as it pushes.
+    signal: Arc<Signal>,
 }
 
 impl fmt::Debug for Output {
@@ -216,12 +217,13 @@ impl fmt::Debug for Output {
 }
 
 impl Output {
-    /// Opens `device` to send what `consumer`'s ring holds. On a refusal
-    /// the consumer comes back, unless the thread that would send could not
-    /// start, which took it.
+    /// Opens `device` to send what `consumer`'s ring holds, its thread
+    /// woken by `signal`. On a refusal the consumer comes back, unless the
+    /// thread that would send could not start, which took it.
     pub(crate) fn open(
         device: &Device,
         consumer: Consumer,
+        signal: Arc<Signal>,
     ) -> Result<Output, (OpenError, Option<Consumer>)> {
         let Some(index) = super::index_of(Direction::Output, device.id()) else {
             return Err((OpenError::Gone, Some(consumer)));
@@ -254,14 +256,15 @@ impl Output {
         }
         let handle = Handle(handle);
         consumer.set_reading(true);
-        let thread_shared = Arc::clone(&shared);
+        let (thread_shared, thread_signal) = (Arc::clone(&shared), Arc::clone(&signal));
         let started = thread::Builder::new()
             .name("hapto midi out".to_owned())
-            .spawn(move || send(handle, &thread_shared, consumer));
+            .spawn(move || send(handle, &thread_shared, &thread_signal, consumer));
         let mut output = Output {
             handle,
             shared: Some(shared),
             thread: None,
+            signal,
         };
         match started {
             Ok(thread) => {
@@ -294,8 +297,9 @@ impl Output {
     fn shut(&mut self) -> Option<Consumer> {
         let shared = self.shared.take()?;
         shared.stop.store(true, Ordering::Release);
-        // SAFETY: the shared event, alive with it: wakes a thread that waits
-        // on a SysEx.
+        // Wakes the thread, waiting for a packet or on a SysEx.
+        self.signal.set();
+        // SAFETY: the shared event, alive with it.
         let _ = unsafe { SetEvent(shared.done.0) };
         let consumer = self.thread.take().and_then(|thread| thread.join().ok());
         let handle = self.handle.0;
@@ -317,17 +321,20 @@ impl Drop for Output {
 }
 
 /// The output's thread: it sends each packet once its time comes, until
-/// the output stops it, and hands the ring back.
-fn send(handle: Handle, shared: &Shared, mut consumer: Consumer) -> Consumer {
+/// the output stops it, and hands the ring back. It waits for `signal`
+/// while nothing waits to be sent, and on its own timer for a packet due
+/// later, which the signal also ends.
+fn send(handle: Handle, shared: &Shared, signal: &Signal, mut consumer: Consumer) -> Consumer {
+    let timer = Timer::new();
     let mut sysex = Sysex::new();
     while !shared.stop.load(Ordering::Acquire) {
         let Some((due, words)) = consumer.peek() else {
-            thread::sleep(POLL);
+            timer.wait(signal, None);
             continue;
         };
         let now = Instant::now();
         if due > now {
-            thread::sleep(due.since(now).min(POLL));
+            timer.wait(signal, Some(due.since(now)));
             continue;
         }
         consumer.pop();

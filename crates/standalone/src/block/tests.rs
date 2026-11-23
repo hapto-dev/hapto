@@ -277,9 +277,10 @@ impl Render for Sender {
 }
 
 #[test]
-fn each_blocks_midi_is_due_where_its_frames_fall_in_the_devices_buffer() {
+fn at_frames_each_blocks_midi_is_due_where_its_frames_fall_in_the_devices_buffer() {
     let plan = Plan::new(Blocks::Fixed, Signal::Silence);
     let (mut outputs, writer) = outputs(16);
+    outputs.set_timing(hapto_midi_devices::Timing::AtFrames);
     outputs.take(0);
     let mut player =
         Player::new(Sender, Width::STEREO, 2, 48_000.0, 64, plan).with_midi_out(writer);

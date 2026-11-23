@@ -5,7 +5,7 @@
 use std::thread;
 use std::time::Duration;
 
-use hapto_midi_devices::{Devices, Instant, inputs, outputs};
+use hapto_midi_devices::{Devices, Instant, Timing, inputs, outputs};
 use hapto_ump::{Event, EventList};
 
 /// The system's own synth, which plays what it is sent through the
@@ -34,6 +34,7 @@ fn a_chord_and_a_sysex_play_on_the_systems_synth_each_at_its_time() {
         return;
     };
     let (mut outputs, mut writer) = outputs(64);
+    outputs.set_timing(Timing::AtFrames);
     outputs.open(synth).expect("the synth opens");
     // General MIDI on, then C, E and G a quarter second apart, held to a
     // second, as one block of a second at 1 kHz.
