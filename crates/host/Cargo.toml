@@ -30,9 +30,8 @@ category = "effect"
 features = ["equalizer"]
 
 [features]
-# VST3, natively in Rust: parameters, automation, state, bus layouts and a
-# main-thread timer, for Windows and macOS. No MIDI reaches a plugin through
-# it yet.
+# VST3, natively in Rust: parameters, automation, state, bus layouts, MIDI in
+# and out, and a main-thread timer, for Windows and macOS.
 vst3 = ["dep:vst3", "dep:windows-sys"]
 # The C ABI and generated header the JUCE adapter (AU, AUv3, AAX, hosting)
 # is driven by.

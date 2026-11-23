@@ -7,9 +7,8 @@ may break the API.
 
 ## [Unreleased]
 
-Nothing is released yet. Not built: the CLAP exporter, a page in a plugin
-window anywhere but Windows, and MIDI delivered to a plugin through an
-exporter.
+Nothing is released yet. Not built: the CLAP exporter, and a page in a plugin
+window anywhere but Windows.
 
 ### Changed
 
@@ -39,10 +38,12 @@ exporter.
 - **Breaking.** `ProcessSetup` is made with `ProcessSetup::new`, with room for
   no MIDI until a test sets `max_events` or `max_out_events`, so the buses
   beyond the main one can join it later without breaking a caller.
-- **Breaking.** `StandaloneAudio::process` takes the block's `frames`, as the
-  C interface's `process` does, so a plugin with no channels plays its MIDI,
-  and `sent`, which it hands what the plugin sent once the block has played,
-  at the block's frames, for an app to send to its devices.
+- **Breaking.** `StandaloneAudio::process` takes a `StandaloneBlock`, the
+  block's channels, frames and MIDI in, and `sent`, which it hands what the
+  plugin sent once the block has played, at the block's frames, for an app to
+  send to its devices. `StandaloneBlock::new` makes a block of audio alone, as
+  long as its shortest channel, and `with_midi` gives it MIDI and its length,
+  so a plugin with no channels plays its MIDI.
 - The VST3 exporter sends a plugin's MIDI to its host, for a plugin that
   declares MIDI out: notes as VST3's note events, under the host's `noteId`
   where the host named the note and none where the plugin made it up, a

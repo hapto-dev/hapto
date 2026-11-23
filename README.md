@@ -33,11 +33,13 @@ versioning](https://semver.org/): before 1.0, a minor version may break the API.
 - **Built:** the core crates, the VST3 exporter (Windows and macOS; a plugin's
   editor in the host's window on Windows), the C interface and the generic
   JUCE adapter, the page's React hooks and protocol and the native side that
-  answers the page, the example gain, the example EQ, the standalone app on
-  Windows, `cargo hapto`, and the comparison against plain JUCE.
-- **Not built:** the CLAP exporter; a page in a plugin window anywhere but
-  Windows, where `hapto-webview` shows it; and MIDI delivered to a plugin
-  through an exporter. [ROADMAP.md](ROADMAP.md) says what comes next.
+  answers the page, MIDI in and out through the VST3 exporter, the C interface
+  and the standalone app's devices, the example gain, the example EQ, the MIDI
+  probe, the standalone app on Windows, `cargo hapto`, and the comparison
+  against plain JUCE.
+- **Not built:** the CLAP exporter, and a page in a plugin window anywhere but
+  Windows, where `hapto-webview` shows it. [ROADMAP.md](ROADMAP.md) says what
+  comes next.
 
 ## Start here
 

@@ -662,9 +662,10 @@ it changes. A change to Rust needs the bundle built and the host started
 again; the server goes on. The dev host stands in for none of these: a real
 host's quirks are what it cannot show.
 
-The app runs on Windows only, as the page does. No MIDI reaches the plugin,
-nor any automation: the app is the host, and an edit the page makes lands in
-the parameters with no one else to tell.
+The app runs on Windows only, as the page does. The computer's MIDI inputs
+reach the plugin, as the app's `MidiDevices` says, but no automation does:
+the app is the host, and an edit the page makes lands in the parameters with
+no one else to tell.
 
 ## Your own crate
 
