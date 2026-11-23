@@ -95,9 +95,7 @@ impl Processor for Echo {
         let Block {
             midi, mut midi_out, ..
         } = block;
-        for (frame, message) in midi {
-            midi_out.forward(frame, &message);
-        }
+        midi_out.extend(midi);
         Status::Continue
     }
 }

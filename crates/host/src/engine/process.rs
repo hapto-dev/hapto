@@ -547,7 +547,7 @@ unsafe fn pieces<R: Processor>(
         let length = frames
             .saturating_sub(offset)
             .min(channels.max_frames().get());
-        let piece = midi.between(offset, offset.saturating_add(length));
+        let piece = midi.midi().between(offset, offset.saturating_add(length));
         let sent = out_events.as_slice().len();
         // SAFETY: each non-null channel holds `frames` floats (this
         // function's contract), so `offset + length` of them, nothing else

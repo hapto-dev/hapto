@@ -251,7 +251,7 @@ move its line here; when a decision gains code, add one.
 [Record section](decisions.md#d23-how-the-processor-sends-midi)
 
 - test `crates/midi/tests/send.rs`: `a_sysex_goes_out_whole_or_not_at_all`
-- `crates/midi/src/midi.rs`: `MidiOut::forward`, `named`
+- `crates/midi/src/midi.rs`: `MidiOut::send`, `named`
 - test `crates/midi/tests/block.rs`: `a_note_its_host_named_goes_out_under_the_hosts_id_and_one_made_up_under_none`
 - `crates/host/src/audio.rs`: `Block`
 - `crates/host/src/engine/process.rs`: `pieces`

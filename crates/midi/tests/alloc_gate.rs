@@ -71,10 +71,11 @@ fn reading_a_block_and_sending_does_not_allocate() {
         for _ in 0..4 {
             sent.clear();
             list.read(&packets, 16);
-            for part in [list.midi(), list.between(0, 8), list.between(8, 16)] {
+            let midi = list.midi();
+            for part in [midi, midi.between(0, 8), midi.between(8, 16)] {
                 let mut out = MidiOut::new(&mut sent);
                 for (frame, message) in part {
-                    out.forward(frame, &message);
+                    out.send(frame, message);
                     seen += 1;
                 }
                 out.extend(part.packets());

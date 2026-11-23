@@ -30,9 +30,10 @@ fn a_part_of_the_block_has_its_messages_at_frames_from_its_own_start() {
     let mut list = MidiList::new();
     list.read(&block(&[(2, on(60)), (40, on(62)), (63, on(64))]), 64);
     assert_eq!(frames(list.midi()), [2, 40, 63]);
-    assert_eq!(frames(list.between(0, 32)), [2]);
-    assert_eq!(frames(list.between(32, 64)), [8, 31]);
-    let packets: Vec<u32> = list.between(32, 64).packets().map(|p| p.offset).collect();
+    assert_eq!(frames(list.midi().between(0, 32)), [2]);
+    assert_eq!(frames(list.midi().between(32, 64)), [8, 31]);
+    let later = list.midi().between(32, 64);
+    let packets: Vec<u32> = later.packets().map(|p| p.offset).collect();
     assert_eq!(packets, [8, 31]);
 }
 
@@ -52,7 +53,7 @@ fn the_blocks_drops_come_with_the_part_that_starts_it() {
     // The block's own two drops, which the part from frame 0 reports.
     list.read(&packets, 8);
     assert_eq!(list.midi().dropped(), 2);
-    assert_eq!(list.between(4, 8).dropped(), 0);
+    assert_eq!(list.midi().between(4, 8).dropped(), 0);
     // The key has two notes now, one from the block before. With room for
     // one message and one packet, the note-off's packet has no room, nor
     // have the two note-offs it decodes to.
@@ -157,9 +158,7 @@ fn a_note_its_host_named_goes_out_under_the_hosts_id_and_one_made_up_under_none(
     midi.read(&list, 16);
     let mut sent = EventList::with_capacity(8);
     let mut out = MidiOut::new(&mut sent);
-    for (frame, message) in midi.midi() {
-        out.forward(frame, &message);
-    }
+    out.extend(midi.midi());
     let origins: Vec<Origin> = sent.as_slice().iter().map(|e| e.origin).collect();
     let host = Origin::Note { id: 7 };
     assert_eq!(origins, [host, host, host, Origin::Midi2]);

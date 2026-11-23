@@ -39,8 +39,8 @@ enum Kept {
 /// [`read`](Self::read) decodes a block's packets in order, with a decoder
 /// of its own, so state that spans blocks, a note sounding or a SysEx under
 /// way, stays right. [`midi`](Self::midi) is the whole block's MIDI, and
-/// [`between`](Self::between) part of it. A message or SysEx byte past its
-/// room is dropped and counted in [`Midi::dropped`].
+/// [`Midi::between`] part of it. A message or SysEx byte past its room is
+/// dropped and counted in [`Midi::dropped`].
 ///
 /// # Examples
 ///
@@ -57,7 +57,7 @@ enum Kept {
 /// let frames: Vec<usize> = list.midi().iter().map(|(frame, _)| frame).collect();
 /// assert_eq!(frames, [3, 9]);
 /// // The second half of the block, its frames from its own start.
-/// let later = list.between(8, 16);
+/// let later = list.midi().between(8, 16);
 /// assert!(matches!(later.iter().next(), Some((1, Message::NoteOff(_)))));
 /// ```
 pub struct MidiList {
@@ -158,12 +158,6 @@ impl MidiList {
             start: 0,
             dropped: self.dropped,
         }
-    }
-
-    /// The MIDI at frames `from` up to `to`, at frames from `from`. The
-    /// block's drops come with the part that starts at frame 0.
-    pub fn between(&self, from: usize, to: usize) -> Midi<'_> {
-        self.midi().between(from, to)
     }
 
     /// Forgets every note sounding and any SysEx under way, as at an
@@ -490,28 +484,23 @@ impl<'a> MidiOut<'a> {
         MidiOut { packets }
     }
 
-    /// Sends `message` at `frame`, encoded anew: a note moved with
-    /// [`NoteOn::with_key`](crate::NoteOn::with_key), say. A note keeps its
-    /// id, so one its host named goes out as the host's; a note sent beside
-    /// it takes an id of the plugin's own, [`NoteId::own`](crate::NoteId::own).
-    /// A SysEx goes out whole or not at all: one past the room is dropped and
-    /// its packets counted.
+    /// Sends `message` at `frame`, encoded anew: a message of the plugin's
+    /// own, a note moved with [`NoteOn::with_key`](crate::NoteOn::with_key),
+    /// or a message that arrived, sent on to the next plugin as MIDI thru,
+    /// which is never implicit.
+    ///
+    /// A note keeps its attribute and its id, so one its host named goes out
+    /// under the host's id, in the packet's origin, where the host knows it
+    /// again; a note sent beside it takes an id of the plugin's own,
+    /// [`NoteId::own`](crate::NoteId::own). A value goes at an `f32`'s
+    /// precision: for the packets exactly as they came, extend with
+    /// [`Midi::packets`]. A SysEx goes out whole or not at all: one past the
+    /// room is dropped and its packets counted.
     ///
     /// Thread: audio. Allocates nothing.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn send<'m>(&mut self, frame: usize, message: impl Into<Message<'m>>) {
-        self.forward(frame, &message.into());
-    }
-
-    /// Sends a message that arrived on to the next plugin, at `frame`: MIDI
-    /// thru, which is never implicit. A note keeps its attribute, a note its
-    /// host named keeps the host's id, in the packet's origin, so the host
-    /// knows it again, and a value goes at an `f32`'s precision: for the
-    /// packets exactly as they came, extend with [`Midi::packets`].
-    ///
-    /// Thread: audio. Allocates nothing.
-    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
-    pub fn forward(&mut self, frame: usize, message: &Message<'_>) {
+        let message = message.into();
         if let Message::SysEx { data, .. } = message {
             let needed = SysEx7::count(data.len());
             let room = self
@@ -525,9 +514,9 @@ impl<'a> MidiOut<'a> {
             }
         }
         let offset = u32::try_from(frame).unwrap_or(u32::MAX);
-        let origin = named(message);
+        let origin = named(&message);
         let packets = &mut *self.packets;
-        encode(message, |words| {
+        encode(&message, |words| {
             packets.push(Event {
                 origin,
                 ..Event::new(offset, words)
@@ -566,6 +555,33 @@ fn named(message: &Message<'_>) -> Origin {
 }
 
 /// Sends each packet as it is, as [`MidiOut::send_packet`] does.
+/// Sends each message at its frame, as [`MidiOut::send`] does: MIDI thru
+/// is `midi_out.extend(midi)`.
+///
+/// # Examples
+///
+/// ```
+/// use hapto_midi::{MidiList, MidiOut};
+/// use hapto_ump::{Event, EventList};
+///
+/// let mut packets = EventList::with_capacity(4);
+/// packets.push(Event::new(3, [0x4090_3C00, 0xFFFF_0000, 0, 0]));
+/// let mut list = MidiList::new();
+/// list.read(&packets, 16);
+///
+/// // Everything that arrived, sent on.
+/// let mut sent = EventList::with_capacity(4);
+/// MidiOut::new(&mut sent).extend(list.midi());
+/// assert_eq!(sent.as_slice()[0].offset, 3);
+/// ```
+impl<'m> Extend<(usize, Message<'m>)> for MidiOut<'_> {
+    fn extend<I: IntoIterator<Item = (usize, Message<'m>)>>(&mut self, messages: I) {
+        for (frame, message) in messages {
+            self.send(frame, message);
+        }
+    }
+}
+
 impl Extend<Event> for MidiOut<'_> {
     fn extend<I: IntoIterator<Item = Event>>(&mut self, packets: I) {
         for packet in packets {
