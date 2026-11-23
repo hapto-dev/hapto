@@ -1,0 +1,24 @@
+//! The drift gate for the plugin's JUCE adapter settings: `hapto-juce.cmake`
+//! is its own `INFO`, generated. `cargo hapto juce` rewrites it; so does
+//! `HAPTO_BLESS=1 cargo test --test juce_settings`.
+
+use std::path::Path;
+
+use {{lib}}::{{type}};
+
+/// The header's instruction for settings `cargo xtask gen` writes, and
+/// these.
+const XTASK: &str = "`cargo xtask gen`";
+const HERE: &str = "`cargo hapto juce`";
+
+#[test]
+fn the_juce_settings_match_the_plugins_info() {
+    let settings =
+        hapto_host::cabi::juce_settings::<{{type}}>("Cargo.toml and src/lib.rs ({{type}}::INFO)");
+    assert!(
+        settings.contains(XTASK),
+        "the settings' header changed: update this test"
+    );
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("hapto-juce.cmake");
+    hapto_testkit::drift::check_generated(&path, &settings.replace(XTASK, HERE));
+}

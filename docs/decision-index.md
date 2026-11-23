@@ -701,6 +701,8 @@ move its line here; when a decision gains code, add one.
 - `.github/workflows/juce-adapter.yml`: module
 - `adapters/juce/HaptoJuce.cmake`: `hapto_add_juce_plugin`, `_hapto_apple_build`
 - `crates/host/src/cabi/juce.rs`: `juce_settings`
+- `crates/cli/src/juce.rs`: module, `run_juce`, `cmake`
+- `crates/cli/template/tests/juce_settings.rs.tmpl`: module
 
 ### D65. What a host sees through JUCE
 
@@ -1275,6 +1277,8 @@ move its line here; when a decision gains code, add one.
 - `crates/cli/src/tool.rs`: `Artifact`, `Artifact::read`, `build`
 - `crates/cli/src/page.rs`: `build`, `install`, `packages`, `scripts`
 - `crates/cli/src/validate.rs`: module, `Options`, `PLUGINVAL_ARGS`, `pluginval_command`, `run_pluginval`
+- `crates/cli/src/juce.rs`: `Options`, `settings_test`
+- `crates/cli/src/tool.rs`: `generating_test`
 - `.github/workflows/ci.yml`: `validators:`
 - `crates/cli/src/dev.rs`: module, `Line`, `App::of`, `Copies`, `RELAUNCH`, `Ended`, `Ended::of`, `Seen`, `Build`, `Next`, `after_build`, `build_app`, `app_command`, `PageSource`, `page_source`, `in_app`, `Running::ended`, `Running::quit`, `windows_only`
 - `crates/cli/src/serve.rs`: module, `Options`, `run`

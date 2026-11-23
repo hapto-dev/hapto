@@ -356,7 +356,10 @@ exporter.
   `cargo hapto build` writes a plugin crate's page map, builds its page and
   the crate in release, lays out its VST3 bundle under `target/bundle/` and
   installs it, per user or for every user, on Windows. `cargo hapto validate`
-  runs pluginval on that bundle as CI does: CI's validator lane runs it. Each
+  runs pluginval on that bundle as CI does: CI's validator lane runs it.
+  `cargo hapto juce` writes the crate's settings for the JUCE adapter through
+  its `juce_settings` test, which `init` writes with a `cabi` feature, and
+  prints the CMake that builds it through JUCE. Each
   command's `--help` says its flags.
 - `hapto-host`: the standalone exporter, behind the `standalone` feature: a
   plugin driven by an app of its own with no host, through the same engine.

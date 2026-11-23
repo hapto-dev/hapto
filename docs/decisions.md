@@ -100,7 +100,7 @@ comments never cite an id: they state the reason in words, and
 | D61 | [Who flushes denormals to zero? (the comparison's fairness row)](#d61-who-flushes-denormals) | Every exporter, around every `process` call: FTZ and DAZ on x86, FZ on AArch64, restoring the host's setting after, so no plugin has to. | decided |
 | D62 | [What shape is the C interface the JUCE adapter is driven by? (H5, D51, D60)](#d62-the-c-interface-for-the-juce-adapter) | One exported symbol, `hapto_plugin`, answering a table of function pointers, as CLAP's entry point does: the plugin's layouts and every call into an instance, each with the thread it may run on. A block's MIDI passes as UMP both ways: MIDI 1.0 or 2.0 in, and out downgraded for a caller that takes MIDI 1.0 alone. | decided |
 | D63 | [How is the C header kept true to the Rust side? (D27)](#d63-keeping-the-c-header-true) | Hapto's own generator writes `crates/host/include/hapto.h` from the Rust declarations, and the header asserts every struct's size and every field's offset as Rust laid them out. | decided |
-| D64 | [How does the JUCE adapter build a plugin? (H5, D18)](#d64-how-the-juce-adapter-builds-a-plugin) | It links the plugin crate as a static library built with only its `cabi` feature. `cargo xtask gen` writes a `hapto-juce.cmake` per plugin, and `hapto_add_juce_plugin` runs cargo and adds the adapter's one processor class. | decided |
+| D64 | [How does the JUCE adapter build a plugin? (H5, D18)](#d64-how-the-juce-adapter-builds-a-plugin) | It links the plugin crate as a static library built with only its `cabi` feature. A plugin's `hapto-juce.cmake` is its own `juce_settings` test's to write, which `cargo hapto juce` runs, and `hapto_add_juce_plugin` runs cargo and adds the adapter's one processor class. | decided |
 | D65 | [What does a host see of a plugin through JUCE? (D31, D53, D58, C4)](#d65-what-a-host-sees-through-juce) | What JUCE 9 makes of it, as of the JUCE EQ; checked with VST3 on Windows. Parameter ids are JUCE's hash of the key, not D31's, and the one program has the plugin's name. | decided |
 | D66 | [What does a load do with bytes after the block, and is the host told that a load failed? (H2)](#d66-bytes-after-the-block-and-a-failed-load) | Trailing NUL bytes are trimmed and the block loads, and JSON whitespace around the object loads too; any other byte after the object makes the block unrecognised. A load that fails is answered as failed, except through JUCE, whose `setStateInformation` answers nothing, so the adapter cannot tell its host. | decided |
 | D67 | [How are the rules checked that keep locking types off the audio thread? (P6, D39)](#d67-checking-the-audio-thread-locking-rule) | By a debug-build mark, `hapto_params::audio_thread`: a per-thread depth an exporter raises around everything its `process` call runs, and every call that locks asserts the mark is absent. | decided |
@@ -1481,12 +1481,16 @@ Not applicable.
 plugin crate exports with `export_vst3!` behind a default `vst3` feature and
 `export_cabi!` behind `cabi`.
 
-JUCE's build-time facts come from a `hapto-juce.cmake` that `cargo xtask gen`
-writes per plugin from `PluginInfo`: names, the AU codes (D86; from which JUCE
-also derives its VST3 class id, so the adapter's build is a different plugin
-from Hapto's native one), the VST3 categories, MIDI. Writing it refuses keys
-whose JUCE ids collide, with each other or with JUCE's own bypass and program
-parameters.
+JUCE's build-time facts come from a `hapto-juce.cmake` written per plugin from
+`PluginInfo`: names, the AU codes (D86; from which JUCE also derives its VST3
+class id, so the adapter's build is a different plugin from Hapto's native one),
+the VST3 categories, MIDI. Writing it refuses keys whose JUCE ids collide, with
+each other or with JUCE's own bypass and program parameters. A plugin's settings
+are its own `juce_settings` test's to write, as its page's parameter map is its
+`page_params` test's (D109), since a tool that linked two plugins would carry
+two sets of entry points into one binary: `cargo hapto juce` runs the test,
+which `cargo hapto init` writes, and prints the CMake that builds the plugin
+through the adapter. `cargo xtask gen` writes the example EQ's.
 
 `hapto_add_juce_plugin` in `adapters/juce/HaptoJuce.cmake` reads them, runs
 cargo on the plugin's manifest (Hapto's workspace by default, or a product's
@@ -2740,10 +2744,10 @@ line in the manifest. The macro includes the manifest's text, so a change to
 it builds the crate again. A `PluginInfo` written by hand still works, as the
 rest of `hapto-host`'s doc examples write theirs.
 
-Open: `cargo xtask gen` still compiles the plugin to write the JUCE adapter's
-settings. With the identity in the manifest, a tool can read most of them
-through `cargo metadata`, though not the MIDI flags or the parameter keys the
-settings are checked against.
+Open: the JUCE adapter's settings are still written by compiling the plugin, in
+its `juce_settings` test. With the identity in the manifest, a tool can read
+most of them through `cargo metadata`, though not the MIDI flags or the
+parameter keys the settings are checked against.
 
 **Alternatives.** The alternatives were `PluginInfo` written in Rust alone,
 where the version and description repeat the manifest's and drift from it,
@@ -3313,6 +3317,12 @@ lockfile pins the crates it builds.
   strictness level 5, in pluginval's own process and without its GUI tests,
   keeping its logs in a folder when asked. CI's validator lane runs it, so
   the options are written once, in the command.
+- **`juce`** writes the plugin's settings for the JUCE adapter (D64) through its
+  `juce_settings` test, as `build` writes the page's parameter map, or in CI
+  checks them, and prints the CMake that builds the plugin through the adapter:
+  the adapter's file in the checkout the command was built from, the package,
+  the settings and the workspace's manifest. A crate with no such test is
+  refused with how to add one.
 - **Versions.** The command warns when the workspace's lockfile pins a
   `hapto-host` of another version than its own, and goes on: before 1.0, a
   bundle's layout may change between versions.

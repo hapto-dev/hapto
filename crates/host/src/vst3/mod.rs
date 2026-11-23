@@ -190,7 +190,9 @@ impl Message {
 /// Exports a [`Plugin`] as a VST3 module: `GetPluginFactory` and the platform's
 /// module entry and exit points.
 ///
-/// Use it once, at the root of a `cdylib` crate. It refuses to build a
+/// Use it once, at the root of a `cdylib` crate. A binary links one plugin's
+/// exports, as two would define the same symbols: a crate that depends on two
+/// plugin crates turns their `vst3` features off. It refuses to build a
 /// plugin that declares no layout or a bus wider than stereo. It also
 /// refuses a crate built with `panic = "abort"`, under which a panic ends
 /// the host, and any platform but Windows and macOS.

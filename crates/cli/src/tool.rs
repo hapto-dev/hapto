@@ -3,8 +3,9 @@
 #[cfg(test)]
 mod tests;
 
+use std::ffi::OsStr;
 use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use anyhow::{Context as _, Result, bail, ensure};
@@ -102,6 +103,31 @@ pub(crate) fn cargo() -> Command {
 /// only an `.exe` there.
 pub(crate) fn npm() -> Command {
     Command::new(if cfg!(windows) { "npm.cmd" } else { "npm" })
+}
+
+/// The test `test` of `package`, run from `root`, with `ci` the value of
+/// `CI`: a plugin's generated file is its own test's to write, since a tool
+/// that linked the plugin would carry its entry points. The test writes the
+/// file, unless `CI` is set: there it checks it, since Hapto's drift check
+/// refuses a test that rewrites its own file in CI, and a file that does not
+/// match fails the build. The variables' names are `hapto-testkit`'s, which
+/// this command does not link. Cargo shows its progress, since a new crate's
+/// first run compiles hundreds of crates here, and the test's own harness is
+/// quiet.
+pub(crate) fn generating_test(
+    package: &str,
+    test: &str,
+    root: &Path,
+    ci: Option<&OsStr>,
+) -> Command {
+    let mut command = cargo();
+    command
+        .args(["test", "-p", package, "--test", test, "--", "-q"])
+        .current_dir(root);
+    if ci.is_none_or(OsStr::is_empty) {
+        command.env("HAPTO_BLESS", "1");
+    }
+    command
 }
 
 /// Runs `command`, its output shown, and says `what` it runs first.

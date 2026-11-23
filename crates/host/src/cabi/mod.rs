@@ -137,7 +137,10 @@ const fn table<P: Plugin>(create: Create) -> HaptoPlugin {
 ///
 /// Use it once, at the root of a crate built as a static library for the JUCE
 /// adapter. Keep it apart from `export_vst3!`: JUCE's own VST3 wrapper defines
-/// the symbols that one does. This macro refuses to build a plugin that
+/// the symbols that one does. A binary links one plugin's exports, as two
+/// would define the same symbol: a tool that needs a plugin's facts runs the
+/// plugin's own test, as `cargo hapto juce` does. This macro refuses to build a
+/// plugin that
 /// declares no layout, or a crate built with `panic = "abort"`, under which a
 /// panic ends the host.
 ///

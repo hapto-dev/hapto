@@ -29,6 +29,10 @@ pub(crate) const FILES: &[(&str, &str)] = &[
     ("README.md", include_str!("../template/README.md.tmpl")),
     (".gitignore", include_str!("../template/gitignore.tmpl")),
     ("build.rs", include_str!("../template/build.rs.tmpl")),
+    (
+        "hapto-juce.cmake",
+        include_str!("../template/hapto-juce.cmake.tmpl"),
+    ),
     ("src/lib.rs", include_str!("../template/src/lib.rs.tmpl")),
     ("src/page.rs", include_str!("../template/src/page.rs.tmpl")),
     (
@@ -42,6 +46,10 @@ pub(crate) const FILES: &[(&str, &str)] = &[
     (
         "tests/plugin.rs",
         include_str!("../template/tests/plugin.rs.tmpl"),
+    ),
+    (
+        "tests/juce_settings.rs",
+        include_str!("../template/tests/juce_settings.rs.tmpl"),
     ),
     (
         "page/package.json",
@@ -451,7 +459,7 @@ fn folder_name(folder: &Path) -> Result<String> {
 /// # Errors
 ///
 /// Returns why it is no checkout.
-fn checkout(checkout: Option<&Path>) -> Result<String> {
+pub(crate) fn checkout(checkout: Option<&Path>) -> Result<String> {
     let built_from = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let dir = checkout.unwrap_or(&built_from);
     let dir = std::path::absolute(dir).with_context(|| dir.display().to_string())?;
