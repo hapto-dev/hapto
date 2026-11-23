@@ -12,8 +12,9 @@
 //! channel voice messages, [`Midi1Voice`] the MIDI 1.0 ones an exporter
 //! translates, [`packet_words`] says how long a packet of any message type
 //! is, and [`Packets`] splits a stream of words into events. Every packet
-//! carries its own status, so MIDI 1.0 byte-stream running status never
-//! applies: Hapto parses UMP only.
+//! carries its own status, so Hapto parses UMP alone. A device that speaks
+//! MIDI 1.0's byte stream meets it at the edge: [`ByteStream`] reads its
+//! bytes into packets, and [`Bytes`] writes a packet back as bytes.
 //!
 //! Open: no exporter fills a block's list from the host's MIDI yet, so a
 //! processor's list stays empty.
@@ -64,6 +65,7 @@
     )
 )]
 
+mod bytes;
 mod downgrade;
 mod midi1;
 mod packets;
@@ -71,6 +73,7 @@ pub mod scale;
 mod upgrade;
 mod voice;
 
+pub use bytes::{ByteStream, Bytes};
 pub use downgrade::Downgrade;
 pub use midi1::{Midi1Message, Midi1Voice};
 pub use packets::{Packets, Truncated, packet_words};

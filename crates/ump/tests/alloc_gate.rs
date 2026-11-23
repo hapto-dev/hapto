@@ -1,14 +1,15 @@
 //! The UMP crate's audio-thread calls neither allocate nor free: a block's
 //! list filled past its capacity, read, changed in place and cleared, words
-//! split into packets, channel voice messages decoded and encoded, and a
-//! block upgraded from MIDI 1.0 and downgraded back.
+//! split into packets, channel voice messages decoded and encoded, a block
+//! upgraded from MIDI 1.0 and downgraded back, and a device's byte stream
+//! read into packets and written back.
 
 hapto_testkit::install_alloc_gate!();
 
 use hapto_testkit::alloc::assert_no_allocations;
 use hapto_ump::{
-    Attribute, Bank, ChannelMessage, ChannelVoice, Downgrade, Event, EventList, Midi1Message,
-    Midi1Voice, Packets, Upgrade, packet_words,
+    Attribute, Bank, ByteStream, Bytes, ChannelMessage, ChannelVoice, Downgrade, Event, EventList,
+    Midi1Message, Midi1Voice, Packets, Upgrade, packet_words,
 };
 
 const CAPACITY: usize = 256;
@@ -254,4 +255,35 @@ fn upgrading_and_downgrading_a_block_does_not_allocate() {
     // grow. The note-on's attribute is lost too, on each of four rounds.
     assert_eq!(seen.2, PLACES.len() * 17);
     assert_eq!(downgrade.lost(), 4 * 7 * PLACES.len() as u64);
+}
+
+#[test]
+fn reading_a_byte_stream_and_writing_it_back_does_not_allocate() {
+    // Running status, a clock inside a note, a system common message, and
+    // a SysEx long enough to take three packets, cut short at the end.
+    let mut stream: Vec<u8> = vec![0x90, 0x3C, 0xF8, 0x7F, 0x3E, 0x7F, 0xF2, 0x10, 0x20, 0xF0];
+    stream.extend(1..=15);
+    stream.extend([0xF7, 0xF0, 0x01]);
+    let mut bytes = ByteStream::new(3);
+
+    let (packets, written) = assert_no_allocations("a byte stream read and written", || {
+        let mut seen = (0, 0);
+        for _ in 0..4 {
+            bytes.reset();
+            let (mut packets, mut written) = (0, 0);
+            for chunk in stream.chunks(4) {
+                bytes.read(chunk, |words| {
+                    packets += 1;
+                    written += Bytes::of(words).map_or(0, |bytes| bytes.len());
+                });
+            }
+            seen = (packets, written);
+        }
+        seen
+    });
+    // Two notes, the clock, song position and the SysEx's three packets;
+    // the SysEx cut short is held. Each writes in full: the second note's
+    // status, which running status left out, comes back.
+    assert_eq!(packets, 7);
+    assert_eq!(written, 3 + 1 + 3 + 3 + 1 + 15 + 1);
 }

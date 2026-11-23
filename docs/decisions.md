@@ -3544,6 +3544,13 @@ bank select. What MIDI 1.0 cannot carry is dropped and counted: relative and
 per-note controllers, per-note pitch bend and management, and a note's
 attribute, whose note still goes out.
 
+A device or port that carries MIDI 1.0's byte stream meets UMP at the same
+edge. `ByteStream` reads its bytes into MIDI 1.0 packets as MIDI 1.0 says:
+running status, real-time bytes that go out at once wherever they fall, and a
+SysEx sent as 7-bit SysEx packets six bytes at a time, across as many reads as
+the device's buffers cut it into. `Bytes` writes a MIDI 1.0 packet back as
+bytes, each message in full.
+
 Each `Event` keeps its `Origin`. The translation gives back what MIDI 1.0 sent,
 so learn narrows a value upgraded from MIDI 1.0 to the 7 or 14 bits it was sent
 at and scales it as D10 says, and a MIDI 1.0 controller learns and plays as it
