@@ -1,5 +1,6 @@
 //! Values between the widths MIDI 1.0 and MIDI 2.0 send them at, by the
-//! specification's Default Translation (M2-104-UM, appendix D.1).
+//! Default Translation in appendix D.1 of the UMP and MIDI 2.0 Protocol
+//! specification.
 //!
 //! Upscaling is Min-Center-Max: the minimum, the centre and the maximum land
 //! on the minimum, the centre and the maximum, values up to the centre shift
@@ -120,7 +121,7 @@ mod tests {
 
     #[test]
     fn the_specifications_examples_scale_as_it_says() {
-        // M2-104-UM, D.1.3 and D.1.4.
+        // The specification's own, in appendix D.1.3 and D.1.4.
         let examples = [(10, 0x1400), (64, 0x8000), (87, 0xAEBA), (127, 0xFFFF)];
         for (seven, sixteen) in examples {
             assert_eq!(up_7_to_16(seven), sixteen, "{seven} up");

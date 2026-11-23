@@ -21,7 +21,7 @@ use hapto_params::{
     audio_thread, host_id,
 };
 use hapto_session::{ApplyError, Participant, Registration, Section};
-use hapto_ump::{ChannelVoice, Voice};
+use hapto_ump::{Midi1Message, Midi1Voice, Upgrade};
 use hapto_undo::{Bound, History, UndoSize};
 use serde_json::{Value as Json, json};
 
@@ -567,15 +567,14 @@ fn block(processor: &mut MixerProcessor, events: &EventList) -> f32 {
 
 fn cc(controller: u8, value: u8) -> EventList {
     let mut events = EventList::with_capacity(1);
-    let voice = Voice::Midi1ControlChange { controller, value };
-    events.push(
-        ChannelVoice {
-            group: 0,
-            channel: 0,
-            voice,
-        }
-        .event(0),
-    );
+    let message = Midi1Message::ControlChange { controller, value };
+    let sent = Midi1Voice {
+        group: 0,
+        channel: 0,
+        message,
+    }
+    .event(0);
+    Upgrade::new().block(&[sent], 0, &mut events);
     events
 }
 

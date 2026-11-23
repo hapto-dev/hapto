@@ -10,7 +10,7 @@ use hapto_learn::{
 };
 use hapto_params::{Declarer, Float, FloatDecl, Kind, ParamDecl, ParamSet, ParamSetBuilder};
 use hapto_session::Session;
-use hapto_ump::{ChannelVoice, EventList, Voice};
+use hapto_ump::{Event, EventList, Midi1Message, Midi1Voice, Upgrade};
 
 fn set() -> Arc<ParamSet> {
     let mut builder = ParamSetBuilder::new();
@@ -86,19 +86,8 @@ fn rig() -> Rig {
 
 impl Rig {
     fn block(&mut self, values: &[u8]) {
-        let mut events = EventList::with_capacity(values.len());
-        for (offset, &value) in values.iter().enumerate() {
-            let voice = ChannelVoice {
-                group: 0,
-                channel: 0,
-                voice: Voice::Midi1ControlChange {
-                    controller: 7,
-                    value,
-                },
-            };
-            events.push(voice.event(offset as u32));
-        }
-        self.audio.process(&events);
+        let changes: Vec<(u8, u8)> = values.iter().map(|&value| (7, value)).collect();
+        self.audio.process(&controllers(&changes));
     }
 
     fn map(&mut self) {
@@ -328,18 +317,24 @@ fn a_target_panicking_as_a_restore_closes_its_burst_leaves_learn_usable() {
     assert_eq!(rig.audio.refresh_slots(), 1);
 }
 
-/// One block of MIDI 1.0 control changes, as (controller, value) pairs.
+/// One block of MIDI 1.0 control changes, as (controller, value) pairs,
+/// upgraded to the MIDI 2.0 learn reads, as an exporter does.
 fn controllers(changes: &[(u8, u8)]) -> EventList {
+    let sent: Vec<Event> = changes
+        .iter()
+        .zip(0..)
+        .map(|(&(controller, value), offset)| {
+            let message = Midi1Message::ControlChange { controller, value };
+            Midi1Voice {
+                group: 0,
+                channel: 0,
+                message,
+            }
+            .event(offset)
+        })
+        .collect();
     let mut events = EventList::with_capacity(changes.len());
-    for &(controller, value) in changes {
-        let voice = Voice::Midi1ControlChange { controller, value };
-        let voice = ChannelVoice {
-            group: 0,
-            channel: 0,
-            voice,
-        };
-        events.push(voice.event(0));
-    }
+    Upgrade::new().block(&sent, 0, &mut events);
     events
 }
 

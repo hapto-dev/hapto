@@ -310,7 +310,7 @@ pub trait Plugin: 'static {
     /// use hapto_undo::{Bound, History};
     /// # use hapto_host::layout::Width;
     /// # use hapto_host::{Audio, AuCodes, Category, PluginInfo};
-    /// # use hapto_ump::{ChannelVoice, EventList, Voice};
+    /// # use hapto_ump::{EventList, Midi1Message, Midi1Voice, Upgrade};
     ///
     /// struct SynthParams {
     ///     cutoff: Float,
@@ -403,9 +403,10 @@ pub trait Plugin: 'static {
     /// let mut voices = synth.activate(&setup);
     /// let mut learn = driver.learn_audio().expect("learn is on");
     /// synth.parts.learn().arm(cutoff, Takes::CONTROLLER)?;
-    /// # let voice = Voice::Midi1ControlChange { controller: 74, value: 64 };
+    /// # let message = Midi1Message::ControlChange { controller: 74, value: 64 };
+    /// # let sent = Midi1Voice { group: 0, channel: 0, message }.event(0);
     /// # let mut events = EventList::with_capacity(1);
-    /// # events.push(ChannelVoice { group: 0, channel: 0, voice }.event(0));
+    /// # Upgrade::new().block(&[sent], 0, &mut events);
     /// # let (mut left, mut right) = ([0.0_f32; 1], [0.0_f32; 1]);
     /// # let mut out = EventList::with_capacity(0);
     /// # let mut channels = [&mut left[..], &mut right[..]];

@@ -174,7 +174,7 @@ move its line here; when a decision gains code, add one.
 - `crates/learn/src/capture.rs`: `Takes`, `NOTE`
 - `crates/learn/src/lib.rs`: module
 - `crates/learn/src/mappings.rs`: `Learn::arm`
-- `crates/learn/src/parse.rs`: module, `Parser::parse`
+- `crates/learn/src/parse.rs`: module, `parse`
 - `crates/learn/src/source.rs`: `Control::Note`
 - test `crates/learn/tests/capture.rs`: `a_note_arm_learns_a_note_on_and_never_a_note_off`
 - test `crates/learn/tests/dispatch.rs`: module, `a_note_on_writes_its_velocity_and_a_note_off_writes_nothing`
@@ -747,8 +747,10 @@ move its line here; when a decision gains code, add one.
 - `crates/learn/src/lib.rs`: module
 - `crates/learn/src/mappings.rs`: `Learn::poll`
 - `crates/learn/src/source.rs`: `Control::Cc`, `Control::PARSER_OWNED`
-- `crates/learn/src/parse.rs`: module, `Channel::owned`, `Channel::address_byte`, `Channel::unpaired`, `Channel::reset`, `Channel::address_changed`, `RESET_ALL_CONTROLLERS`, `NULL_NUMBER`
-- test `crates/learn/src/parse.rs`: `the_parser_agrees_with_a_model_of_midi_1_0`, `model`, `begins_an_address`
+- `crates/learn/src/parse.rs`: module, `parse`
+- `crates/ump/src/upgrade.rs`: module, `Numbers::address_byte`, `Numbers::control`, `Numbers::unpaired`, `Numbers::address_changed`, `Channel::control_change`, `RESET_ALL_CONTROLLERS`, `NULL`
+- test `crates/learn/src/parse.rs`: `upgraded_midi_1_parses_as_a_model_of_midi_1_0_reads_it`, `model`, `begins_an_address`
+- test `crates/ump/tests/translation.rs`: `an_address_reads_in_either_byte_order`, `the_null_number_and_a_lone_data_entry_send_nothing`, `reset_all_controllers_sends_what_is_held_then_forgets_the_address`, `a_low_byte_sent_first_waits_for_its_high_byte`
 - test `crates/learn/tests/capture.rs`: `a_14_bit_controller_pair_learns_its_high_byte`, `a_controller_32_to_63_learns_itself_a_tick_later_unless_its_high_byte_came_just_before`, `an_arm_between_a_pairs_halves_waits_through_polls_and_learns_the_high_byte_that_follows`, `a_capture_held_back_between_a_high_byte_and_its_low_byte_stops_the_pairing`, `data_increment_and_decrement_are_never_learned`
 - test `crates/learn/tests/dispatch.rs`: `the_null_parameter_number_selects_nothing`, `a_data_entry_low_byte_sent_first_waits_for_its_high_byte`, `a_new_address_drops_a_waiting_low_byte`, `a_new_address_high_byte_forgets_the_old_low_byte`, `reset_all_controllers_forgets_the_address`, `an_nrpn_address_selects_its_number_whichever_byte_comes_first`, `juces_rpn_generator_reaches_its_nrpn_with_or_without_the_low_byte`, `a_lone_high_byte_never_pairs_with_a_low_byte_from_before_a_data_entry`, `data_increment_and_decrement_use_the_address_and_drive_nothing`, `the_parser_owned_controllers_never_bind`
 
@@ -1357,6 +1359,22 @@ move its line here; when a decision gains code, add one.
 - `crates/host/src/lib.rs`: module
 - `scripts/check-core-deps.py`: `LAYERS`
 
+### D114. MIDI 2.0 inside
+
+[Record section](decisions.md#d114-midi-20-inside)
+
+- `crates/ump/src/lib.rs`: module, `Origin`
+- `crates/ump/src/voice.rs`: `ChannelVoice`, `ChannelMessage`
+- `crates/ump/src/midi1.rs`: module, `Midi1Voice`, `Midi1Message`
+- `crates/ump/src/upgrade.rs`: module, `Upgrade`, `Numbers::control`
+- `crates/ump/src/downgrade.rs`: module, `Downgrade`
+- `crates/ump/src/scale.rs`: module
+- `crates/learn/src/parse.rs`: module, `parse`, `Value::nrpn`, `Value::normalized`
+- `crates/learn/src/source.rs`: `Control::Cc`
+- test `crates/ump/tests/translation.rs`: module, `midi_1_comes_back_from_midi_2_as_it_was_sent`, `a_high_byte_alone_goes_out_at_the_end_of_its_block`, `bank_select_is_held_for_the_program_change_that_carries_it`, `what_midi_1_cannot_carry_is_dropped_and_counted`
+- test `crates/learn/src/parse.rs`: `upgraded_midi_1_parses_as_a_model_of_midi_1_0_reads_it`
+- test `crates/learn/tests/dispatch.rs`: `a_coarse_binding_reads_a_high_byte_as_seven_bit_and_ignores_low_bytes`, `every_fourteen_bit_nrpn_value_reads_centre_anchored_fine_or_coarse`
+
 ## Parameters
 
 ### P1. One store per parameter
@@ -1860,7 +1878,7 @@ move its line here; when a decision gains code, add one.
 - `crates/learn/src/source.rs`: module, `Control::Cc`
 - test `crates/learn/tests/capture.rs`: module, `a_refused_message_leaves_the_target_armed`, `a_reserved_controller_can_still_be_mapped_by_hand_and_dispatches`, `a_midi_2_assignable_controller_learns_as_an_nrpn`, `a_controller_reservation_on_one_group_leaves_the_others_free`
 - test `crates/learn/tests/dispatch.rs`: module, `an_nrpn_assembles_and_a_high_byte_alone_reads_as_midi_1_says`, `a_partial_nrpn_sequence_is_dropped`, `rpn_data_entry_never_dispatches_as_the_last_nrpn`, `the_parser_runs_while_nothing_is_mapped`, `the_parser_owned_controllers_never_bind`, `each_group_and_channel_keeps_its_own_nrpn_state`, `reset_all_controllers_deselects_the_nrpn`, `a_reserved_nrpn_is_never_bound`, `the_null_parameter_number_selects_nothing`, `a_data_entry_low_byte_sent_first_waits_for_its_high_byte`, `a_new_address_drops_a_waiting_low_byte`, `a_new_address_high_byte_forgets_the_old_low_byte`, `reset_all_controllers_forgets_the_address`
-- test `crates/learn/src/parse.rs`: `the_parser_agrees_with_a_model_of_midi_1_0`
+- test `crates/learn/src/parse.rs`: `upgraded_midi_1_parses_as_a_model_of_midi_1_0_reads_it`
 
 ### L3. The learn flow
 

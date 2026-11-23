@@ -7,7 +7,9 @@ use hapto_learn::{
     ReservationError, Source,
 };
 use hapto_params::{Kind, ParamDecl, ParamId, ParamSet, ParamSetBuilder};
-use hapto_ump::{ChannelVoice, Event, EventList, Voice};
+use hapto_ump::{
+    Attribute, ChannelMessage, ChannelVoice, Event, EventList, Midi1Message, Midi1Voice, Upgrade,
+};
 
 /// A value no message in these tests writes.
 const UNTOUCHED: f32 = 0.37;
@@ -32,6 +34,7 @@ struct Rig {
     set: Arc<ParamSet>,
     learn: Learn,
     audio: LearnAudio,
+    upgrade: Upgrade,
     ids: Vec<ParamId>,
 }
 
@@ -47,6 +50,7 @@ fn rig_with(count: usize, config: Config) -> Rig {
         set,
         learn,
         audio,
+        upgrade: Upgrade::new(),
         ids,
     }
 }
@@ -54,11 +58,8 @@ fn rig_with(count: usize, config: Config) -> Rig {
 impl Rig {
     /// Runs one block of `voices` on group 0, channel 0 unless they say
     /// otherwise.
-    fn block(&mut self, voices: &[ChannelVoice]) {
-        let mut events = EventList::with_capacity(voices.len());
-        for (offset, voice) in voices.iter().enumerate() {
-            events.push(voice.event(offset as u32));
-        }
+    fn block(&mut self, sent: &[Event]) {
+        let events = upgraded(&mut self.upgrade, sent);
         self.audio.process(&events);
     }
 
@@ -79,16 +80,41 @@ fn stored(normalized: f64) -> f32 {
     normalized.clamp(0.0, 1.0) as f32
 }
 
-fn on(group: u8, channel: u8, voice: Voice) -> ChannelVoice {
+/// One block of `sent`, each at the next frame, upgraded to the MIDI 2.0
+/// learn reads, as an exporter does.
+fn upgraded(upgrade: &mut Upgrade, sent: &[Event]) -> EventList {
+    let sent: Vec<Event> = sent
+        .iter()
+        .zip(0..)
+        .map(|(event, offset)| Event { offset, ..*event })
+        .collect();
+    let mut events = EventList::with_capacity(sent.len() + 256);
+    upgrade.block(&sent, sent.len() as u32, &mut events);
+    events
+}
+
+/// A MIDI 1.0 message, as a MIDI 1.0 sender sends it.
+fn on(group: u8, channel: u8, message: Midi1Message) -> Event {
+    Midi1Voice {
+        group,
+        channel,
+        message,
+    }
+    .event(0)
+}
+
+/// A MIDI 2.0 message, which the upgrade passes as it is.
+fn midi2(group: u8, channel: u8, message: ChannelMessage) -> Event {
     ChannelVoice {
         group,
         channel,
-        voice,
+        message,
     }
+    .event(0)
 }
 
-fn cc(controller: u8, value: u8) -> ChannelVoice {
-    on(0, 0, Voice::Midi1ControlChange { controller, value })
+fn cc(controller: u8, value: u8) -> Event {
+    on(0, 0, Midi1Message::ControlChange { controller, value })
 }
 
 /// MIDI 1.0 values scale centre-anchored.
@@ -111,7 +137,7 @@ fn fourteen(value: u16) -> f64 {
 }
 
 /// The two controllers of MIDI 1.0 NRPN `number`'s address, 99 and 98.
-fn nrpn_address(number: u16) -> [ChannelVoice; 2] {
+fn nrpn_address(number: u16) -> [Event; 2] {
     [cc(99, (number >> 7) as u8), cc(98, (number & 0x7F) as u8)]
 }
 
@@ -184,27 +210,25 @@ fn every_packet_reaches_the_processor_untouched_and_in_order() {
     let mut rig = rig(2);
     rig.map(0, Source::any(Control::Cc(7)));
     rig.map(1, Source::any(Control::Nrpn(300)));
-    let mut events = EventList::with_capacity(8);
+    let [high, low] = nrpn_address(300);
     let packets = [
-        cc(7, 100).event(0),
-        Event::new(1, [0x3016_7E7F, 0x0D70_0201, 0, 0]),
-        nrpn_address(300)[0].event(2),
-        nrpn_address(300)[1].event(2),
-        cc(6, 9).event(3),
-        on(
+        cc(7, 100),
+        Event::new(0, [0x3016_7E7F, 0x0D70_0201, 0, 0]),
+        high,
+        low,
+        cc(6, 9),
+        midi2(
             3,
             2,
-            Voice::Midi2NoteOn {
+            ChannelMessage::NoteOn {
                 note: 60,
                 velocity: 1,
+                attribute: Attribute::NONE,
             },
-        )
-        .event(4),
-        Event::new(5, [0x3036_0102, 0x0304_0506, 0, 0]),
+        ),
+        Event::new(0, [0x3036_0102, 0x0304_0506, 0, 0]),
     ];
-    for packet in packets {
-        events.push(packet);
-    }
+    let events = upgraded(&mut rig.upgrade, &packets);
     let before = events.as_slice().to_vec();
     rig.audio.process(&events);
     assert_eq!(events.as_slice(), &before[..]);
@@ -235,7 +259,7 @@ fn groups_and_channels_stay_apart_and_any_matches_every_one() {
     rig.block(&[on(
         1,
         0,
-        Voice::Midi1ControlChange {
+        Midi1Message::ControlChange {
             controller: 7,
             value: 127,
         },
@@ -246,7 +270,7 @@ fn groups_and_channels_stay_apart_and_any_matches_every_one() {
     rig.block(&[on(
         0,
         5,
-        Voice::Midi1ControlChange {
+        Midi1Message::ControlChange {
             controller: 7,
             value: 0,
         },
@@ -353,7 +377,8 @@ fn the_parser_owned_controllers_never_bind() {
     let mut rig = self::rig(2);
     rig.map(0, Source::any(Control::Cc(7)));
     rig.map(1, Source::any(Control::Nrpn(300)));
-    let midi2 = |controller, value| on(0, 0, Voice::Midi2ControlChange { controller, value });
+    let midi2 =
+        |controller, value| midi2(0, 0, ChannelMessage::ControlChange { controller, value });
     rig.block(&[
         midi2(99, 2 << 25),
         midi2(98, 44 << 25),
@@ -389,7 +414,7 @@ fn each_group_and_channel_keeps_its_own_nrpn_state() {
         on(
             group,
             channel,
-            Voice::Midi1ControlChange { controller, value },
+            Midi1Message::ControlChange { controller, value },
         )
     };
     rig.block(&[
@@ -530,18 +555,18 @@ fn midi_2_values_read_linearly_and_assignable_controllers_are_nrpns() {
     for value in [u32::MAX, 0x8000_0000, 0, 12_345_678] {
         let normalized = f64::from(value) / f64::from(u32::MAX);
         rig.block(&[
-            on(
+            midi2(
                 0,
                 0,
-                Voice::Midi2ControlChange {
+                ChannelMessage::ControlChange {
                     controller: 7,
                     value,
                 },
             ),
-            on(
+            midi2(
                 0,
                 0,
-                Voice::Midi2AssignableController {
+                ChannelMessage::AssignableController {
                     bank: 2,
                     index: 44,
                     value,
@@ -556,10 +581,10 @@ fn midi_2_values_read_linearly_and_assignable_controllers_are_nrpns() {
         );
     }
     // A registered controller is RPN: never an NRPN.
-    rig.block(&[on(
+    rig.block(&[midi2(
         0,
         0,
-        Voice::Midi2RegisteredController {
+        ChannelMessage::RegisteredController {
             bank: 2,
             index: 44,
             value: u32::MAX,
@@ -572,15 +597,25 @@ fn midi_2_values_read_linearly_and_assignable_controllers_are_nrpns() {
 fn a_note_on_writes_its_velocity_and_a_note_off_writes_nothing() {
     let mut rig = rig(1);
     rig.map(0, Source::any(Control::Note(60)));
-    let midi1_on = |velocity| on(0, 0, Voice::Midi1NoteOn { note: 60, velocity });
-    let midi2_on = |velocity| on(0, 0, Voice::Midi2NoteOn { note: 60, velocity });
+    let midi1_on = |velocity| on(0, 0, Midi1Message::NoteOn { note: 60, velocity });
+    let midi2_on = |velocity| {
+        midi2(
+            0,
+            0,
+            ChannelMessage::NoteOn {
+                note: 60,
+                velocity,
+                attribute: Attribute::NONE,
+            },
+        )
+    };
 
     rig.block(&[midi1_on(127)]);
     assert_eq!(rig.value(0), 1.0);
     rig.block(&[on(
         0,
         0,
-        Voice::Midi1NoteOff {
+        Midi1Message::NoteOff {
             note: 60,
             velocity: 0,
         },
@@ -592,12 +627,13 @@ fn a_note_on_writes_its_velocity_and_a_note_off_writes_nothing() {
 
     rig.block(&[midi2_on(0x8000)]);
     assert_eq!(rig.value(0), stored(f64::from(0x8000_u16) / 65535.0));
-    rig.block(&[on(
+    rig.block(&[midi2(
         0,
         0,
-        Voice::Midi2NoteOff {
+        ChannelMessage::NoteOff {
             note: 60,
             velocity: 0xFFFF,
+            attribute: Attribute::NONE,
         },
     )]);
     assert_eq!(rig.value(0), stored(f64::from(0x8000_u16) / 65535.0));
@@ -606,7 +642,7 @@ fn a_note_on_writes_its_velocity_and_a_note_off_writes_nothing() {
     rig.block(&[on(
         0,
         0,
-        Voice::Midi1NoteOn {
+        Midi1Message::NoteOn {
             note: 61,
             velocity: 99,
         },
@@ -738,21 +774,22 @@ fn the_table_at_the_ceiling_still_finds_every_mapping() {
         let group = source.group.unwrap_or(15);
         let channel = source.channel.unwrap_or(15);
         let voice = match source.control {
-            Control::Cc(controller) => Voice::Midi2ControlChange {
+            Control::Cc(controller) => ChannelMessage::ControlChange {
                 controller,
                 value: u32::MAX,
             },
-            Control::Nrpn(number) => Voice::Midi2AssignableController {
+            Control::Nrpn(number) => ChannelMessage::AssignableController {
                 bank: (number >> 7) as u8,
                 index: (number & 0x7F) as u8,
                 value: u32::MAX,
             },
-            Control::Note(note) => Voice::Midi2NoteOn {
+            Control::Note(note) => ChannelMessage::NoteOn {
                 note,
                 velocity: u16::MAX,
+                attribute: Attribute::NONE,
             },
         };
-        rig.block(&[on(group, channel, voice)]);
+        rig.block(&[midi2(group, channel, voice)]);
         assert_eq!(rig.value(index), 1.0, "{source:?}");
     }
     let moved = (0..count).filter(|&index| rig.value(index) == 1.0).count();
@@ -848,7 +885,7 @@ fn an_nrpn_address_selects_its_number_whichever_byte_comes_first() {
 /// What `juce::MidiRPNGenerator::generate` sends for an NRPN on channel 1:
 /// the address low byte first (98, then 99), the value's high byte (6), and
 /// its low byte (38) only for a 14-bit value. A 7-bit value goes in 6 alone.
-fn juce_nrpn(number: u16, value: u16, fourteen_bit: bool) -> Vec<ChannelVoice> {
+fn juce_nrpn(number: u16, value: u16, fourteen_bit: bool) -> Vec<Event> {
     let mut sent = vec![cc(98, (number & 0x7F) as u8), cc(99, (number >> 7) as u8)];
     if fourteen_bit {
         sent.extend([cc(6, (value >> 7) as u8), cc(38, (value & 0x7F) as u8)]);
@@ -927,7 +964,7 @@ fn every_note_on_velocity_reads_centre_anchored() {
     let mut rig = rig(1);
     rig.map(0, Source::any(Control::Note(60)));
     for velocity in 1..=127 {
-        rig.block(&[on(0, 0, Voice::Midi1NoteOn { note: 60, velocity })]);
+        rig.block(&[on(0, 0, Midi1Message::NoteOn { note: 60, velocity })]);
         assert_eq!(rig.value(0), stored(seven(velocity)), "velocity {velocity}");
     }
 }

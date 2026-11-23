@@ -8,7 +8,7 @@ use std::hint::black_box;
 
 use hapto_learn::{Config, Control, Learn, LearnAudio, Mapping, Source};
 use hapto_params::{Kind, ParamDecl, ParamSetBuilder, Range};
-use hapto_ump::{ChannelVoice, Event, EventList, Voice};
+use hapto_ump::{Event, EventList, Midi1Message, Midi1Voice, Upgrade};
 use iai_callgrind::{library_benchmark, library_benchmark_group, main};
 
 const TARGETS: usize = 64;
@@ -48,32 +48,39 @@ fn mapped() -> (Learn, LearnAudio) {
     (learn, audio)
 }
 
-/// A block of controller moves, an NRPN with its data, and notes.
+/// A block of controller moves, an NRPN with its data, and notes, upgraded
+/// to MIDI 2.0 as an exporter does.
 fn block() -> EventList {
-    let voice = |voice| ChannelVoice {
-        group: 0,
-        channel: 1,
-        voice,
+    let on = |message| {
+        Midi1Voice {
+            group: 0,
+            channel: 1,
+            message,
+        }
+        .event(0)
     };
-    let cc = |controller, value| voice(Voice::Midi1ControlChange { controller, value });
-    let mut voices = Vec::new();
+    let cc = |controller, value| on(Midi1Message::ControlChange { controller, value });
+    let mut sent = Vec::new();
     for value in [0, 64, 127] {
-        voices.extend((1..=8).map(|controller| cc(controller, value)));
-        voices.extend([cc(99, 2), cc(98, 44), cc(6, value), cc(38, value)]);
-        voices.push(voice(Voice::Midi1NoteOn {
+        sent.extend((1..=8).map(|controller| cc(controller, value)));
+        sent.extend([cc(99, 2), cc(98, 44), cc(6, value), cc(38, value)]);
+        sent.push(on(Midi1Message::NoteOn {
             note: 60,
             velocity: value.max(1),
         }));
-        voices.push(voice(Voice::Midi1NoteOff {
+        sent.push(on(Midi1Message::NoteOff {
             note: 60,
             velocity: 0,
         }));
     }
-    let mut events = EventList::with_capacity(voices.len());
-    for (offset, voice) in voices.iter().enumerate() {
-        events.push(voice.event(offset as u32));
-    }
-    events.push(Event::new(0, [0x3016_7E7F, 0x0D70_0201, 0, 0]));
+    sent.push(Event::new(0, [0x3016_7E7F, 0x0D70_0201, 0, 0]));
+    let sent: Vec<Event> = sent
+        .iter()
+        .zip(0..)
+        .map(|(event, offset)| Event { offset, ..*event })
+        .collect();
+    let mut events = EventList::with_capacity(sent.len() + 256);
+    Upgrade::new().block(&sent, sent.len() as u32, &mut events);
     events
 }
 

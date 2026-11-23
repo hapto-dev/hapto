@@ -329,16 +329,19 @@ fn a_restore_ends_the_arm_drops_old_held_entries_and_closes_bursts() {
     learn
         .map(zoom, Mapping::new(Source::any(Control::Cc(7))))
         .expect("legal");
-    let mut events = hapto_ump::EventList::with_capacity(1);
-    let cc = |value| hapto_ump::ChannelVoice {
+    // Controller 7 at full, upgraded to the MIDI 2.0 learn reads.
+    let message = hapto_ump::Midi1Message::ControlChange {
+        controller: 7,
+        value: 127,
+    };
+    let sent = hapto_ump::Midi1Voice {
         group: 0,
         channel: 0,
-        voice: hapto_ump::Voice::Midi1ControlChange {
-            controller: 7,
-            value,
-        },
-    };
-    events.push(cc(127).event(0));
+        message,
+    }
+    .event(0);
+    let mut events = hapto_ump::EventList::with_capacity(1);
+    hapto_ump::Upgrade::new().block(&[sent], 0, &mut events);
     audio.process(&events);
     learn.poll();
     assert_eq!(*log.borrow(), ["begin", "apply"]);

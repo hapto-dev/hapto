@@ -98,9 +98,8 @@ impl Table {
                 .skip(start)
                 .take_while(|slot| slot.key == key)
             {
-                if let Some(value) = message.value.normalized(slot.coarse) {
-                    write(&slot.route, slot.curve.apply(value));
-                }
+                let value = message.value.normalized(slot.coarse);
+                write(&slot.route, slot.curve.apply(value));
             }
         }
     }

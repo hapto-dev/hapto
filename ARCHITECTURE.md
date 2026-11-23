@@ -40,7 +40,11 @@ reading how Hapto works inside, start with
   capture and dispatch words are packed by `field.rs`, the controllers a plugin
   reserves are in `reservation.rs`, and the section it saves is
   `mappings/session.rs`.
-- `crates/ump`: Universal MIDI Packets, the event list MIDI travels in.
+- `crates/ump`: Universal MIDI Packets, the event list MIDI travels in, and
+  MIDI 2.0's channel voice messages, which everything above the exporters
+  reads (`voice.rs`). An exporter translates MIDI 1.0's (`midi1.rs`) up on the
+  way in (`upgrade.rs`) and down on the way out (`downgrade.rs`), and
+  `scale.rs` moves values between the two protocols' widths.
 - `crates/audio`: a block's audio as a processor sees it: the layouts, the
   channels a main bus has as a type (`layout.rs`); `Audio`, the channels a
   block lends, walked by frame or by channel (`audio.rs`, `frame.rs`); and

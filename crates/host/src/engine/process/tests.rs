@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use hapto_learn::{Config, Control, Learn, Learned, Mapping, Source, Takes};
 use hapto_params::{Kind, ParamDecl, ParamId, ParamSet};
-use hapto_ump::{ChannelVoice, Voice};
+use hapto_ump::{EventList, Midi1Message, Midi1Voice, Upgrade};
 
 use super::{Active, pieces};
 use crate::layout::{AnyLayout, Width};
@@ -149,15 +149,22 @@ impl Processor for Reads {
     }
 }
 
-/// A MIDI 1.0 control change at `offset`.
+/// A MIDI 1.0 control change at `offset`, upgraded to the MIDI 2.0 learn
+/// reads, as an exporter does.
 fn control_change(offset: u32, controller: u8, value: u8) -> Event {
-    let voice = Voice::Midi1ControlChange { controller, value };
-    ChannelVoice {
+    let message = Midi1Message::ControlChange { controller, value };
+    let sent = Midi1Voice {
         group: 0,
         channel: 0,
-        voice,
+        message,
     }
-    .event(offset)
+    .event(offset);
+    let mut upgraded = EventList::with_capacity(1);
+    Upgrade::new().block(&[sent], offset, &mut upgraded);
+    *upgraded
+        .as_slice()
+        .first()
+        .expect("one controller upgrades to one")
 }
 
 /// A gain from 0 to 1 that starts at 0, learn over it, and block state whose

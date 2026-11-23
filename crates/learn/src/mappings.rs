@@ -284,7 +284,7 @@ impl Custom {
 /// ```
 /// use hapto_learn::{Config, Learn, Learned, Takes};
 /// use hapto_params::{Kind, ParamDecl, ParamSetBuilder, Range};
-/// use hapto_ump::{ChannelVoice, EventList, Voice};
+/// use hapto_ump::{EventList, Midi1Message, Midi1Voice, Upgrade};
 ///
 /// let mut builder = ParamSetBuilder::new();
 /// builder.add(ParamDecl::new("gain", "Gain", Kind::continuous(0.0, 1.0, 0.0, None), 0.0))?;
@@ -292,13 +292,17 @@ impl Custom {
 /// let gain = set.ids().next().expect("one parameter");
 /// let (mut learn, mut audio) = Learn::new(&set, Config::default());
 ///
-/// // One block of MIDI 1.0 control changes, as (controller, value) pairs.
-/// let block = |changes: &[(u8, u8)]| {
-///     let mut events = EventList::with_capacity(changes.len());
+/// // One block of MIDI 1.0 control changes, as (controller, value) pairs,
+/// // upgraded to the MIDI 2.0 learn reads, as an exporter does.
+/// let mut upgrade = Upgrade::new();
+/// let mut block = |changes: &[(u8, u8)]| {
+///     let mut sent = EventList::with_capacity(changes.len());
 ///     for &(controller, value) in changes {
-///         let voice = Voice::Midi1ControlChange { controller, value };
-///         events.push(ChannelVoice { group: 0, channel: 0, voice }.event(0));
+///         let message = Midi1Message::ControlChange { controller, value };
+///         sent.push(Midi1Voice { group: 0, channel: 0, message }.event(0));
 ///     }
+///     let mut events = EventList::with_capacity(changes.len());
+///     upgrade.block(sent.as_slice(), 0, &mut events);
 ///     events
 /// };
 ///

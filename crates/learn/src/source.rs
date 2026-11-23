@@ -38,7 +38,9 @@ pub enum Control {
     ///
     /// Controllers 6, 38, 96, 97, 98, 99, 100 and 101 belong to the NRPN and
     /// RPN parser and are never bound. They select a parameter number, enter
-    /// its value, or step it.
+    /// its value, or step it. MIDI 1.0's controllers 0 and 32 never arrive
+    /// either: they select the bank the next program change carries, as the
+    /// upgrade to MIDI 2.0 reads them.
     ///
     /// A binding reads that controller alone, so a MIDI 1.0 14-bit pair plays
     /// at 7 bits through the byte learn bound: the high byte (below 32) in the

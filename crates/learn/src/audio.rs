@@ -18,7 +18,7 @@ use hapto_params::{AudioParams, audio_thread};
 use hapto_ump::EventList;
 
 use crate::capture::Stager;
-use crate::parse::Parser;
+use crate::parse;
 use crate::snapshot::Reader;
 use crate::table::Route;
 
@@ -53,7 +53,6 @@ use crate::table::Route;
 pub struct LearnAudio {
     params: AudioParams,
     reader: Reader,
-    parser: Parser,
     stager: Stager,
 }
 
@@ -68,7 +67,6 @@ impl LearnAudio {
         LearnAudio {
             params,
             reader,
-            parser: Parser::new(),
             stager,
         }
     }
@@ -83,7 +81,9 @@ impl LearnAudio {
     /// newest value staged for [`Learn::poll`](crate::Learn::poll), and while
     /// a target is armed the newest legal message is staged for the poll to
     /// learn. The list is read and never changed, so a processor gets every
-    /// packet as the host sent it. The [`LearnAudio`] example shows a block.
+    /// packet as the exporter delivered it. Learn reads MIDI 2.0 alone, so
+    /// MIDI 1.0 goes through [`Upgrade`](hapto_ump::Upgrade) first, as an
+    /// exporter does. The [`LearnAudio`] example shows a block.
     ///
     /// Thread: audio.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
@@ -91,7 +91,7 @@ impl LearnAudio {
         let table = self.reader.read();
         self.stager.block(|offers| {
             for event in events.as_slice() {
-                let Some(message) = self.parser.parse(event) else {
+                let Some(message) = parse::parse(event) else {
                     continue;
                 };
                 offers.offer(&message);

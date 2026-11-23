@@ -9,7 +9,7 @@ use hapto_learn::{Config, LearnAudio, SESSION_KEY, Takes};
 use hapto_params::host_id;
 use hapto_params::{Declarer, Float, FloatDecl, Params, Value, audio_thread};
 use hapto_session::{ApplyError, Participant, Registration, Section};
-use hapto_ump::{ChannelVoice, EventList, Voice};
+use hapto_ump::{EventList, Midi1Message, Midi1Voice, Upgrade};
 use hapto_undo::{Bound, History};
 use serde_json::{Map, Value as Json};
 
@@ -847,19 +847,18 @@ fn a_plugin_that_writes_no_idle_still_has_its_parts_ticked<S: Shell>() {
     // An edit, and a controller learn hears, as a block would bring it.
     handed(|handed| {
         handed.level.as_ref().expect("handed").set(0.5);
-        let voice = Voice::Midi1ControlChange {
+        let message = Midi1Message::ControlChange {
             controller: 74,
             value: 64,
         };
+        let sent = Midi1Voice {
+            group: 0,
+            channel: 0,
+            message,
+        }
+        .event(0);
         let mut events = EventList::with_capacity(1);
-        events.push(
-            ChannelVoice {
-                group: 0,
-                channel: 0,
-                voice,
-            }
-            .event(0),
-        );
+        Upgrade::new().block(&[sent], 0, &mut events);
         handed.learn.as_mut().expect("handed").process(&events);
     });
     host.tick();

@@ -3,15 +3,18 @@
 # builder.add(ParamDecl::new("gain", "Gain", Kind::continuous(0.0, 1.0, 0.0, None), 0.0))?;
 # let set = builder.build();
 # let gain = set.id("gain").ok_or("declared above")?;
-# use hapto_ump::{ChannelVoice, EventList, Voice};
+# use hapto_ump::{EventList, Midi1Message, Midi1Voice, Upgrade};
 # // One block of MIDI 1.0 control changes on group 0 and channel 0, as
-# // (controller, value) pairs, as the `Learn` example builds it.
-# let block = |changes: &[(u8, u8)]| {
-#     let mut events = EventList::with_capacity(16);
+# // (controller, value) pairs, upgraded as the `Learn` example does it.
+# let mut upgrade = Upgrade::new();
+# let mut block = |changes: &[(u8, u8)]| {
+#     let mut sent = EventList::with_capacity(16);
 #     for &(controller, value) in changes {
-#         let voice = Voice::Midi1ControlChange { controller, value };
-#         events.push(ChannelVoice { group: 0, channel: 0, voice }.event(0));
+#         let message = Midi1Message::ControlChange { controller, value };
+#         sent.push(Midi1Voice { group: 0, channel: 0, message }.event(0));
 #     }
+#     let mut events = EventList::with_capacity(16);
+#     upgrade.block(sent.as_slice(), 0, &mut events);
 #     events
 # };
 # // A target that does nothing, for the examples that only register one:

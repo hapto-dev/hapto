@@ -35,6 +35,15 @@ exporter.
 - **Breaking.** `ProcessSetup` is made with `ProcessSetup::new`, with room for
   no MIDI until a test sets `max_events` or `max_out_events`, so the buses
   beyond the main one can join it later without breaking a caller.
+- **Breaking.** MIDI is MIDI 2.0 inside. `ChannelVoice` reads and writes MIDI
+  2.0's channel voice messages alone, a `ChannelMessage` for each status MIDI
+  2.0 has, and `Voice` with its MIDI 1.0 variants is gone. An exporter runs
+  `Upgrade` over each block, by the specification's Default Translation, and
+  `Midi1Voice` reads and writes the MIDI 1.0 messages it translates;
+  `Downgrade` translates back for a destination that takes MIDI 1.0 alone.
+  Each `Event` keeps its `Origin`, and `scale` moves values between the
+  widths. Learn reads MIDI 2.0 alone: a MIDI 1.0 controller learns and plays
+  as before once upgraded, but for controllers 0 and 32, which select a bank.
 
 ### Added
 
@@ -95,18 +104,20 @@ exporter.
   faulted until an apply succeeds. A capture nested too deep, or too large for
   the saved block to load back, is refused and the previous one kept, whether
   the participant registered before the saved state was made or after.
-- `hapto-learn`: MIDI learn over MIDI 1.0 and 2.0 packets. Arm a target, move a
-  controller, and the mapping drives the target from the audio thread through a
-  published snapshot that never waits, locks or frees. Notes, NRPNs, 14-bit
-  controller pairs, curves, reservations and a saved `midiLearn` section. Half
-  of a 14-bit pair waits at least a UI tick and a whole audio block for its
-  other half. `Mapping` and `Config` are `non_exhaustive`, built with
-  `Mapping::new`, `with_curve` and `as_coarse`. `arm`, `map`, `unmap`,
-  `mapping` and `key` take anything `Learnable`: a `TargetId`, a `ParamId`, a
-  `CustomId` or a typed parameter. A parameter made at run time is a target of
-  its own, `TargetId::RunTime`, named by an opaque `RunTimeId`.
+- `hapto-learn`: MIDI learn over MIDI 2.0 packets, with MIDI 1.0 upgraded to
+  them. Arm a target, move a controller, and the mapping drives the target from
+  the audio thread through a published snapshot that never waits, locks or
+  frees. Notes, NRPNs, 14-bit controller pairs, curves, reservations and a saved
+  `midiLearn` section. Half of a 14-bit pair waits at least a UI tick and a
+  whole audio block for its other half. `Mapping` and `Config` are
+  `non_exhaustive`, built with `Mapping::new`, `with_curve` and `as_coarse`.
+  `arm`, `map`, `unmap`, `mapping` and `key` take anything `Learnable`: a
+  `TargetId`, a `ParamId`, a `CustomId` or a typed parameter. A parameter made
+  at run time is a target of its own, `TargetId::RunTime`, named by an opaque
+  `RunTimeId`.
 - `hapto-ump`: Universal MIDI Packets: a fixed-capacity event list per block,
-  and the channel voice messages read from it and written back.
+  the channel voice messages read from it and written back, and the
+  translation between MIDI 1.0 and MIDI 2.0.
 - `hapto-host`: the `Plugin` and `Processor` traits and `PluginInfo`, and
   `SavedState`, the saved block as JSON, which names Hapto's frame version and
   the plugin's own schema version apart. A load keeps unknown parameter ids and

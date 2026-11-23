@@ -1,42 +1,50 @@
 //! Universal MIDI Packets, as every Hapto crate passes MIDI.
 //!
-//! An [`EventList`] is one [block]'s MIDI, in or out: a
-//! fixed-capacity list of [`Event`]s. Each is one packet at a frame of the
-//! block, so a processor and MIDI learn read MIDI 1.0 and 2.0 in one format.
-//! Open: no exporter fills the list from the host's MIDI yet, so a
+//! An [`EventList`] is one [block]'s MIDI, in or out: a fixed-capacity list
+//! of [`Event`]s. Each is one packet at a frame of the block.
+//!
+//! Everything above the exporters reads MIDI 2.0. An exporter upgrades MIDI
+//! 1.0 on the way in with [`Upgrade`], and downgrades on the way out with
+//! [`Downgrade`] only for a destination that takes MIDI 1.0 alone, both by
+//! the specification's Default Translation. A packet keeps its
+//! [`Origin`], so a value upgraded from MIDI 1.0 narrows back to what was
+//! sent through [`scale`]. [`ChannelVoice`] reads and writes the MIDI 2.0
+//! channel voice messages, [`Midi1Voice`] the MIDI 1.0 ones an exporter
+//! translates, [`packet_words`] says how long a packet of any message type
+//! is, and [`Packets`] splits a stream of words into events. Every packet
+//! carries its own status, so MIDI 1.0 byte-stream running status never
+//! applies: Hapto parses UMP only.
+//!
+//! Open: no exporter fills a block's list from the host's MIDI yet, so a
 //! processor's list stays empty.
 //!
-//! [`ChannelVoice`] reads the channel voice messages Hapto acts on, from MIDI
-//! 1.0 (UMP message type 2) and MIDI 2.0 (type 4) packets, and writes them
-//! back as packets. [`packet_words`] says how long a packet of any message
-//! type is, and [`Packets`] splits a stream of words into events. Every
-//! packet carries its own status, so MIDI 1.0 byte-stream running status
-//! never applies: Hapto parses UMP only.
-//!
 //! The crate is in the core tier and depends on nothing. Every call but
-//! [`EventList::with_capacity`] is fit for the audio thread, and none of them
-//! panics.
+//! those that make a list or an [`Upgrade`] is fit for the audio thread, and
+//! none of them panics.
 //!
 //! [block]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#block
 //!
 //! # Examples
 //!
-//! Build a control change, put it in a block's list, and read it back:
+//! A MIDI 1.0 control change upgraded, then read back as MIDI 2.0:
 //!
 //! ```
-//! use hapto_ump::{ChannelVoice, EventList, Voice};
+//! use hapto_ump::{ChannelMessage, ChannelVoice, EventList, Midi1Message, Midi1Voice, Upgrade, scale};
 //!
+//! let message = Midi1Message::ControlChange { controller: 7, value: 100 };
+//! let sent = Midi1Voice { group: 0, channel: 2, message }.event(32);
 //! let mut block = EventList::with_capacity(64);
-//! let voice = Voice::Midi1ControlChange { controller: 7, value: 100 };
-//! block.push(ChannelVoice { group: 0, channel: 2, voice }.event(32));
+//! Upgrade::new().block(&[sent], 63, &mut block);
 //!
 //! for event in block.as_slice() {
 //!     // A packet Hapto does not read gives `None`: skip it.
-//!     let Some(ChannelVoice { channel, voice, .. }) = event.channel_voice() else {
+//!     let Some(ChannelVoice { channel, message, .. }) = event.channel_voice() else {
 //!         continue;
 //!     };
-//!     if let Voice::Midi1ControlChange { controller, value } = voice {
-//!         assert_eq!((event.offset, channel, controller, value), (32, 2, 7, 100));
+//!     if let ChannelMessage::ControlChange { controller, value } = message {
+//!         assert_eq!((event.offset, channel, controller), (32, 2, 7));
+//!         // Upgraded from MIDI 1.0, it narrows back to what was sent.
+//!         assert_eq!(scale::down_32_to_7(value), 100);
 //!     }
 //! }
 //! ```
@@ -56,24 +64,30 @@
     )
 )]
 
+mod downgrade;
+mod midi1;
 mod packets;
 pub mod scale;
+mod upgrade;
 mod voice;
 
+pub use downgrade::Downgrade;
+pub use midi1::{Midi1Message, Midi1Voice};
 pub use packets::{Packets, Truncated, packet_words};
-pub use voice::{ChannelVoice, Voice};
+pub use upgrade::Upgrade;
+pub use voice::{Attribute, Bank, ChannelMessage, ChannelVoice};
 
 /// One Universal MIDI Packet at a frame of the block.
 ///
 /// # Examples
 ///
 /// ```
-/// use hapto_ump::{ChannelVoice, Event, Voice};
+/// use hapto_ump::{Attribute, ChannelMessage, ChannelVoice, Event};
 ///
-/// // A MIDI 1.0 note-on at frame 16: note 60, velocity 127.
-/// let event = Event::new(16, [0x2090_3C7F, 0, 0, 0]);
-/// let voice = Voice::Midi1NoteOn { note: 60, velocity: 127 };
-/// assert_eq!(event.channel_voice(), Some(ChannelVoice { group: 0, channel: 0, voice }));
+/// // A MIDI 2.0 note-on at frame 16: note 60, full velocity.
+/// let event = Event::new(16, [0x4090_3C00, 0xFFFF_0000, 0, 0]);
+/// let message = ChannelMessage::NoteOn { note: 60, velocity: u16::MAX, attribute: Attribute::NONE };
+/// assert_eq!(event.channel_voice(), Some(ChannelVoice { group: 0, channel: 0, message }));
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Event {
@@ -159,11 +173,19 @@ impl Event {
         ((self.words[0] >> 24) & 0xF) as u8
     }
 
-    /// The channel voice message this packet carries, as
+    /// The MIDI 2.0 channel voice message this packet carries, as
     /// [`ChannelVoice::decode`] reads it.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn channel_voice(&self) -> Option<ChannelVoice> {
         ChannelVoice::decode(self.words)
+    }
+
+    /// The MIDI 1.0 channel voice message this packet carries, as
+    /// [`Midi1Voice::decode`] reads it: for an exporter's translation, since
+    /// nothing above it reads MIDI 1.0.
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
+    pub fn midi1_voice(&self) -> Option<Midi1Voice> {
+        Midi1Voice::decode(self.words)
     }
 }
 
