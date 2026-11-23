@@ -335,6 +335,10 @@ impl<'a> AnyFrames<'a> {
 impl<'a> Iterator for AnyFrames<'a> {
     type Item = Frame<'a>;
 
+    // Built into the loop that walks the frames, as an iterator generic
+    // over its layout is: called out of line, each frame is copied out of
+    // the call.
+    #[inline]
     fn next(&mut self) -> Option<Frame<'a>> {
         self.remaining = self.remaining.checked_sub(1)?;
         let samples = self
@@ -388,6 +392,9 @@ macro_rules! bus_frames {
         impl<'a> Iterator for BusFrames<'a, $count> {
             type Item = [&'a mut f32; $count];
 
+            // Built into the loop that walks the frames, whatever the
+            // count of channels and the build's profile.
+            #[inline]
             fn next(&mut self) -> Option<Self::Item> {
                 self.remaining = self.remaining.checked_sub(1)?;
                 let [$($channel),*] = &mut self.channels;
