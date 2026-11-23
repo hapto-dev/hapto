@@ -1,6 +1,6 @@
 //! Tests a message split into six-byte SysEx7 packets and read back.
 
-use hapto_ump::{Event, MessageType, SysEx7, SysExForm};
+use hapto_ump::{Event, MessageType, SysEx7, SysExForm, SysExJoin};
 
 #[test]
 fn a_message_of_every_length_splits_into_its_packets_and_reads_back() {
@@ -59,4 +59,121 @@ fn a_packet_holds_six_bytes_of_seven_bits_on_its_group() {
     assert_eq!((packet.group, event.group()), (0xF, 0xF));
     assert_eq!(event.sysex7(), Some(packet));
     assert_eq!(Event::new(0, [0x10F8_0000, 0, 0, 0]).sysex7(), None);
+}
+
+/// `data`'s packets on `group`, as events.
+fn message(group: u8, data: &[u8]) -> Vec<Event> {
+    let mut packets = Vec::new();
+    SysEx7::packets(group, data, |words| packets.push(Event::new(0, words)));
+    packets
+}
+
+/// What each packet came to: the data it made whole, and what it dropped.
+fn join_all(join: &mut SysExJoin, packets: &[Event]) -> Vec<(Option<Vec<u8>>, u32)> {
+    packets
+        .iter()
+        .map(|packet| {
+            let joined = join.push(packet);
+            (
+                joined.whole.map(|whole| whole.data().to_vec()),
+                joined.dropped,
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn a_sysex_comes_whole_at_its_last_packet_and_lasts_until_the_next() {
+    let mut join = SysExJoin::with_room(64);
+    let data: Vec<u8> = (0..20).collect();
+    let packets = message(3, &data);
+    for packet in &packets[..3] {
+        assert_eq!(join.push(packet).whole, None);
+    }
+    let whole = join.push(&packets[3]).whole.expect("whole");
+    assert_eq!((whole.group, whole.data()), (3, &data[..]));
+    let framed: Vec<u8> = [0xF0]
+        .into_iter()
+        .chain(data.clone())
+        .chain([0xF7])
+        .collect();
+    assert_eq!(whole.framed(), framed);
+    assert!(join.message().is_some(), "until the next packet");
+    join.push(&Event::new(0, [0x10F8_0000, 0, 0, 0]));
+    assert_eq!(join.message(), None);
+}
+
+#[test]
+fn another_groups_sysex_under_way_is_dropped_at_its_start() {
+    let mut join = SysExJoin::with_room(64);
+    let first = message(0, &[1; 8]);
+    let second = message(1, &[2; 8]);
+    let sent = [first[0], second[0], second[1], first[1]];
+    assert_eq!(
+        join_all(&mut join, &sent),
+        [(None, 0), (None, 1), (None, 0), (Some(vec![1; 8]), 0)]
+    );
+    // The rest of the one dropped passes unread, after the first ends too.
+    let sent = [first[0], second[0], first[1], second[1]];
+    assert_eq!(
+        join_all(&mut join, &sent),
+        [(None, 0), (None, 1), (Some(vec![1; 8]), 0), (None, 0)]
+    );
+}
+
+#[test]
+fn any_other_message_on_its_group_ends_a_sysex_but_real_time_and_groupless_ones() {
+    let mut join = SysExJoin::with_room(64);
+    let packets = message(2, &[5; 8]);
+    let clock = Event::new(0, [0x12F8_0000, 0, 0, 0]);
+    let utility = Event::new(0, [0x0000_0000, 0, 0, 0]);
+    let elsewhere = Event::new(0, [0x2390_3C7F, 0, 0, 0]);
+    let sent = [packets[0], clock, utility, elsewhere, packets[1]];
+    assert_eq!(
+        join_all(&mut join, &sent).last(),
+        Some(&(Some(vec![5; 8]), 0))
+    );
+    // A note-on, and a packet with a reserved status, on its own group.
+    for ender in [[0x2290_3C7F, 0, 0, 0], [0x3242_0101, 0, 0, 0]] {
+        let sent = [packets[0], Event::new(0, ender), packets[1]];
+        assert_eq!(
+            join_all(&mut join, &sent),
+            [(None, 0), (None, 1), (None, 0)],
+            "ended, and the rest of it passes unread"
+        );
+    }
+}
+
+#[test]
+fn a_new_start_on_its_group_ends_the_sysex_under_way() {
+    let mut join = SysExJoin::with_room(64);
+    let old = message(0, &[1; 8]);
+    let new = message(0, &[2; 3]);
+    assert_eq!(
+        join_all(&mut join, &[old[0], new[0]]),
+        [(None, 0), (Some(vec![2; 3]), 1)]
+    );
+}
+
+#[test]
+fn a_part_with_no_start_or_past_the_room_is_dropped_at_its_end() {
+    let mut join = SysExJoin::with_room(12);
+    let long = message(0, &[1; 20]);
+    assert_eq!(
+        join_all(&mut join, &long[1..]),
+        [(None, 0), (None, 0), (None, 1)]
+    );
+    assert_eq!(
+        join_all(&mut join, &long).last(),
+        Some(&(None, 1)),
+        "past 12 bytes"
+    );
+    let fits = message(0, &[3; 12]);
+    assert_eq!(
+        join_all(&mut join, &fits).last(),
+        Some(&(Some(vec![3; 12]), 0))
+    );
+    join.push(&long[0]);
+    join.reset();
+    assert_eq!(join_all(&mut join, &long[3..]), [(None, 1)], "forgotten");
 }

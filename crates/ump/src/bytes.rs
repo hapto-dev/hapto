@@ -6,12 +6,12 @@ use std::ops::Deref;
 
 use crate::buf::Buf;
 use crate::head::Head;
+use crate::sysex::{SYSEX_BEGIN, SYSEX_FINISH};
 use crate::{MessageType, SysEx7, SysExForm};
 
-const SYSEX_BEGIN: u8 = 0xF0;
-const SYSEX_FINISH: u8 = 0xF7;
-
-/// Reads a MIDI 1.0 byte stream into Universal MIDI Packets on one group.
+/// Reads a MIDI 1.0 byte stream into Universal MIDI Packets on one group:
+/// channel voice messages as MIDI 1.0's (message type 2), system messages
+/// as type 1, and System Exclusive as 7-bit SysEx packets (type 3).
 ///
 /// Channel voice messages become message type 2, system messages type 1,
 /// and System Exclusive 7-bit SysEx (type 3).

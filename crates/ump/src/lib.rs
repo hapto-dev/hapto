@@ -82,7 +82,7 @@ pub use bytes::{ByteStream, Bytes};
 pub use downgrade::Downgrade;
 pub use midi1::{Midi1Message, Midi1Voice};
 pub use packets::{MessageType, Packets, Truncated};
-pub use sysex::{SysEx7, SysExForm};
+pub use sysex::{Joined, SysEx7, SysExForm, SysExJoin, SysExMessage};
 pub use upgrade::Upgrade;
 pub use voice::{Attribute, Bank, ChannelMessage, ChannelVoice};
 

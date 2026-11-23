@@ -190,6 +190,7 @@ exporter.
   new source.
 - `hapto-ump`: Universal MIDI Packets: a fixed-capacity event list per block,
   the channel voice messages and 7-bit SysEx read from it and written back,
+  SysEx joined back into messages by the specification's rules,
   the translation between MIDI 1.0 and MIDI 2.0, and MIDI 1.0's byte stream
   read into packets and written back.
 - `hapto-host`: the `Plugin` and `Processor` traits and `PluginInfo`, and

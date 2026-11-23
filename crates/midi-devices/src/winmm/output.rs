@@ -15,7 +15,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{self, JoinHandle};
 
-use hapto_ump::{Bytes, SysEx7};
+use hapto_ump::{Bytes, Event, MessageType, SysExJoin};
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
 use windows::Win32::Media::Audio::{
     CALLBACK_EVENT, HMIDIOUT, MHDR_DONE, MIDIERR_NODEVICE, MIDIHDR, midiOutClose, midiOutLongMsg,
@@ -85,27 +85,26 @@ struct Header(MIDIHDR);
 /// A SysEx being joined from its packets, and the header WinMM sends it by.
 struct Sysex {
     header: Box<Header>,
+    /// The SysEx to send, copied from the join: the driver reads it here.
     bytes: Vec<u8>,
-    /// Whether the SysEx outgrew its room, lost a packet, or began before
-    /// the output opened, and is dropped.
-    over: bool,
-    /// The group of the SysEx under way: another group's is dropped.
-    group: u8,
-    /// The ring's dropped count as the SysEx began: one that moved lost a
-    /// packet of it.
-    dropped_at_start: u64,
+    /// Joins every packet the ring hands over, so a message on a SysEx's
+    /// group ends it.
+    join: SysExJoin,
+    /// The packets the ring had dropped as the SysEx under way began, those
+    /// this output counted itself left out: one more since lost a packet of
+    /// it.
+    ring_dropped_at_start: u64,
+    /// The drops this output counted on the ring itself.
+    counted: u64,
 }
 
-/// What one SysEx packet came to.
-enum Joined {
-    /// More of it is to come.
-    Part,
-    /// It is whole, and in the buffer.
-    Whole,
-    /// It is whole, but outgrew the buffer, lost a packet to a full ring,
-    /// began before the output opened, or came on another group while one
-    /// was under way, and is dropped.
-    Dropped,
+/// What one packet came to.
+#[derive(Debug, PartialEq, Eq)]
+struct Joined {
+    /// Whether a SysEx is whole in the buffer, to send.
+    whole: bool,
+    /// How many messages it dropped, which the caller counts on the ring.
+    dropped: u32,
 }
 
 impl Sysex {
@@ -113,50 +112,42 @@ impl Sysex {
         Sysex {
             header: Box::new(Header(MIDIHDR::default())),
             bytes: Vec::with_capacity(SYSEX_BYTES),
-            over: false,
-            group: 0,
-            dropped_at_start: 0,
+            join: SysExJoin::with_room(SYSEX_BYTES.saturating_sub(2)),
+            ring_dropped_at_start: 0,
+            counted: 0,
         }
     }
 
-    /// Adds one 7-bit SysEx packet, whose bytes `Bytes` gave, F0 and F7
-    /// among them where it begins or ends one. `dropped` is the ring's
-    /// dropped count now.
-    fn join(&mut self, packet: SysEx7, bytes: &[u8], dropped: u64) -> Joined {
-        let group = packet.group;
-        let (begins, ends) = (packet.form.begins(), packet.form.ends());
-        if group != self.group && !self.bytes.is_empty() {
-            // Another group's SysEx while one is under way: a device takes
-            // one at a time, so it is dropped, counted at its end.
-            return if ends { Joined::Dropped } else { Joined::Part };
+    /// Reads one packet, `ring_dropped` the ring's dropped count now. A
+    /// SysEx whole goes into the buffer, unless the ring dropped a packet
+    /// while it came, maybe one of its.
+    fn join(&mut self, event: &Event, ring_dropped: u64) -> Joined {
+        let from_ring = ring_dropped.saturating_sub(self.counted);
+        if let Some(packet) = event.sysex7()
+            && packet.form.begins()
+            && self
+                .join
+                .under_way()
+                .is_none_or(|group| group == packet.group)
+        {
+            self.ring_dropped_at_start = from_ring;
         }
-        if begins {
-            self.bytes.clear();
-            self.over = false;
-            self.group = group;
-            self.dropped_at_start = dropped;
-        } else if self.bytes.is_empty() {
-            // Its start came before the output opened.
-            self.over = true;
+        let joined = self.join.push(event);
+        let mut dropped = joined.dropped;
+        let mut whole = false;
+        if let Some(message) = joined.whole {
+            let framed = message.framed();
+            // A buffer a hung driver kept has no room left: nothing fits.
+            if from_ring != self.ring_dropped_at_start || framed.len() > self.bytes.capacity() {
+                dropped = dropped.saturating_add(1);
+            } else {
+                self.bytes.clear();
+                self.bytes.extend_from_slice(framed);
+                whole = true;
+            }
         }
-        if self.bytes.len().saturating_add(bytes.len()) <= self.bytes.capacity() {
-            self.bytes.extend_from_slice(bytes);
-        } else {
-            self.over = true;
-        }
-        if !ends {
-            return Joined::Part;
-        }
-        if dropped != self.dropped_at_start {
-            // The ring dropped a packet while it came: maybe one of its.
-            self.over = true;
-        }
-        if self.over {
-            self.bytes.clear();
-            Joined::Dropped
-        } else {
-            Joined::Whole
-        }
+        self.counted = self.counted.saturating_add(u64::from(dropped));
+        Joined { whole, dropped }
     }
 
     /// Sends the SysEx joined, and waits while the driver sends it: until
@@ -380,17 +371,15 @@ fn send(handle: Handle, shared: &Shared, signal: &Signal, consumer: Consumer) ->
         let Some(bytes) = Bytes::of(words) else {
             continue;
         };
-        if let Some(packet) = SysEx7::decode(words) {
-            match sysex.join(packet, &bytes, consumer.dropped()) {
-                Joined::Part => {}
-                Joined::Whole => {
-                    if !sysex.send(handle, shared) {
-                        consumer.count_dropped();
-                    }
-                }
-                Joined::Dropped => consumer.count_dropped(),
-            }
-        } else {
+        let event = Event::new(0, words);
+        let joined = sysex.join(&event, consumer.dropped());
+        for _ in 0..joined.dropped {
+            consumer.count_dropped();
+        }
+        if joined.whole && !sysex.send(handle, shared) {
+            consumer.count_dropped();
+        }
+        if event.message_type() != MessageType::SYSEX7 {
             short(handle, shared, &bytes);
         }
     }

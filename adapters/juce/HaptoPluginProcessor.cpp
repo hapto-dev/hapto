@@ -272,6 +272,9 @@ void PluginProcessor::prepareToPlay (double sampleRate, int maximumExpectedSampl
     midiOut_.assign (midiRoom, HaptoPacket {});
     sysexOut_.clear();
     sysexOut_.reserve (sysexRoom);
+    sysexGroup_ = -1;
+    sysexOverflow_ = false;
+    sysexSkipping_ = 0;
     midiOutRoom_.clear();
     midiOutRoom_.ensureSize (midiOutBytes);
     swapOutRoom_ = true;
@@ -353,10 +356,20 @@ void PluginProcessor::addMessage (juce::MidiBuffer& midi, const HaptoPacket& pac
 {
     const auto head = packet.words[0];
     const auto frame = static_cast<int> (packet.frame);
+    const auto type = head >> 28;
+    const auto group = static_cast<int> ((head >> 24) & 0xF);
     const auto status = static_cast<juce::uint8> ((head >> 16) & 0xFF);
+    // Any message on a SysEx's group but real time ends it, as the UMP
+    // specification says: it is dropped, and the rest of it passes unread.
+    if (type != 0x3 && group == sysexGroup_ && ! (type == 0x1 && status >= 0xF8))
+    {
+        sysexOut_.clear();
+        sysexGroup_ = -1;
+        sysexSkipping_ = static_cast<std::uint16_t> (sysexSkipping_ | 1u << group);
+    }
     const std::array<juce::uint8, 3> bytes { status, static_cast<juce::uint8> ((head >> 8) & 0x7F),
                                              static_cast<juce::uint8> (head & 0x7F) };
-    switch (head >> 28)
+    switch (type)
     {
         case 0x2:
         {
@@ -368,44 +381,75 @@ void PluginProcessor::addMessage (juce::MidiBuffer& midi, const HaptoPacket& pac
             midi.addEvent (bytes.data(), status == 0xF2 ? 3 : status == 0xF1 || status == 0xF3 ? 2 : 1, frame);
             return;
         case 0x3:
-        {
-            const auto form = (head >> 20) & 0xF;
-            const auto count = juce::jmin (6u, (head >> 16) & 0xF);
-            const auto second = packet.words[1];
-            const std::array<juce::uint8, 6> data { static_cast<juce::uint8> ((head >> 8) & 0x7F),
-                                                    static_cast<juce::uint8> (head & 0x7F),
-                                                    static_cast<juce::uint8> ((second >> 24) & 0x7F),
-                                                    static_cast<juce::uint8> ((second >> 16) & 0x7F),
-                                                    static_cast<juce::uint8> ((second >> 8) & 0x7F),
-                                                    static_cast<juce::uint8> (second & 0x7F) };
-            // A first or whole packet begins a SysEx; the room was reserved,
-            // so joining one allocates nothing, and one past it is dropped.
-            if (form == 0 || form == 1)
-            {
-                sysexOut_.clear();
-                sysexOut_.push_back (0xF0);
-                sysexOverflow_ = false;
-            }
-            if (sysexOut_.size() + count + 1 > sysexRoom)
-                sysexOverflow_ = true;
-            if (! sysexOverflow_)
-                sysexOut_.insert (sysexOut_.end(), data.begin(), data.begin() + count);
-            if ((form == 0 || form == 3) && ! sysexOut_.empty())
-            {
-                if (! sysexOverflow_)
-                {
-                    sysexOut_.push_back (0xF7);
-                    midi.addEvent (sysexOut_.data(), static_cast<int> (sysexOut_.size()), frame);
-                }
-                sysexOut_.clear();
-            }
+            addSysEx (midi, packet);
             return;
-        }
         default:
             // A MIDI 2.0 or utility packet, which a MidiBuffer cannot hold; the
             // plugin was asked for MIDI 1.0.
             return;
     }
+}
+
+// One 7-bit SysEx packet, joined with the ones before it by the rules the
+// Rust side's SysExJoin follows: one SysEx at a time, another group's begun
+// while one is under way dropped, and a part whose start never came dropped.
+// The room was reserved, so joining allocates nothing, and a SysEx past it is
+// dropped.
+void PluginProcessor::addSysEx (juce::MidiBuffer& midi, const HaptoPacket& packet)
+{
+    const auto head = packet.words[0];
+    const auto group = static_cast<int> ((head >> 24) & 0xF);
+    const auto bit = static_cast<std::uint16_t> (1u << group);
+    const auto form = (head >> 20) & 0xF;
+    // The downgrade sends no packet of a reserved status.
+    if (form > 3)
+        return;
+    const bool begins = form == 0 || form == 1;
+    const bool ends = form == 0 || form == 3;
+    if (begins)
+        sysexSkipping_ = static_cast<std::uint16_t> (sysexSkipping_ & ~bit);
+    else if ((sysexSkipping_ & bit) != 0)
+    {
+        if (ends)
+            sysexSkipping_ = static_cast<std::uint16_t> (sysexSkipping_ & ~bit);
+        return;
+    }
+    if (sysexGroup_ >= 0 && sysexGroup_ != group)
+    {
+        if (begins && ! ends)
+            sysexSkipping_ = static_cast<std::uint16_t> (sysexSkipping_ | bit);
+        return;
+    }
+    if (begins)
+    {
+        sysexOut_.clear();
+        sysexOut_.push_back (0xF0);
+        sysexGroup_ = group;
+        sysexOverflow_ = false;
+    }
+    if (sysexGroup_ != group)
+        return;
+    const auto count = juce::jmin (6u, (head >> 16) & 0xF);
+    const auto second = packet.words[1];
+    const std::array<juce::uint8, 6> data { static_cast<juce::uint8> ((head >> 8) & 0x7F),
+                                            static_cast<juce::uint8> (head & 0x7F),
+                                            static_cast<juce::uint8> ((second >> 24) & 0x7F),
+                                            static_cast<juce::uint8> ((second >> 16) & 0x7F),
+                                            static_cast<juce::uint8> ((second >> 8) & 0x7F),
+                                            static_cast<juce::uint8> (second & 0x7F) };
+    if (sysexOut_.size() + count + 1 > sysexRoom)
+        sysexOverflow_ = true;
+    if (! sysexOverflow_)
+        sysexOut_.insert (sysexOut_.end(), data.begin(), data.begin() + count);
+    if (! ends)
+        return;
+    if (! sysexOverflow_)
+    {
+        sysexOut_.push_back (0xF7);
+        midi.addEvent (sysexOut_.data(), static_cast<int> (sysexOut_.size()), static_cast<int> (packet.frame));
+    }
+    sysexOut_.clear();
+    sysexGroup_ = -1;
 }
 
 void PluginProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)

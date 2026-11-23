@@ -5,6 +5,10 @@ use crate::buf::Buf;
 use crate::head::Head;
 use crate::{Event, MessageType};
 
+/// The bytes that frame a SysEx in MIDI 1.0's byte stream.
+pub(crate) const SYSEX_BEGIN: u8 = 0xF0;
+pub(crate) const SYSEX_FINISH: u8 = 0xF7;
+
 /// Where a [`SysEx7`] packet's bytes fall in their message.
 ///
 /// # Examples
@@ -212,5 +216,278 @@ impl Event {
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn sysex7(&self) -> Option<SysEx7> {
         SysEx7::decode(self.words)
+    }
+}
+
+/// Joins 7-bit SysEx packets back into whole messages, by the rules of
+/// section 7.7.1 of the UMP and MIDI 2.0 Protocol specification, in room
+/// fixed when it is made.
+///
+/// It reads every packet of a stream, so it can apply each rule:
+///
+/// - A SysEx goes out once its last packet has come, framed by 0xF0 and
+///   0xF7, and lasts until the next packet is pushed.
+/// - One SysEx is under way at a time. Another group's, begun while one is
+///   under way, is dropped, counted at its start, and the rest of it passes
+///   unread.
+/// - Any other message on the SysEx's group, a new SysEx's start or a
+///   packet with a reserved status included, ends the one under way: it is
+///   dropped, and the rest of it passes unread. Real-time messages and the
+///   groupless utility and stream messages may fall inside it.
+/// - A SysEx whose start never came, or one longer than the room, is
+///   dropped, counted at its end.
+///
+/// # Examples
+///
+/// ```
+/// use hapto_ump::{Event, SysEx7, SysExJoin};
+///
+/// let mut join = SysExJoin::with_room(64);
+/// let mut packets = Vec::new();
+/// SysEx7::packets(0, &[1, 2, 3, 4, 5, 6, 7, 8], |words| packets.push(Event::new(0, words)));
+///
+/// // The first packet holds six bytes, and is no message yet.
+/// assert!(join.push(&packets[0]).whole.is_none());
+/// let joined = join.push(&packets[1]);
+/// let whole = joined.whole.expect("the last packet");
+/// assert_eq!(whole.data(), [1, 2, 3, 4, 5, 6, 7, 8]);
+/// assert_eq!(whole.framed().first(), Some(&0xF0));
+/// assert_eq!(joined.dropped, 0);
+/// ```
+#[derive(Debug)]
+pub struct SysExJoin {
+    /// 0xF0, the bytes so far, and 0xF7 once whole.
+    bytes: Vec<u8>,
+    /// The most data bytes a message may have.
+    room: usize,
+    state: State,
+    /// The groups whose SysEx was dropped part way, a bit each: the rest
+    /// of it passes unread, to its end.
+    skipping: u16,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum State {
+    Idle,
+    /// A SysEx under way on `group`; `over` once it outgrew the room.
+    Joining {
+        group: u8,
+        over: bool,
+    },
+    /// A SysEx whole on `group`, until the next packet.
+    Whole {
+        group: u8,
+    },
+}
+
+/// What one packet came to: a SysEx it made whole, and how many it dropped.
+///
+/// # Examples
+///
+/// ```
+/// use hapto_ump::{Event, SysEx7, SysExForm, SysExJoin};
+///
+/// let mut join = SysExJoin::with_room(64);
+/// join.push(&SysEx7::new(0, SysExForm::Start, &[1; 6]).event(0));
+/// // A note-on on the SysEx's group ends it, cut short.
+/// let joined = join.push(&Event::new(0, [0x2090_3C7F, 0, 0, 0]));
+/// assert_eq!((joined.whole, joined.dropped), (None, 1));
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct Joined<'a> {
+    /// The message the packet made whole.
+    pub whole: Option<SysExMessage<'a>>,
+    /// How many messages the packet dropped: one at most, or two when a
+    /// new SysEx on the group of one under way is dropped too.
+    pub dropped: u32,
+}
+
+/// A whole SysEx message, as [`SysExJoin`] joined it.
+///
+/// # Examples
+///
+/// ```
+/// use hapto_ump::{SysEx7, SysExForm, SysExJoin};
+///
+/// let mut join = SysExJoin::with_room(64);
+/// let packet = SysEx7::new(0, SysExForm::Complete, &[0x7E, 0x7F]);
+/// let message = join.push(&packet.event(0)).whole.expect("whole in one packet");
+/// assert_eq!(message.data(), [0x7E, 0x7F]);
+/// assert_eq!(message.framed(), [0xF0, 0x7E, 0x7F, 0xF7]);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SysExMessage<'a> {
+    /// The group it came on, 0 to 15.
+    pub group: u8,
+    framed: &'a [u8],
+}
+
+impl<'a> SysExMessage<'a> {
+    /// Its bytes, without the 0xF0 and 0xF7 that frame it.
+    pub fn data(&self) -> &'a [u8] {
+        let inner = self
+            .framed
+            .strip_prefix(&[SYSEX_BEGIN])
+            .unwrap_or(self.framed);
+        inner.strip_suffix(&[SYSEX_FINISH]).unwrap_or(inner)
+    }
+
+    /// Its bytes framed by 0xF0 and 0xF7, as MIDI 1.0's byte stream and
+    /// most formats carry SysEx.
+    pub fn framed(&self) -> &'a [u8] {
+        self.framed
+    }
+}
+
+impl SysExJoin {
+    /// A join for SysEx of up to `room` bytes, not counting the 0xF0 and
+    /// 0xF7 that frame them. Allocates, so it is made before the audio
+    /// thread uses it.
+    ///
+    /// Thread: any but audio.
+    pub fn with_room(room: usize) -> Self {
+        SysExJoin {
+            bytes: Vec::with_capacity(room.saturating_add(2)),
+            room,
+            state: State::Idle,
+            skipping: 0,
+        }
+    }
+
+    /// Reads the next packet of the stream.
+    ///
+    /// Thread: any. Allocates nothing.
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
+    pub fn push(&mut self, event: &Event) -> Joined<'_> {
+        if let State::Whole { .. } = self.state {
+            self.forget();
+        }
+        let dropped = match event.sysex7() {
+            Some(packet) => self.part(packet),
+            None => self.other(event),
+        };
+        Joined {
+            whole: self.message(),
+            dropped,
+        }
+    }
+
+    /// The message the last packet made whole, until the next is pushed.
+    pub fn message(&self) -> Option<SysExMessage<'_>> {
+        match self.state {
+            State::Whole { group } => Some(SysExMessage {
+                group,
+                framed: &self.bytes,
+            }),
+            _ => None,
+        }
+    }
+
+    /// The group of the SysEx under way, if one is.
+    pub fn under_way(&self) -> Option<u8> {
+        match self.state {
+            State::Joining { group, .. } => Some(group),
+            _ => None,
+        }
+    }
+
+    /// Forgets a SysEx under way or whole, as when its source starts over.
+    pub fn reset(&mut self) {
+        self.forget();
+        self.skipping = 0;
+    }
+
+    /// A packet that is no SysEx7 packet: it ends a SysEx on its group,
+    /// unless it may fall inside one.
+    fn other(&mut self, event: &Event) -> u32 {
+        let groupless = matches!(
+            event.message_type(),
+            MessageType::UTILITY | MessageType::STREAM
+        );
+        match self.state {
+            State::Joining { group, .. }
+                if !groupless && !event.is_real_time() && group == event.group() =>
+            {
+                self.forget();
+                self.skipping |= bit(group);
+                1
+            }
+            _ => 0,
+        }
+    }
+
+    /// A SysEx7 packet, returning how many messages it dropped.
+    fn part(&mut self, packet: SysEx7) -> u32 {
+        let own = bit(packet.group);
+        if packet.form.begins() {
+            self.skipping &= !own;
+        } else if self.skipping & own != 0 {
+            // The rest of a SysEx dropped part way, counted already.
+            if packet.form.ends() {
+                self.skipping &= !own;
+            }
+            return 0;
+        }
+        let mut dropped: u32 = 0;
+        if let State::Joining { group, .. } = self.state {
+            if group != packet.group {
+                if !packet.form.begins() {
+                    // A part of a SysEx whose start never came.
+                    return u32::from(packet.form.ends());
+                }
+                // One at a time: another group's is dropped at its start,
+                // and the rest of it passes unread.
+                if !packet.form.ends() {
+                    self.skipping |= own;
+                }
+                return 1;
+            }
+            if packet.form.begins() {
+                // A new one on its group ends the one under way.
+                self.forget();
+                dropped = 1;
+            }
+        }
+        if packet.form.begins() {
+            self.bytes.push(SYSEX_BEGIN);
+            self.state = State::Joining {
+                group: packet.group,
+                over: false,
+            };
+        }
+        let State::Joining { group, over } = self.state else {
+            // A part of a SysEx whose start never came.
+            return dropped.saturating_add(u32::from(packet.form.ends()));
+        };
+        let held = self.bytes.len().saturating_sub(1);
+        let over = over || held.saturating_add(packet.data().len()) > self.room;
+        if !over {
+            self.bytes.extend_from_slice(packet.data());
+        }
+        if !packet.form.ends() {
+            self.state = State::Joining { group, over };
+            return dropped;
+        }
+        if over {
+            self.forget();
+            return dropped.saturating_add(1);
+        }
+        self.bytes.push(SYSEX_FINISH);
+        self.state = State::Whole { group };
+        dropped
+    }
+
+    fn forget(&mut self) {
+        self.bytes.clear();
+        self.state = State::Idle;
+    }
+}
+
+/// `group`'s bit in a mask of the 16 groups.
+const fn bit(group: u8) -> u16 {
+    match 1_u16.checked_shl((group & 0xF) as u32) {
+        Some(bit) => bit,
+        None => 0,
     }
 }

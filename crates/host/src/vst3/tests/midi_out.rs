@@ -56,6 +56,30 @@ impl Processor for Raw {
     }
 }
 
+/// Sends two groups' SysEx from packets, interleaved: group 1's begins
+/// while group 0's is under way.
+#[derive(Default)]
+struct TwoGroups;
+
+impl Processor for TwoGroups {
+    type Layout = Stereo;
+
+    fn process(&mut self, mut block: Block<'_, Stereo>) -> Status {
+        use hapto_ump::SysEx7;
+        use hapto_ump::SysExForm::{End, Start};
+        for (frame, group, form, data) in [
+            (0, 0, Start, [1; 6]),
+            (1, 1, Start, [2; 6]),
+            (2, 0, End, [3; 6]),
+            (3, 1, End, [4; 6]),
+        ] {
+            let packet = SysEx7::new(group, form, &data);
+            block.midi_out.send_packet(packet.event(frame));
+        }
+        Status::Continue
+    }
+}
+
 /// A plugin around processor `R` that takes MIDI, and sends it when
 /// `SENDS`.
 struct Sender<R, const SENDS: bool>(PhantomData<R>);
@@ -309,6 +333,26 @@ fn a_sysex_goes_back_out_whole() {
     play(&mut host, &events, &[]);
     let sent = host.sent();
     assert_eq!(sent, events);
+}
+
+#[test]
+fn a_sysex_begun_on_another_group_while_one_is_under_way_is_dropped() {
+    let mut host = running::<TwoGroups, true>();
+    play(&mut host, &[], &[]);
+    let whole: Vec<u8> = [0xF0]
+        .into_iter()
+        .chain([1; 6])
+        .chain([3; 6])
+        .chain([0xF7])
+        .collect();
+    assert_eq!(
+        host.sent(),
+        [BusEvent::SysEx {
+            offset: 2,
+            bytes: &whole
+        }]
+    );
+    assert_eq!(host.component().lost_out(), 1, "group 1's, at its start");
 }
 
 #[test]

@@ -18,9 +18,7 @@
 use std::fmt;
 
 use hapto_ump::scale::down_32_to_14;
-use hapto_ump::{
-    Attribute, ChannelMessage, ChannelVoice, Event, MessageType, Origin, SysEx7, SysExForm,
-};
+use hapto_ump::{Attribute, ChannelMessage, ChannelVoice, Event, MessageType, Origin, SysExJoin};
 
 use crate::message::{Message, NoteKey, NoteOff, NoteOn};
 use crate::values::{Centred, Channel, Group, Key, NoteId, Pitch, Program};
@@ -98,12 +96,8 @@ pub struct Decoder {
     /// The notes the last note-off ended: the first `ended` slots.
     ends: Box<[NoteId]>,
     ended: usize,
-    /// The SysEx under way: its bytes so far, and its group.
-    sysex: Box<[u8]>,
-    sysex_len: usize,
-    sysex_group: Option<Group>,
-    /// Whether the SysEx under way outgrew the buffer.
-    sysex_over: bool,
+    /// The SysEx under way, or the one the last packet made whole.
+    sysex: SysExJoin,
     dropped: u64,
 }
 
@@ -111,7 +105,6 @@ impl fmt::Debug for Decoder {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Decoder")
             .field("sounding", &self.sounding)
-            .field("sysex_under_way", &self.sysex_group.is_some())
             .field("dropped", &self.dropped)
             .finish_non_exhaustive()
     }
@@ -174,11 +167,7 @@ impl<'d> Iterator for Messages<'d> {
             }
             Decoded::SysEx(group) => (at == 0).then(|| Message::SysEx {
                 group,
-                data: self
-                    .decoder
-                    .sysex
-                    .get(..self.decoder.sysex_len)
-                    .unwrap_or(&[]),
+                data: self.decoder.sysex_bytes(),
             }),
         }
     }
@@ -211,10 +200,7 @@ impl Decoder {
             made: 0,
             ends: vec![NoteId::made_up(0); notes.max(1)].into_boxed_slice(),
             ended: 0,
-            sysex: vec![0; sysex_bytes].into_boxed_slice(),
-            sysex_len: 0,
-            sysex_group: None,
-            sysex_over: false,
+            sysex: SysExJoin::with_room(sysex_bytes),
             dropped: 0,
         }
     }
@@ -241,7 +227,7 @@ impl Decoder {
 
     /// The SysEx last whole.
     pub(crate) fn sysex_bytes(&self) -> &[u8] {
-        self.sysex.get(..self.sysex_len).unwrap_or(&[])
+        self.sysex.message().map_or(&[], |whole| whole.data())
     }
 
     /// How many notes gave up their place in the full table, and how many
@@ -260,29 +246,24 @@ impl Decoder {
     pub fn reset(&mut self) {
         self.sounding = 0;
         self.ended = 0;
-        self.sysex_len = 0;
-        self.sysex_group = None;
-        self.sysex_over = false;
+        self.sysex.reset();
     }
 
     /// What `event` decoded to, the note-offs' ids in [`ended`](Self::ended)
     /// and a whole SysEx in [`sysex_bytes`](Self::sysex_bytes).
     pub(crate) fn read(&mut self, event: &Event) -> Decoded {
+        // The join reads every packet: anything on a SysEx's group but real
+        // time ends it, cut short.
+        let joined = self.sysex.push(event);
+        let (whole, dropped) = (joined.whole.map(|whole| whole.group), joined.dropped);
+        self.dropped = self.dropped.saturating_add(u64::from(dropped));
+        if let Some(group) = whole {
+            return Decoded::SysEx(Group::field(group));
+        }
         match event.message_type() {
-            // Real time may fall inside a SysEx, and so may the groupless
-            // utility and stream messages.
-            MessageType::UTILITY | MessageType::STREAM => Decoded::Nothing,
+            MessageType::UTILITY | MessageType::STREAM | MessageType::SYSEX7 => Decoded::Nothing,
             _ if event.is_real_time() => Decoded::Nothing,
-            MessageType::SYSEX7 => match event.sysex7() {
-                Some(packet) => self.sysex(packet),
-                // A reserved status: part of no message.
-                None => Decoded::Nothing,
-            },
             _ => {
-                // Anything else on a SysEx's group ends it, cut short.
-                if self.sysex_group == Some(Group::field(event.group())) {
-                    self.drop_sysex();
-                }
                 let named = match event.origin {
                     Origin::Note { id } => Some(NoteId::hosts(id)),
                     _ => None,
@@ -573,74 +554,6 @@ impl Decoder {
         let id = NoteId::made_up(self.made);
         self.made = self.made.wrapping_add(1);
         id
-    }
-
-    /// One 7-bit SysEx packet.
-    fn sysex(&mut self, packet: SysEx7) -> Decoded {
-        let group = Group::field(packet.group);
-        let bytes = packet.data();
-        match packet.form {
-            SysExForm::Complete | SysExForm::Start => {
-                if let Some(under_way) = self.sysex_group {
-                    if under_way != group {
-                        // One under way on another group keeps the buffer.
-                        self.dropped = self.dropped.saturating_add(1);
-                        return Decoded::Nothing;
-                    }
-                    // A new one begins on its group: the old was cut short.
-                    self.drop_sysex();
-                }
-                self.sysex_len = 0;
-                self.sysex_over = false;
-                self.sysex_group = Some(group);
-                self.append(bytes);
-                if packet.form.ends() {
-                    self.finish(group)
-                } else {
-                    Decoded::Nothing
-                }
-            }
-            SysExForm::Continue | SysExForm::End if self.sysex_group == Some(group) => {
-                self.append(bytes);
-                if packet.form.ends() {
-                    self.finish(group)
-                } else {
-                    Decoded::Nothing
-                }
-            }
-            // A part of a SysEx that never began here.
-            _ => Decoded::Nothing,
-        }
-    }
-
-    fn append(&mut self, bytes: &[u8]) {
-        for &byte in bytes {
-            match self.sysex.get_mut(self.sysex_len) {
-                Some(slot) => {
-                    *slot = byte & 0x7F;
-                    self.sysex_len = self.sysex_len.saturating_add(1);
-                }
-                None => self.sysex_over = true,
-            }
-        }
-    }
-
-    /// The SysEx under way is whole: it comes, unless it outgrew the buffer.
-    fn finish(&mut self, group: Group) -> Decoded {
-        self.sysex_group = None;
-        if self.sysex_over {
-            self.dropped = self.dropped.saturating_add(1);
-            self.sysex_over = false;
-            return Decoded::Nothing;
-        }
-        Decoded::SysEx(group)
-    }
-
-    fn drop_sysex(&mut self) {
-        self.sysex_group = None;
-        self.sysex_len = 0;
-        self.sysex_over = false;
-        self.dropped = self.dropped.saturating_add(1);
     }
 }
 

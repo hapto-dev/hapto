@@ -36,7 +36,9 @@ use ::vst3::Steinberg::Vst::{
     PolyPressureEvent,
 };
 use ::vst3::Steinberg::{int32, kResultOk, uint8};
-use hapto_ump::{ChannelMessage, Downgrade, Event, MessageType, Midi1Message, Midi1Voice, Origin};
+use hapto_ump::{
+    ChannelMessage, Downgrade, Event, MessageType, Midi1Message, Midi1Voice, Origin, SysExJoin,
+};
 
 use super::midi::{
     EXPRESSIONS, Named, Notes, PER_NOTE_PITCH, SYSEX, TUNING_REACH, expression_of_volume,
@@ -55,9 +57,7 @@ pub(crate) struct Out {
     /// tuning, so a tuning goes out from its note-on's pitch.
     notes: Notes,
     /// A SysEx being joined, which may span blocks.
-    joining: Vec<u8>,
-    /// Whether the SysEx being joined outgrew its room, and is dropped.
-    over: bool,
+    joining: SysExJoin,
     /// The block's whole SysEx messages, which the host may read until
     /// `process` returns, so a block's room is cleared at the next one.
     block: Vec<u8>,
@@ -71,8 +71,7 @@ impl Out {
         let room = |bytes| if sends { bytes } else { 0 };
         Out {
             notes: Notes::new(),
-            joining: Vec::with_capacity(room(hapto_midi::SYSEX_BYTES)),
-            over: false,
+            joining: SysExJoin::with_room(room(hapto_midi::SYSEX_BYTES)),
             block: Vec::with_capacity(room(hapto_midi::BLOCK_SYSEX_BYTES)),
             lost: 0,
         }
@@ -81,8 +80,7 @@ impl Out {
     /// Forgets the notes and any SysEx under way, as at an activation.
     pub(crate) fn clear(&mut self) {
         self.notes.clear();
-        self.joining.clear();
-        self.over = false;
+        self.joining.reset();
     }
 
     /// What VST3 had no event for, or the host refused, since it was made.
@@ -130,6 +128,18 @@ pub(super) unsafe fn write_events(
     for packet in sent {
         let offset = packet.offset.min(last);
         let at = Event { offset, ..*packet };
+        // Every packet goes through the join, so one on a SysEx's group
+        // ends it.
+        let joined = out.joining.push(&at);
+        lost = lost.saturating_add(u64::from(joined.dropped));
+        if at.message_type() == MessageType::SYSEX7 {
+            if let Some(whole) = joined.whole
+                && !sysex(&mut out.block, whole.framed(), at.offset, &mut add)
+            {
+                lost = lost.saturating_add(1);
+            }
+            continue;
+        }
         if native(&at, out, &mut add) {
             continue;
         }
@@ -285,10 +295,6 @@ fn midi_1(packet: &Event, out: &mut Out, add: &mut impl FnMut(VstEvent) -> bool)
             Some(voice) => midi_1_event(packet.offset, voice).is_some_and(&mut *add),
             None => false,
         },
-        MessageType::SYSEX7 => {
-            sysex(packet, out, add);
-            return;
-        }
         MessageType::SYSTEM => system_event(packet.offset, packet.words[0]).is_some_and(&mut *add),
         _ => false,
     };
@@ -401,57 +407,26 @@ fn midi_1_event(offset: u32, voice: Midi1Voice) -> Option<VstEvent> {
     })
 }
 
-/// One 7-bit SysEx packet, joined with the ones before it; the whole
-/// message goes out once its last packet does, from the block's room.
-fn sysex(packet: &Event, out: &mut Out, add: &mut impl FnMut(VstEvent) -> bool) {
-    let Some(part) = packet.sysex7() else {
-        // A reserved status: no part of any message.
-        out.lose();
-        return;
+/// A whole SysEx, framed by its F0 and F7, out from the block's room;
+/// false when the room or the host refuses it.
+fn sysex(
+    block: &mut Vec<u8>,
+    framed: &[u8],
+    offset: u32,
+    add: &mut impl FnMut(VstEvent) -> bool,
+) -> bool {
+    let start = block.len();
+    if start.saturating_add(framed.len()) > block.capacity() {
+        return false;
+    }
+    // Within the room, so it never allocates.
+    block.extend_from_slice(framed);
+    let whole = block.get(start..).unwrap_or(&[]);
+    let mut event = event(offset, EventTypes_::kDataEvent as u16);
+    event.__field0.data = DataEvent {
+        size: u32::try_from(whole.len()).unwrap_or(0),
+        r#type: SYSEX,
+        bytes: whole.as_ptr(),
     };
-    let bytes = part.data();
-    // No room made: a plugin that declares no MIDI out sends none.
-    if out.joining.capacity() == 0 {
-        out.lose();
-        return;
-    }
-    // A whole or first packet begins a message.
-    if part.form.begins() {
-        out.joining.clear();
-        out.joining.push(0xF0);
-        out.over = false;
-    }
-    if out.joining.is_empty() {
-        // A packet of no message begun: nothing to join it to.
-        out.lose();
-        return;
-    }
-    // One byte kept for the F7; within the room, so it never allocates.
-    if out.joining.len().saturating_add(bytes.len()) < out.joining.capacity() {
-        out.joining.extend_from_slice(bytes);
-    } else {
-        out.over = true;
-    }
-    if !part.form.ends() {
-        return;
-    }
-    out.joining.push(0xF7);
-    let start = out.block.len();
-    let fits = start.saturating_add(out.joining.len()) <= out.block.capacity();
-    if out.over || !fits {
-        out.lose();
-    } else {
-        out.block.extend_from_slice(&out.joining);
-        let whole = out.block.get(start..).unwrap_or(&[]);
-        let mut event = event(packet.offset, EventTypes_::kDataEvent as u16);
-        event.__field0.data = DataEvent {
-            size: u32::try_from(whole.len()).unwrap_or(0),
-            r#type: SYSEX,
-            bytes: whole.as_ptr(),
-        };
-        if !add(event) {
-            out.lose();
-        }
-    }
-    out.joining.clear();
+    add(event)
 }
