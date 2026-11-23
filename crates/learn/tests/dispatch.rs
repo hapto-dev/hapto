@@ -917,3 +917,43 @@ fn data_increment_and_decrement_use_the_address_and_drive_nothing() {
     rig.block(&[cc(98, 44), cc(96, 1), cc(99, 2), cc(6, 20)]);
     assert_eq!(rig.value(0), UNTOUCHED);
 }
+
+#[test]
+fn every_seven_bit_controller_value_reads_centre_anchored() {
+    let mut rig = rig(1);
+    rig.map(0, Source::any(Control::Cc(1)));
+    for value in 0..=127 {
+        rig.block(&[cc(1, value)]);
+        assert_eq!(rig.value(0), stored(seven(value)), "CC 1 = {value}");
+    }
+}
+
+#[test]
+fn every_note_on_velocity_reads_centre_anchored() {
+    let mut rig = rig(1);
+    rig.map(0, Source::any(Control::Note(60)));
+    for velocity in 1..=127 {
+        rig.block(&[on(0, 0, Voice::Midi1NoteOn { note: 60, velocity })]);
+        assert_eq!(rig.value(0), stored(seven(velocity)), "velocity {velocity}");
+    }
+}
+
+#[test]
+fn every_fourteen_bit_nrpn_value_reads_centre_anchored_fine_or_coarse() {
+    let mut fine = rig(1);
+    fine.map(0, Source::any(Control::Nrpn(300)));
+    let mut coarse = rig(1);
+    let mapping = Mapping::new(Source::any(Control::Nrpn(300))).as_coarse();
+    coarse.learn.map(coarse.ids[0], mapping).expect("legal");
+    let address = nrpn_address(300);
+    for value in 0..=16383_u16 {
+        let (high, low) = ((value >> 7) as u8, (value & 0x7F) as u8);
+        let mut sent = address.to_vec();
+        sent.extend([cc(6, high), cc(38, low)]);
+        fine.block(&sent);
+        assert_eq!(fine.value(0), stored(fourteen(value)), "NRPN 300 = {value}");
+        // A coarse binding reads the high byte alone, as 7-bit.
+        coarse.block(&sent[..3]);
+        assert_eq!(coarse.value(0), stored(seven(high)), "high byte {high}");
+    }
+}
