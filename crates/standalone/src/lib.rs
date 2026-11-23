@@ -180,14 +180,21 @@ pub fn main<P: Plugin>() -> ExitCode {
 /// #         Pass
 /// #     }
 /// # }
+/// use std::sync::OnceLock;
+///
+/// use hapto_standalone::MidiDevices;
+///
+/// /// The app's MIDI devices, where the plugin's own code reaches them:
+/// /// its page, say, which lists them and lets a user pick.
+/// static MIDI: OnceLock<MidiDevices> = OnceLock::new();
+///
 /// fn main() -> std::process::ExitCode {
 ///     let app = hapto_standalone::App::<MyPlugin>::new()
 ///         .midi_inputs(|device| device.name().contains("Xkey"))
 ///         .midi_outputs(|device| device.name().starts_with("loopMIDI"))
 ///         // An arpeggiator: its notes keep their spacing.
 ///         .midi_out_timing(hapto_standalone::Timing::AtFrames);
-///     // Kept, so the plugin's own code can change them as it runs.
-///     let _midi = app.midi();
+///     let _ = MIDI.set(app.midi());
 ///     app.run()
 /// }
 /// ```
@@ -244,8 +251,14 @@ impl<P: Plugin> App<P> {
     }
 
     /// The handle to the app's MIDI devices, to keep: it changes the filters
-    /// and the timing while the app runs, from any thread, and tells which
-    /// devices are listed and open.
+    /// and the timing while the app runs, from any thread but the audio
+    /// thread, and tells which devices are listed and open. The plugin is
+    /// made inside [`run`](Self::run), so its own code reaches the handle
+    /// where the binary keeps it, in a `static`, as [`App`]'s example does.
+    ///
+    /// The handle opens nothing for a plugin that neither takes MIDI nor
+    /// sends it, nor under `--host`, where the plugin's format gets no MIDI
+    /// from the app: there it lists and opens none.
     pub fn midi(&self) -> MidiDevices {
         self.midi.clone()
     }

@@ -9,6 +9,7 @@ use std::fmt;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use hapto_midi_devices::{Device, Timing};
+use hapto_params::audio_thread;
 
 /// A filter: whether the app opens a device.
 type Filter = Arc<dyn Fn(&Device) -> bool + Send + Sync>;
@@ -17,7 +18,10 @@ type Filter = Arc<dyn Fn(&Device) -> bool + Send + Sync>;
 /// the app opens, when its outputs send, and which are listed and open
 /// now. Made by [`App::midi`](crate::App::midi), and cheap to clone and
 /// send to another thread, where a plugin's page or a thread of the
-/// author's own changes them while the app runs.
+/// author's own changes them while the app runs. Each call takes a lock the
+/// app's main thread holds a moment each tick, so none runs on the audio
+/// thread: a debug build panics there. It lists and opens nothing for a
+/// plugin that neither takes MIDI nor sends it, nor under `--host`.
 ///
 /// A filter is asked of each device the system lists, and of each that
 /// appears later. A change applies at the app's next tick, on its main
@@ -86,7 +90,10 @@ impl MidiDevices {
 
     /// From now on, opens the inputs `filter` passes: a plugin that takes
     /// MIDI hears them.
+    ///
+    /// Thread: any but audio.
     pub fn set_inputs(&self, filter: impl Fn(&Device) -> bool + Send + Sync + 'static) {
+        audio_thread::assert_not_here("MidiDevices::set_inputs");
         let mut routing = self.lock();
         routing.inputs = Arc::new(filter);
         routing.changes = routing.changes.wrapping_add(1);
@@ -94,7 +101,10 @@ impl MidiDevices {
 
     /// From now on, opens the outputs `filter` passes: a plugin that sends
     /// MIDI sends to them.
+    ///
+    /// Thread: any but audio.
     pub fn set_outputs(&self, filter: impl Fn(&Device) -> bool + Send + Sync + 'static) {
+        audio_thread::assert_not_here("MidiDevices::set_outputs");
         let mut routing = self.lock();
         routing.outputs = Arc::new(filter);
         routing.changes = routing.changes.wrapping_add(1);
@@ -103,26 +113,38 @@ impl MidiDevices {
     /// From now on, has the outputs send as `timing` says: each block's
     /// MIDI as soon as it has played, the default, or each message at its
     /// frame's time, for an arpeggiator, a sequencer or a clock.
+    ///
+    /// Thread: any but audio.
     pub fn set_timing(&self, timing: Timing) {
+        audio_thread::assert_not_here("MidiDevices::set_timing");
         let mut routing = self.lock();
         routing.timing = timing;
         routing.changes = routing.changes.wrapping_add(1);
     }
 
     /// When the outputs send.
+    ///
+    /// Thread: any but audio.
     pub fn timing(&self) -> Timing {
+        audio_thread::assert_not_here("MidiDevices::timing");
         self.lock().timing
     }
 
     /// The system's MIDI devices, inputs and outputs, as of the app's last
     /// tick.
+    ///
+    /// Thread: any but audio.
     pub fn listed(&self) -> Vec<Device> {
+        audio_thread::assert_not_here("MidiDevices::listed");
         self.lock().listed.clone()
     }
 
     /// The devices open now, inputs and outputs, as of the app's last
     /// tick.
+    ///
+    /// Thread: any but audio.
     pub fn open(&self) -> Vec<Device> {
+        audio_thread::assert_not_here("MidiDevices::open");
         self.lock().open.clone()
     }
 

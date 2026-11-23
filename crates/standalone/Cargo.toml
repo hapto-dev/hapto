@@ -21,7 +21,6 @@ dev-host = [
     "hapto-host/cabi",
     "hapto-host/test-host",
     "dep:hapto-learn",
-    "dep:hapto-params",
     "dep:serde_json",
     "dep:wry",
 ]
@@ -35,7 +34,9 @@ hapto-midi-devices.workspace = true
 # The dev host's Parameters tab: which parameter a MIDI learn mapping in the
 # saved block names, by the host id its key hashes to.
 hapto-learn = { workspace = true, optional = true }
-hapto-params = { workspace = true, optional = true }
+# The audio thread's mark, which the MIDI devices' handle checks it is not
+# called under; and the dev host's parameters.
+hapto-params.workspace = true
 
 # The window and the audio device, on Windows alone for now: the page shows
 # there only, and elsewhere `main` says so and ends.

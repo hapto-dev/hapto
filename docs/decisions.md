@@ -3815,8 +3815,10 @@ both, since keeping a block's spacing means waiting for its last frame.
 Which devices the app opens is its binary's to say, in code: `App`'s
 `midi_inputs` and `midi_outputs` take a filter each, which the app asks of each
 device the system lists and of each that appears later, and `App::midi` hands
-out a `MidiDevices` handle that changes them while the app runs, from any
-thread, and tells which devices are listed and open. A change applies at the
+out a `MidiDevices` handle that changes them while the app runs, from any thread
+but the audio thread, which a debug build checks, and tells which devices are
+listed and open. The plugin is made inside `App::run`, so its own code reaches
+the handle where the binary keeps it, a `static` say. A change applies at the
 app's next tick, on its main thread: the devices that now pass open and the ones
 open that no longer pass close, each with a line. Every input opens by default,
 as before, and no output, for a plugin that takes MIDI or sends it: opening
