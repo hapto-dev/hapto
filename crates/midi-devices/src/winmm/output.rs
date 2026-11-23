@@ -168,11 +168,10 @@ impl Sysex {
                     // A driver that never hands it back, a device unplugged
                     // mid-SysEx say, may still read the header and its
                     // bytes: they are left to it, and the device is gone.
-                    std::mem::forget(std::mem::replace(
-                        &mut self.header,
-                        Box::new(Header(MIDIHDR::default())),
-                    ));
-                    std::mem::forget(std::mem::take(&mut self.bytes));
+                    let header =
+                        std::mem::replace(&mut self.header, Box::new(Header(MIDIHDR::default())));
+                    Box::leak(header);
+                    std::mem::take(&mut self.bytes).leak();
                     shared.left.store(true, Ordering::Release);
                     return false;
                 }

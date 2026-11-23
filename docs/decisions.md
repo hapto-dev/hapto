@@ -3747,11 +3747,11 @@ its input's ring until its end has come, and then reaches the block whole, at
 the frame its end came, with the real-time messages that fell inside it: another
 device's message never cuts it, and goes on meanwhile. One that leaves its
 input's ring less room than a device hands over at once, 172 packets for WinMM's
-buffer of 1,024 bytes, or fills half of it, goes out as it comes instead, so the
-device's next buffer of it still fits. The reader starts an input's translation
-over when a new device takes it, as it reads that device's first packets, and
-finds each input's next message once a block and again only once it read that
-input.
+buffer of 1,024 bytes, and fills at least half of it, goes out as it comes
+instead, so the device's next buffer of it still fits. The reader starts an
+input's translation over when a new device takes it, as it reads that device's
+first packets, and finds each input's next message once a block and again only
+once it read that input.
 
 On WinMM the callback only reads and pushes. A thread of the input's own hands
 SysEx buffers back to the system, since the callback may not call WinMM. A close

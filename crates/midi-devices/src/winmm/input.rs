@@ -12,6 +12,7 @@ use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::{self, JoinHandle};
+use std::time::Duration;
 
 use hapto_ump::{ByteStream, Bytes};
 use windows::Win32::Media::Audio::{
@@ -207,7 +208,9 @@ impl Shared {
     /// When a message WinMM stamped `millis` came.
     fn stamp(&self, millis: usize) -> Instant {
         let started = Instant::from_nanos(self.started.load(Ordering::Acquire));
-        started.after_millis(u32::try_from(millis).unwrap_or(u32::MAX))
+        started.after(Duration::from_millis(
+            u64::try_from(millis).unwrap_or(u64::MAX),
+        ))
     }
 
     fn read(&self, at: Instant, bytes: &[u8]) {

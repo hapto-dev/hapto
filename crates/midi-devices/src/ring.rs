@@ -175,24 +175,25 @@ impl Consumer {
         let at = ring.tail.load(Ordering::Relaxed).wrapping_add(index);
         let slot = ring.slots.get(at & ring.mask)?;
         let at = Instant::from_nanos(slot.at.load(Ordering::Relaxed));
-        let words = std::array::from_fn(|index| {
-            slot.words
-                .get(index)
-                .map_or(0, |word| word.load(Ordering::Relaxed))
-        });
+        let words = slot
+            .words
+            .each_ref()
+            .map(|word| word.load(Ordering::Relaxed));
         Some((at, words))
     }
 
-    /// Takes the packet [`peek`](Self::peek) showed. Thread: the consumer's.
+    /// Takes the oldest packet, and when it came: the one
+    /// [`peek`](Self::peek) shows. `None` while the ring is empty. Thread:
+    /// the consumer's.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
-    pub(crate) fn pop(&mut self) {
+    pub(crate) fn pop(&mut self) -> Option<(Instant, [u32; 4])> {
+        let packet = self.peek()?;
         let ring = &*self.0;
         let tail = ring.tail.load(Ordering::Relaxed);
-        if ring.head.load(Ordering::Acquire) != tail {
-            // Release: the producer that sees the new tail may reuse the
-            // slot, which this side is done reading.
-            ring.tail.store(tail.wrapping_add(1), Ordering::Release);
-        }
+        // Release, after the read: the producer that sees the new tail may
+        // reuse the slot, which this side is done reading.
+        ring.tail.store(tail.wrapping_add(1), Ordering::Release);
+        Some(packet)
     }
 
     /// How many packets wait to be taken. Thread: the consumer's.
@@ -237,9 +238,8 @@ mod tests {
         }
         // Room for 3 rounds up to 4.
         let mut taken = Vec::new();
-        while let Some((at, words)) = consumer.peek() {
+        while let Some((at, words)) = consumer.pop() {
             taken.push((at.nanos(), words[0] & 0x7F));
-            consumer.pop();
         }
         assert_eq!(taken, [(0, 0), (1, 1), (2, 2), (3, 3)]);
         assert_eq!(consumer.dropped(), 2);

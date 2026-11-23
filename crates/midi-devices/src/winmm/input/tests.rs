@@ -20,9 +20,8 @@ fn shared() -> (Shared, Consumer) {
 /// first two words.
 fn taken(consumer: &mut Consumer) -> Vec<(u64, [u32; 2])> {
     let mut taken = Vec::new();
-    while let Some((at, [first, second, ..])) = consumer.peek() {
+    while let Some((at, [first, second, ..])) = consumer.pop() {
         taken.push((at.nanos() / 1_000_000, [first, second]));
-        consumer.pop();
     }
     taken
 }

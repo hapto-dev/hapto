@@ -6,12 +6,11 @@ use std::time::Duration;
 use hapto_ump::Event;
 
 use super::*;
-use crate::Devices;
 
 const START: Instant = Instant::from_nanos(1_000_000_000);
 
 fn later(duration: Duration) -> Instant {
-    Instant::from_nanos(START.nanos() + u64::try_from(duration.as_nanos()).expect("short"))
+    START.after(duration)
 }
 
 fn first_words(taken: &[(Instant, [u32; 4])]) -> Vec<(Instant, u32)> {
@@ -125,8 +124,7 @@ fn past_an_outputs_room_a_packet_is_dropped_and_counted() {
 #[test]
 fn an_input_is_not_an_output() {
     let (mut outputs, _writer) = outputs(4);
-    if let Some(keyboard) = Devices::new().inputs().next() {
-        assert_eq!(outputs.open(keyboard), Err(OpenError::NotAnOutput));
-    }
+    let keyboard = Device::for_tests("Keys", Direction::Input);
+    assert_eq!(outputs.open(&keyboard), Err(OpenError::NotAnOutput));
     assert_eq!(outputs.devices().count(), 0);
 }

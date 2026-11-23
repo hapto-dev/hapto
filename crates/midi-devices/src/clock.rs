@@ -17,12 +17,15 @@ static START: OnceLock<std::time::Instant> = OnceLock::new();
 /// # Examples
 ///
 /// ```
+/// use std::time::Duration;
+///
 /// use hapto_midi_devices::Instant;
 ///
 /// let before = Instant::now();
 /// let after = Instant::now();
 /// assert!(after >= before);
-/// assert_eq!(Instant::from_nanos(1_500_000).after_millis(2), Instant::from_nanos(3_500_000));
+/// let later = Instant::from_nanos(1_500_000).after(Duration::from_millis(2));
+/// assert_eq!(later, Instant::from_nanos(3_500_000));
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct Instant(u64);
@@ -45,10 +48,15 @@ impl Instant {
         self.0
     }
 
-    /// The moment `millis` milliseconds later, as a device stamps a message
-    /// by the milliseconds since it started.
-    pub const fn after_millis(self, millis: u32) -> Instant {
-        Instant(self.0.saturating_add(millis as u64 * 1_000_000))
+    /// The moment `by` later, or the clock's last moment for one past it.
+    pub const fn after(self, by: Duration) -> Instant {
+        let nanos = by.as_nanos();
+        let nanos = if nanos > u64::MAX as u128 {
+            u64::MAX
+        } else {
+            nanos as u64
+        };
+        Instant(self.0.saturating_add(nanos))
     }
 
     /// How long after `earlier` it is: zero if it is not after it.

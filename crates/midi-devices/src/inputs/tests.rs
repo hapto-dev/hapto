@@ -20,14 +20,7 @@ fn at(millis: u64) -> Instant {
 /// fill them.
 fn rig(room: usize) -> (Vec<Producer>, InputsReader) {
     let (producers, consumers): (Vec<_>, Vec<_>) = (0..MAX_INPUTS).map(|_| ring(room)).unzip();
-    let reader = InputsReader {
-        upgrades: (0..MAX_INPUTS).map(|_| Upgrade::new()).collect(),
-        generations: consumers.iter().map(Consumer::generation).collect(),
-        heads: vec![None; MAX_INPUTS].into_boxed_slice(),
-        rings: consumers.into_boxed_slice(),
-        last: None,
-    };
-    (producers, reader)
+    (producers, InputsReader::new(consumers))
 }
 
 fn read(reader: &mut InputsReader, now: Instant, frames: usize) -> Vec<Event> {

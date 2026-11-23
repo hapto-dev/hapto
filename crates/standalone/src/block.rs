@@ -11,6 +11,7 @@ mod tests;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, AtomicU32, AtomicU64, Ordering};
+use std::time::Duration;
 
 use hapto_host::layout::Width;
 use hapto_host::standalone::{MAX_CHANNELS, Standalone, StandaloneAudio};
@@ -374,7 +375,7 @@ impl<R: Render> Player<R> {
     fn block_start(&self) -> Instant {
         let frames = (self.ahead + self.queued) as f64;
         let after = frames * 1e9 / self.sample_rate.max(1.0);
-        Instant::from_nanos(self.asked.nanos().saturating_add(after as u64))
+        self.asked.after(Duration::from_nanos(after as u64))
     }
 
     /// The time up to which a block of `length` frames rendered now reads

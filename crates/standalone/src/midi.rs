@@ -119,7 +119,7 @@ impl Midi {
         let changes = self.devices.tick(now);
         let (count, takes, sends) = self.routing.filters();
         let reapply = count != self.applied;
-        let mut moved = !changes.added.is_empty() || !changes.removed.is_empty() || reapply;
+        let mut moved = !changes.is_empty() || reapply;
         // A device that came again, or whose wait is over, may open again.
         let kept = self.departed.len();
         self.departed.retain(|(id, left)| {

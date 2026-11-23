@@ -20,6 +20,7 @@
 use std::fmt;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
+use std::time::Duration;
 
 use hapto_ump::{Downgrade, Event};
 
@@ -245,9 +246,8 @@ impl Outputs {
         let consumer = self.ports.free_mut(output)?;
         consumer.set_reading(true);
         let mut taken = Vec::new();
-        while let Some(packet) = consumer.peek() {
+        while let Some(packet) = consumer.pop() {
             taken.push(packet);
-            consumer.pop();
         }
         Some(taken)
     }
@@ -337,7 +337,7 @@ impl OutputsWriter {
             // Due at once: no moment is earlier than the clock's start.
             let due = if at_frames {
                 let after = (f64::from(event.offset) * nanos_per_frame) as u64;
-                Instant::from_nanos(start.nanos().saturating_add(after))
+                start.after(Duration::from_nanos(after))
             } else {
                 Instant::from_nanos(0)
             };

@@ -64,14 +64,7 @@ pub fn inputs(room: usize) -> (Inputs, InputsReader) {
     let inputs = Inputs {
         ports: Ports::new(producers),
     };
-    let reader = InputsReader {
-        upgrades: (0..MAX_INPUTS).map(|_| Upgrade::new()).collect(),
-        generations: consumers.iter().map(Consumer::generation).collect(),
-        heads: vec![None; MAX_INPUTS].into_boxed_slice(),
-        rings: consumers.into_boxed_slice(),
-        last: None,
-    };
-    (inputs, reader)
+    (inputs, InputsReader::new(consumers))
 }
 
 /// The main thread's side of the app's MIDI in: the devices open now.
@@ -229,19 +222,24 @@ impl OpenDevices for Inputs {
 /// assert_eq!(reader.dropped(), 0);
 /// ```
 pub struct InputsReader {
-    rings: Box<[Consumer]>,
-    /// Each input's translation to MIDI 2.0.
-    upgrades: Box<[Upgrade]>,
-    /// The generation of each ring the reader last read: a change means a
-    /// new device took it.
-    generations: Box<[u32]>,
-    /// Each ring's next message, when it came and how many packets it is,
-    /// for the block being read: found once, and again for a ring only
-    /// once it was read, so a SysEx held for its end is not looked over for
-    /// every message another ring sends.
-    heads: Box<[Option<(Instant, usize)>]>,
+    lanes: Box<[Lane]>,
     /// When the last block was read.
     last: Option<Instant>,
+}
+
+/// One input, as the reader reads it.
+struct Lane {
+    ring: Consumer,
+    /// The input's translation to MIDI 2.0.
+    upgrade: Upgrade,
+    /// The generation of the ring the reader last read: a change means a
+    /// new device took it.
+    seen: u32,
+    /// The ring's next message, when it came and how many packets it is,
+    /// for the block being read: found once, and again only once it was
+    /// read, so a SysEx held for its end is not looked over for every
+    /// message another input sends.
+    head: Option<(Instant, usize)>,
 }
 
 impl fmt::Debug for InputsReader {
@@ -254,6 +252,20 @@ impl fmt::Debug for InputsReader {
 }
 
 impl InputsReader {
+    /// A reader over `consumers`, an input each.
+    fn new(consumers: Vec<Consumer>) -> InputsReader {
+        let lanes = consumers
+            .into_iter()
+            .map(|ring| Lane {
+                seen: ring.generation(),
+                upgrade: Upgrade::new(),
+                head: None,
+                ring,
+            })
+            .collect();
+        InputsReader { lanes, last: None }
+    }
+
     /// Reads every message that came before `now` into `out`, at frames of
     /// a block of `frames` frames, in the order they came across every
     /// input; messages that came at the same moment keep their inputs'
@@ -267,70 +279,43 @@ impl InputsReader {
             return;
         }
         let last = self.last.replace(now).unwrap_or(now).min(now);
-        self.start_over_where_renewed();
-        for (head, ring) in self.heads.iter_mut().zip(&self.rings) {
-            *head = ready(ring, now);
+        for lane in &mut self.lanes {
+            lane.head = ready(&lane.ring, now);
         }
-        loop {
-            let mut earliest: Option<(usize, Instant, usize)> = None;
-            for (index, head) in self.heads.iter().enumerate() {
-                if let Some((at, count)) = *head
-                    && earliest.is_none_or(|(_, first, _)| at < first)
-                {
-                    earliest = Some((index, at, count));
-                }
-            }
-            let Some((index, at, count)) = earliest else {
-                break;
-            };
-            let (Some(ring), Some(upgrade), Some(seen), Some(head)) = (
-                self.rings.get_mut(index),
-                self.upgrades.get_mut(index),
-                self.generations.get_mut(index),
-                self.heads.get_mut(index),
-            ) else {
-                break;
-            };
+        // The earliest message across the inputs, the first input's of
+        // those that came at the same moment.
+        while let Some((at, count, lane)) = self
+            .lanes
+            .iter_mut()
+            .filter_map(|lane| lane.head.map(|(at, count)| (at, count, lane)))
+            .min_by_key(|(at, _, _)| *at)
+        {
             // Read after the ring's head, so a packet a new device pushed
             // comes with the new device's generation, and its translation
             // starts over before it.
-            let generation = ring.generation();
-            if generation != *seen {
-                upgrade.reset();
-                *seen = generation;
+            let generation = lane.ring.generation();
+            if generation != lane.seen {
+                lane.upgrade.reset();
+                lane.seen = generation;
             }
             let frame = frame(at, last, now, frames);
             for _ in 0..count {
-                if let Some((_, words)) = ring.peek() {
-                    upgrade.event(&Event::new(frame, words), out);
+                if let Some((_, words)) = lane.ring.pop() {
+                    lane.upgrade.event(&Event::new(frame, words), out);
                 }
-                ring.pop();
             }
-            *head = ready(ring, now);
+            lane.head = ready(&lane.ring, now);
         }
         let last_frame = u32::try_from(frames.saturating_sub(1)).unwrap_or(u32::MAX);
-        for upgrade in &mut self.upgrades {
-            upgrade.end_block(last_frame, out);
-        }
-    }
-
-    /// Forgets each input's translation state where a new device took the
-    /// input since the last block.
-    fn start_over_where_renewed(&mut self) {
-        let inputs = self.rings.iter().zip(&mut self.upgrades);
-        for ((ring, upgrade), seen) in inputs.zip(&mut self.generations) {
-            let generation = ring.generation();
-            if generation != *seen {
-                upgrade.reset();
-                *seen = generation;
-            }
+        for lane in &mut self.lanes {
+            lane.upgrade.end_block(last_frame, out);
         }
     }
 
     /// How many messages found no room in their input's ring, since it was
     /// made: the audio thread read too seldom for how fast they came.
     pub fn dropped(&self) -> u64 {
-        self.rings.iter().map(Consumer::dropped).sum()
+        self.lanes.iter().map(|lane| lane.ring.dropped()).sum()
     }
 }
 
@@ -349,8 +334,8 @@ fn sysex_form(words: [u32; 4]) -> Option<SysExForm> {
 /// A SysEx is ready once its end has come, and is every packet to its end,
 /// the real-time messages among them included, at the time its end came.
 /// Until then it waits, unless the ring has less room left than a device
-/// hands over at once, [`BURST`], or is half full, when it goes out a
-/// packet at a time as it came: so a device's next buffer of it still
+/// hands over at once, [`BURST`], and is at least half full, when it goes
+/// out a packet at a time as it came: so a device's next buffer of it still
 /// fits.
 fn ready(ring: &Consumer, now: Instant) -> Option<(Instant, usize)> {
     let (at, words) = ring.peek()?;

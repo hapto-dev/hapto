@@ -1427,7 +1427,7 @@ move its line here; when a decision gains code, add one.
 - `crates/midi-devices/src/lib.rs`: module
 - `crates/midi-devices/src/id.rs`: `DeviceId`, `named`
 - `crates/midi-devices/src/devices.rs`: `Devices`, `Devices::tick`, `Looks`
-- `crates/midi-devices/src/inputs.rs`: `Inputs`, `Inputs::open`, `InputsReader::read`, `InputsReader::start_over_where_renewed`, `ready`, `frame`, `MAX_INPUTS`, `BURST`
+- `crates/midi-devices/src/inputs.rs`: `Inputs`, `Inputs::open`, `InputsReader::read`, `ready`, `frame`, `MAX_INPUTS`, `BURST`
 - `crates/ump/src/upgrade.rs`: `Upgrade::reset`
 - `crates/midi-devices/src/ring.rs`: module, `Producer::push`, `Producer::renew`, `Consumer::peek_at`, `Consumer::generation`
 - `crates/midi-devices/src/winmm/mod.rs`: module, `interface`, `index_of`, `retry`
