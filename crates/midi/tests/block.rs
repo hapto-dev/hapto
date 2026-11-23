@@ -357,16 +357,84 @@ fn alike(sent: &Message<'_>, back: &Message<'_>) -> bool {
     }
 }
 
-/// The same message with its values put aside, to compare the rest.
-fn shape(message: &Message<'_>) -> String {
-    let text = format!("{message:?}");
-    text.split("value")
-        .next()
-        .unwrap_or("")
-        .split("pitch")
-        .next()
-        .unwrap_or("")
-        .to_owned()
+/// The same message with its values at rest, to compare the rest.
+fn shape(message: Message<'_>) -> Message<'_> {
+    match message {
+        Message::NotePitch { note, .. } => Message::NotePitch {
+            note,
+            pitch: Pitch::new(0.0),
+        },
+        Message::NoteBend { note, .. } => Message::NoteBend {
+            note,
+            value: Centred::CENTRE,
+        },
+        Message::NotePressure { note, .. } => Message::NotePressure { note, value: 0.0 },
+        Message::NoteControl {
+            note, controller, ..
+        } => Message::NoteControl {
+            note,
+            controller,
+            value: 0.0,
+        },
+        Message::NoteAssignable { note, index, .. } => Message::NoteAssignable {
+            note,
+            index,
+            value: 0.0,
+        },
+        Message::Bend { group, channel, .. } => Message::Bend {
+            group,
+            channel,
+            value: Centred::CENTRE,
+        },
+        Message::BendRange { group, channel, .. } => Message::BendRange {
+            group,
+            channel,
+            semitones: 0.0,
+        },
+        Message::Pressure { group, channel, .. } => Message::Pressure {
+            group,
+            channel,
+            value: 0.0,
+        },
+        Message::Control {
+            group,
+            channel,
+            controller,
+            ..
+        } => Message::Control {
+            group,
+            channel,
+            controller,
+            value: 0.0,
+        },
+        Message::Registered {
+            group,
+            channel,
+            bank,
+            index,
+            ..
+        } => Message::Registered {
+            group,
+            channel,
+            bank,
+            index,
+            value: 0.0,
+        },
+        Message::Assignable {
+            group,
+            channel,
+            bank,
+            index,
+            ..
+        } => Message::Assignable {
+            group,
+            channel,
+            bank,
+            index,
+            value: 0.0,
+        },
+        other => other,
+    }
 }
 
 proptest! {
@@ -390,7 +458,7 @@ proptest! {
         prop_assert_eq!(back.len(), 1);
         prop_assert!(alike(&message, &back[0]), "{:?} came back as {:?}", message, back[0]);
         if !matches!(message, Message::NoteOn(_) | Message::NoteOff(_)) {
-            prop_assert_eq!(shape(&message), shape(&back[0]));
+            prop_assert_eq!(shape(message), shape(back[0]));
         }
     }
 
@@ -414,13 +482,13 @@ fn sysex_packets(group: Group, data: &[u8]) -> Vec<Event> {
 }
 
 /// Reads `packets` as one block into `list`, and returns what it decoded.
-fn read_block(list: &mut MidiList, packets: &[Event]) -> Vec<String> {
+fn read_block<'l>(list: &'l mut MidiList, packets: &[Event]) -> Vec<Message<'l>> {
     let mut block = EventList::with_capacity(16);
     for &packet in packets {
         block.push(packet);
     }
     list.read(&block, 1);
-    list.midi().iter().map(|(_, m)| format!("{m:?}")).collect()
+    list.midi().iter().map(|(_, m)| m).collect()
 }
 
 #[test]
@@ -438,7 +506,7 @@ fn a_sysex_split_across_two_blocks_comes_whole_in_the_second() {
         group: Group::FIRST,
         data: &data,
     };
-    assert_eq!(whole, [format!("{expected:?}")]);
+    assert_eq!(whole, [expected]);
 }
 
 #[test]
@@ -454,6 +522,6 @@ fn a_new_sysex_on_its_group_cuts_the_one_under_way_short() {
         group: Group::FIRST,
         data: &second,
     };
-    assert_eq!(decoded, [format!("{expected:?}")]);
+    assert_eq!(decoded, [expected]);
     assert_eq!(list.midi().dropped(), 1, "the first, cut short");
 }

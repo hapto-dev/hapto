@@ -1,7 +1,7 @@
 //! Packets decoded into messages: every channel message's values, notes and
 //! their ids, a note's own messages, SysEx joined, and each message's line.
 
-use hapto_midi::{Centred, Channel, Decoder, Group, Key, Message, NoteId, Program, controller};
+use hapto_midi::{Centred, Channel, Decoder, Group, Message, NoteId, Program, controller};
 use hapto_ump::SysExForm::{self, Complete, Continue, End, Start};
 use hapto_ump::{Attribute, Event, Origin, SysEx7, scale};
 use hapto_ump::{EventList, Midi1Message, Midi1Voice, Upgrade};
@@ -269,6 +269,8 @@ fn a_note_past_a_full_table_takes_the_oldest_notes_place() {
     let ended = note_id(&decode(&mut decoder, off(60))[0]);
     assert!(!ids.contains(&ended));
     assert_eq!(decoder.sounding(), 1);
+    decoder.reset();
+    assert_eq!(decoder.sounding(), 0);
 }
 
 #[test]
@@ -333,17 +335,6 @@ fn a_notes_pitch_comes_with_it_or_on_its_own() {
             ..
         }
     ));
-}
-
-#[test]
-fn a_note_past_the_table_still_sounds_and_is_counted() {
-    let mut decoder = Decoder::with_room(2, 16);
-    for key in 0..3 {
-        assert_eq!(decode(&mut decoder, on(key, 0xFFFF)).len(), 1);
-    }
-    assert_eq!((decoder.sounding(), decoder.dropped()), (2, 1));
-    decoder.reset();
-    assert_eq!(decoder.sounding(), 0);
 }
 
 #[test]
@@ -504,6 +495,5 @@ proptest! {
             }
             prop_assert_eq!(decoder.sounding(), model.len());
         }
-        let _ = Key::C4;
     }
 }

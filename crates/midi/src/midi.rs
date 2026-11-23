@@ -39,8 +39,8 @@ enum Kept {
 /// [`read`](Self::read) decodes a block's packets in order, with a decoder
 /// of its own, so state that spans blocks, a note sounding or a SysEx under
 /// way, stays right. [`midi`](Self::midi) is the whole block's MIDI, and
-/// [`Midi::between`] part of it. A message or SysEx byte past its room is
-/// dropped and counted in [`Midi::dropped`].
+/// [`Midi::between`] part of it. A message past its room is dropped and
+/// counted in [`Midi::dropped`], and a SysEx past it is dropped whole.
 ///
 /// # Examples
 ///
@@ -331,9 +331,9 @@ impl<'a> Midi<'a> {
     }
 
     /// How many messages the block lost: packets past its list's room,
-    /// messages and SysEx bytes past the decoded room, and SysEx messages cut
-    /// short; and how many notes gave up their place in the decoder's full
-    /// table, whose note-offs name them no more.
+    /// messages and whole SysEx past the decoded room, and the SysEx the
+    /// [`Decoder`] drops; and how many notes gave up their place in the
+    /// decoder's full table, whose note-offs name them no more.
     pub fn dropped(&self) -> u64 {
         self.dropped
     }

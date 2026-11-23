@@ -53,8 +53,8 @@ struct Sounding {
 ///   channel's notes in the table. A note past the table takes the place of
 ///   the oldest, which is counted in [`dropped`](Self::dropped).
 /// - A SysEx message as its packets arrive, which comes whole once its last
-///   does. One past the buffer, one cut short, or one begun on another group
-///   while one is under way is dropped and counted.
+///   does, by the rules [`SysExJoin`](hapto_ump::SysExJoin) follows. One it
+///   drops is counted in [`dropped`](Self::dropped).
 ///
 /// # Examples
 ///
@@ -74,14 +74,13 @@ struct Sounding {
 /// assert!(ended.iter().all(|m| matches!(m, Message::NoteOff(off) if off.key == Key::C4)));
 /// ```
 pub struct Decoder {
-    /// The notes sounding, oldest first: the first `sounding` slots.
-    notes: Box<[Sounding]>,
-    sounding: usize,
+    /// The notes sounding, oldest first, at most `room` of them.
+    notes: Vec<Sounding>,
+    room: usize,
     /// How many ids it has made up.
     made: u32,
-    /// The notes the last note-off ended: the first `ended` slots.
-    ends: Box<[NoteId]>,
-    ended: usize,
+    /// The notes the last note-off ended.
+    ends: Vec<NoteId>,
     /// The SysEx under way, or the one the last packet made whole.
     sysex: SysExJoin,
     dropped: u64,
@@ -90,7 +89,7 @@ pub struct Decoder {
 impl fmt::Debug for Decoder {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Decoder")
-            .field("sounding", &self.sounding)
+            .field("sounding", &self.notes.len())
             .field("dropped", &self.dropped)
             .finish_non_exhaustive()
     }
@@ -173,19 +172,11 @@ impl Decoder {
     ///
     /// Thread: any but audio: it allocates its tables.
     pub fn with_room(notes: usize, sysex_bytes: usize) -> Decoder {
-        let unset = Sounding {
-            group: Group::FIRST,
-            channel: Channel::FIRST,
-            key: Key::C4,
-            id: NoteId::made_up(0),
-            detached: false,
-        };
         Decoder {
-            notes: vec![unset; notes].into_boxed_slice(),
-            sounding: 0,
+            notes: Vec::with_capacity(notes),
+            room: notes,
             made: 0,
-            ends: vec![NoteId::made_up(0); notes.max(1)].into_boxed_slice(),
-            ended: 0,
+            ends: Vec::with_capacity(notes.max(1)),
             sysex: SysExJoin::with_room(sysex_bytes),
             dropped: 0,
         }
@@ -208,7 +199,7 @@ impl Decoder {
 
     /// The notes the last note-off ended.
     pub(crate) fn ended(&self) -> &[NoteId] {
-        self.ends.get(..self.ended).unwrap_or(&[])
+        &self.ends
     }
 
     /// The SysEx last whole.
@@ -224,14 +215,14 @@ impl Decoder {
 
     /// How many notes sound now, as far as it knows.
     pub fn sounding(&self) -> usize {
-        self.sounding
+        self.notes.len()
     }
 
     /// Forgets every note sounding and any SysEx under way, as at an
     /// activation.
     pub fn reset(&mut self) {
-        self.sounding = 0;
-        self.ended = 0;
+        self.notes.clear();
+        self.ends.clear();
         self.sysex.reset();
     }
 
@@ -400,24 +391,23 @@ impl Decoder {
             named,
         } = at;
         let id = named.unwrap_or_else(|| self.make_id());
-        if self.sounding >= self.notes.len() {
+        if self.notes.len() >= self.room {
             // A full table: the oldest note gives up its place, so the
             // newest, which a note-off is likeliest to name, is kept.
             self.dropped = self.dropped.saturating_add(1);
             if !self.notes.is_empty() {
-                self.notes.copy_within(1.., 0);
-                self.sounding = self.sounding.saturating_sub(1);
+                self.notes.remove(0);
             }
         }
-        if let Some(slot) = self.notes.get_mut(self.sounding) {
-            *slot = Sounding {
+        // Within the room made, so it never allocates.
+        if self.notes.len() < self.room {
+            self.notes.push(Sounding {
                 group,
                 channel,
                 key,
                 id,
                 detached: false,
-            };
-            self.sounding = self.sounding.saturating_add(1);
+            });
         }
         NoteOn {
             id,
@@ -441,34 +431,21 @@ impl Decoder {
         } = at;
         let on_key =
             |note: &Sounding| (note.group, note.channel, note.key) == (group, channel, key);
-        let only = named;
-        self.ended = 0;
-        let mut kept = 0;
-        for index in 0..self.sounding {
-            let Some(&note) = self.notes.get(index) else {
-                break;
-            };
-            if on_key(&note) && only.is_none_or(|id| note.id == id) {
-                if let Some(end) = self.ends.get_mut(self.ended) {
-                    *end = note.id;
-                    self.ended = self.ended.saturating_add(1);
-                }
-            } else {
-                if let Some(slot) = self.notes.get_mut(kept) {
-                    *slot = note;
-                }
-                kept = kept.saturating_add(1);
+        self.ends.clear();
+        let ends = &mut self.ends;
+        self.notes.retain(|note| {
+            let ending = on_key(note) && named.is_none_or(|id| note.id == id);
+            // The ends have a place for every note the table holds.
+            if ending && ends.len() < ends.capacity() {
+                ends.push(note.id);
             }
-        }
-        self.sounding = kept;
-        if self.ended == 0 {
+            !ending
+        });
+        if self.ends.is_empty() {
             // No note it knows of: the host's name for it, or an id no note
             // has.
             let id = named.unwrap_or_else(|| self.make_id());
-            if let Some(end) = self.ends.get_mut(0) {
-                *end = id;
-                self.ended = 1;
-            }
+            self.ends.push(id);
         }
         Decoded::Offs(NoteOff {
             id: NoteId::made_up(0),
@@ -492,8 +469,6 @@ impl Decoder {
         let key = Key::new(key);
         let mut on_key = self
             .notes
-            .get(..self.sounding)
-            .unwrap_or(&[])
             .iter()
             .rev()
             .filter(|note| (note.group, note.channel, note.key) == (group, channel, key));
@@ -512,24 +487,12 @@ impl Decoder {
 
     /// Forgets every note on `group` and `channel`.
     fn forget(&mut self, group: Group, channel: Channel) {
-        let mut kept = 0;
-        for index in 0..self.sounding {
-            let Some(&note) = self.notes.get(index) else {
-                break;
-            };
-            if (note.group, note.channel) != (group, channel) {
-                if let Some(slot) = self.notes.get_mut(kept) {
-                    *slot = note;
-                }
-                kept = kept.saturating_add(1);
-            }
-        }
-        self.sounding = kept;
+        self.notes
+            .retain(|note| (note.group, note.channel) != (group, channel));
     }
 
     fn detach(&mut self, group: Group, channel: Channel, key: Key) {
-        let sounding = self.sounding;
-        for note in self.notes.iter_mut().take(sounding) {
+        for note in &mut self.notes {
             if (note.group, note.channel, note.key) == (group, channel, key) {
                 note.detached = true;
             }

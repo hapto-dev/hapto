@@ -48,32 +48,19 @@ fn a_note_moved_to_another_key_moves_its_own_pitch_with_it() {
     );
     // It goes out with its pitch moved too.
     let (lines, _) = sent(4, |out| out.send(0, e5));
-    let sounded = note_on_line(&lines);
+    let sounded = lines.first().cloned().unwrap_or_default();
     assert!(sounded.contains("E5"), "{sounded}");
     // A note with no pitch of its own sounds at its key.
     let plain = NoteOn::new(Key::C4, 1.0).with_key(Key::new(48));
     assert_eq!(plain.pitch().semitones(), 48.0);
 }
 
-fn note_on_line(lines: &[String]) -> String {
-    lines.first().cloned().unwrap_or_default()
-}
-
 #[test]
 fn a_note_of_the_plugins_own_never_meets_a_hosts_or_a_made_up_one() {
-    let mut decoder = Decoder::new();
     let made_up = note_on([0x4090_3C00, 0xFFFF_0000]).id;
-    let made_up_too = match decoder
-        .decode(&Event::new(0, [0x4090_3C00, 0xFFFF_0000, 0, 0]))
-        .next()
-    {
-        Some(Message::NoteOn(on)) => on.id,
-        other => panic!("not a note-on: {other:?}"),
-    };
     let own = NoteId::own(made_up.get() & 0x3FFF_FFFF);
     assert!(!own.is_hosts());
     assert_ne!(own, made_up);
-    assert_ne!(own, made_up_too);
     assert_ne!(own, NoteId::hosts(own.get()));
     assert_eq!(NoteId::own(3).to_string(), "plugin's note 3");
     // A chord's fifth, beside the host's note, under an id of its own.
