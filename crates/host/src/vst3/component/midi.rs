@@ -105,14 +105,14 @@ pub(super) const EXPRESSIONS: [Expression; 6] = [
     Expression {
         id: NoteExpressionTypeIDs_::kVolumeTypeID,
         title: "Volume",
-        controller: controller::VOLUME,
+        controller: controller::number::VOLUME,
         default: 0.25,
         flags: 0,
     },
     Expression {
         id: NoteExpressionTypeIDs_::kPanTypeID,
         title: "Pan",
-        controller: controller::PAN,
+        controller: controller::number::PAN,
         default: 0.5,
         flags: NoteExpressionTypeFlags_::kIsBipolar as int32,
     },
@@ -133,14 +133,14 @@ pub(super) const EXPRESSIONS: [Expression; 6] = [
     Expression {
         id: NoteExpressionTypeIDs_::kExpressionTypeID,
         title: "Expression",
-        controller: controller::EXPRESSION,
+        controller: controller::number::EXPRESSION,
         default: 1.0,
         flags: 0,
     },
     Expression {
         id: NoteExpressionTypeIDs_::kBrightnessTypeID,
         title: "Brightness",
-        controller: controller::BRIGHTNESS,
+        controller: controller::number::BRIGHTNESS,
         default: 0.5,
         flags: 0,
     },

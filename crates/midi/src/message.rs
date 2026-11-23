@@ -152,7 +152,8 @@ pub struct NoteKey {
 /// # Examples
 ///
 /// ```
-/// use hapto_midi::{Decoder, Message, controller};
+/// use hapto_midi::controller::number;
+/// use hapto_midi::{Decoder, Message};
 /// use hapto_ump::Event;
 ///
 /// // MIDI 2.0's controller 64, the sustain pedal, all the way down.
@@ -161,7 +162,7 @@ pub struct NoteKey {
 /// let message = decoder.decode(&pedal).next().expect("a controller");
 /// assert!(matches!(
 ///     message,
-///     Message::Control { controller: controller::SUSTAIN, value: 1.0, .. }
+///     Message::Control { controller: number::SUSTAIN, value: 1.0, .. }
 /// ));
 /// assert_eq!(message.to_string(), "controller 64 (Sustain Pedal) 1.000, channel 1, group 1");
 /// ```

@@ -173,7 +173,11 @@ exporter.
   pressure, programs with their bank, and SysEx joined whole. Values from 0
   to 1 are `f32`, values with a centre `Centred`, and `Key`, `Group`,
   `Channel` and `Program` show as musicians count them. Decoding allocates
-  nothing; what overflows its tables is counted.
+  nothing; what overflows its tables is counted. A `Controller<T>` is read
+  typed and sent: `controller::PAN` as `Centred`, `controller::SUSTAIN` as a
+  `Pedal`, which keeps half pedal, and a plugin's own with a value type of
+  its own by `ControllerValue`; `controller::number` keeps the plain
+  numbers.
 - `hapto-midi-devices`: the computer's MIDI devices as UMP, for an app that runs
   a plugin with no host. A device is named by an id that survives the system's
   renumbering, the list's changes are told at the main thread's tick, and each

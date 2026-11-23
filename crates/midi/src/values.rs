@@ -235,6 +235,59 @@ impl fmt::Display for Centred {
     }
 }
 
+/// A pedal's place, from 0, up, to 1, down: the damper, sostenuto and soft
+/// pedals. MIDI 1.0 reads a pedal as a switch, down from the middle on,
+/// which [`is_down`](Self::is_down) says, and a keyboard that sends half
+/// pedal sends the places between, which [`depth`](Self::depth) gives.
+///
+/// # Examples
+///
+/// ```
+/// use hapto_midi::Pedal;
+///
+/// // Half pedal: down, as MIDI 1.0 reads a switch, and half way.
+/// let half = Pedal::new(0.5);
+/// assert!(half.is_down());
+/// assert_eq!(half.depth(), 0.5);
+/// assert!(!Pedal::UP.is_down());
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Default)]
+pub struct Pedal(f32);
+
+impl Pedal {
+    /// All the way up: the damper on the strings.
+    pub const UP: Pedal = Pedal(0.0);
+    /// All the way down.
+    pub const DOWN: Pedal = Pedal(1.0);
+
+    /// A pedal `depth` down, held to 0 to 1; a depth that is not a number
+    /// is up.
+    pub fn new(depth: f32) -> Self {
+        if depth.is_nan() {
+            Pedal::UP
+        } else {
+            Pedal(depth.clamp(0.0, 1.0))
+        }
+    }
+
+    /// Whether it is down, as MIDI 1.0 reads a pedal: from the middle on.
+    pub fn is_down(self) -> bool {
+        self.0 >= 0.5
+    }
+
+    /// How far down it is, from 0 to 1.
+    pub fn depth(self) -> f32 {
+        self.0
+    }
+}
+
+impl fmt::Display for Pedal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let place = if self.is_down() { "down" } else { "up" };
+        write!(f, "{place} ({:.3})", self.0)
+    }
+}
+
 /// A pitch as a key with a fraction: A4 is 69.0, a quarter tone above it
 /// 69.5.
 ///

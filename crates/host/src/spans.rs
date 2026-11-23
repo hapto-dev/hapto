@@ -80,8 +80,8 @@ pub struct Span<'a, L: Layout> {
 ///     fn process(&mut self, block: Block<'_, Mono>) -> Status {
 ///         for mut span in block.spans() {
 ///             for message in span.midi.messages() {
-///                 if let Message::Control { controller: controller::SUSTAIN, value, .. } = message {
-///                     self.down = value >= 0.5;
+///                 if let Some(pedal) = controller::SUSTAIN.read(&message) {
+///                     self.down = pedal.is_down();
 ///                 }
 ///             }
 ///             if !self.down {

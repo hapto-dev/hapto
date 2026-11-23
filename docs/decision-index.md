@@ -1456,10 +1456,11 @@ move its line here; when a decision gains code, add one.
 - `crates/ump/src/lib.rs`: `Origin`
 - test `crates/midi/tests/decode.rs`: `a_note_its_host_named_keeps_that_id_and_its_note_off_ends_it_alone`, `a_notes_own_message_its_host_named_finds_that_note_and_not_the_newest`
 - `crates/midi/src/lib.rs`: module
-- `crates/midi/src/values.rs`: `Key`, `Group`, `Channel`, `Program`, `Centred`, `Pitch`, `NoteId`
+- `crates/midi/src/values.rs`: `Key`, `Group`, `Channel`, `Program`, `Centred`, `Pedal`, `Pitch`, `NoteId`
 - `crates/midi/src/message.rs`: `Message`, `NoteOn`, `NoteOff`, `NoteKey`
 - `crates/midi/src/decoder.rs`: `Decoder`, `Decoder::decode`, `Messages`
-- `crates/midi/src/controller.rs`: module, `name`
+- `crates/midi/src/controller.rs`: module, `Controller`, `Address`, `ControllerValue`, `Controller::read`, `Controller::read_note`, `Controller::message`, `sent`, `number`, `name`
+- test `crates/midi/tests/controller.rs`: module
 - `crates/midi/src/midi.rs`: module, `MidiList`, `Midi`, `MidiOut`
 - `crates/midi/src/encode.rs`: module, `encode`
 - test `crates/midi/tests/decode.rs`: module, `a_note_off_ends_the_notes_its_key_has`, `a_notes_own_message_names_its_key_and_the_newest_note_on_it`, `a_sysex_too_long_cut_short_or_begun_elsewhere_is_dropped_and_counted`, `each_message_is_one_line_in_musicians_numbers`

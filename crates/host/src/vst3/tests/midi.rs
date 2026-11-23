@@ -193,7 +193,7 @@ fn a_note_on_s_tuning_is_its_pitch_and_its_expressions_name_it() {
     assert!((semitones - 71.5).abs() < 1e-4, "{semitones}");
     assert_eq!(
         bright,
-        Some((Some(NoteId::hosts(3)), controller::BRIGHTNESS, 1.0)),
+        Some((Some(NoteId::hosts(3)), controller::number::BRIGHTNESS, 1.0)),
         "the unknown note's expression is dropped"
     );
 }
@@ -252,7 +252,7 @@ fn a_controller_comes_through_its_proxy_as_midi_1_upgraded_and_before_a_note_at_
                         "bend"
                     }
                     Message::Control {
-                        controller: controller::VOLUME,
+                        controller: controller::number::VOLUME,
                         value,
                         ..
                     } => {

@@ -261,8 +261,8 @@ fn push_dropped(dropped: &mut u64) {
 /// /// What a plugin keeps of its MIDI: the sustain pedal.
 /// fn read(midi: Midi<'_>, sustain: &mut bool) {
 ///     for (_frame, message) in midi {
-///         if let Message::Control { controller: controller::SUSTAIN, value, .. } = message {
-///             *sustain = value >= 0.5;
+///         if let Some(pedal) = controller::SUSTAIN.read(&message) {
+///             *sustain = pedal.is_down();
 ///         }
 ///     }
 /// }

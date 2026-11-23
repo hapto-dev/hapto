@@ -34,7 +34,7 @@ fn every_channel_message_decodes_to_its_values() {
             Message::Control {
                 group: FIRST.0,
                 channel: FIRST.1,
-                controller: controller::VOLUME,
+                controller: controller::number::VOLUME,
                 value: 1.0,
             },
         ),
@@ -285,7 +285,7 @@ fn a_notes_pitch_comes_with_it_or_on_its_own() {
     assert!(matches!(
         bright[0],
         Message::NoteControl {
-            controller: controller::BRIGHTNESS,
+            controller: controller::number::BRIGHTNESS,
             value: 1.0,
             ..
         }

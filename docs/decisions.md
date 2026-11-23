@@ -3823,8 +3823,25 @@ a centre, a bend or a brightness, is `Centred`, from -1 to 1 with MIDI 2.0's
 centre at exactly 0. `Key`, `Group`, `Channel` and `Program` are types of their
 own, stored as MIDI sends them and shown as musicians count them: middle C as
 C4, channels and groups from 1 to 16, programs from 1 to 128 as General MIDI
-numbers them. `controller` names MIDI's controllers. Every message's `Display`
-is one line in those numbers.
+numbers them. Every message's `Display` is one line in those numbers.
+
+A controller is a `Controller<T>`, typed by the value it carries, so its key
+says how to read it: a control change, or a registered or assignable
+controller, with the value it rests at. `read` gives its value from a
+channel's message that sets it, `read_note` from a note's own controller of the
+same number, with the note, and `message` builds the one that sets it, to send.
+`controller` holds MIDI 1.0's own typed: the pan, the balance and the
+brightness as `Centred`, the wheels, the volume and the expression from 0 to 1,
+the damper, sostenuto and soft pedals as a `Pedal`, and the portamento, legato
+and hold switches as `bool`. A `Pedal` is down from the middle on, as MIDI 1.0
+reads a switch, and keeps its depth for half pedal. Each default is what a
+keyboard's own value of it reads as, so volume rests at General MIDI's 100 of
+127 exactly as a keyboard's 100 decodes. `controller::number` keeps the plain
+numbers, for a match on a message and for the controllers that are commands,
+such as all notes off. A type of a plugin's own carries a controller's value
+by `ControllerValue`, as a profile's enums will. The `http` crate's typed
+header names are the model: the typed key is the short name, and the plain
+number is reached beside it.
 
 A note is a `NoteId` from its note-on to its note-off: the host's own where its
 format names notes, which its exporter puts in the packet's `Origin::Note`,

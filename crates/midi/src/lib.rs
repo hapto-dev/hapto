@@ -52,7 +52,8 @@ mod message;
 mod midi;
 mod values;
 
+pub use controller::{Controller, ControllerValue};
 pub use decoder::{Decoder, Messages, NOTES, SYSEX_BYTES};
 pub use message::{Message, NoteKey, NoteOff, NoteOn};
 pub use midi::{BLOCK_SYSEX_BYTES, Iter, MESSAGES, Midi, MidiList, MidiOut, Packets};
-pub use values::{Centred, Channel, Group, Key, NoteId, Pitch, Program};
+pub use values::{Centred, Channel, Group, Key, NoteId, Pedal, Pitch, Program};
