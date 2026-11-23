@@ -222,7 +222,9 @@ impl<'a, L: Layout> Audio<'a, L> {
     }
 
     /// Adds `samples`, one per frame, into every channel, stopping at the
-    /// shorter of the two: for an author who prefers a chain to a loop.
+    /// shorter of the two: for an author who prefers a chain to a loop. It
+    /// walks a [`Frame`] at a time in every layout, a `Bus` too, so it costs
+    /// what a loop over frames in `AnyLayout` does.
     ///
     /// # Examples
     ///
@@ -309,8 +311,7 @@ impl<L: Layout> fmt::Debug for Audio<'_, L> {
 /// The frames of audio in any layout, each a [`Frame`] made by splitting
 /// the next sample off the front of each channel, so no two frames share a
 /// sample.
-#[derive(Debug)]
-pub struct AnyFrames<'a> {
+pub(crate) struct AnyFrames<'a> {
     /// What is left of each channel; the first `count` are the channels.
     channels: [&'a mut [f32]; MAX_CHANNELS],
     count: usize,
@@ -335,9 +336,8 @@ impl<'a> AnyFrames<'a> {
 impl<'a> Iterator for AnyFrames<'a> {
     type Item = Frame<'a>;
 
-    // Built into the loop that walks the frames, as an iterator generic
-    // over its layout is: called out of line, each frame is copied out of
-    // the call.
+    // Without it, the loop that walks the frames may call `next` out of
+    // line, copying each frame out of the call.
     #[inline]
     fn next(&mut self) -> Option<Frame<'a>> {
         self.remaining = self.remaining.checked_sub(1)?;
@@ -345,11 +345,7 @@ impl<'a> Iterator for AnyFrames<'a> {
             .channels
             .iter_mut()
             .take(self.count)
-            .filter_map(|channel| {
-                let (first, rest) = std::mem::take(channel).split_first_mut()?;
-                *channel = rest;
-                Some(first)
-            });
+            .filter_map(|channel| channel.split_off_first_mut());
         Some(Frame::of(samples))
     }
 
@@ -363,11 +359,7 @@ impl ExactSizeIterator for AnyFrames<'_> {}
 /// The frames of a bus of `N` channels, each an array made by splitting the
 /// next sample off the front of every channel, so no two frames share a
 /// sample.
-///
-/// It holds the bus's own channels and no more, so a loop over a bus's
-/// frames costs about what a loop over its channels does.
-#[derive(Debug)]
-pub struct BusFrames<'a, const N: usize> {
+pub(crate) struct BusFrames<'a, const N: usize> {
     /// What is left of each channel.
     channels: [&'a mut [f32]; N],
     remaining: usize,
@@ -392,17 +384,13 @@ macro_rules! bus_frames {
         impl<'a> Iterator for BusFrames<'a, $count> {
             type Item = [&'a mut f32; $count];
 
-            // Built into the loop that walks the frames, whatever the
-            // count of channels and the build's profile.
+            // Without it, a release build with no link-time optimisation
+            // calls `next` out of line for a wide bus.
             #[inline]
             fn next(&mut self) -> Option<Self::Item> {
                 self.remaining = self.remaining.checked_sub(1)?;
                 let [$($channel),*] = &mut self.channels;
-                Some([$({
-                    let (first, rest) = std::mem::take($channel).split_first_mut()?;
-                    *$channel = rest;
-                    first
-                }),*])
+                Some([$($channel.split_off_first_mut()?),*])
             }
 
             fn size_hint(&self) -> (usize, Option<usize>) {

@@ -46,12 +46,16 @@ fn a_frame_writes_back_into_its_own_moment() {
 fn frames_count_exactly_and_end() {
     let mut buffer = counting(5);
     let mut audio = buffer.audio();
-    let mut frames = audio.frames_mut();
-    assert_eq!(frames.len(), 5);
+    {
+        let mut frames = audio.frames_mut();
+        assert_eq!(frames.len(), 5);
+        assert!(frames.nth(4).is_some());
+        assert!(frames.next().is_none());
+    }
+    let mut any = audio.as_any_layout();
+    let mut frames = any.frames_mut();
     frames.nth(3);
-    assert_eq!(frames.len(), 1);
-    assert!(frames.next().is_some());
-    assert!(frames.next().is_none());
+    assert_eq!(frames.len(), 1, "in `AnyLayout` too");
 }
 
 #[test]

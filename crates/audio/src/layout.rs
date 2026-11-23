@@ -106,18 +106,14 @@ pub trait Layout: sealed::Sealed + 'static {
     /// an array in a `Bus`, an iterator in `AnyLayout`.
     type ChannelsMut<'a>: IntoIterator<Item = &'a mut [f32]>;
 
-    /// The frames in turn, as
+    /// The frames of the first `count` of `channels`, each `frames` long, as
     /// [`Audio::frames_mut`](crate::Audio::frames_mut) walks them.
-    #[doc(hidden)]
-    type Frames<'a>: ExactSizeIterator<Item = Self::Frame<'a>>;
-
-    /// The frames of the first `count` of `channels`, each `frames` long.
     #[doc(hidden)]
     fn frames_of(
         channels: [&mut [f32]; MAX_CHANNELS],
         count: usize,
         frames: usize,
-    ) -> Self::Frames<'_>;
+    ) -> impl ExactSizeIterator<Item = Self::Frame<'_>>;
 
     /// The first `count` of `channels`, as this layout hands them out.
     #[doc(hidden)]
@@ -305,7 +301,6 @@ impl Layout for AnyLayout {
     const WIDTHS: &'static [Width] = &[];
 
     type Frame<'a> = Frame<'a>;
-    type Frames<'a> = AnyFrames<'a>;
     type Channels<'a> = Take<std::array::IntoIter<&'a [f32], MAX_CHANNELS>>;
     type ChannelsMut<'a> = Take<std::array::IntoIter<&'a mut [f32], MAX_CHANNELS>>;
 
@@ -313,7 +308,7 @@ impl Layout for AnyLayout {
         channels: [&mut [f32]; MAX_CHANNELS],
         count: usize,
         frames: usize,
-    ) -> AnyFrames<'_> {
+    ) -> impl ExactSizeIterator<Item = Frame<'_>> {
         AnyFrames::new(channels, count, frames)
     }
 
@@ -359,7 +354,6 @@ macro_rules! buses {
             const WIDTHS: &'static [Width] = &[Width::new($inputs, $outputs)];
 
             type Frame<'a> = [&'a mut f32; held($inputs, $outputs)];
-            type Frames<'a> = BusFrames<'a, { held($inputs, $outputs) }>;
             type Channels<'a> = [&'a [f32]; held($inputs, $outputs)];
             type ChannelsMut<'a> = [&'a mut [f32]; held($inputs, $outputs)];
 
@@ -367,8 +361,8 @@ macro_rules! buses {
                 channels: [&mut [f32]; MAX_CHANNELS],
                 _: usize,
                 frames: usize,
-            ) -> Self::Frames<'_> {
-                BusFrames::new(first_of(channels), frames)
+            ) -> impl ExactSizeIterator<Item = Self::Frame<'_>> {
+                BusFrames::<{ held($inputs, $outputs) }>::new(first_of(channels), frames)
             }
 
             fn channels_of(channels: [&[f32]; MAX_CHANNELS], _: usize) -> Self::Channels<'_> {
