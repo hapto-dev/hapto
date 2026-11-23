@@ -62,6 +62,11 @@ enum Kept {
 /// ```
 pub struct MidiList {
     decoder: Decoder,
+    room: Room,
+}
+
+/// What a list keeps of a block, in room made once.
+struct Room {
     entries: Vec<Entry>,
     sysex: Vec<u8>,
     /// The block's packets, at frames of the block and in time order.
@@ -73,9 +78,9 @@ pub struct MidiList {
 impl fmt::Debug for MidiList {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("MidiList")
-            .field("messages", &self.entries.len())
-            .field("packets", &self.packets.len())
-            .field("dropped", &self.dropped)
+            .field("messages", &self.room.entries.len())
+            .field("packets", &self.room.packets.len())
+            .field("dropped", &self.room.dropped)
             .finish_non_exhaustive()
     }
 }
@@ -102,10 +107,12 @@ impl MidiList {
     pub fn with_room(messages: usize, sysex_bytes: usize, decoder: Decoder) -> MidiList {
         MidiList {
             decoder,
-            entries: Vec::with_capacity(messages),
-            sysex: Vec::with_capacity(sysex_bytes),
-            packets: Vec::with_capacity(messages),
-            dropped: 0,
+            room: Room {
+                entries: Vec::with_capacity(messages),
+                sysex: Vec::with_capacity(sysex_bytes),
+                packets: Vec::with_capacity(messages),
+                dropped: 0,
+            },
         }
     }
 
@@ -118,45 +125,38 @@ impl MidiList {
     /// Thread: audio. Allocates nothing.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn read(&mut self, block: &EventList, frames: usize) {
-        let MidiList {
-            decoder,
-            entries,
-            sysex,
-            packets,
-            dropped,
-        } = self;
-        entries.clear();
-        sysex.clear();
-        packets.clear();
-        *dropped = u64::from(block.dropped());
-        let decoder_drops = decoder.dropped();
+        let room = &mut self.room;
+        room.clear();
+        room.dropped = u64::from(block.dropped());
+        let decoder_drops = self.decoder.dropped();
         let last = u32::try_from(frames.saturating_sub(1)).unwrap_or(u32::MAX);
         let mut floor = 0;
         for event in block.as_slice() {
             let frame = event.offset.min(last).max(floor);
             floor = frame;
-            if packets.len() < packets.capacity() {
-                packets.push(Event {
+            if room.packets.len() < room.packets.capacity() {
+                room.packets.push(Event {
                     offset: frame,
                     ..*event
                 });
             } else {
-                *dropped = dropped.saturating_add(1);
+                room.lose();
             }
-            let decoded = decoder.read(event);
-            keep(entries, sysex, dropped, frame, decoder, decoded);
+            let decoded = self.decoder.read(event);
+            room.keep(frame, &self.decoder, decoded);
         }
-        *dropped = dropped.saturating_add(decoder.dropped().saturating_sub(decoder_drops));
+        let decoded_drops = self.decoder.dropped().saturating_sub(decoder_drops);
+        room.dropped = room.dropped.saturating_add(decoded_drops);
     }
 
     /// The whole block's MIDI.
     pub fn midi(&self) -> Midi<'_> {
         Midi {
-            entries: &self.entries,
-            sysex: &self.sysex,
-            packets: &self.packets,
+            entries: &self.room.entries,
+            sysex: &self.room.sysex,
+            packets: &self.room.packets,
             start: 0,
-            dropped: self.dropped,
+            dropped: self.room.dropped,
         }
     }
 
@@ -164,63 +164,56 @@ impl MidiList {
     /// activation.
     pub fn reset(&mut self) {
         self.decoder.reset();
+        self.room.clear();
+    }
+}
+
+impl Room {
+    fn clear(&mut self) {
         self.entries.clear();
         self.sysex.clear();
         self.packets.clear();
         self.dropped = 0;
     }
-}
 
-/// Keeps what one packet decoded to, a SysEx's bytes copied into the
-/// list's room.
-fn keep(
-    entries: &mut Vec<Entry>,
-    sysex: &mut Vec<u8>,
-    dropped: &mut u64,
-    frame: u32,
-    decoder: &Decoder,
-    decoded: Decoded,
-) {
-    let mut push = |kept: Kept, entries: &mut Vec<Entry>| {
-        if entries.len() < entries.capacity() {
-            entries.push(Entry { frame, kept });
+    fn lose(&mut self) {
+        self.dropped = self.dropped.saturating_add(1);
+    }
+
+    /// Keeps a message at `frame`, or counts it with no room left.
+    fn push(&mut self, frame: u32, kept: Kept) {
+        if self.entries.len() < self.entries.capacity() {
+            self.entries.push(Entry { frame, kept });
         } else {
-            *dropped = dropped.saturating_add(1);
-        }
-    };
-    match decoded {
-        Decoded::Nothing => {}
-        Decoded::One(message) => push(Kept::Message(message), entries),
-        Decoded::Offs(off) => {
-            for &id in decoder.ended() {
-                push(
-                    Kept::Message(Message::NoteOff(NoteOff { id, ..off })),
-                    entries,
-                );
-            }
-        }
-        Decoded::SysEx(group) => {
-            let data = decoder.sysex_bytes();
-            let start = sysex.len();
-            if data.len() > sysex.capacity().saturating_sub(start) {
-                push_dropped(dropped);
-                return;
-            }
-            sysex.extend_from_slice(data);
-            push(
-                Kept::SysEx {
-                    group,
-                    start,
-                    len: data.len(),
-                },
-                entries,
-            );
+            self.lose();
         }
     }
-}
 
-fn push_dropped(dropped: &mut u64) {
-    *dropped = dropped.saturating_add(1);
+    /// Keeps what one packet decoded to, a SysEx's bytes copied into the
+    /// room.
+    fn keep(&mut self, frame: u32, decoder: &Decoder, decoded: Decoded) {
+        match decoded {
+            Decoded::Nothing => {}
+            Decoded::One(message) => self.push(frame, Kept::Message(message)),
+            Decoded::Offs(off) => {
+                for &id in decoder.ended() {
+                    let message = Message::NoteOff(NoteOff { id, ..off });
+                    self.push(frame, Kept::Message(message));
+                }
+            }
+            Decoded::SysEx(group) => {
+                let data = decoder.sysex_bytes();
+                let start = self.sysex.len();
+                if data.len() > self.sysex.capacity().saturating_sub(start) {
+                    self.lose();
+                    return;
+                }
+                self.sysex.extend_from_slice(data);
+                let len = data.len();
+                self.push(frame, Kept::SysEx { group, start, len });
+            }
+        }
+    }
 }
 
 /// One block's MIDI, decoded once: [`Block::midi`] in `hapto-host`. It
@@ -539,18 +532,10 @@ impl<'a> MidiOut<'a> {
 /// Where a message's packets come from: the host's note id, for a note or
 /// a note's own message its host named, as the decoder found it.
 fn named(message: &Message<'_>) -> Origin {
-    let id = match message {
-        Message::NoteOn(on) => Some(on.id),
-        Message::NoteOff(off) => Some(off.id),
-        Message::NotePitch { note, .. }
-        | Message::NoteBend { note, .. }
-        | Message::NotePressure { note, .. }
-        | Message::NoteControl { note, .. }
-        | Message::NoteAssignable { note, .. }
-        | Message::NoteManagement { note, .. } => note.id,
-        _ => None,
-    };
-    id.filter(|id| id.is_hosts())
+    message
+        .note()
+        .and_then(|note| note.id)
+        .filter(|id| id.is_hosts())
         .map_or(Origin::Midi2, |id| Origin::Note { id: id.get() })
 }
 

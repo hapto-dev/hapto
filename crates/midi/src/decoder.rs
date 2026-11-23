@@ -148,7 +148,7 @@ impl<'d> Iterator for Messages<'d> {
             Decoded::Nothing => None,
             Decoded::One(message) => (at == 0).then_some(message),
             Decoded::Offs(off) => {
-                let id = *self.decoder.ends.get(..self.decoder.ended)?.get(at)?;
+                let id = *self.decoder.ended().get(at)?;
                 Some(Message::NoteOff(NoteOff { id, ..off }))
             }
             Decoded::SysEx(group) => (at == 0).then(|| Message::SysEx {

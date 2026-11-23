@@ -5,7 +5,7 @@ use std::fmt;
 
 use hapto_ump::Attribute;
 
-use crate::controller;
+use crate::controller::{self, Address};
 use crate::values::{Centred, Channel, Group, Key, NoteId, Pitch, Program};
 
 /// A note starting.
@@ -383,6 +383,144 @@ impl From<NoteOff> for Message<'_> {
 /// Where a channel's message came: ", channel 1, group 1".
 struct On(Group, Channel);
 
+impl<'a> Message<'a> {
+    /// The group it came on.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hapto_midi::{Decoder, Group};
+    /// use hapto_ump::Event;
+    ///
+    /// // A controller on group 3.
+    /// let event = Event::new(0, [0x42B0_0700, u32::MAX, 0, 0]);
+    /// let mut decoder = Decoder::new();
+    /// let message = decoder.decode(&event).next().expect("a controller");
+    /// assert_eq!(message.group(), Group::number(3));
+    /// ```
+    pub fn group(&self) -> Group {
+        match *self {
+            Message::NoteOn(NoteOn { group, .. }) | Message::NoteOff(NoteOff { group, .. }) => {
+                group
+            }
+            Message::NotePitch { note, .. }
+            | Message::NoteBend { note, .. }
+            | Message::NotePressure { note, .. }
+            | Message::NoteControl { note, .. }
+            | Message::NoteAssignable { note, .. }
+            | Message::NoteManagement { note, .. } => note.group,
+            Message::Bend { group, .. }
+            | Message::BendRange { group, .. }
+            | Message::Pressure { group, .. }
+            | Message::Control { group, .. }
+            | Message::Registered { group, .. }
+            | Message::Assignable { group, .. }
+            | Message::Program { group, .. }
+            | Message::SysEx { group, .. } => group,
+        }
+    }
+
+    /// The channel it came on; `None` for a SysEx, which has none.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hapto_midi::{Channel, Decoder, Message};
+    /// use hapto_ump::Event;
+    ///
+    /// // Listening on channel 2 alone.
+    /// let event = Event::new(0, [0x40B1_0700, u32::MAX, 0, 0]);
+    /// let mut decoder = Decoder::new();
+    /// let mine = |message: &Message<'_>| message.channel() == Some(Channel::number(2));
+    /// assert!(decoder.decode(&event).all(|message| mine(&message)));
+    /// ```
+    pub fn channel(&self) -> Option<Channel> {
+        Some(match *self {
+            Message::NoteOn(NoteOn { channel, .. }) | Message::NoteOff(NoteOff { channel, .. }) => {
+                channel
+            }
+            Message::Bend { channel, .. }
+            | Message::BendRange { channel, .. }
+            | Message::Pressure { channel, .. }
+            | Message::Control { channel, .. }
+            | Message::Registered { channel, .. }
+            | Message::Assignable { channel, .. }
+            | Message::Program { channel, .. } => channel,
+            Message::SysEx { .. } => return None,
+            _ => self.note()?.channel,
+        })
+    }
+
+    /// The key and note a note's message names, a note-on's and a
+    /// note-off's included; `None` for a channel's message or a SysEx.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hapto_midi::{Decoder, Key};
+    /// use hapto_ump::Event;
+    ///
+    /// // A note-on for C4, then its pressure.
+    /// let mut decoder = Decoder::new();
+    /// let on = Event::new(0, [0x4090_3C00, 0xFFFF_0000, 0, 0]);
+    /// let pressure = Event::new(0, [0x40A0_3C00, 0x8000_0000, 0, 0]);
+    /// let id = decoder.decode(&on).next().and_then(|message| message.note()).and_then(|note| note.id);
+    /// let note = decoder.decode(&pressure).next().and_then(|message| message.note()).expect("a note's");
+    /// assert_eq!((note.key, note.id), (Key::new(60), id));
+    /// ```
+    pub fn note(&self) -> Option<NoteKey> {
+        let event = |group, channel, key, id| NoteKey {
+            group,
+            channel,
+            key,
+            id: Some(id),
+        };
+        match *self {
+            Message::NoteOn(on) => Some(event(on.group, on.channel, on.key, on.id)),
+            Message::NoteOff(off) => Some(event(off.group, off.channel, off.key, off.id)),
+            Message::NotePitch { note, .. }
+            | Message::NoteBend { note, .. }
+            | Message::NotePressure { note, .. }
+            | Message::NoteControl { note, .. }
+            | Message::NoteAssignable { note, .. }
+            | Message::NoteManagement { note, .. } => Some(note),
+            _ => None,
+        }
+    }
+
+    /// The controller a channel's control change, registered or assignable
+    /// controller sets, and its value from 0 to 1; `None` for any other
+    /// message, a note's own controllers included.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hapto_midi::controller::{self, number};
+    /// use hapto_midi::Decoder;
+    /// use hapto_ump::Event;
+    ///
+    /// let event = Event::new(0, [0x40B0_0700, u32::MAX, 0, 0]);
+    /// let mut decoder = Decoder::new();
+    /// let message = decoder.decode(&event).next().expect("a controller");
+    /// let address = controller::Address::Control(number::VOLUME);
+    /// assert_eq!(message.controller(), Some((address, 1.0)));
+    /// ```
+    pub fn controller(&self) -> Option<(Address, f32)> {
+        match *self {
+            Message::Control {
+                controller, value, ..
+            } => Some((Address::Control(controller), value)),
+            Message::Registered {
+                bank, index, value, ..
+            } => Some((Address::Registered { bank, index }, value)),
+            Message::Assignable {
+                bank, index, value, ..
+            } => Some((Address::Assignable { bank, index }, value)),
+            _ => None,
+        }
+    }
+}
+
 impl fmt::Display for On {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, ", channel {}, group {}", self.1, self.0)
@@ -414,12 +552,40 @@ impl fmt::Display for Named {
 /// The most of a SysEx message's bytes its line shows.
 const SHOWN_BYTES: usize = 16;
 
+/// A note-on or note-off as its line.
+fn fmt_event(
+    f: &mut fmt::Formatter<'_>,
+    what: &str,
+    key: Key,
+    velocity: f32,
+    on: On,
+    id: NoteId,
+) -> fmt::Result {
+    write!(f, "{what} {key}, velocity {velocity:.3}{on}, {id}")
+}
+
+/// One line in musicians' numbers, as a [`Message::NoteOn`] reads.
+impl fmt::Display for NoteOn {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let on = On(self.group, self.channel);
+        fmt_event(f, "note on", self.key, self.velocity, on, self.id)
+    }
+}
+
+/// One line in musicians' numbers, as a [`Message::NoteOff`] reads.
+impl fmt::Display for NoteOff {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let on = On(self.group, self.channel);
+        fmt_event(f, "note off", self.key, self.velocity, on, self.id)
+    }
+}
+
 impl fmt::Display for Message<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
-            Message::NoteOn(_)
-            | Message::NoteOff(_)
-            | Message::NotePitch { .. }
+            Message::NoteOn(on) => on.fmt(f),
+            Message::NoteOff(off) => off.fmt(f),
+            Message::NotePitch { .. }
             | Message::NoteBend { .. }
             | Message::NotePressure { .. }
             | Message::NoteControl { .. }
@@ -507,22 +673,6 @@ impl Message<'_> {
     /// A note's message as its line: the rest go through `Display`.
     fn fmt_note(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
-            Message::NoteOn(note) => write!(
-                f,
-                "note on {}, velocity {:.3}{}, {}",
-                note.key,
-                note.velocity,
-                On(note.group, note.channel),
-                note.id
-            ),
-            Message::NoteOff(off) => write!(
-                f,
-                "note off {}, velocity {:.3}{}, {}",
-                off.key,
-                off.velocity,
-                On(off.group, off.channel),
-                off.id
-            ),
             Message::NotePitch { note, pitch } => write!(f, "pitch {pitch} for {note}"),
             Message::NoteBend { note, value } => write!(f, "pitch bend {value} for {note}"),
             Message::NotePressure { note, value } => write!(f, "pressure {value:.3} for {note}"),
@@ -542,7 +692,17 @@ impl Message<'_> {
                 f,
                 "note management, detach {detach}, reset {reset}, for {note}"
             ),
-            _ => Ok(()),
+            // Display writes these itself.
+            Message::NoteOn(_)
+            | Message::NoteOff(_)
+            | Message::Bend { .. }
+            | Message::BendRange { .. }
+            | Message::Pressure { .. }
+            | Message::Control { .. }
+            | Message::Registered { .. }
+            | Message::Assignable { .. }
+            | Message::Program { .. }
+            | Message::SysEx { .. } => Ok(()),
         }
     }
 }

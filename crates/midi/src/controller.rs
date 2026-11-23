@@ -249,34 +249,8 @@ impl<T: ControllerValue> Controller<T> {
     /// group and channel, which the message names. A note's own controller
     /// is read with [`read_note`](Self::read_note).
     pub fn read(&self, message: &Message<'_>) -> Option<T> {
-        let value = match (self.address, message) {
-            (
-                Address::Control(number),
-                Message::Control {
-                    controller, value, ..
-                },
-            ) if *controller == number => value,
-            (
-                Address::Registered { bank, index },
-                Message::Registered {
-                    bank: b,
-                    index: i,
-                    value,
-                    ..
-                },
-            ) if (*b, *i) == (bank, index) => value,
-            (
-                Address::Assignable { bank, index },
-                Message::Assignable {
-                    bank: b,
-                    index: i,
-                    value,
-                    ..
-                },
-            ) if (*b, *i) == (bank, index) => value,
-            _ => return None,
-        };
-        Some(T::from_unit(*value))
+        let (address, value) = message.controller()?;
+        (address == self.address).then(|| T::from_unit(value))
     }
 
     /// Its value for one note, and the note, if `message` is a note's own

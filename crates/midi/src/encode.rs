@@ -3,205 +3,126 @@
 use hapto_ump::scale::{self, up_14_to_32};
 use hapto_ump::{Attribute, Bank, ChannelMessage, ChannelVoice, SysEx7};
 
-use crate::message::{Message, NoteKey};
-use crate::values::{Centred, Channel, Group, Pitch, held};
+use crate::message::Message;
+use crate::values::{Centred, Pitch, held};
 
 /// Hands `send` the packets `message` is as MIDI 2.0: one for most, as many
 /// as a SysEx needs, six bytes each.
 pub(crate) fn encode(message: &Message<'_>, mut send: impl FnMut([u32; 4])) {
-    if let Message::SysEx { group, data } = *message {
-        SysEx7::packets(group.index() as u8, data, send);
+    let group = message.group().index() as u8;
+    if let Message::SysEx { data, .. } = *message {
+        SysEx7::packets(group, data, send);
         return;
     }
-    if let Some(voice) = voice(message) {
-        send(voice.words());
-    }
+    let (Some(channel), Some(voice)) = (
+        message.channel(),
+        note_message(message).or_else(|| channel_message(message)),
+    ) else {
+        return;
+    };
+    let voice = ChannelVoice {
+        group,
+        channel: channel.index() as u8,
+        message: voice,
+    };
+    send(voice.words());
 }
 
-fn voice(message: &Message<'_>) -> Option<ChannelVoice> {
-    let on = |group: Group, channel: Channel, message| ChannelVoice {
-        group: group.index() as u8,
-        channel: channel.index() as u8,
-        message,
-    };
-    let per_note = |note: NoteKey, message| on(note.group, note.channel, message);
+/// A note's message as MIDI 2.0's; `None` for a channel's.
+fn note_message(message: &Message<'_>) -> Option<ChannelMessage> {
     Some(match *message {
-        Message::NoteOn(note) => on(
-            note.group,
-            note.channel,
-            ChannelMessage::NoteOn {
-                note: note.key.number(),
-                velocity: sixteen(note.velocity),
-                attribute: note.attribute,
-            },
-        ),
-        Message::NoteOff(off) => on(
-            off.group,
-            off.channel,
-            ChannelMessage::NoteOff {
-                note: off.key.number(),
-                velocity: sixteen(off.velocity),
-                attribute: Attribute::NONE,
-            },
-        ),
-        Message::NotePitch { note, pitch } => per_note(
-            note,
-            ChannelMessage::RegisteredPerNoteController {
-                note: note.key.number(),
-                index: ChannelMessage::PER_NOTE_PITCH,
-                value: pitch_7_25(pitch),
-            },
-        ),
-        Message::NoteBend { note, value } => per_note(
-            note,
-            ChannelMessage::PerNotePitchBend {
-                note: note.key.number(),
-                value: centred(value),
-            },
-        ),
-        Message::NotePressure { note, value } => per_note(
-            note,
-            ChannelMessage::PolyPressure {
-                note: note.key.number(),
-                value: bits(value),
-            },
-        ),
+        Message::NoteOn(on) => ChannelMessage::NoteOn {
+            note: on.key.number(),
+            velocity: sixteen(on.velocity),
+            attribute: on.attribute,
+        },
+        Message::NoteOff(off) => ChannelMessage::NoteOff {
+            note: off.key.number(),
+            velocity: sixteen(off.velocity),
+            attribute: Attribute::NONE,
+        },
+        Message::NotePitch { note, pitch } => ChannelMessage::RegisteredPerNoteController {
+            note: note.key.number(),
+            index: ChannelMessage::PER_NOTE_PITCH,
+            value: pitch_7_25(pitch),
+        },
+        Message::NoteBend { note, value } => ChannelMessage::PerNotePitchBend {
+            note: note.key.number(),
+            value: centred(value),
+        },
+        Message::NotePressure { note, value } => ChannelMessage::PolyPressure {
+            note: note.key.number(),
+            value: bits(value),
+        },
         Message::NoteControl {
             note,
             controller,
             value,
-        } => per_note(
-            note,
-            ChannelMessage::RegisteredPerNoteController {
-                note: note.key.number(),
-                index: controller,
-                value: bits(value),
-            },
-        ),
-        Message::NoteAssignable { note, index, value } => per_note(
-            note,
+        } => ChannelMessage::RegisteredPerNoteController {
+            note: note.key.number(),
+            index: controller,
+            value: bits(value),
+        },
+        Message::NoteAssignable { note, index, value } => {
             ChannelMessage::AssignablePerNoteController {
                 note: note.key.number(),
                 index,
                 value: bits(value),
-            },
-        ),
+            }
+        }
         Message::NoteManagement {
             note,
             detach,
             reset,
-        } => per_note(
-            note,
-            ChannelMessage::PerNoteManagement {
-                note: note.key.number(),
-                detach,
-                reset,
-            },
-        ),
-        _ => return channel_wide(message),
+        } => ChannelMessage::PerNoteManagement {
+            note: note.key.number(),
+            detach,
+            reset,
+        },
+        _ => return None,
     })
 }
 
-fn channel_wide(message: &Message<'_>) -> Option<ChannelVoice> {
-    let (group, channel, message) = match *message {
-        Message::Bend {
-            group,
-            channel,
-            value,
-        } => (
-            group,
-            channel,
-            ChannelMessage::PitchBend {
-                value: centred(value),
-            },
-        ),
-        Message::BendRange {
-            group,
-            channel,
-            semitones,
-        } => (
-            group,
-            channel,
-            ChannelMessage::RegisteredController {
-                bank: 0,
-                index: 0,
-                value: bend_range(semitones),
-            },
-        ),
-        Message::Pressure {
-            group,
-            channel,
-            value,
-        } => (
-            group,
-            channel,
-            ChannelMessage::ChannelPressure { value: bits(value) },
-        ),
+/// A channel's message as MIDI 2.0's; `None` for a note's or a SysEx.
+fn channel_message(message: &Message<'_>) -> Option<ChannelMessage> {
+    Some(match *message {
+        Message::Bend { value, .. } => ChannelMessage::PitchBend {
+            value: centred(value),
+        },
+        Message::BendRange { semitones, .. } => ChannelMessage::RegisteredController {
+            bank: 0,
+            index: 0,
+            value: bend_range(semitones),
+        },
+        Message::Pressure { value, .. } => ChannelMessage::ChannelPressure { value: bits(value) },
         Message::Control {
-            group,
-            channel,
+            controller, value, ..
+        } => ChannelMessage::ControlChange {
             controller,
-            value,
-        } => (
-            group,
-            channel,
-            ChannelMessage::ControlChange {
-                controller,
-                value: bits(value),
-            },
-        ),
+            value: bits(value),
+        },
         Message::Registered {
-            group,
-            channel,
+            bank, index, value, ..
+        } => ChannelMessage::RegisteredController {
             bank,
             index,
-            value,
-        } => (
-            group,
-            channel,
-            ChannelMessage::RegisteredController {
-                bank,
-                index,
-                value: bits(value),
-            },
-        ),
+            value: bits(value),
+        },
         Message::Assignable {
-            group,
-            channel,
+            bank, index, value, ..
+        } => ChannelMessage::AssignableController {
             bank,
             index,
-            value,
-        } => (
-            group,
-            channel,
-            ChannelMessage::AssignableController {
-                bank,
-                index,
-                value: bits(value),
-            },
-        ),
-        Message::Program {
-            group,
-            channel,
-            program,
-            bank,
-        } => (
-            group,
-            channel,
-            ChannelMessage::ProgramChange {
-                program: program.wire(),
-                bank: bank.map(|bank| Bank {
-                    msb: ((bank >> 7) & 0x7F) as u8,
-                    lsb: (bank & 0x7F) as u8,
-                }),
-            },
-        ),
+            value: bits(value),
+        },
+        Message::Program { program, bank, .. } => ChannelMessage::ProgramChange {
+            program: program.wire(),
+            bank: bank.map(|bank| Bank {
+                msb: ((bank >> 7) & 0x7F) as u8,
+                lsb: (bank & 0x7F) as u8,
+            }),
+        },
         _ => return None,
-    };
-    Some(ChannelVoice {
-        group: group.index() as u8,
-        channel: channel.index() as u8,
-        message,
     })
 }
 
