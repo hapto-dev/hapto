@@ -10,7 +10,7 @@ use std::fmt;
 /// ```
 /// use hapto_midi::Key;
 ///
-/// assert_eq!(Key::C4.number(), 60);
+/// assert_eq!(Key::C4.wire(), 60);
 /// assert_eq!(Key::new(61).to_string(), "C#4");
 /// assert_eq!(Key::new(0).to_string(), "C-1");
 /// ```
@@ -28,8 +28,8 @@ impl Key {
         Key(number & 0x7F)
     }
 
-    /// Its number, as MIDI sends it.
-    pub const fn number(self) -> u8 {
+    /// Its number as MIDI sends it, 0 to 127.
+    pub const fn wire(self) -> u8 {
         self.0
     }
 }
@@ -72,9 +72,14 @@ impl Group {
         Group(number.saturating_sub(1))
     }
 
-    /// The group a packet's group field names, 0 to 15.
-    pub(crate) const fn field(field: u8) -> Self {
-        Group(field & 0xF)
+    /// The group a packet carries as `wire`, 0 to 15, masked to 4 bits.
+    pub const fn from_wire(wire: u8) -> Self {
+        Group(wire & 0xF)
+    }
+
+    /// Its number as a packet carries it, 0 to 15.
+    pub const fn wire(self) -> u8 {
+        self.0
     }
 
     /// Its place among the 16, 0 to 15, for indexing a table of them.
@@ -118,9 +123,14 @@ impl Channel {
         Channel(number.saturating_sub(1))
     }
 
-    /// The channel a packet's channel field names, 0 to 15.
-    pub(crate) const fn field(field: u8) -> Self {
-        Channel(field & 0xF)
+    /// The channel a packet carries as `wire`, 0 to 15, masked to 4 bits.
+    pub const fn from_wire(wire: u8) -> Self {
+        Channel(wire & 0xF)
+    }
+
+    /// Its number as a packet carries it, 0 to 15.
+    pub const fn wire(self) -> u8 {
+        self.0
     }
 
     /// Its place among a group's 16 channels, 0 to 15, for indexing a table
@@ -288,7 +298,7 @@ impl fmt::Display for Pedal {
 /// ```
 /// use hapto_midi::{Key, Pitch};
 ///
-/// assert_eq!(Pitch::of(Key::A4).hz(), 440.0);
+/// assert_eq!(Pitch::from(Key::A4).hz(), 440.0);
 /// assert!((Pitch::new(81.0).hz() - 880.0).abs() < 1e-3);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
@@ -300,11 +310,6 @@ impl Pitch {
         Pitch(semitones)
     }
 
-    /// The pitch of `key` in equal temperament.
-    pub fn of(key: Key) -> Self {
-        Pitch(f32::from(key.0))
-    }
-
     /// The pitch in semitones above key 0.
     pub const fn semitones(self) -> f32 {
         self.0
@@ -313,6 +318,13 @@ impl Pitch {
     /// The frequency in Hz, with A4 at 440 Hz.
     pub fn hz(self) -> f32 {
         440.0 * ((self.0 - 69.0) / 12.0).exp2()
+    }
+}
+
+/// The pitch of a key in equal temperament.
+impl From<Key> for Pitch {
+    fn from(key: Key) -> Self {
+        Pitch(f32::from(key.0))
     }
 }
 

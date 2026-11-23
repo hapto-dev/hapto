@@ -9,7 +9,7 @@ use crate::values::{Centred, Pitch, held};
 /// Hands `send` the packets `message` is as MIDI 2.0: one for most, as many
 /// as a SysEx needs, six bytes each.
 pub(crate) fn encode(message: &Message<'_>, mut send: impl FnMut([u32; 4])) {
-    let group = message.group().index() as u8;
+    let group = message.group().wire();
     if let Message::SysEx { data, .. } = *message {
         SysEx7::packets(group, data, send);
         return;
@@ -22,7 +22,7 @@ pub(crate) fn encode(message: &Message<'_>, mut send: impl FnMut([u32; 4])) {
     };
     let voice = ChannelVoice {
         group,
-        channel: channel.index() as u8,
+        channel: channel.wire(),
         message: voice,
     };
     send(voice.words());
@@ -32,26 +32,26 @@ pub(crate) fn encode(message: &Message<'_>, mut send: impl FnMut([u32; 4])) {
 fn note_message(message: &Message<'_>) -> Option<ChannelMessage> {
     Some(match *message {
         Message::NoteOn(on) => ChannelMessage::NoteOn {
-            note: on.key.number(),
+            note: on.key.wire(),
             velocity: sixteen(on.velocity),
             attribute: on.attribute,
         },
         Message::NoteOff(off) => ChannelMessage::NoteOff {
-            note: off.key.number(),
+            note: off.key.wire(),
             velocity: sixteen(off.velocity),
             attribute: Attribute::NONE,
         },
         Message::NotePitch { note, pitch } => ChannelMessage::RegisteredPerNoteController {
-            note: note.key.number(),
+            note: note.key.wire(),
             index: ChannelMessage::PER_NOTE_PITCH,
             value: pitch_7_25(pitch),
         },
         Message::NoteBend { note, value } => ChannelMessage::PerNotePitchBend {
-            note: note.key.number(),
+            note: note.key.wire(),
             value: centred(value),
         },
         Message::NotePressure { note, value } => ChannelMessage::PolyPressure {
-            note: note.key.number(),
+            note: note.key.wire(),
             value: bits(value),
         },
         Message::NoteControl {
@@ -59,13 +59,13 @@ fn note_message(message: &Message<'_>) -> Option<ChannelMessage> {
             controller,
             value,
         } => ChannelMessage::RegisteredPerNoteController {
-            note: note.key.number(),
+            note: note.key.wire(),
             index: controller,
             value: bits(value),
         },
         Message::NoteAssignable { note, index, value } => {
             ChannelMessage::AssignablePerNoteController {
-                note: note.key.number(),
+                note: note.key.wire(),
                 index,
                 value: bits(value),
             }
@@ -75,7 +75,7 @@ fn note_message(message: &Message<'_>) -> Option<ChannelMessage> {
             detach,
             reset,
         } => ChannelMessage::PerNoteManagement {
-            note: note.key.number(),
+            note: note.key.wire(),
             detach,
             reset,
         },

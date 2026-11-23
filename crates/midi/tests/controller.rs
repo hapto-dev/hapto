@@ -135,7 +135,7 @@ fn a_controller_reads_its_own_message_and_no_other() {
     let (note, bright) = controller::BRIGHTNESS
         .read_note(&own)
         .expect("a note's brightness");
-    assert_eq!((note.key.number(), bright), (60, Centred::new(1.0)));
+    assert_eq!((note.key.wire(), bright), (60, Centred::new(1.0)));
 }
 
 #[test]

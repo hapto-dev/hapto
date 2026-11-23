@@ -71,7 +71,7 @@ impl NoteOn {
     pub fn with_key(self, key: Key) -> Self {
         let mut attribute = self.attribute;
         if let Some(semitones) = attribute.semitones() {
-            let keys = f64::from(key.number()) - f64::from(self.key.number());
+            let keys = f64::from(key.wire()) - f64::from(self.key.wire());
             attribute = Attribute::pitch(semitones + keys);
         }
         NoteOn {
@@ -105,7 +105,7 @@ impl NoteOn {
     pub fn pitch(&self) -> Pitch {
         match self.attribute.semitones() {
             Some(semitones) => Pitch::new(semitones as f32),
-            None => Pitch::of(self.key),
+            None => Pitch::from(self.key),
         }
     }
 

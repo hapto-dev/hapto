@@ -235,7 +235,7 @@ impl Decoder {
         let (whole, dropped) = (joined.whole.map(|whole| whole.group), joined.dropped);
         self.dropped = self.dropped.saturating_add(u64::from(dropped));
         if let Some(group) = whole {
-            return Decoded::SysEx(Group::field(group));
+            return Decoded::SysEx(Group::from_wire(group));
         }
         match event.message_type() {
             MessageType::UTILITY | MessageType::STREAM | MessageType::SYSEX7 => Decoded::Nothing,
@@ -255,8 +255,8 @@ impl Decoder {
 
     /// One channel voice message; `named` is its host's name for the note.
     fn voice(&mut self, voice: ChannelVoice, named: Option<NoteId>) -> Decoded {
-        let group = Group::field(voice.group);
-        let channel = Channel::field(voice.channel);
+        let group = Group::from_wire(voice.group);
+        let channel = Channel::from_wire(voice.channel);
         let at = Place {
             group,
             channel,
