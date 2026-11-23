@@ -1,10 +1,9 @@
 //! A plugin as an app of its own: [`main`] runs any [`Plugin`] standalone,
 //! its editor in a window and its output on the system's audio output,
 //! through Hapto's standalone exporter. Its inputs hear silence unless the
-//! command line asks for a test signal. A plugin that takes MIDI hears every
-//! MIDI input the computer has, and one that sends MIDI sends to no output,
-//! unless the binary says otherwise through [`App`], whose
-//! [`MidiDevices`] handle changes them while the app runs.
+//! command line asks for a test signal. A plugin that takes or sends MIDI
+//! reaches the computer's MIDI devices as [`MidiDevices`] says, which the
+//! binary sets through [`App`].
 //!
 //! A plugin crate gives it a binary behind a `standalone` feature, so the
 //! plugin's module never links it:
@@ -129,13 +128,9 @@ pub fn main<P: Plugin>() -> ExitCode {
 }
 
 /// `P` as an app, with the MIDI devices it opens said in code: a filter for
-/// each direction, which the app asks of each device the system lists and
-/// of each that appears later. Every input opens, and no output, unless a
-/// filter says otherwise, and only for a plugin that takes MIDI, or sends
-/// it. The outputs send each block's MIDI as soon as it has played, at the
-/// least latency, unless [`midi_out_timing`](Self::midi_out_timing) has them
-/// keep each message's frame. [`midi`](Self::midi) is a handle that changes
-/// all of it while the app runs. [`main`] is `App::<P>::new().run()`.
+/// each direction, and when the outputs send, by the rules and with the
+/// defaults of [`MidiDevices`]. [`midi`](Self::midi) is the handle that
+/// changes them while the app runs. [`main`] is `App::<P>::new().run()`.
 ///
 /// # Examples
 ///
@@ -190,10 +185,10 @@ pub fn main<P: Plugin>() -> ExitCode {
 ///
 /// fn main() -> std::process::ExitCode {
 ///     let app = hapto_standalone::App::<MyPlugin>::new()
-///         .midi_inputs(|device| device.name().contains("Xkey"))
-///         .midi_outputs(|device| device.name().starts_with("loopMIDI"))
+///         .with_midi_inputs(|device| device.name().contains("Xkey"))
+///         .with_midi_outputs(|device| device.name().starts_with("loopMIDI"))
 ///         // An arpeggiator: its notes keep their spacing.
-///         .midi_out_timing(hapto_standalone::Timing::AtFrames);
+///         .with_midi_out_timing(hapto_standalone::Timing::AtFrames);
 ///     let _ = MIDI.set(app.midi());
 ///     app.run()
 /// }
@@ -219,7 +214,8 @@ impl<P: Plugin> Default for App<P> {
 }
 
 impl<P: Plugin> App<P> {
-    /// `P` as an app that opens every MIDI input and no output.
+    /// `P` as an app with the MIDI devices [`MidiDevices`] opens by
+    /// default.
     pub fn new() -> Self {
         App {
             midi: MidiDevices::new(),
@@ -227,38 +223,40 @@ impl<P: Plugin> App<P> {
         }
     }
 
-    /// Opens the MIDI inputs `filter` passes, in place of every one.
+    /// Opens the MIDI inputs `filter` passes, as
+    /// [`MidiDevices::set_inputs`] does.
     #[must_use]
-    pub fn midi_inputs(self, filter: impl Fn(&Device) -> bool + Send + Sync + 'static) -> Self {
+    pub fn with_midi_inputs(
+        self,
+        filter: impl Fn(&Device) -> bool + Send + Sync + 'static,
+    ) -> Self {
         self.midi.set_inputs(filter);
         self
     }
 
-    /// Opens the MIDI outputs `filter` passes, in place of none.
+    /// Opens the MIDI outputs `filter` passes, as
+    /// [`MidiDevices::set_outputs`] does.
     #[must_use]
-    pub fn midi_outputs(self, filter: impl Fn(&Device) -> bool + Send + Sync + 'static) -> Self {
+    pub fn with_midi_outputs(
+        self,
+        filter: impl Fn(&Device) -> bool + Send + Sync + 'static,
+    ) -> Self {
         self.midi.set_outputs(filter);
         self
     }
 
-    /// Has the outputs send as `timing` says, in place of each block's MIDI
-    /// as soon as it has played: [`Timing::AtFrames`] keeps each message's
-    /// frame, for an arpeggiator, a sequencer or a clock.
+    /// Has the outputs send as `timing` says, as
+    /// [`MidiDevices::set_timing`] does.
     #[must_use]
-    pub fn midi_out_timing(self, timing: Timing) -> Self {
+    pub fn with_midi_out_timing(self, timing: Timing) -> Self {
         self.midi.set_timing(timing);
         self
     }
 
-    /// The handle to the app's MIDI devices, to keep: it changes the filters
-    /// and the timing while the app runs, from any thread but the audio
-    /// thread, and tells which devices are listed and open. The plugin is
-    /// made inside [`run`](Self::run), so its own code reaches the handle
-    /// where the binary keeps it, in a `static`, as [`App`]'s example does.
-    ///
-    /// The handle opens nothing for a plugin that neither takes MIDI nor
-    /// sends it, nor under `--host`, where the plugin's format gets no MIDI
-    /// from the app: there it lists and opens none.
+    /// The handle to the app's MIDI devices, to keep: it changes them while
+    /// the app runs, as [`MidiDevices`] says. The plugin is made inside
+    /// [`run`](Self::run), so its own code reaches the handle where the
+    /// binary keeps it, in a `static`, as [`App`]'s example does.
     pub fn midi(&self) -> MidiDevices {
         self.midi.clone()
     }

@@ -15,6 +15,7 @@ use std::sync::Arc;
 
 use anyhow::{Context as _, Result};
 use hapto_host::layout::Width;
+use hapto_host::standalone::StandaloneBlock;
 use hapto_host::vst3::{HostCall, RESTART_LATENCY, RESTART_VALUES, TestView};
 use hapto_host::{Event, Plugin, cabi, vst3};
 
@@ -279,14 +280,13 @@ struct Vst3Audio {
 
 impl Render for Vst3Audio {
     // Open: the dev host hands the formats no MIDI yet.
-    fn render(
-        &mut self,
-        inputs: &[&[f32]],
-        outputs: &mut [&mut [f32]],
-        frames: usize,
-        _midi: &[Event],
-        _sent: &mut dyn FnMut(&[Event]),
-    ) {
+    fn render(&mut self, block: StandaloneBlock<'_, '_>, _sent: &mut dyn FnMut(&[Event])) {
+        let StandaloneBlock {
+            inputs,
+            outputs,
+            frames,
+            ..
+        } = block;
         let count = self.pending.take(&mut self.changes);
         let changes = self.changes.get(..count).unwrap_or_default();
         // A refusal is the exporter's to count as a fault, which the
@@ -423,14 +423,13 @@ struct CabiAudio {
 }
 
 impl Render for CabiAudio {
-    fn render(
-        &mut self,
-        inputs: &[&[f32]],
-        outputs: &mut [&mut [f32]],
-        frames: usize,
-        _midi: &[Event],
-        _sent: &mut dyn FnMut(&[Event]),
-    ) {
+    fn render(&mut self, block: StandaloneBlock<'_, '_>, _sent: &mut dyn FnMut(&[Event])) {
+        let StandaloneBlock {
+            inputs,
+            outputs,
+            frames,
+            ..
+        } = block;
         let _status = self.side.process(inputs, outputs, frames);
     }
 }

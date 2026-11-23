@@ -3352,15 +3352,18 @@ against C++.
   `StandaloneAudio` side is `Send` for the device's callback and allocates
   nothing: its channel lists live on the stack, up to 32 each way. A block is as
   long as the app says, as through the C interface, so a plugin with no channels
-  plays its MIDI, and a channel shorter than that shortens it. Inputs that share
-  part of a buffer are refused, as the engine takes channels that are one buffer
-  or share nothing. A teardown with an audio side still alive leaks the instance
-  rather than free the plugin where that side could reach it, and the leak is a
-  fault; an editor may outlive it, and the last to drop frees the plugin on the
-  main thread. A refused load says why, with the state's own reason, and a panic
-  in a load or an activation is refused as a panic, not taken for a busy plugin.
-  `StandaloneEditor` drives the editor's slot as the VST3 view does, in a window
-  the app keeps until it closes the editor.
+  plays its MIDI, and a channel shorter than that shortens it. The app says it
+  through the constructor of `StandaloneBlock` it picks: `new` takes the
+  shortest channel's length, and `with_midi` the length it gives with the MIDI.
+  Inputs that share part of a buffer are refused, as the engine takes channels
+  that are one buffer or share nothing. A teardown with an audio side still
+  alive leaks the instance rather than free the plugin where that side could
+  reach it, and the leak is a fault; an editor may outlive it, and the last to
+  drop frees the plugin on the main thread. A refused load says why, with the
+  state's own reason, and a panic in a load or an activation is refused as a
+  panic, not taken for a busy plugin. `StandaloneEditor` drives the editor's
+  slot as the VST3 view does, in a window the app keeps until it closes the
+  editor.
 - **The app**, `hapto-standalone`: `hapto_standalone::main::<P>()`, which a
   plugin crate's binary calls, behind a `standalone` feature of the crate's so
   the module never links it, or an `App` the binary builds, which says the MIDI
@@ -3825,13 +3828,13 @@ is both an input and an output, drive gear no one asked it to, and hold every
 port from other apps. JUCE's standalone opens none either way until its settings
 dialog picks them, a single output among them. Hapto adds no command-line flags
 for it, as an app's command line is its author's, and no settings of its own.
-`App::midi_out_timing` sets the outputs' timing, and the handle changes it as it
-runs. The player stamps each block's MIDI out where its first frame falls in the
-device's stream: when the device asked for the buffer, plus the frames the parts
-of it before this one and the queue hold, so at frames, blocks rendered back to
-back keep the spacing of their audio. Each block reads MIDI in up to where its
-frames end on that timeline, a buffer back, so the blocks one buffer holds each
-read their own share of the time.
+`App::with_midi_out_timing` sets the outputs' timing, and the handle changes it
+as it runs. The player stamps each block's MIDI out where its first frame falls
+in the device's stream: when the device asked for the buffer, plus the frames
+the parts of it before this one and the queue hold, so at frames, blocks
+rendered back to back keep the spacing of their audio. Each block reads MIDI in
+up to where its frames end on that timeline, a buffer back, so the blocks one
+buffer holds each read their own share of the time.
 
 The devices are open while a stream plays: when the audio stops, or a stream
 does not start, they close, so their ports go back to other apps and each

@@ -67,7 +67,7 @@ impl HostLink for Link {
 ///
 /// ```
 #[doc = include_str!("../doc/gain.rs")]
-/// use hapto_host::standalone::Standalone;
+/// use hapto_host::standalone::{Standalone, StandaloneBlock};
 ///
 /// let app = Standalone::<Gain>::new();
 /// app.activate(48_000.0, 4, Width::STEREO)?;
@@ -77,9 +77,10 @@ impl HostLink for Link {
 /// let input = [1.0_f32; 4];
 /// let (mut left, mut right) = ([0.0_f32; 4], [0.0_f32; 4]);
 /// let inputs = [&input[..], &input[..]];
-/// // Four frames, no MIDI in, and none of what it sends kept.
+/// // Four frames, as long as the channels, no MIDI in, and none of what it
+/// // sends kept.
 /// let outputs = &mut [&mut left[..], &mut right[..]];
-/// audio.process(&inputs, outputs, 4, &[], |_| {});
+/// audio.process(StandaloneBlock::new(&inputs, outputs), |_| {});
 /// assert_eq!(left, [1.0; 4], "0 dB");
 ///
 /// // The app's tick, about 60 times a second; its saved block, between runs.
@@ -373,15 +374,15 @@ impl<P: Plugin> Drop for Standalone<P> {
 ///
 /// ```
 #[doc = include_str!("../doc/gain.rs")]
-/// use hapto_host::standalone::Standalone;
+/// use hapto_host::standalone::{Standalone, StandaloneBlock};
 ///
 /// let app = Standalone::<Gain>::new();
 /// let mut audio = app.audio();
 /// let mut out = [[0.5_f32; 8]; 2];
 /// let [left, right] = &mut out;
 /// // Before an activation a block is silence.
-/// let block = &mut [&mut left[..], &mut right[..]];
-/// let played = audio.process(&[], block, 8, &[], |_sent| {});
+/// let outputs = &mut [&mut left[..], &mut right[..]];
+/// let played = audio.process(StandaloneBlock::new(&[], outputs), |_sent| {});
 /// assert_eq!(played, None);
 /// assert_eq!(out, [[0.0; 8]; 2]);
 /// ```
@@ -398,39 +399,28 @@ impl<P: Plugin> fmt::Debug for StandaloneAudio<P> {
 }
 
 impl<P: Plugin> StandaloneAudio<P> {
-    /// Plays one block of `frames` frames from `inputs` into `outputs`, each
-    /// a channel, with `midi` as its MIDI in, and returns the processor's
-    /// status; `None` for a block that did not play, whose outputs are
-    /// silence.
-    ///
-    /// `midi` is the app's packets for the block, each at a frame of it, MIDI
-    /// 1.0 or MIDI 2.0: the engine upgrades MIDI 1.0 as an exporter's MIDI
-    /// arrives. They may come in any order, but those at one frame are read
-    /// in the order given. A packet at or past the block's end plays
-    /// at its last frame, and one past the room
-    /// [`ProcessSetup::max_events`](crate::ProcessSetup::max_events) gives is
-    /// dropped and counted.
+    /// Plays `block`, and returns the processor's status; `None` for a block
+    /// that did not play, whose outputs are silence.
     ///
     /// `sent` is handed what the plugin sent, MIDI 2.0 as it sent it, each
     /// packet at a frame of the block and in the order it sent them, once
     /// the block has played: for an app to send to its devices. It is not
     /// called for a block that did not play.
     ///
-    /// The block is `frames` long, so a plugin with no channels plays its
-    /// MIDI too, and a channel shorter than that shortens it to the
-    /// channel's length. Channels past [`MAX_CHANNELS`] are passed over: an
-    /// output among them is left as it was, and an input is not read. The
-    /// processor sees the activation's layout: a missing input reads
+    /// The processor sees the activation's layout: a missing input reads
     /// silence. Two inputs may be one buffer, but inputs that share part of
     /// one are refused, and the block is silence.
     pub fn process(
         &mut self,
-        inputs: &[&[f32]],
-        outputs: &mut [&mut [f32]],
-        frames: usize,
-        midi: &[Event],
+        block: StandaloneBlock<'_, '_>,
         sent: impl FnOnce(&[Event]),
     ) -> Option<Status> {
+        let StandaloneBlock {
+            inputs,
+            outputs,
+            frames,
+            midi,
+        } = block;
         let ins = &inputs[..inputs.len().min(MAX_CHANNELS)];
         let outs_len = outputs.len().min(MAX_CHANNELS);
         let frames = ins
@@ -478,6 +468,89 @@ impl<P: Plugin> StandaloneAudio<P> {
                 }
                 None
             }
+        }
+    }
+}
+
+/// One block for [`StandaloneAudio::process`] to play: its channels, how
+/// many frames it is, and the app's MIDI in for it.
+///
+/// [`new`](Self::new) makes a block of audio alone, as long as its shortest
+/// channel. [`with_midi`](Self::with_midi) gives it MIDI and says how long it
+/// is, so a plugin with no channels plays its MIDI too. The fields are open,
+/// for an app to change any of them after.
+///
+/// `'a` borrows the lists and the MIDI, and `'c` the channels, so an app's
+/// list of outputs lends again for its next block.
+///
+/// # Examples
+///
+/// ```
+/// use hapto_host::Event;
+/// use hapto_host::standalone::StandaloneBlock;
+///
+/// let input = [0.5_f32; 8];
+/// let (mut left, mut right) = ([0.0_f32; 8], [0.0_f32; 4]);
+/// let inputs = [&input[..]];
+/// let outputs = &mut [&mut left[..], &mut right[..]];
+/// // Audio alone: as long as its shortest channel.
+/// let block = StandaloneBlock::new(&inputs, outputs);
+/// assert_eq!(block.frames, 4);
+///
+/// // A plugin with no channels: its MIDI, for as many frames as the app says.
+/// let notes = [Event::new(2, [0x4090_3C00, 0xFFFF_0000, 0, 0])];
+/// let block = StandaloneBlock::new(&[], &mut []).with_midi(8, &notes);
+/// assert_eq!((block.frames, block.midi.len()), (8, 1));
+/// ```
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct StandaloneBlock<'a, 'c> {
+    /// The input channels. Past [`MAX_CHANNELS`], an input is not read.
+    pub inputs: &'a [&'c [f32]],
+    /// The output channels. Past [`MAX_CHANNELS`], an output is left as it
+    /// was.
+    pub outputs: &'a mut [&'c mut [f32]],
+    /// How many frames the block plays. A channel shorter than that
+    /// shortens it to the channel's length.
+    pub frames: usize,
+    /// The app's packets for the block, each at a frame of it, MIDI 1.0 or
+    /// MIDI 2.0: the engine upgrades MIDI 1.0 as an exporter's MIDI
+    /// arrives. They may come in any order, but those at one frame are read
+    /// in the order given. A packet at or past the block's end plays at its
+    /// last frame, and one past the room
+    /// [`ProcessSetup::max_events`](crate::ProcessSetup::max_events) gives is
+    /// dropped and counted.
+    pub midi: &'a [Event],
+}
+
+impl<'a, 'c> StandaloneBlock<'a, 'c> {
+    /// A block from `inputs` into `outputs`, each a channel, with no MIDI:
+    /// as long as the shortest channel the block reads, and of no frames
+    /// with no channels.
+    pub fn new(inputs: &'a [&'c [f32]], outputs: &'a mut [&'c mut [f32]]) -> Self {
+        let ins = inputs
+            .iter()
+            .take(MAX_CHANNELS)
+            .map(|channel| channel.len());
+        let outs = outputs
+            .iter()
+            .take(MAX_CHANNELS)
+            .map(|channel| channel.len());
+        StandaloneBlock {
+            frames: ins.chain(outs).min().unwrap_or(0),
+            inputs,
+            outputs,
+            midi: &[],
+        }
+    }
+
+    /// The block `frames` long, with `midi` as its MIDI in.
+    #[must_use]
+    pub fn with_midi(self, frames: usize, midi: &'a [Event]) -> Self {
+        StandaloneBlock {
+            frames,
+            midi,
+            ..self
         }
     }
 }

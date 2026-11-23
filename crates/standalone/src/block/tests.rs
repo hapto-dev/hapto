@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use hapto_host::Event;
 use hapto_host::layout::Width;
+use hapto_host::standalone::StandaloneBlock;
 
 use super::{Plan, Player, RECENT, Render, preview};
 use crate::settings::Blocks;
@@ -20,14 +21,13 @@ struct Doubler {
 }
 
 impl Render for Doubler {
-    fn render(
-        &mut self,
-        inputs: &[&[f32]],
-        outputs: &mut [&mut [f32]],
-        frames: usize,
-        _midi: &[Event],
-        _sent: &mut dyn FnMut(&[Event]),
-    ) {
+    fn render(&mut self, block: StandaloneBlock<'_, '_>, _sent: &mut dyn FnMut(&[Event])) {
+        let StandaloneBlock {
+            inputs,
+            outputs,
+            frames,
+            ..
+        } = block;
         self.lengths.lock().expect("not poisoned").push(frames);
         for (index, output) in outputs.iter_mut().enumerate() {
             for (frame, sample) in output.iter_mut().enumerate() {
@@ -224,14 +224,8 @@ struct Listener {
 }
 
 impl Render for Listener {
-    fn render(
-        &mut self,
-        _inputs: &[&[f32]],
-        _outputs: &mut [&mut [f32]],
-        frames: usize,
-        midi: &[Event],
-        _sent: &mut dyn FnMut(&[Event]),
-    ) {
+    fn render(&mut self, block: StandaloneBlock<'_, '_>, _sent: &mut dyn FnMut(&[Event])) {
+        let StandaloneBlock { frames, midi, .. } = block;
         let packets = midi
             .iter()
             .map(|event| (event.offset, event.words[0]))
@@ -249,7 +243,7 @@ fn the_apps_midi_inputs_reach_the_plugin_in_its_blocks() {
     let plan = Plan::new(Blocks::Fixed, Signal::Silence);
     let (mut inputs, reader) = inputs(16);
     let mut player =
-        Player::new(listener.clone(), Width::STEREO, 2, 48_000.0, 64, plan).with_midi(reader);
+        Player::new(listener.clone(), Width::STEREO, 2, 48_000.0, 64, plan).with_midi(Some(reader));
     // Long before any block: the first block's first frame, upgraded.
     assert!(inputs.push(0, Instant::from_nanos(0), [0x2090_3C7F, 0, 0, 0]));
     assert!(inputs.push(4, Instant::from_nanos(1), [0x2090_3E7F, 0, 0, 0]));
@@ -267,8 +261,8 @@ fn a_plugin_with_no_channels_is_given_each_blocks_frames_and_its_midi() {
     let listener = Listener::default();
     let plan = Plan::new(Blocks::Fixed, Signal::Silence);
     let (mut inputs, reader) = inputs(16);
-    let mut player =
-        Player::new(listener.clone(), Width::new(0, 0), 2, 48_000.0, 64, plan).with_midi(reader);
+    let mut player = Player::new(listener.clone(), Width::new(0, 0), 2, 48_000.0, 64, plan)
+        .with_midi(Some(reader));
     assert!(inputs.push(0, Instant::from_nanos(0), [0x2090_3C7F, 0, 0, 0]));
     let mut buffer = vec![9.0_f32; 128 * 2];
     // A second into the stream, well after the packets came.
@@ -289,8 +283,8 @@ fn each_block_of_a_buffer_reads_its_own_share_of_the_time_since_the_last() {
     // 40 ms at 48 kHz, plays as blocks of 1024 and 896.
     let plan = Plan::new(Blocks::Device, Signal::Silence);
     let (mut inputs, reader) = inputs(16);
-    let mut player =
-        Player::new(listener.clone(), Width::STEREO, 2, 48_000.0, 1024, plan).with_midi(reader);
+    let mut player = Player::new(listener.clone(), Width::STEREO, 2, 48_000.0, 1024, plan)
+        .with_midi(Some(reader));
     let at = |millis: u64| Instant::from_nanos(millis * 1_000_000);
     let mut buffer = vec![0.0_f32; 1920 * 2];
     player.play_at(&mut buffer, at(1000));
@@ -320,14 +314,7 @@ fn each_block_of_a_buffer_reads_its_own_share_of_the_time_since_the_last() {
 struct Sender;
 
 impl Render for Sender {
-    fn render(
-        &mut self,
-        _inputs: &[&[f32]],
-        _outputs: &mut [&mut [f32]],
-        _frames: usize,
-        _midi: &[Event],
-        sent: &mut dyn FnMut(&[Event]),
-    ) {
+    fn render(&mut self, _block: StandaloneBlock<'_, '_>, sent: &mut dyn FnMut(&[Event])) {
         sent(&[Event::new(0, [0x4090_3C00, 0xFFFF_0000, 0, 0])]);
     }
 }
@@ -339,7 +326,7 @@ fn at_frames_each_blocks_midi_is_due_where_its_frames_fall_in_the_devices_buffer
     outputs.set_timing(hapto_midi_devices::Timing::AtFrames);
     outputs.take(0);
     let mut player =
-        Player::new(Sender, Width::STEREO, 2, 48_000.0, 64, plan).with_midi_out(writer);
+        Player::new(Sender, Width::STEREO, 2, 48_000.0, 64, plan).with_midi_out(Some(writer));
     // One buffer of 256 frames: four blocks of 64, rendered back to back.
     let before = Instant::now();
     let mut buffer = vec![0.0_f32; 256 * 2];
@@ -366,7 +353,7 @@ fn at_frames_the_spacing_holds_across_a_buffers_parts_and_its_queue() {
     outputs.set_timing(hapto_midi_devices::Timing::AtFrames);
     outputs.take(0);
     let mut player =
-        Player::new(Sender, Width::STEREO, 2, 48_000.0, 64, plan).with_midi_out(writer);
+        Player::new(Sender, Width::STEREO, 2, 48_000.0, 64, plan).with_midi_out(Some(writer));
     let frames = |count: u64| count * 1_000_000_000 / 48_000;
     let asked = 1_000_000_000;
     // A buffer of 2048 frames, two parts of 1024: 32 blocks of 64.

@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicU8, AtomicU32, AtomicU64, Ordering};
 use std::time::Duration;
 
 use hapto_host::layout::Width;
-use hapto_host::standalone::{MAX_CHANNELS, Standalone, StandaloneAudio};
+use hapto_host::standalone::{MAX_CHANNELS, Standalone, StandaloneAudio, StandaloneBlock};
 use hapto_host::{Event, EventList, MAX_EVENTS, Plugin};
 use hapto_midi_devices::{InputsReader, Instant, OutputsWriter};
 
@@ -32,43 +32,22 @@ pub(crate) const RECENT: usize = 40;
 /// What the app plays its blocks through: a plugin's audio side, in any
 /// format.
 pub(crate) trait Render: Send + 'static {
-    /// Plays one block of `frames` frames, each slice a channel that long,
-    /// with `midi`, the packets of the app's MIDI inputs at its frames, and
-    /// hands `sent` what the plugin sent, at its frames, once it has played.
-    /// A plugin may have no channels, and a block may hold no frames.
-    fn render(
-        &mut self,
-        inputs: &[&[f32]],
-        outputs: &mut [&mut [f32]],
-        frames: usize,
-        midi: &[Event],
-        sent: &mut dyn FnMut(&[Event]),
-    );
+    /// Plays `block`, whose MIDI is the packets of the app's MIDI inputs at
+    /// its frames, and hands `sent` what the plugin sent, at its frames, once
+    /// it has played. A plugin may have no channels, and a block may hold no
+    /// frames.
+    fn render(&mut self, block: StandaloneBlock<'_, '_>, sent: &mut dyn FnMut(&[Event]));
 }
 
 impl Render for Box<dyn Render> {
-    fn render(
-        &mut self,
-        inputs: &[&[f32]],
-        outputs: &mut [&mut [f32]],
-        frames: usize,
-        midi: &[Event],
-        sent: &mut dyn FnMut(&[Event]),
-    ) {
-        (**self).render(inputs, outputs, frames, midi, sent);
+    fn render(&mut self, block: StandaloneBlock<'_, '_>, sent: &mut dyn FnMut(&[Event])) {
+        (**self).render(block, sent);
     }
 }
 
 impl<P: hapto_host::Plugin> Render for StandaloneAudio<P> {
-    fn render(
-        &mut self,
-        inputs: &[&[f32]],
-        outputs: &mut [&mut [f32]],
-        frames: usize,
-        midi: &[Event],
-        sent: &mut dyn FnMut(&[Event]),
-    ) {
-        self.process(inputs, outputs, frames, midi, sent);
+    fn render(&mut self, block: StandaloneBlock<'_, '_>, sent: &mut dyn FnMut(&[Event])) {
+        self.process(block, sent);
     }
 }
 
@@ -326,14 +305,16 @@ impl<R: Render> Player<R> {
 
     /// Sends the plugin's MIDI out to the app's outputs `writer` hands it
     /// to, each block's due where its frames fall in the device's stream.
-    pub(crate) fn with_midi_out(mut self, writer: OutputsWriter) -> Self {
-        self.midi_out = Some(writer);
+    /// With none, what the plugin sends goes nowhere.
+    pub(crate) fn with_midi_out(mut self, writer: Option<OutputsWriter>) -> Self {
+        self.midi_out = writer;
         self
     }
 
-    /// Plays the app's MIDI inputs `reader` reads into each block.
-    pub(crate) fn with_midi(mut self, reader: InputsReader) -> Self {
-        self.midi = Some(MidiIn {
+    /// Plays the app's MIDI inputs `reader` reads into each block. With
+    /// none, each block's MIDI in is empty.
+    pub(crate) fn with_midi(mut self, reader: Option<InputsReader>) -> Self {
+        self.midi = reader.map(|reader| MidiIn {
             reader,
             block: EventList::with_capacity(MAX_EVENTS),
         });
@@ -422,13 +403,8 @@ impl<R: Render> Player<R> {
                 writer.write(start, rate, packets);
             }
         };
-        self.render.render(
-            &inputs[..ins],
-            &mut outputs[..outs],
-            length,
-            midi,
-            &mut sent,
-        );
+        let block = StandaloneBlock::new(&inputs[..ins], &mut outputs[..outs]);
+        self.render.render(block.with_midi(length, midi), &mut sent);
         let at = self.queued;
         for (queue, output) in self.queue.iter_mut().zip(&self.outputs) {
             queue[at..at + length].copy_from_slice(&output[..length]);

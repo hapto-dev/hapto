@@ -414,7 +414,7 @@ fn vst3_midi_blocks<P: Plugin>(what: &str) {
 #[cfg(feature = "standalone")]
 #[test]
 fn a_block_through_the_standalone_exporter_does_not_allocate() {
-    use hapto_host::standalone::{MAX_CHANNELS, Standalone};
+    use hapto_host::standalone::{MAX_CHANNELS, Standalone, StandaloneBlock};
 
     let app = Standalone::<Kept>::new();
     let mut audio = app.audio();
@@ -428,10 +428,7 @@ fn a_block_through_the_standalone_exporter_does_not_allocate() {
         .map(|bytes: u32| hapto_host::Event::new(3, [0x2000_0000 | bytes, 0, 0, 0]));
     assert_no_allocations("a block before the activation, which is silence", || {
         audio.process(
-            &[&input, &input],
-            &mut [&mut left, &mut right],
-            600,
-            &[],
+            StandaloneBlock::new(&[&input, &input], &mut [&mut left, &mut right]),
             |_| {},
         );
     });
@@ -442,31 +439,26 @@ fn a_block_through_the_standalone_exporter_does_not_allocate() {
             for frames in [256, 600, 1, 255] {
                 let inputs = [&input[..frames], &input[..frames]];
                 audio.process(
-                    &inputs,
-                    &mut [&mut left[..frames], &mut right[..frames]],
-                    frames,
-                    &midi,
+                    StandaloneBlock::new(&inputs, &mut [&mut left[..frames], &mut right[..frames]])
+                        .with_midi(frames, &midi),
                     |_| {},
                 );
             }
             // An input shorter than the outputs, inputs that share part of
             // one buffer, and more outputs than the most.
             audio.process(
-                &[&input[..100], &input[..100]],
-                &mut [&mut left, &mut right],
-                600,
-                &[],
+                StandaloneBlock::new(
+                    &[&input[..100], &input[..100]],
+                    &mut [&mut left, &mut right],
+                ),
                 |_| {},
             );
             let shifted = [&input[..256], &input[1..257]];
             audio.process(
-                &shifted,
-                &mut [&mut left[..256], &mut right[..256]],
-                256,
-                &[],
+                StandaloneBlock::new(&shifted, &mut [&mut left[..256], &mut right[..256]]),
                 |_| {},
             );
-            audio.process(&[], &mut outputs, 64, &[], |_| {});
+            audio.process(StandaloneBlock::new(&[], &mut outputs), |_| {});
         },
     );
     assert_eq!(app.faults(), 0);

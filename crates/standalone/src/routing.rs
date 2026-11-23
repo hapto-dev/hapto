@@ -21,7 +21,8 @@ type Filter = Arc<dyn Fn(&Device) -> bool + Send + Sync>;
 /// author's own changes them while the app runs. Each call takes a lock the
 /// app's main thread holds a moment each tick, so none runs on the audio
 /// thread: a debug build panics there. It lists and opens nothing for a
-/// plugin that neither takes MIDI nor sends it, nor under `--host`.
+/// plugin that neither takes MIDI nor sends it, nor under `--host`, where
+/// the plugin's format gets no MIDI from the app.
 ///
 /// A filter is asked of each device the system lists, and of each that
 /// appears later. A change applies at the app's next tick, on its main
@@ -110,9 +111,7 @@ impl MidiDevices {
         routing.changes = routing.changes.wrapping_add(1);
     }
 
-    /// From now on, has the outputs send as `timing` says: each block's
-    /// MIDI as soon as it has played, the default, or each message at its
-    /// frame's time, for an arpeggiator, a sequencer or a clock.
+    /// From now on, has the outputs send as `timing` says.
     ///
     /// Thread: any but audio.
     pub fn set_timing(&self, timing: Timing) {

@@ -1301,7 +1301,7 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d110-the-standalone-exporter-and-app)
 
-- `crates/host/src/standalone.rs`: module, `Standalone`, `Standalone::activate`, `Standalone::tick`, `Standalone::editor`, `Standalone::load`, `LoadRefused`, `StandaloneAudio::process`, `StandaloneEditor::open`, `StandaloneEditor::set_scale`, `MAX_CHANNELS`, `Link`, `partly_overlapping`
+- `crates/host/src/standalone.rs`: module, `Standalone`, `Standalone::activate`, `Standalone::tick`, `Standalone::editor`, `Standalone::load`, `LoadRefused`, `StandaloneAudio::process`, `StandaloneBlock`, `StandaloneBlock::new`, `StandaloneBlock::with_midi`, `StandaloneEditor::open`, `StandaloneEditor::set_scale`, `MAX_CHANNELS`, `Link`, `partly_overlapping`
 - `crates/host/src/engine/mod.rs`: `Engine::editor`, `Engine::tick_editors`
 - `crates/host/src/engine/editor.rs`: `EditorSlot::takes_scale`, `EditorSlot::set_scale`
 - test `crates/host/src/engine/editor/tests.rs`: `a_scale_that_is_no_positive_number_is_refused_by_the_slot_itself`

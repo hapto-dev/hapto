@@ -129,7 +129,7 @@ pub(crate) fn run<P: Plugin>(options: &Options, routing: MidiDevices) -> Result<
 fn start_audio<P: Plugin>(
     plugin: &Standalone<P>,
     signal: Signal,
-    midi: Option<&mut Midi>,
+    mut midi: Option<&mut Midi>,
 ) -> Result<Audio> {
     let output = Output::system_default()?;
     let (rate, layout) = (output.sample_rate(), hapto_host::first_width::<P>());
@@ -144,16 +144,8 @@ fn start_audio<P: Plugin>(
         BLOCK,
         Plan::new(Blocks::Device, signal),
     );
-    let mut midi = midi;
     let (reader, writer) = midi.as_deref_mut().map_or((None, None), Midi::streams);
-    let player = match reader {
-        Some(reader) => player.with_midi(reader),
-        None => player,
-    };
-    let player = match writer {
-        Some(writer) => player.with_midi_out(writer),
-        None => player,
-    };
+    let player = player.with_midi(reader).with_midi_out(writer);
     let stream = output.start(rate, player).inspect_err(|_| {
         plugin.deactivate();
         // No stream plays the devices: they go back to other apps.

@@ -11,7 +11,7 @@ use raw_window_handle::{
     HandleError, HasWindowHandle, RawWindowHandle, Win32WindowHandle, WindowHandle,
 };
 
-use super::{LoadRefused, MAX_CHANNELS, OpenError, Refused, Standalone};
+use super::{LoadRefused, MAX_CHANNELS, OpenError, Refused, Standalone, StandaloneBlock};
 use crate::faults::{thread_faults, written};
 use crate::layout::{AnyLayout, NoAudio, Stereo, Width};
 use crate::{
@@ -203,10 +203,10 @@ fn a_block_before_an_activation_is_silence_and_after_it_plays() {
     let input = [0.5_f32; 8];
     let (mut left, mut right) = ([9.0_f32; 8], [9.0_f32; 8]);
     let played = audio.process(
-        &[&input[..], &input[..]],
-        &mut [&mut left[..], &mut right[..]],
-        8,
-        &[],
+        StandaloneBlock::new(
+            &[&input[..], &input[..]],
+            &mut [&mut left[..], &mut right[..]],
+        ),
         |_| {},
     );
     assert_eq!(played, None);
@@ -214,10 +214,10 @@ fn a_block_before_an_activation_is_silence_and_after_it_plays() {
 
     app.activate(48_000.0, 4, Width::STEREO).expect("stereo");
     let played = audio.process(
-        &[&input[..], &input[..]],
-        &mut [&mut left[..], &mut right[..]],
-        8,
-        &[],
+        StandaloneBlock::new(
+            &[&input[..], &input[..]],
+            &mut [&mut left[..], &mut right[..]],
+        ),
         |_| {},
     );
     assert_eq!(played, Some(Status::Continue));
@@ -233,10 +233,10 @@ fn a_block_is_as_long_as_its_shortest_channel() {
     let input = [0.5_f32; 4];
     let (mut left, mut right) = ([9.0_f32; 8], [9.0_f32; 8]);
     audio.process(
-        &[&input[..], &input[..]],
-        &mut [&mut left[..], &mut right[..]],
-        8,
-        &[],
+        StandaloneBlock::new(
+            &[&input[..], &input[..]],
+            &mut [&mut left[..], &mut right[..]],
+        ),
         |_| {},
     );
     assert_eq!(left[..4], [1.0; 4]);
@@ -252,10 +252,10 @@ fn a_block_of_no_frames_does_not_play_and_its_outputs_are_silence() {
     let (input, empty) = ([0.5_f32; 8], [0.0_f32; 0]);
     let (mut left, mut right) = ([9.0_f32; 8], [9.0_f32; 8]);
     let status = audio.process(
-        &[&input[..], &empty[..]],
-        &mut [&mut left[..], &mut right[..]],
-        8,
-        &[],
+        StandaloneBlock::new(
+            &[&input[..], &empty[..]],
+            &mut [&mut left[..], &mut right[..]],
+        ),
         |_| {},
     );
     assert_eq!(status, None, "no frames to play");
@@ -270,7 +270,7 @@ fn channels_past_the_most_are_passed_over() {
     let mut audio = app.audio();
     let mut channels = vec![[3.0_f32; 4]; MAX_CHANNELS + 1];
     let mut outputs: Vec<&mut [f32]> = channels.iter_mut().map(|c| &mut c[..]).collect();
-    audio.process(&[], &mut outputs, 4, &[], |_| {});
+    audio.process(StandaloneBlock::new(&[], &mut outputs), |_| {});
     assert_eq!(channels[MAX_CHANNELS], [3.0; 4], "left as it was");
     assert_eq!(
         channels[2], [0.0; 4],
@@ -289,17 +289,17 @@ fn inputs_that_are_one_buffer_play_and_ones_that_share_part_of_one_do_not() {
     let same = [&input[..4], &input[..4]];
     assert!(
         audio
-            .process(&same, &mut [&mut left[..], &mut right[..]], 4, &[], |_| {})
+            .process(
+                StandaloneBlock::new(&same, &mut [&mut left[..], &mut right[..]]),
+                |_| {}
+            )
             .is_some()
     );
     assert_eq!(left, [1.0; 4]);
     let shifted = [&input[..4], &input[2..6]];
     assert_eq!(
         audio.process(
-            &shifted,
-            &mut [&mut left[..], &mut right[..]],
-            4,
-            &[],
+            StandaloneBlock::new(&shifted, &mut [&mut left[..], &mut right[..]]),
             |_| {}
         ),
         None
@@ -308,7 +308,10 @@ fn inputs_that_are_one_buffer_play_and_ones_that_share_part_of_one_do_not() {
     let apart = [&input[..4], &input[4..]];
     assert!(
         audio
-            .process(&apart, &mut [&mut left[..], &mut right[..]], 4, &[], |_| {})
+            .process(
+                StandaloneBlock::new(&apart, &mut [&mut left[..], &mut right[..]]),
+                |_| {}
+            )
             .is_some()
     );
     drop(audio);
@@ -407,10 +410,10 @@ fn the_saved_block_carries_the_parameters_between_runs() {
     let input = [1.0_f32; 4];
     let (mut left, mut right) = ([0.0_f32; 4], [0.0_f32; 4]);
     audio.process(
-        &[&input[..], &input[..]],
-        &mut [&mut left[..], &mut right[..]],
-        4,
-        &[],
+        StandaloneBlock::new(
+            &[&input[..], &input[..]],
+            &mut [&mut left[..], &mut right[..]],
+        ),
         |_| {},
     );
     drop(audio);
@@ -491,10 +494,10 @@ fn a_load_before_an_activation_plays_in_the_first_block() {
     let input = [1.0_f32; 4];
     let (mut left, mut right) = ([0.0_f32; 4], [0.0_f32; 4]);
     audio.process(
-        &[&input[..], &input[..]],
-        &mut [&mut left[..], &mut right[..]],
-        4,
-        &[],
+        StandaloneBlock::new(
+            &[&input[..], &input[..]],
+            &mut [&mut left[..], &mut right[..]],
+        ),
         |_| {},
     );
     assert_eq!((left, right), ([0.25; 4], [0.25; 4]));
@@ -691,10 +694,7 @@ fn a_teardown_while_the_audio_thread_plays_leaks_the_engine_and_silences_it() {
             while !stop.load(Ordering::Acquire) {
                 let inputs = [&input[..], &input[..]];
                 match audio.process(
-                    &inputs,
-                    &mut [&mut left[..], &mut right[..]],
-                    64,
-                    &[],
+                    StandaloneBlock::new(&inputs, &mut [&mut left[..], &mut right[..]]),
                     |_| {},
                 ) {
                     Some(_) => drop(played.fetch_add(1, Ordering::AcqRel)),
@@ -826,20 +826,15 @@ fn what_the_plugin_sends_comes_back_at_its_frames_of_the_block_once_it_has_playe
     let mut sent = Vec::new();
     // Before an activation nothing plays, so nothing comes back.
     audio.process(
-        &[],
-        &mut [&mut left[..], &mut right[..]],
-        8,
-        &[note],
+        StandaloneBlock::new(&[], &mut [&mut left[..], &mut right[..]]).with_midi(8, &[note]),
         |packets| sent.extend_from_slice(packets),
     );
     assert_eq!(sent, []);
     // Blocks of at most 4: the note-on is sent by the second piece.
     assert_eq!(app.activate(48_000.0, 4, Width::STEREO), Ok(()));
     audio.process(
-        &[],
-        &mut [&mut left[..], &mut right[..]],
-        8,
-        &[volume, note],
+        StandaloneBlock::new(&[], &mut [&mut left[..], &mut right[..]])
+            .with_midi(8, &[volume, note]),
         |packets| sent.extend_from_slice(packets),
     );
     let sent: Vec<(u32, u32)> = sent
@@ -894,9 +889,12 @@ fn a_plugin_with_no_channels_plays_its_midi_for_the_frames_it_is_given() {
     let mut audio = app.audio();
     let note = Event::new(6, [0x4090_3C00, 0xFFFF_0000, 0, 0]);
     let mut sent = Vec::new();
-    let played = audio.process(&[], &mut [], 8, &[note], |packets| {
-        sent.extend_from_slice(packets);
-    });
+    let played = audio.process(
+        StandaloneBlock::new(&[], &mut []).with_midi(8, &[note]),
+        |packets| {
+            sent.extend_from_slice(packets);
+        },
+    );
     assert_eq!(played, Some(Status::Continue));
     let sent: Vec<(u32, u32)> = sent
         .iter()
@@ -904,7 +902,13 @@ fn a_plugin_with_no_channels_plays_its_midi_for_the_frames_it_is_given() {
         .collect();
     assert_eq!(sent, [(6, 0x4090_3C00)]);
     // A block of no frames plays nothing, channels or not.
-    assert_eq!(audio.process(&[], &mut [], 0, &[note], |_| {}), None);
+    assert_eq!(
+        audio.process(
+            StandaloneBlock::new(&[], &mut []).with_midi(0, &[note]),
+            |_| {}
+        ),
+        None
+    );
 }
 
 #[test]
@@ -916,10 +920,7 @@ fn a_panic_in_what_is_handed_the_plugins_midi_is_counted_and_the_plugin_plays_on
     let (mut left, mut right) = ([0.0_f32; 8], [0.0_f32; 8]);
     let mut block = |sent: &mut dyn FnMut(&[Event])| {
         audio.process(
-            &[],
-            &mut [&mut left[..], &mut right[..]],
-            8,
-            &[note],
+            StandaloneBlock::new(&[], &mut [&mut left[..], &mut right[..]]).with_midi(8, &[note]),
             |packets| sent(packets),
         )
     };
@@ -961,10 +962,8 @@ fn the_apps_midi_reaches_the_processor_at_its_frames_and_midi_1_upgraded() {
     };
     let (mut left, mut right) = ([0.0_f32; 8], [0.0_f32; 8]);
     let played = audio.process(
-        &[],
-        &mut [&mut left[..], &mut right[..]],
-        8,
-        &[midi1, midi2, late],
+        StandaloneBlock::new(&[], &mut [&mut left[..], &mut right[..]])
+            .with_midi(8, &[midi1, midi2, late]),
         |_| {},
     );
     assert_eq!(played, Some(Status::Continue));
