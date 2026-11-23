@@ -10,7 +10,7 @@ use hapto_host::layout::Width;
 use super::{Plan, Player, RECENT, Render, preview};
 use crate::settings::Blocks;
 use crate::signal::{Generator, Signal};
-use hapto_devices::{Instant, inputs};
+use hapto_midi_devices::{Instant, inputs};
 
 /// Writes each input, doubled, to the output of the same number, and keeps
 /// the length of each block it was given.
@@ -238,13 +238,13 @@ fn the_apps_midi_inputs_reach_the_plugin_in_its_blocks() {
     let (mut inputs, reader) = inputs(16);
     let mut player =
         Player::new(listener.clone(), Width::STEREO, 2, 48_000.0, 64, plan).with_midi(reader);
-    // Long before any block: the first block's first frame.
+    // Long before any block: the first block's first frame, upgraded.
     assert!(inputs.push(0, Instant::from_nanos(0), [0x2090_3C7F, 0, 0, 0]));
-    assert!(inputs.push(4, Instant::from_nanos(1), [0x2490_3E7F, 0, 0, 0]));
+    assert!(inputs.push(4, Instant::from_nanos(1), [0x2090_3E7F, 0, 0, 0]));
     let mut buffer = vec![0.0_f32; 128 * 2];
     player.play(&mut buffer);
     let blocks = listener.blocks.lock().expect("not poisoned").clone();
     assert_eq!(blocks.len(), 2);
-    assert_eq!(blocks[0], (64, vec![(0, 0x2090_3C7F), (0, 0x2490_3E7F)]));
+    assert_eq!(blocks[0], (64, vec![(0, 0x4090_3C00), (0, 0x4090_3E00)]));
     assert_eq!(blocks[1], (64, Vec::new()), "each packet once");
 }

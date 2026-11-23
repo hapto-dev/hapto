@@ -44,6 +44,9 @@ struct Ring {
     tail: AtomicUsize,
     /// How many packets found no room.
     dropped: AtomicU64,
+    /// Counts the devices that have pushed into the ring: a new one starts
+    /// the stream over.
+    generation: AtomicU32,
 }
 
 /// Makes a ring with room for at least `room` packets, and at least one.
@@ -61,6 +64,7 @@ pub(crate) fn ring(room: usize) -> (Producer, Consumer) {
         head: AtomicUsize::new(0),
         tail: AtomicUsize::new(0),
         dropped: AtomicU64::new(0),
+        generation: AtomicU32::new(0),
     });
     (Producer(Arc::clone(&ring)), Consumer(ring))
 }
@@ -92,6 +96,14 @@ impl Producer {
         // Release: the consumer that sees the new head sees the slot.
         ring.head.store(head.wrapping_add(1), Ordering::Release);
     }
+
+    /// Says a new device pushes from now on, so the consumer starts its
+    /// stream over. Thread: main, before the device is handed the producer.
+    pub(crate) fn renew(&mut self) {
+        // Release: the consumer that reads a packet the new device pushed
+        // reads the new generation with it.
+        self.0.generation.fetch_add(1, Ordering::Release);
+    }
 }
 
 /// The audio thread's side: it takes packets in the order they came.
@@ -101,13 +113,19 @@ impl Consumer {
     /// The oldest packet not taken yet, and when it came. Thread: audio.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub(crate) fn peek(&self) -> Option<(Instant, [u32; 4])> {
-        let ring = &*self.0;
-        let tail = ring.tail.load(Ordering::Relaxed);
-        // Acquire: pairs with the producer's release of the head.
-        if ring.head.load(Ordering::Acquire) == tail {
+        self.peek_at(0)
+    }
+
+    /// The packet `index` places after the oldest not taken yet, and when
+    /// it came: `None` past the last. Thread: audio.
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
+    pub(crate) fn peek_at(&self, index: usize) -> Option<(Instant, [u32; 4])> {
+        if index >= self.len() {
             return None;
         }
-        let slot = ring.slots.get(tail & ring.mask)?;
+        let ring = &*self.0;
+        let at = ring.tail.load(Ordering::Relaxed).wrapping_add(index);
+        let slot = ring.slots.get(at & ring.mask)?;
         let at = Instant::from_nanos(slot.at.load(Ordering::Relaxed));
         let words = std::array::from_fn(|index| {
             slot.words
@@ -127,6 +145,26 @@ impl Consumer {
             // slot, which this side is done reading.
             ring.tail.store(tail.wrapping_add(1), Ordering::Release);
         }
+    }
+
+    /// How many packets wait to be taken. Thread: audio.
+    pub(crate) fn len(&self) -> usize {
+        let ring = &*self.0;
+        let tail = ring.tail.load(Ordering::Relaxed);
+        // Acquire: pairs with the producer's release of the head, so every
+        // packet counted can be read.
+        ring.head.load(Ordering::Acquire).wrapping_sub(tail)
+    }
+
+    /// How many packets the ring holds at most.
+    pub(crate) fn capacity(&self) -> usize {
+        self.0.slots.len()
+    }
+
+    /// How many devices have pushed into the ring: a change means a new
+    /// one took it. Thread: audio.
+    pub(crate) fn generation(&self) -> u32 {
+        self.0.generation.load(Ordering::Acquire)
     }
 
     /// How many packets found no room, since the ring was made.
@@ -167,6 +205,23 @@ mod tests {
             again += 1;
         }
         assert_eq!((again, consumer.dropped()), (4, 2));
+    }
+
+    #[test]
+    fn a_peek_reaches_every_packet_waiting_and_no_further() {
+        let (mut producer, consumer) = ring(4);
+        for tag in 0..3 {
+            producer.push(Instant::from_nanos(u64::from(tag)), packet(tag));
+        }
+        let tags: Vec<u32> = (0..5)
+            .filter_map(|index| consumer.peek_at(index))
+            .map(|(_, words)| words[0] & 0x7F)
+            .collect();
+        assert_eq!(tags, [0, 1, 2]);
+        assert_eq!((consumer.len(), consumer.capacity()), (3, 4));
+        assert_eq!(consumer.generation(), 0);
+        producer.renew();
+        assert_eq!(consumer.generation(), 1);
     }
 
     #[test]

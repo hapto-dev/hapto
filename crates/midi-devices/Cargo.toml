@@ -1,5 +1,5 @@
 [package]
-name = "hapto-devices"
+name = "hapto-midi-devices"
 description = "The computer's MIDI devices as Universal MIDI Packets, for an app that runs a plugin with no host"
 version.workspace = true
 edition.workspace = true

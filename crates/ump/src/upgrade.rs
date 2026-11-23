@@ -363,10 +363,37 @@ impl Upgrade {
         }
     }
 
-    /// Upgrades a block's packets, in order, into `out`, the block's own
-    /// list. Frames count from each block's start, so in a list kept from an
-    /// earlier block, a low byte could join a lone high byte that the earlier
-    /// block ended with at the same frame.
+    /// Forgets everything held, as when a new source takes over the stream:
+    /// a high byte, an address, a bank. What was held is not sent.
+    ///
+    /// Thread: any. Allocates nothing.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hapto_ump::{EventList, Midi1Message, Midi1Voice, Upgrade};
+    ///
+    /// let cc = |controller, value| {
+    ///     let message = Midi1Message::ControlChange { controller, value };
+    ///     Midi1Voice { group: 0, channel: 0, message }.event(0)
+    /// };
+    /// let mut upgrade = Upgrade::new();
+    /// let mut out = EventList::with_capacity(4);
+    /// // An NRPN's address, then a new source sends its low byte alone.
+    /// upgrade.block(&[cc(99, 2), cc(98, 5)], 63, &mut out);
+    /// upgrade.reset();
+    /// upgrade.block(&[cc(6, 64)], 63, &mut out);
+    /// assert!(out.as_slice().is_empty(), "no address: nothing to send");
+    /// ```
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
+    pub fn reset(&mut self) {
+        for group in self.channels.iter_mut() {
+            group.fill(Channel::default());
+        }
+    }
+
+    /// Upgrades a block's packets, in order, into `out`. Any high byte that is
+    /// still held then goes out at `last_frame`.
     ///
     /// A packet that doesn't fit is dropped, and `out` counts it.
     ///

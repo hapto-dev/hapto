@@ -31,7 +31,7 @@ dev-host = [
 anyhow.workspace = true
 hapto-host = { workspace = true, features = ["standalone"] }
 # The computer's MIDI inputs, played into a plugin that takes MIDI.
-hapto-devices.workspace = true
+hapto-midi-devices.workspace = true
 # The dev host's Parameters tab: which parameter a MIDI learn mapping in the
 # saved block names, by the host id its key hashes to.
 hapto-learn = { workspace = true, optional = true }

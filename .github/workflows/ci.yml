@@ -216,7 +216,7 @@ jobs:
           rustup show active-toolchain
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       # The model checks of the lock-free hand-offs in params, learn, host
-      # and devices; docs/testing.md lists what each checks. --cfg loom swaps their
+      # and midi-devices; docs/testing.md lists what each checks. --cfg loom swaps their
       # atomics for loom's, which work only inside a model, so only the
       # models run. The script counts the models in the source and fails
       # unless each one ran.

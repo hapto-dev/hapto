@@ -830,16 +830,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hapto-devices"
-version = "0.1.0"
-dependencies = [
- "hapto-testkit",
- "hapto-ump",
- "loom",
- "windows",
-]
-
-[[package]]
 name = "hapto-example-eq"
 version = "0.1.0"
 dependencies = [
@@ -911,6 +901,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "hapto-midi-devices"
+version = "0.1.0"
+dependencies = [
+ "hapto-testkit",
+ "hapto-ump",
+ "loom",
+ "windows",
+]
+
+[[package]]
 name = "hapto-params"
 version = "0.1.0"
 dependencies = [
@@ -936,9 +936,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "cpal",
- "hapto-devices",
  "hapto-host",
  "hapto-learn",
+ "hapto-midi-devices",
  "hapto-params",
  "hapto-testkit",
  "serde_json",

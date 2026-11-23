@@ -126,18 +126,13 @@ mod on_windows {
         let mut buffer = vec![0.0f32; 4096 * 2];
         let plugin = Standalone::<Amp>::new();
         assert_eq!(plugin.activate(48_000.0, 1024, Width::STEREO), Ok(()));
-        let (mut inputs, reader) = hapto_devices::inputs(64);
+        let (mut inputs, reader) = hapto_midi_devices::inputs(64);
         let mut callback = Callback::app_with_midi(&plugin, Width::STEREO, reader);
-        let groups = u8::try_from(hapto_devices::GROUPS).expect("16");
-        assert_no_allocations("the app's callback, with MIDI on every group", || {
+        assert_no_allocations("the app's callback, with MIDI on every input", || {
             for frames in BUFFERS {
-                for group in 0..groups {
-                    let note = 0x2090_3C7F | u32::from(group) << 24;
-                    inputs.push(
-                        group,
-                        hapto_devices::Instant::from_nanos(0),
-                        [note, 0, 0, 0],
-                    );
+                for input in 0..hapto_midi_devices::MAX_INPUTS {
+                    let at = hapto_midi_devices::Instant::from_nanos(0);
+                    inputs.push(input, at, [0x2090_3C7F, 0, 0, 0]);
                 }
                 callback.play(&mut buffer[..frames * 2]);
             }

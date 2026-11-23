@@ -129,13 +129,16 @@ exporter.
   `TargetId`, a `ParamId`, a `CustomId` or a typed parameter. A parameter made
   at run time is a target of its own, `TargetId::RunTime`, named by an opaque
   `RunTimeId`.
-- `hapto-devices`: the computer's MIDI devices as UMP, for an app that runs a
-  plugin with no host. A device is named by an id that survives the system's
-  renumbering, the list's changes are told at the main thread's tick, and
-  each input open is read on the system's thread into a ring that never
-  waits, locks or allocates, then into each block at the frames its messages
-  came at, every device on a UMP group of its own. WinMM is its backend, on
-  Windows.
+- `hapto-midi-devices`: the computer's MIDI devices as UMP, for an app that runs
+  a plugin with no host. A device is named by an id that survives the system's
+  renumbering, the list's changes are told at the main thread's tick, and each
+  input open is read on the system's thread into a ring that never waits, locks
+  or allocates, then into each block at the frames its messages came at. Every
+  device is merged on group 1, as a host hands a plugin its MIDI, each upgraded
+  to MIDI 2.0 with a translation of its own, and a SysEx reaches a block whole.
+  WinMM is its backend, on Windows.
+- `hapto-ump`: `Upgrade::reset` forgets what an upgrade holds, in place, for a
+  new source.
 - `hapto-ump`: Universal MIDI Packets: a fixed-capacity event list per block,
   the channel voice messages and 7-bit SysEx read from it and written back,
   the translation between MIDI 1.0 and MIDI 2.0, and MIDI 1.0's byte stream
@@ -299,7 +302,7 @@ exporter.
   crate's binary runs: its editor in a window, a test signal through it to the
   system's audio output, which it follows to a new default output, and its
   saved block kept between runs. A plugin that takes MIDI hears every MIDI
-  input the computer has, each on a group of its own, opened and closed as
+  input the computer has, merged as a host merges them, opened and closed as
   devices come and go, and a line names each. Its title counts the plugin's
   faults. Its dev
   host, `cargo hapto dev --host`, runs the plugin through the VST3 exporter or

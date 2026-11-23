@@ -1400,21 +1400,22 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d115-the-computers-midi-devices)
 
-- `crates/devices/src/lib.rs`: module
-- `crates/devices/src/id.rs`: `DeviceId`, `named`
-- `crates/devices/src/devices.rs`: `Devices`, `Devices::tick`, `Looks`
-- `crates/devices/src/inputs.rs`: `Inputs`, `Inputs::open`, `InputsReader::read`, `frame`, `GROUPS`
-- `crates/devices/src/ring.rs`: module, `Producer::push`, `Consumer::peek`
-- `crates/devices/src/winmm/mod.rs`: module, `interface`, `index_of`
-- `crates/devices/src/winmm/watch.rs`: `Watch`, `changed`
-- `crates/devices/src/winmm/input.rs`: module, `Shared::message`, `Input::shut`, `hand_back`, `callback`
+- `crates/midi-devices/src/lib.rs`: module
+- `crates/midi-devices/src/id.rs`: `DeviceId`, `named`
+- `crates/midi-devices/src/devices.rs`: `Devices`, `Devices::tick`, `Looks`
+- `crates/midi-devices/src/inputs.rs`: `Inputs`, `Inputs::open`, `InputsReader::read`, `InputsReader::start_over_where_renewed`, `ready`, `frame`, `MAX_INPUTS`
+- `crates/ump/src/upgrade.rs`: `Upgrade::reset`
+- `crates/midi-devices/src/ring.rs`: module, `Producer::push`, `Producer::renew`, `Consumer::peek_at`, `Consumer::generation`
+- `crates/midi-devices/src/winmm/mod.rs`: module, `interface`, `index_of`
+- `crates/midi-devices/src/winmm/watch.rs`: `Watch`, `changed`
+- `crates/midi-devices/src/winmm/input.rs`: module, `Shared::message`, `Input::shut`, `hand_back`, `callback`
 - `crates/standalone/src/midi.rs`: module, `Midi::reader`, `Midi::tick`
 - `crates/standalone/src/block.rs`: `Render`, `Player::with_midi`
-- test `crates/devices/src/inputs/tests.rs`: module
-- test `crates/devices/src/winmm/input/tests.rs`: module
-- test `crates/devices/src/devices.rs`: `a_notice_brings_four_looks_each_wait_twice_the_last`, `with_no_notice_the_list_is_read_every_two_seconds`
-- test `crates/devices/src/ring.rs`: `loom_the_audio_thread_takes_what_the_device_pushed_in_order_and_whole`
-- test `crates/devices/tests/alloc_gate.rs`: module
+- test `crates/midi-devices/src/inputs/tests.rs`: module
+- test `crates/midi-devices/src/winmm/input/tests.rs`: module
+- test `crates/midi-devices/src/devices.rs`: `a_notice_brings_four_looks_each_wait_twice_the_last`, `with_no_notice_the_list_is_read_every_two_seconds`
+- test `crates/midi-devices/src/ring.rs`: `loom_the_audio_thread_takes_what_the_device_pushed_in_order_and_whole`
+- test `crates/midi-devices/tests/alloc_gate.rs`: module
 - test `crates/standalone/src/block/tests.rs`: `the_apps_midi_inputs_reach_the_plugin_in_its_blocks`
 
 ## Parameters

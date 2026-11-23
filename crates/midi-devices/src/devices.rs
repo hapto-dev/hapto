@@ -21,7 +21,7 @@ use crate::id::{Device, DeviceId, Direction};
 /// # Examples
 ///
 /// ```
-/// use hapto_devices::Devices;
+/// use hapto_midi_devices::Devices;
 ///
 /// let mut devices = Devices::new();
 /// for device in devices.inputs() {
@@ -48,7 +48,7 @@ pub struct Devices {
 /// # Examples
 ///
 /// ```
-/// use hapto_devices::Devices;
+/// use hapto_midi_devices::Devices;
 ///
 /// let mut devices = Devices::new();
 /// let changes = devices.refresh();

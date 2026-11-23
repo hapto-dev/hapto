@@ -30,7 +30,6 @@ pub(crate) struct Input(Infallible);
 impl Input {
     pub(crate) fn open(
         _device: &Device,
-        _group: u8,
         producer: Producer,
     ) -> Result<Input, (OpenError, Option<Producer>)> {
         Err((OpenError::NoBackend, Some(producer)))

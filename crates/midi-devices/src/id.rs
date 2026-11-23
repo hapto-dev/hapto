@@ -7,7 +7,7 @@ use std::fmt;
 /// # Examples
 ///
 /// ```
-/// use hapto_devices::{Devices, Direction};
+/// use hapto_midi_devices::{Devices, Direction};
 ///
 /// let devices = Devices::new();
 /// assert!(devices.inputs().all(|device| device.direction() == Direction::Input));
@@ -48,7 +48,7 @@ impl Direction {
 /// # Examples
 ///
 /// ```
-/// use hapto_devices::Devices;
+/// use hapto_midi_devices::Devices;
 ///
 /// let devices = Devices::new();
 /// for device in devices.all() {
@@ -91,7 +91,7 @@ impl fmt::Display for DeviceId {
 /// # Examples
 ///
 /// ```
-/// use hapto_devices::Devices;
+/// use hapto_midi_devices::Devices;
 ///
 /// for device in Devices::new().all() {
 ///     println!("{:?} {}: {}", device.direction(), device.name(), device.id());

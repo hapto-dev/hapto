@@ -12,10 +12,10 @@ mod tests;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, AtomicU32, AtomicU64, Ordering};
 
-use hapto_devices::{InputsReader, Instant};
 use hapto_host::layout::Width;
 use hapto_host::standalone::{MAX_CHANNELS, Standalone, StandaloneAudio};
 use hapto_host::{Event, EventList, Plugin};
+use hapto_midi_devices::{InputsReader, Instant};
 
 use crate::settings::Blocks;
 use crate::signal::{Generator, Signal};

@@ -5,10 +5,10 @@
 
 use std::fmt;
 
-use hapto_devices::InputsReader;
 use hapto_host::Plugin;
 use hapto_host::layout::Width;
 use hapto_host::standalone::Standalone;
+use hapto_midi_devices::InputsReader;
 
 pub use crate::settings::Blocks;
 pub use crate::signal::Signal;

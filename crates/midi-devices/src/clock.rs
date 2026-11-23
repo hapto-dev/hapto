@@ -17,7 +17,7 @@ static START: OnceLock<std::time::Instant> = OnceLock::new();
 /// # Examples
 ///
 /// ```
-/// use hapto_devices::Instant;
+/// use hapto_midi_devices::Instant;
 ///
 /// let before = Instant::now();
 /// let after = Instant::now();

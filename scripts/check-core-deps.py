@@ -48,7 +48,7 @@ LAYERS = {
     "hapto-learn": 3,
     "hapto-bridge": 3,
     "hapto-host": 4,
-    "hapto-devices": 4,
+    "hapto-midi-devices": 4,
     "hapto-webview": 5,
     "hapto-standalone": 5,
     "xtask": 7,

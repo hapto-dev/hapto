@@ -72,11 +72,11 @@ reading how Hapto works inside, start with
   window, on Windows: `Page` makes the `Editor`, a WebView2 child window
   through wry, which serves the page from bytes built into the plugin and
   joins it to a `Dispatcher` (`windows.rs`).
-- `crates/devices`: `hapto-devices`, the computer's MIDI devices as UMP, for
-  the app: the system's list and its changes (`devices.rs`), what names a
-  device (`id.rs`), the inputs open on the main thread and read into each
-  block on the audio thread (`inputs.rs`), the ring between the two
-  (`ring.rs`), and the WinMM backend (`winmm/`).
+- `crates/midi-devices`: `hapto-midi-devices`, the computer's MIDI devices as
+  UMP, for the app: the system's list and its changes (`devices.rs`), what names
+  a device (`id.rs`), the inputs open on the main thread and read into each
+  block on the audio thread (`inputs.rs`), the ring between the two (`ring.rs`),
+  and the WinMM backend (`winmm/`).
 - `crates/standalone`: `hapto-standalone`, the plugin as an app of its own, on
   Windows: the standalone exporter's instance, its editor in a winit window,
   and a test signal through it to the system's audio output through cpal
@@ -227,7 +227,7 @@ with `cargo doc -p hapto-host --features vst3,cabi,test-host
   and undoing it writes that value.
 - `unsafe` is denied workspace-wide. Only `host`'s `vst3`, `cabi` and
   `standalone` modules and the `boundary`, `engine` and `faults` modules they
-  share allow it, and `devices`' system backend (`winmm`), with a
+  share allow it, and `midi-devices`' system backend (`winmm`), with a
   `// SAFETY:` comment on every block.
 - A panic never unwinds into a host. An exporter catches it at the entry point,
   counts it as a fault, and a processor that panicked plays silence until the

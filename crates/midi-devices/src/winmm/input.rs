@@ -162,13 +162,14 @@ struct Shared {
 }
 
 impl Shared {
-    fn new(group: u8, producer: Producer, wake: Wake) -> Shared {
+    fn new(producer: Producer, wake: Wake) -> Shared {
         Shared {
             closing: AtomicBool::new(false),
             left: AtomicBool::new(false),
             started: AtomicU64::new(Instant::now().nanos()),
             reading: Mutex::new(Reading {
-                bytes: ByteStream::new(group),
+                // Every input on group 1, merged as a host merges them.
+                bytes: ByteStream::new(0),
                 producer,
             }),
             returned: std::array::from_fn(|_| AtomicBool::new(false)),
@@ -296,12 +297,11 @@ impl fmt::Debug for Input {
 }
 
 impl Input {
-    /// Opens `device` to read into `producer`'s ring on `group`. On a
-    /// refusal the producer comes back, unless the system would not close
-    /// what it half opened.
+    /// Opens `device` to read into `producer`'s ring. On a refusal the
+    /// producer comes back, unless the system would not close what it half
+    /// opened.
     pub(crate) fn open(
         device: &Device,
-        group: u8,
         producer: Producer,
     ) -> Result<Input, (OpenError, Option<Producer>)> {
         let Some(index) = super::index_of(device.id()) else {
@@ -312,7 +312,7 @@ impl Input {
         let Ok(event) = (unsafe { CreateEventW(None, false, false, PCWSTR::null()) }) else {
             return Err((OpenError::NoMemory, Some(producer)));
         };
-        let shared = Arc::new(Shared::new(group, producer, Wake(event)));
+        let shared = Arc::new(Shared::new(producer, Wake(event)));
         let mut handle = HMIDIIN::default();
         let callback = callback as unsafe extern "system" fn(HMIDIIN, u32, usize, usize, usize);
         // SAFETY: the handle is written by the call. The callback is this

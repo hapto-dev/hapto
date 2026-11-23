@@ -4,11 +4,11 @@
 use super::*;
 use crate::ring::{Consumer, ring};
 
-fn shared(group: u8) -> (Shared, Consumer) {
+fn shared() -> (Shared, Consumer) {
     let (producer, consumer) = ring(16);
     // SAFETY: an unnamed auto-reset event, as an input makes.
     let event = unsafe { CreateEventW(None, false, false, PCWSTR::null()) }.expect("an event");
-    let shared = Shared::new(group, producer, Wake(event));
+    let shared = Shared::new(producer, Wake(event));
     // The device started a second in.
     shared.started.store(1_000_000_000, Ordering::Release);
     (shared, consumer)
@@ -40,7 +40,7 @@ fn long_data(shared: &Shared, bytes: &mut [u8], index: usize, millis: usize) {
 
 #[test]
 fn a_short_message_is_read_into_a_packet_stamped_from_the_start() {
-    let (shared, mut consumer) = shared(2);
+    let (shared, mut consumer) = shared();
     shared.message(MM_MIM_DATA, 0x007F_3C90, 5);
     // A clock is one byte and a program change two: the rest of the word
     // is not read.
@@ -49,16 +49,16 @@ fn a_short_message_is_read_into_a_packet_stamped_from_the_start() {
     assert_eq!(
         taken(&mut consumer),
         [
-            (1005, [0x2290_3C7F, 0]),
-            (1006, [0x12F8_0000, 0]),
-            (1007, [0x22C1_0500, 0])
+            (1005, [0x2090_3C7F, 0]),
+            (1006, [0x10F8_0000, 0]),
+            (1007, [0x20C1_0500, 0])
         ]
     );
 }
 
 #[test]
 fn a_sysex_buffer_is_read_and_marked_to_be_handed_back() {
-    let (shared, mut consumer) = shared(0);
+    let (shared, mut consumer) = shared();
     let mut identity = [0xF0, 0x7E, 0x7F, 0x06, 0x01, 0xF7];
     long_data(&shared, &mut identity, 3, 9);
     assert_eq!(taken(&mut consumer), [(1009, [0x3004_7E7F, 0x0601_0000])]);
@@ -72,7 +72,7 @@ fn a_sysex_buffer_is_read_and_marked_to_be_handed_back() {
 
 #[test]
 fn a_sysex_across_buffers_reads_as_one() {
-    let (shared, mut consumer) = shared(0);
+    let (shared, mut consumer) = shared();
     let mut first = [0xF0, 1, 2, 3, 4];
     let mut second = [5, 6, 7, 0xF7];
     long_data(&shared, &mut first, 0, 1);
@@ -87,7 +87,7 @@ fn a_sysex_across_buffers_reads_as_one() {
 
 #[test]
 fn an_error_drops_what_came_of_a_sysex() {
-    let (shared, mut consumer) = shared(0);
+    let (shared, mut consumer) = shared();
     let mut cut = [0xF0, 1, 2];
     long_data(&shared, &mut cut, 0, 1);
     shared.message(MM_MIM_ERROR, 0, 2);
@@ -98,7 +98,7 @@ fn an_error_drops_what_came_of_a_sysex() {
 
 #[test]
 fn while_closing_nothing_is_read_or_handed_back() {
-    let (shared, mut consumer) = shared(0);
+    let (shared, mut consumer) = shared();
     shared.closing.store(true, Ordering::Release);
     shared.message(MM_MIM_DATA, 0x007F_3C90, 1);
     let mut identity = [0xF0, 0x7E, 0x7F, 0x06, 0x01, 0xF7];
@@ -111,7 +111,7 @@ fn while_closing_nothing_is_read_or_handed_back() {
 
 #[test]
 fn a_close_the_input_did_not_ask_for_means_the_device_left() {
-    let (shared, _consumer) = shared(0);
+    let (shared, _consumer) = shared();
     shared.message(MM_MIM_CLOSE, 0, 0);
     assert!(shared.left.load(Ordering::Acquire));
 }

@@ -1,8 +1,9 @@
 //! The computer's MIDI inputs, played into a plugin that takes MIDI: every
-//! input open, each on a group of its own, followed as devices come and go.
+//! input open, merged on group 1 as a host merges them, followed as devices
+//! come and go.
 //! A line tells the author each input that opens, leaves or is refused.
 
-use hapto_devices::{Device, Devices, Direction, Inputs, InputsReader};
+use hapto_midi_devices::{Device, Devices, Direction, Inputs, InputsReader};
 
 /// The packets each input holds between two blocks: past it, the input's
 /// packets are dropped and counted.
@@ -33,7 +34,7 @@ impl Midi {
     /// WinMM lets one opener at a time read a device.
     pub(crate) fn reader(&mut self) -> InputsReader {
         drop(self.inputs.take());
-        let (mut inputs, reader) = hapto_devices::inputs(ROOM);
+        let (mut inputs, reader) = hapto_midi_devices::inputs(ROOM);
         for device in self.devices.inputs() {
             open(&mut inputs, device, self.name);
         }
@@ -64,15 +65,10 @@ impl Midi {
     }
 }
 
-/// Opens `device` and says so, with its group as musicians count them, or
-/// says why it did not open.
+/// Opens `device` and says so, or says why it did not open.
 fn open(inputs: &mut Inputs, device: &Device, name: &str) {
     match inputs.open(device) {
-        Ok(group) => eprintln!(
-            "{name}: MIDI in from {} on group {}",
-            device.name(),
-            u16::from(group) + 1
-        ),
+        Ok(()) => eprintln!("{name}: MIDI in from {}", device.name()),
         Err(why) => eprintln!("{name}: MIDI in from {} did not open: {why}", device.name()),
     }
 }
