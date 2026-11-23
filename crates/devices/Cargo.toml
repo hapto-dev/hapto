@@ -1,0 +1,36 @@
+[package]
+name = "hapto-devices"
+description = "The computer's MIDI devices as Universal MIDI Packets, for an app that runs a plugin with no host"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords = ["midi", "ump", "audio", "devices"]
+categories = ["multimedia::audio", "hardware-support"]
+publish.workspace = true
+
+[dependencies]
+hapto-ump.workspace = true
+
+# The WinMM backend: MIDI 1.0 devices, the system's notice that the list
+# changed, and the thread that hands SysEx buffers back.
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true, features = [
+    "Win32_Devices_DeviceAndDriverInstallation",
+    "Win32_Media_Audio",
+    "Win32_Media_Multimedia",
+    "Win32_Security",
+    "Win32_System_Threading",
+] }
+
+[target.'cfg(loom)'.dependencies]
+loom.workspace = true
+
+[dev-dependencies]
+hapto-testkit.workspace = true
+
+[lints]
+workspace = true

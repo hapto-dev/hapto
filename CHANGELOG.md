@@ -129,6 +129,13 @@ exporter.
   `TargetId`, a `ParamId`, a `CustomId` or a typed parameter. A parameter made
   at run time is a target of its own, `TargetId::RunTime`, named by an opaque
   `RunTimeId`.
+- `hapto-devices`: the computer's MIDI devices as UMP, for an app that runs a
+  plugin with no host. A device is named by an id that survives the system's
+  renumbering, the list's changes are told at the main thread's tick, and
+  each input open is read on the system's thread into a ring that never
+  waits, locks or allocates, then into each block at the frames its messages
+  came at, every device on a UMP group of its own. WinMM is its backend, on
+  Windows.
 - `hapto-ump`: Universal MIDI Packets: a fixed-capacity event list per block,
   the channel voice messages and 7-bit SysEx read from it and written back,
   the translation between MIDI 1.0 and MIDI 2.0, and MIDI 1.0's byte stream
@@ -291,7 +298,10 @@ exporter.
 - `hapto-standalone`: a plugin as an app of its own, on Windows, which a plugin
   crate's binary runs: its editor in a window, a test signal through it to the
   system's audio output, which it follows to a new default output, and its
-  saved block kept between runs. Its title counts the plugin's faults. Its dev
+  saved block kept between runs. A plugin that takes MIDI hears every MIDI
+  input the computer has, each on a group of its own, opened and closed as
+  devices come and go, and a line names each. Its title counts the plugin's
+  faults. Its dev
   host, `cargo hapto dev --host`, runs the plugin through the VST3 exporter or
   the C interface in process, in a window of the plugin's own with a bar that
   names the format, and a settings window of what the host sees, a tab each,

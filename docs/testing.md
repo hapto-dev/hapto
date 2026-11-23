@@ -413,7 +413,10 @@ Two tools cover what real threads cannot make happen on demand:
     (`crates/host/src/boundary/loom_models.rs`);
   - the same state shared by two threads: it drops on whichever thread lets it
     go last, after both loans end, and exactly once
-    (`crates/host/src/boundary/loom_models.rs`).
+    (`crates/host/src/boundary/loom_models.rs`);
+  - a MIDI device's ring: the audio thread takes what the device's thread
+    pushed, in order and never torn, and what found no room is counted
+    (`crates/devices/src/ring.rs`).
 
   A model fails when the ordering that publishes its data is weakened, with one
   exception: the queue's `dirty` flag. Its release and acquire are needed under
@@ -422,10 +425,11 @@ Two tools cover what real threads cannot make happen on demand:
   `HostQueue::mark_dirty` (`crates/params/src/host_events.rs`).
 
 The `loom models` lane runs `RUSTFLAGS="--cfg loom" cargo test -p hapto-params
--p hapto-learn -p hapto-host --release --locked --lib loom_`. The host's models
-need no feature, since its core builds without one. The cfg swaps the modelled
-atomics for loom's, which work only inside a model, so the lane runs the models
-alone (the `loom_` prefix). `loom` is pulled in only under `cfg(loom)`.
+-p hapto-learn -p hapto-host -p hapto-devices --release --locked --lib loom_`.
+The host's models need no feature, since its core builds without one. The cfg
+swaps the modelled atomics for loom's, which work only inside a model, so the
+lane runs the models alone (the `loom_` prefix). `loom` is pulled in only under
+`cfg(loom)`.
 
 ### Miri
 

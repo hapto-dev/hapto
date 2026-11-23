@@ -22,6 +22,7 @@ use winit::window::{Window, WindowId};
 
 use crate::block::{Plan, Player};
 use crate::device::{self, Answer, LOOK, Look, Output, Playing, answer, say_once};
+use crate::midi::Midi;
 use crate::options::Options;
 use crate::session::Session;
 use crate::settings::Blocks;
@@ -78,9 +79,13 @@ pub(crate) fn run<P: Plugin>(options: &Options) -> Result<ExitCode> {
     if let Some(line) = silence_note(P::INFO.name, hapto_host::first_width::<P>(), options.signal) {
         eprintln!("{line}");
     }
-    let audio = start_audio(&plugin, options.signal)?;
+    // Only a plugin that takes MIDI opens the computer's inputs, which
+    // WinMM lets one app at a time read.
+    let mut midi = P::INFO.midi_input.then(|| Midi::new(P::INFO.name));
+    let audio = start_audio(&plugin, options.signal, midi.as_mut())?;
     let mut app = App {
         audio: Some(audio),
+        midi,
         editor: None,
         window: None,
         failed: None,
@@ -109,13 +114,18 @@ pub(crate) fn run<P: Plugin>(options: &Options) -> Result<ExitCode> {
 
 /// Opens the system's default output, activates `plugin` at its rate in its
 /// first layout, and starts the output playing it, with `signal` on its
-/// inputs. A device that does not start leaves the plugin deactivated again.
+/// inputs and `midi`'s inputs, opened again for the stream, in its blocks. A
+/// device that does not start leaves the plugin deactivated again.
 ///
 /// # Errors
 ///
 /// Returns why it did not start: no device, an activation refused, or a
 /// device that did not start.
-fn start_audio<P: Plugin>(plugin: &Standalone<P>, signal: Signal) -> Result<Audio> {
+fn start_audio<P: Plugin>(
+    plugin: &Standalone<P>,
+    signal: Signal,
+    midi: Option<&mut Midi>,
+) -> Result<Audio> {
     let output = Output::system_default()?;
     let (rate, layout) = (output.sample_rate(), hapto_host::first_width::<P>());
     plugin
@@ -129,6 +139,10 @@ fn start_audio<P: Plugin>(plugin: &Standalone<P>, signal: Signal) -> Result<Audi
         BLOCK,
         Plan::new(Blocks::Device, signal),
     );
+    let player = match midi {
+        Some(midi) => player.with_midi(midi.reader()),
+        None => player,
+    };
     let stream = output
         .start(rate, player)
         .inspect_err(|_| plugin.deactivate())?;
@@ -266,6 +280,8 @@ pub(crate) fn tick_from_a_thread(proxy: EventLoopProxy<Wake>) {
 struct App<P: Plugin> {
     /// The audio, while a device plays the plugin.
     audio: Option<Audio>,
+    /// The computer's MIDI inputs, for a plugin that takes MIDI.
+    midi: Option<Midi>,
     editor: Option<StandaloneEditor<P>>,
     window: Option<Window>,
     /// Why the app could not go on, once its loop ends.
@@ -389,7 +405,7 @@ impl<P: Plugin> App<P> {
     /// not open leaves the audio stopped, which the window's title says, and
     /// a line says why, once, and again only when the reason changes.
     fn open_audio(&mut self) -> Option<String> {
-        match start_audio(&self.plugin, self.signal) {
+        match start_audio(&self.plugin, self.signal, self.midi.as_mut()) {
             Ok(audio) => {
                 let place = audio.place();
                 self.audio = Some(audio);
@@ -440,6 +456,9 @@ impl<P: Plugin> App<P> {
         if now >= self.next_tick {
             self.plugin.tick();
             self.check_audio();
+            if let Some(midi) = &mut self.midi {
+                midi.tick(now);
+            }
             let faults = self.plugin.faults();
             if faults != self.shows.faults {
                 self.shows.faults = faults;

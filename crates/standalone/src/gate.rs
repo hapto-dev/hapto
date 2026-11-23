@@ -5,6 +5,7 @@
 
 use std::fmt;
 
+use hapto_devices::InputsReader;
 use hapto_host::Plugin;
 use hapto_host::layout::Width;
 use hapto_host::standalone::Standalone;
@@ -45,6 +46,21 @@ impl Callback {
     ) -> Callback {
         let plan = Plan::new(blocks, signal);
         let mut player = Player::of_app(plugin, layout, device_channels, sample_rate, max, plan);
+        Callback {
+            play: Box::new(move |data| player.play(data)),
+        }
+    }
+
+    /// The shipped app's, as [`app`](Self::app) makes it for a stereo device
+    /// at 48 kHz in blocks of up to 1024 frames cut as the device asks, in
+    /// silence, with the MIDI inputs `midi` reads in its blocks.
+    pub fn app_with_midi<P: Plugin>(
+        plugin: &Standalone<P>,
+        layout: Width,
+        midi: InputsReader,
+    ) -> Callback {
+        let plan = Plan::new(Blocks::Device, Signal::Silence);
+        let mut player = Player::of_app(plugin, layout, 2, 48_000.0, 1024, plan).with_midi(midi);
         Callback {
             play: Box::new(move |data| player.play(data)),
         }

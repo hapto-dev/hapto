@@ -19,7 +19,8 @@ publish = false
 #   1  hapto-params, hapto-ump, hapto-audio
 #   2  hapto-undo, hapto-session
 #   3  hapto-learn (the core's top), hapto-bridge (the page)
-#   4  hapto-host (plugin formats)
+#   4  hapto-host (plugin formats), hapto-devices (the computer's MIDI
+#      devices, for the app)
 #   5  hapto-webview (the page in a plugin's window, a shell), hapto-standalone
 #      (a plugin as an app of its own, a shell)
 #   6  hapto-example-eq and hapto-example-gain, plugins; 7 xtask and
@@ -38,6 +39,7 @@ hapto-bridge = { path = "crates/bridge" }
 hapto-macros = { path = "crates/macros" }
 hapto-webview = { path = "crates/webview" }
 hapto-standalone = { path = "crates/standalone" }
+hapto-devices = { path = "crates/devices" }
 # Tests only.
 hapto-testkit = { path = "crates/testkit" }
 
@@ -55,6 +57,10 @@ vst3 = "0.3.0"
 # Win32, for the VST3 exporter's main-thread timer on Windows. Already in
 # the lockfile through other crates.
 windows-sys = "0.61.2"
+# Win32, for the MIDI device layer's WinMM backend (hapto-devices), and the
+# COM and WinRT runtime a Windows MIDI Services backend is to build on.
+# Already in the lockfile through webview2-com.
+windows = "0.62.2"
 # The host's window as a toolkit takes it: the editor's parent window in
 # hapto-host.
 raw-window-handle = "0.6.2"
@@ -95,7 +101,8 @@ assert_no_alloc = { version = "1.1.2", default-features = false, features = ["wa
 [workspace.lints.rust]
 # Only the boundary code may use unsafe: hapto-host's format exporters (VST3
 # COM and the C ABI) and the modules they share (the boundary, the engine and
-# the fault reports), each allowing it on its own module.
+# the fault reports), and hapto-devices' system backends, each allowing it on
+# its own module.
 unsafe_code = "deny"
 unsafe_op_in_unsafe_fn = "deny"
 missing_debug_implementations = "warn"

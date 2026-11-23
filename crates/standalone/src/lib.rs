@@ -42,6 +42,8 @@ mod block;
 mod dev_host;
 #[cfg(windows)]
 mod device;
+#[cfg(windows)]
+mod midi;
 // The audio paths, open to the crate's allocation gate alone.
 #[cfg(any(windows, test))]
 #[doc(hidden)]

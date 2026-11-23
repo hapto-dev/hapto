@@ -1396,6 +1396,27 @@ move its line here; when a decision gains code, add one.
 - test `crates/learn/tests/dispatch.rs`: `a_coarse_binding_reads_the_high_byte_of_every_data_entry_as_seven_bit`, `every_fourteen_bit_nrpn_value_reads_centre_anchored_fine_or_coarse`, `controllers_0_and_32_from_midi_1_drive_their_bindings`, `midi_1_handed_to_learn_unupgraded_is_a_contract_panic`
 - test `crates/learn/tests/capture.rs`: `a_low_byte_of_0_a_block_after_its_high_byte_learns_14_bit`, `controllers_0_and_32_from_midi_1_learn`
 
+### D115. The computer's MIDI devices
+
+[Record section](decisions.md#d115-the-computers-midi-devices)
+
+- `crates/devices/src/lib.rs`: module
+- `crates/devices/src/id.rs`: `DeviceId`, `named`
+- `crates/devices/src/devices.rs`: `Devices`, `Devices::tick`, `Looks`
+- `crates/devices/src/inputs.rs`: `Inputs`, `Inputs::open`, `InputsReader::read`, `frame`, `GROUPS`
+- `crates/devices/src/ring.rs`: module, `Producer::push`, `Consumer::peek`
+- `crates/devices/src/winmm/mod.rs`: module, `interface`, `index_of`
+- `crates/devices/src/winmm/watch.rs`: `Watch`, `changed`
+- `crates/devices/src/winmm/input.rs`: module, `Shared::message`, `Input::shut`, `hand_back`, `callback`
+- `crates/standalone/src/midi.rs`: module, `Midi::reader`, `Midi::tick`
+- `crates/standalone/src/block.rs`: `Render`, `Player::with_midi`
+- test `crates/devices/src/inputs/tests.rs`: module
+- test `crates/devices/src/winmm/input/tests.rs`: module
+- test `crates/devices/src/devices.rs`: `a_notice_brings_four_looks_each_wait_twice_the_last`, `with_no_notice_the_list_is_read_every_two_seconds`
+- test `crates/devices/src/ring.rs`: `loom_the_audio_thread_takes_what_the_device_pushed_in_order_and_whole`
+- test `crates/devices/tests/alloc_gate.rs`: module
+- test `crates/standalone/src/block/tests.rs`: `the_apps_midi_inputs_reach_the_plugin_in_its_blocks`
+
 ## Parameters
 
 ### P1. One store per parameter

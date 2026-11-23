@@ -71,13 +71,17 @@ reading how Hapto works inside, start with
 - `crates/webview`: the shell that shows a plugin's page in the host's
   window, on Windows: `Page` makes the `Editor`, a WebView2 child window
   through wry, which serves the page from bytes built into the plugin and
-  joins it to a `Dispatcher` (`editor.rs`). The page's native side is in
-  `native.rs`. `platform.rs` defines the `WebEngine` trait, and each system's
-  engine implements it in `platform/`.
+  joins it to a `Dispatcher` (`windows.rs`).
+- `crates/devices`: `hapto-devices`, the computer's MIDI devices as UMP, for
+  the app: the system's list and its changes (`devices.rs`), what names a
+  device (`id.rs`), the inputs open on the main thread and read into each
+  block on the audio thread (`inputs.rs`), the ring between the two
+  (`ring.rs`), and the WinMM backend (`winmm/`).
 - `crates/standalone`: `hapto-standalone`, the plugin as an app of its own, on
   Windows: the standalone exporter's instance, its editor in a winit window,
   and a test signal through it to the system's audio output through cpal
-  (`app.rs`, `device.rs`, `block.rs`), with its saved block kept between runs
+  (`app.rs`, `device.rs`, `block.rs`), with the computer's MIDI inputs for a
+  plugin that takes MIDI (`midi.rs`) and its saved block kept between runs
   (`session.rs`). A plugin crate's binary calls its `main`, and its
   allocation gate reaches the audio path through a hidden `gate` module
   (`gate.rs`). Its dev host (`dev_host/`, the `dev-host` feature) runs the
@@ -223,7 +227,8 @@ with `cargo doc -p hapto-host --features vst3,cabi,test-host
   and undoing it writes that value.
 - `unsafe` is denied workspace-wide. Only `host`'s `vst3`, `cabi` and
   `standalone` modules and the `boundary`, `engine` and `faults` modules they
-  share allow it, with a `// SAFETY:` comment on every block.
+  share allow it, and `devices`' system backend (`winmm`), with a
+  `// SAFETY:` comment on every block.
 - A panic never unwinds into a host. An exporter catches it at the entry point,
   counts it as a fault, and a processor that panicked plays silence until the
   next activation. The first fault of each kind in an instance is reported as a

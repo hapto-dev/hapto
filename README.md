@@ -51,7 +51,8 @@ The Rust crates are in `crates/`: the core (`params`, `undo`, `session`,
 `learn`, `ump`, `audio`), the parameters' derives and the manifest reader
 (`macros`), the [exporters](docs/glossary.md#exporter) (`host`), the page
 protocol (`bridge`), the page in a plugin's window (`webview`), a plugin as an
-app of its own (`standalone`), the plugin author's command, `cargo hapto`
+app of its own (`standalone`) and the computer's MIDI devices it reads
+(`devices`), the plugin author's command, `cargo hapto`
 (`cli`), and test tools (`testkit`). Beside them are the example gain
 (`examples/gain`), the example EQ (`examples/eq`), the page's React hooks
 (`page`), the generic JUCE adapter (`adapters/juce`), the repository's tasks

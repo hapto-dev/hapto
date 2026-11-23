@@ -12,9 +12,10 @@ mod tests;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, AtomicU32, AtomicU64, Ordering};
 
-use hapto_host::Plugin;
+use hapto_devices::{InputsReader, Instant};
 use hapto_host::layout::Width;
 use hapto_host::standalone::{MAX_CHANNELS, Standalone, StandaloneAudio};
+use hapto_host::{Event, EventList, Plugin};
 
 use crate::settings::Blocks;
 use crate::signal::{Generator, Signal};
@@ -27,24 +28,37 @@ const PART: usize = 1024;
 /// How many of the latest blocks' lengths a [`Plan`] keeps.
 pub(crate) const RECENT: usize = 40;
 
+/// The most MIDI packets one block carries from the app's inputs: an
+/// exporter's room for a block's MIDI.
+const MIDI_ROOM: usize = 2048;
+
 /// What the app plays its blocks through: a plugin's audio side, in any
 /// format.
 pub(crate) trait Render: Send + 'static {
-    /// Plays one block, each slice a channel, all as long. A block may hold
-    /// no frames.
-    fn render(&mut self, inputs: &[&[f32]], outputs: &mut [&mut [f32]]);
+    /// Plays one block, each slice a channel, all as long, with `midi`, the
+    /// packets of the app's MIDI inputs at its frames. A block may hold no
+    /// frames.
+    fn render(&mut self, inputs: &[&[f32]], outputs: &mut [&mut [f32]], midi: &[Event]);
 }
 
 impl Render for Box<dyn Render> {
-    fn render(&mut self, inputs: &[&[f32]], outputs: &mut [&mut [f32]]) {
-        (**self).render(inputs, outputs);
+    fn render(&mut self, inputs: &[&[f32]], outputs: &mut [&mut [f32]], midi: &[Event]) {
+        (**self).render(inputs, outputs, midi);
     }
 }
 
 impl<P: hapto_host::Plugin> Render for StandaloneAudio<P> {
-    fn render(&mut self, inputs: &[&[f32]], outputs: &mut [&mut [f32]]) {
-        self.process(inputs, outputs, &[]);
+    fn render(&mut self, inputs: &[&[f32]], outputs: &mut [&mut [f32]], midi: &[Event]) {
+        self.process(inputs, outputs, midi);
     }
+}
+
+/// The app's MIDI inputs on the audio thread: the reader, and the block's
+/// list it reads into.
+#[derive(Debug)]
+struct MidiIn {
+    reader: InputsReader,
+    block: EventList,
 }
 
 /// What the main thread may change while blocks play, the cut and the test
@@ -238,6 +252,8 @@ pub(crate) struct Player<R> {
     /// The frames rendered and not yet played, per output.
     queue: Vec<Vec<f32>>,
     queued: usize,
+    /// The app's MIDI inputs, read into each block; `None` for none.
+    midi: Option<MidiIn>,
 }
 
 impl<R: Render> Player<R> {
@@ -269,7 +285,17 @@ impl<R: Render> Player<R> {
             // holds up to one past the maximum.
             queue: channels(layout.outputs, PART.max(max) + max + 1),
             queued: 0,
+            midi: None,
         }
+    }
+
+    /// Plays the app's MIDI inputs `reader` reads into each block.
+    pub(crate) fn with_midi(mut self, reader: InputsReader) -> Self {
+        self.midi = Some(MidiIn {
+            reader,
+            block: EventList::with_capacity(MIDI_ROOM),
+        });
+        self
     }
 
     /// Fills `data`, the device's interleaved buffer, with the plugin's
@@ -308,7 +334,16 @@ impl<R: Render> Player<R> {
         for (slot, channel) in outputs.iter_mut().zip(&mut self.outputs) {
             *slot = &mut channel[..length];
         }
-        self.render.render(&inputs[..ins], &mut outputs[..outs]);
+        let midi = match &mut self.midi {
+            Some(MidiIn { reader, block }) => {
+                block.clear();
+                reader.read(Instant::now(), length, block);
+                block.as_slice()
+            }
+            None => &[],
+        };
+        self.render
+            .render(&inputs[..ins], &mut outputs[..outs], midi);
         let at = self.queued;
         for (queue, output) in self.queue.iter_mut().zip(&self.outputs) {
             queue[at..at + length].copy_from_slice(&output[..length]);

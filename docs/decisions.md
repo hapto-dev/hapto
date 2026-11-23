@@ -151,6 +151,7 @@ comments never cite an id: they state the reason in words, and
 | D112 | [How does a processor see its block's audio, and the widths it runs at? (D23, D97)](#d112-the-blocks-audio-and-the-layout-as-a-type) | As a type: `Processor::Layout` names the main bus's channels, a `Bus<IN, OUT>` at one width, with `Mono`, `Stereo` and the like for the common ones, or `AnyLayout` at each width `PluginInfo::layouts` lists. `Block::audio` lends the channels as `Audio`, walked by frame or by channel with no index or frame count, and in a `Bus` both are arrays that destructure. `Width` counts channels at run time, and `AudioBuf` owns audio for tests. | decided |
 | D113 | [Where do the audio types live? (D112)](#d113-the-audio-types-crate) | In `hapto-audio`, a core crate of layer 1 beside `hapto-params` and `hapto-ump`, which `hapto-host` re-exports, so code that only writes audio, such as a voice, needs no host. | decided |
 | D114 | [Which MIDI does Hapto pass inside, and how does MIDI 1.0 reach it? (D10, D23, D70)](#d114-midi-20-inside) | MIDI 2.0: `ChannelVoice` reads and writes MIDI 2.0's channel voice messages alone. The engine upgrades MIDI 1.0 on the way in with `Upgrade`, for every exporter, and an exporter downgrades with `Downgrade` only for a destination that takes MIDI 1.0 alone, both by the specification's Default Translation. Each packet keeps its `Origin`, so learn reads a value upgraded from MIDI 1.0 at the width it was sent at. | decided |
+| D115 | [How does the standalone app reach the computer's MIDI devices? (D110, D114)](#d115-the-computers-midi-devices) | Through `hapto-devices`, Hapto's own device layer, which only the app links: UMP alone, a device named by an id that survives the system's renumbering, the list's changes told at the tick, and each input read on the system's thread into a ring that never blocks, its packets placed at frames on the audio thread, each device on a group of its own. WinMM is its only backend so far. | to confirm |
 
 **Open.** D25 is held until `hapto-ci` needs it. It keeps its recommendation
 until decided, and no rule depends on it.
@@ -3254,7 +3255,8 @@ against C++.
   feature: `Standalone` drives the engine every exporter drives, so
   activation, the block, the tick, the saved block, faults and teardown keep
   their rules. The app is the host: an edit lands in the parameter store with
-  no one to tell, and no automation or MIDI reaches the plugin. `Standalone`
+  no one to tell, and no automation reaches the plugin; the computer's MIDI
+  inputs reach one that takes MIDI (D115). `Standalone`
   is made on the app's main thread and is not `Send`. Its `StandaloneAudio`
   side is `Send` for the device's callback and allocates nothing: its channel
   lists live on the stack, up to 32 each way, and a block is as long as its
@@ -3600,6 +3602,68 @@ counted in frames across blocks, flushed before the group's next channel voice
 message, which keeps a pair spread over frames one message at about three
 times the code. Sending the high byte at once costs two messages for such a
 pair, as a MIDI 1.0 receiver of the sender sees it too.
+
+### D115. The computer's MIDI devices
+
+**Question and C++ Seam.** How does the standalone app reach the computer's
+MIDI devices? (D110, D114) The C++ Seam had no app. JUCE's standalone wrapper
+opens MIDI inputs through its own device layer and hands their messages to the
+audio thread through `MidiMessageCollector`, which takes a lock on both threads
+and may allocate. midir and RtMidi name a port by its place in the system's
+list, which moves when a device comes or goes, and say nothing when one does.
+
+**Rust.** Through `hapto-devices`, Hapto's own device layer: a crate of layer 4
+that only the app links, so a plugin in a host never sees a device. It speaks
+UMP alone, whatever the system's API carries, and builds the backends Hapto
+runs on: WinMM, MIDI 1.0 on Windows. Windows MIDI Services, MIDI 2.0 on Windows
+11 25H2 and later, CoreMIDI and ALSA come when Hapto runs there; until then a
+platform has no backend and lists no devices. Its calls into the system are a
+boundary of their own: `unsafe` is allowed in the backend's module alone,
+under the exporters' rules.
+
+A device is named by a `DeviceId` that survives the system's renumbering. On
+WinMM it is the device's interface path, or its name for one that has none,
+such as the system's software synth, with its place among the devices that
+share that string, and its direction. Its name is kept apart, for showing.
+`Devices` holds the list on the main thread, and its `tick` reads it again
+when it may have changed and tells what came and went. On WinMM a system
+notification marks the list from any thread, and the tick reads it half a
+second, one, two and four seconds after, since WinMM's list lags the
+notification.
+
+`Inputs` opens a device on the main thread and closes it there, and gives each
+open device a group of its own, the lowest free, as Windows MIDI Services and
+a USB MIDI 2.0 device give each MIDI 1.0 port of an endpoint one. So two
+devices' NRPNs and SysEx never mix, learn tells two keyboards apart, and the
+engine's one upgrade serves them all. A plugin that reads every group hears
+every device.
+
+The system's thread reads each message as it arrives with `ByteStream`, stamps
+it on one clock, and pushes its packets into a ring made when `Inputs` was:
+one producer and one consumer, its slots atomics, so it never blocks, locks or
+allocates and needs no `unsafe`. Past its room a packet is dropped and
+counted. A SysEx goes out six bytes at a time as it arrives, whatever its
+length. On the audio thread `InputsReader` drains every input once a block,
+in time order across them: a packet lands at the frame its time takes in the
+block, as the time since the last block maps onto this one, so input plays a
+block late and keeps its own timing within one.
+
+On WinMM the callback only reads and pushes. A thread of the input's own hands
+SysEx buffers back to the system, since the callback may not call WinMM. A
+close stops the device, resets it, takes its buffers back and closes it; a
+message the reset sends does nothing, and if the close fails the buffers are
+leaked rather than freed under the driver. A device that leaves while open is
+closed at the next tick.
+
+Open: output to a device, and keeping a device's place in the app's settings
+from run to run.
+
+**Alternatives.** The alternatives were midir or RtMidi, whose MIDI 1.0 byte
+callbacks and list places fight both this design and D114; JUCE's lock and
+whole-message SysEx; one stream for every device on group 0, as a host hands
+a plugin, which lets two devices' NRPN state and SysEx interleave; and handing
+SysEx buffers back inside the callback, as JUCE, midir and RtMidi do against
+WinMM's documentation.
 
 ## How to read this
 

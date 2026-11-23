@@ -4,11 +4,13 @@
 
 use std::sync::{Arc, Mutex};
 
+use hapto_host::Event;
 use hapto_host::layout::Width;
 
 use super::{Plan, Player, RECENT, Render, preview};
 use crate::settings::Blocks;
 use crate::signal::{Generator, Signal};
+use hapto_devices::{Instant, inputs};
 
 /// Writes each input, doubled, to the output of the same number, and keeps
 /// the length of each block it was given.
@@ -18,7 +20,7 @@ struct Doubler {
 }
 
 impl Render for Doubler {
-    fn render(&mut self, inputs: &[&[f32]], outputs: &mut [&mut [f32]]) {
+    fn render(&mut self, inputs: &[&[f32]], outputs: &mut [&mut [f32]], _midi: &[Event]) {
         let length = outputs.first().map_or(0, |c| c.len());
         self.lengths.lock().expect("not poisoned").push(length);
         for (index, output) in outputs.iter_mut().enumerate() {
@@ -204,4 +206,45 @@ fn the_preview_is_what_a_player_cuts() {
             );
         }
     }
+}
+
+/// A block's length, and each of its packets' frame and first word.
+type Heard = (usize, Vec<(u32, u32)>);
+
+/// Keeps what MIDI each block carried.
+#[derive(Debug, Default, Clone)]
+struct Listener {
+    blocks: Arc<Mutex<Vec<Heard>>>,
+}
+
+impl Render for Listener {
+    fn render(&mut self, _inputs: &[&[f32]], outputs: &mut [&mut [f32]], midi: &[Event]) {
+        let length = outputs.first().map_or(0, |c| c.len());
+        let packets = midi
+            .iter()
+            .map(|event| (event.offset, event.words[0]))
+            .collect();
+        self.blocks
+            .lock()
+            .expect("not poisoned")
+            .push((length, packets));
+    }
+}
+
+#[test]
+fn the_apps_midi_inputs_reach_the_plugin_in_its_blocks() {
+    let listener = Listener::default();
+    let plan = Plan::new(Blocks::Fixed, Signal::Silence);
+    let (mut inputs, reader) = inputs(16);
+    let mut player =
+        Player::new(listener.clone(), Width::STEREO, 2, 48_000.0, 64, plan).with_midi(reader);
+    // Long before any block: the first block's first frame.
+    assert!(inputs.push(0, Instant::from_nanos(0), [0x2090_3C7F, 0, 0, 0]));
+    assert!(inputs.push(4, Instant::from_nanos(1), [0x2490_3E7F, 0, 0, 0]));
+    let mut buffer = vec![0.0_f32; 128 * 2];
+    player.play(&mut buffer);
+    let blocks = listener.blocks.lock().expect("not poisoned").clone();
+    assert_eq!(blocks.len(), 2);
+    assert_eq!(blocks[0], (64, vec![(0, 0x2090_3C7F), (0, 0x2490_3E7F)]));
+    assert_eq!(blocks[1], (64, Vec::new()), "each packet once");
 }

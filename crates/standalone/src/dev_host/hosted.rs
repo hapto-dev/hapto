@@ -16,7 +16,7 @@ use std::sync::Arc;
 use anyhow::{Context as _, Result};
 use hapto_host::layout::Width;
 use hapto_host::vst3::{HostCall, RESTART_LATENCY, RESTART_VALUES, TestView};
-use hapto_host::{Plugin, cabi, vst3};
+use hapto_host::{Event, Plugin, cabi, vst3};
 
 use super::format::{Call, Format};
 use super::pending::Pending;
@@ -275,7 +275,8 @@ struct Vst3Audio {
 }
 
 impl Render for Vst3Audio {
-    fn render(&mut self, inputs: &[&[f32]], outputs: &mut [&mut [f32]]) {
+    // Open: the dev host hands the formats no MIDI yet.
+    fn render(&mut self, inputs: &[&[f32]], outputs: &mut [&mut [f32]], _midi: &[Event]) {
         let frames = block_length(inputs, outputs);
         let count = self.pending.take(&mut self.changes);
         let changes = self.changes.get(..count).unwrap_or_default();
@@ -413,7 +414,7 @@ struct CabiAudio {
 }
 
 impl Render for CabiAudio {
-    fn render(&mut self, inputs: &[&[f32]], outputs: &mut [&mut [f32]]) {
+    fn render(&mut self, inputs: &[&[f32]], outputs: &mut [&mut [f32]], _midi: &[Event]) {
         let frames = block_length(inputs, outputs);
         let _status = self.side.process(inputs, outputs, frames);
     }
