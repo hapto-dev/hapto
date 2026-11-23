@@ -130,8 +130,11 @@ struct Vst3<P: Plugin> {
 impl<P: Plugin> Vst3<P> {
     fn new() -> Self {
         let host: &'static _ = Box::leak(Box::new(vst3::TestHost::<P>::with_timer()));
+        // A host shows no hidden parameter: the proxies a plugin's MIDI
+        // controllers reach it through.
         let params: Vec<Param> = (0..host.parameter_count())
             .filter_map(|index| host.parameter(index))
+            .filter(|info| !info.is_hidden)
             .map(|info| {
                 let steps = u32::try_from(info.step_count).unwrap_or(0);
                 let values = (steps > 0).then_some(steps + 1);

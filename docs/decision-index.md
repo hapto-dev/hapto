@@ -236,6 +236,11 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d22-controllers-reaching-learn-in-vst3)
 
+- `crates/host/src/vst3/component/midi.rs`: module, `ADDRESS`, `proxy_id`, `proxy`, `proxy_info`, `read_controllers`, `controller_message`
+- `crates/host/src/vst3/component/controller.rs`: `Component::getParameterCount`, `Component::getParameterInfo`
+- `crates/host/src/engine/process.rs`: `MidiIn`, `MidiIn::push_first`, `Arrivals`, `fill`
+- test `crates/host/src/vst3/tests/midi.rs`: `a_controller_comes_through_its_proxy_as_midi_1_upgraded_and_before_a_note_at_its_frame`, `every_channel_s_controllers_map_to_hidden_proxies_listed_after_the_plugin_s_own`, `a_host_claiming_more_than_the_block_has_room_for_is_read_as_far_as_there_is_room`, `a_parameter_s_address_comes_before_its_data_entry_at_one_frame_whatever_the_queues_order`
+- test `crates/host/src/engine/process/tests.rs`: `packets_handed_over_out_of_order_reach_the_block_in_time_order_and_at_one_frame_as_they_came`, `a_packet_pushed_first_goes_before_the_rest_at_its_frame_and_never_to_an_earlier_one`
 - `crates/params/src/host_id.rs`: `RESERVED_HOST_IDS`
 - `crates/params/src/lib.rs`: module
 - `crates/params/src/set.rs`: `DeclError::ReservedHostId`
@@ -618,6 +623,8 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d59-the-shape-of-the-vst3-exporter)
 
+- `crates/host/src/vst3/component/midi.rs`: `read_events`, `note_on`, `expression`, `Notes`
+- test `crates/host/src/vst3/tests/midi.rs`: `a_note_reaches_the_plugin_as_midi_2_named_by_the_hosts_id`, `a_note_on_s_tuning_is_its_pitch_and_its_expressions_name_it`, `a_sysex_reaches_the_plugin_whole`, `every_channel_offers_the_note_expressions_a_plugin_reads`, `a_note_expression_from_before_an_activation_names_no_note`
 - `crates/host/src/boundary.rs`: `MainThread`, `AudioSlot`
 - `crates/host/src/engine/automation.rs`: module, `Point`, `Points::queue`, `Points::apply`
 - `crates/host/src/engine/mod.rs`: module, `Engine`, `Engine::new`, `Engine::release`, `Engine::leave`, `Engine::controller_write`, `Engine::set_processing`, `Engine::tick`
@@ -1430,6 +1437,8 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d116-midi-in-musicians-terms)
 
+- `crates/ump/src/lib.rs`: `Origin`
+- test `crates/midi/tests/decode.rs`: `a_note_its_host_named_keeps_that_id_and_its_note_off_ends_it_alone`, `a_notes_own_message_its_host_named_finds_that_note_and_not_the_newest`
 - `crates/midi/src/lib.rs`: module
 - `crates/midi/src/values.rs`: `Key`, `Group`, `Channel`, `Program`, `Centred`, `Pitch`, `NoteId`
 - `crates/midi/src/message.rs`: `Message`, `NoteOn`, `NoteOff`, `NoteKey`

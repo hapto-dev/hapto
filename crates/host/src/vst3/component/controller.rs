@@ -14,7 +14,7 @@ use ::vst3::Steinberg::{
 };
 use hapto_params::Kind;
 
-use super::{Component, view};
+use super::{Component, midi, view};
 use crate::Plugin;
 use crate::engine::Engine;
 use crate::vst3::text::{copy_utf16, read_utf16};
@@ -37,8 +37,13 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
         kResultOk
     }
 
+    /// The plugin's parameters, then, for a plugin that takes MIDI, the
+    /// hidden proxies its controllers reach it through.
     unsafe fn getParameterCount(&self) -> int32 {
-        let count = self.engine().map_or(0, |engine| engine.set().len());
+        let count = self.engine().map_or(0, |engine| {
+            let proxies = if P::INFO.midi_input { midi::GRID } else { 0 };
+            engine.set().len().saturating_add(proxies as usize)
+        });
         int32::try_from(count).unwrap_or(int32::MAX)
     }
 
@@ -52,11 +57,13 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
             let Some(set) = self.engine().map(Engine::set) else {
                 return kNotInitialized;
             };
-            let Some(id) = usize::try_from(index)
-                .ok()
-                .and_then(|index| set.id_at(index))
-            else {
+            let Ok(index) = usize::try_from(index) else {
                 return kInvalidArgument;
+            };
+            let Some(id) = set.id_at(index) else {
+                let proxy = index.saturating_sub(set.len());
+                let listed = P::INFO.midi_input && midi::proxy_info(proxy, info);
+                return if listed { kResultOk } else { kInvalidArgument };
             };
             let decl = set.decl(id);
             info.id = set.host_id(id);
@@ -147,15 +154,21 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
         })
     }
 
+    /// A proxy answers its default: what it carried went to the block.
     unsafe fn getParamNormalized(&self, id: ParamID) -> ParamValue {
         self.guard(0.0, || match (self.engine(), self.param(id)) {
             (Some(engine), Some((param, _))) => engine.set().normalized(param),
-            _ => 0.0,
+            _ => midi::proxy_default(id).unwrap_or(0.0),
         })
     }
 
+    /// A proxy takes a write and keeps nothing: its controller reaches the
+    /// plugin through `process` alone.
     unsafe fn setParamNormalized(&self, id: ParamID, normalized: ParamValue) -> tresult {
         self.guard(kInternalError, || {
+            if P::INFO.midi_input && midi::proxy(id).is_some() {
+                return kResultOk;
+            }
             let (Some(engine), Some((param, _))) = (self.engine(), self.param(id)) else {
                 return kInvalidArgument;
             };

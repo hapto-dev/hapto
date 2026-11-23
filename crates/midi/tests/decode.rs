@@ -2,7 +2,7 @@
 //! their ids, a note's own messages, SysEx joined, and each message's line.
 
 use hapto_midi::{Centred, Channel, Decoder, Group, Key, Message, NoteId, Program, controller};
-use hapto_ump::{Event, scale};
+use hapto_ump::{Event, Origin, scale};
 use hapto_ump::{EventList, Midi1Message, Midi1Voice, Upgrade};
 use proptest::prelude::*;
 use proptest::test_runner::FileFailurePersistence;
@@ -213,6 +213,57 @@ fn a_notes_own_message_names_its_key_and_the_newest_note_on_it() {
     let next = note_id(&decode(&mut decoder, on(60, 0xFFFF))[0]);
     let again = decode(&mut decoder, pressure);
     assert!(matches!(again[0], Message::NotePressure { note, .. } if note.id == Some(next)));
+}
+
+/// `words` with its host's name for the note, `id`, as VST3 names a note.
+fn named(words: [u32; 2], id: u32) -> Event {
+    Event {
+        origin: Origin::Note { id },
+        ..packet(words)
+    }
+}
+
+#[test]
+fn a_note_its_host_named_keeps_that_id_and_its_note_off_ends_it_alone() {
+    let mut decoder = Decoder::new();
+    let ids: Vec<NoteId> = [named(on(60, 0xFFFF), 7), named(on(60, 0xFFFF), 9)]
+        .iter()
+        .map(|event| note_id(&decoder.decode(event).next().expect("a note-on")))
+        .collect();
+    assert_eq!(ids, [NoteId::hosts(7), NoteId::hosts(9)]);
+    assert!(ids[0].is_hosts());
+    // Two notes on one key: the note-off that names the first ends it alone.
+    let ended: Vec<NoteId> = decoder
+        .decode(&named(off(60), 7))
+        .map(|m| note_id(&m))
+        .collect();
+    assert_eq!((ended, decoder.sounding()), (vec![NoteId::hosts(7)], 1));
+    // One that names a note no longer sounding ends every note on the key,
+    // so none hangs.
+    let ended: Vec<NoteId> = decoder
+        .decode(&named(off(60), 7))
+        .map(|m| note_id(&m))
+        .collect();
+    assert_eq!((ended, decoder.sounding()), (vec![NoteId::hosts(9)], 0));
+}
+
+#[test]
+fn a_notes_own_message_its_host_named_finds_that_note_and_not_the_newest() {
+    let mut decoder = Decoder::new();
+    decoder.decode(&named(on(60, 0xFFFF), 7)).count();
+    decoder.decode(&named(on(60, 0xFFFF), 9)).count();
+    let pressure = [0x40A0_3C00, u32::MAX];
+    let older = decoder.decode(&named(pressure, 7)).next();
+    assert!(matches!(
+        older,
+        Some(Message::NotePressure { note, .. }) if note.id == Some(NoteId::hosts(7))
+    ));
+    // A note its host names that does not sound there names none.
+    let gone = decoder.decode(&named(pressure, 3)).next();
+    assert!(matches!(
+        gone,
+        Some(Message::NotePressure { note, .. }) if note.id.is_none()
+    ));
 }
 
 #[test]

@@ -41,11 +41,15 @@ use hapto_params::ParamId;
 use hapto_params::{AudioParams, HostEvent, HostEventDrain, ParamSet};
 
 use automation::Automation;
-pub(crate) use automation::Points;
+#[cfg(feature = "vst3")]
+pub(crate) use automation::MAX_SKIPPED_QUEUES;
 #[cfg(all(test, feature = "vst3"))]
-pub(crate) use automation::{MAX_SKIPPED_QUEUES, Point};
+pub(crate) use automation::Point;
+pub(crate) use automation::Points;
 #[cfg(any(feature = "vst3", feature = "standalone"))]
 pub(crate) use editor::{EditorSlot, Opened};
+#[cfg(feature = "vst3")]
+pub(crate) use process::MidiIn;
 #[cfg(any(feature = "vst3", feature = "cabi", feature = "standalone"))]
 pub(crate) use process::Outcome;
 use process::{Active, PendingReset, install};
@@ -635,6 +639,13 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
     pub(crate) fn carried(&self) -> (Vec<Point>, u64) {
         let automation = self.automation.hold();
         (automation.points().to_vec(), automation.dropped())
+    }
+
+    /// What `read` makes of the last block's MIDI, decoded as its processor
+    /// read it; `None` while inactive.
+    #[cfg(all(test, feature = "vst3"))]
+    pub(crate) fn heard<T>(&self, read: impl FnOnce(hapto_midi::Midi<'_>) -> T) -> Option<T> {
+        self.audio.hold().as_ref().map(|audio| read(audio.midi()))
     }
 
     /// Reports the faults not reported yet, as [`faults`](crate::faults)

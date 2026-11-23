@@ -3,7 +3,9 @@ use std::sync::Arc;
 
 use hapto_learn::{Config, Control, Learn, Learned, Mapping, Source, Takes};
 use hapto_params::{Kind, ParamDecl, ParamId, ParamSet};
-use hapto_ump::{ChannelMessage, EventList, Midi1Message, Midi1Voice, Origin, Upgrade};
+use hapto_ump::{
+    ChannelMessage, ChannelVoice, EventList, Midi1Message, Midi1Voice, Origin, Upgrade,
+};
 
 use super::{Active, fill, pieces};
 use crate::layout::{AnyLayout, Width};
@@ -295,4 +297,96 @@ fn a_high_byte_sent_alone_reaches_its_block_at_the_last_frame_and_the_next_start
     assert_eq!(events, [(31, Some(entry))]);
     fill(&mut audio, 32, |_| {});
     assert!(audio.events.as_slice().is_empty(), "nothing held over");
+}
+
+#[test]
+fn packets_handed_over_out_of_order_reach_the_block_in_time_order_and_at_one_frame_as_they_came() {
+    let mut audio = audio();
+    let off = Event::new(9, [0x4080_3C00, 0, 0, 0]);
+    let on = Event::new(9, [0x4090_3C00, 0xFFFF_0000, 0, 0]);
+    // As VST3 hands controllers over, a queue each: a registered
+    // parameter's data entry before its address. And at frame 9, a note-off
+    // then a note-on, which must stay in that order.
+    fill(&mut audio, 32, |into| {
+        into.push(sent(5, 6, 64));
+        into.push(off);
+        into.push(sent(2, 101, 0));
+        into.push(on);
+        into.push(sent(2, 100, 0));
+        into.push(sent(5, 38, 0));
+    });
+    let events: Vec<_> = audio
+        .events
+        .as_slice()
+        .iter()
+        .map(|event| (event.offset, event.words))
+        .collect();
+    let range = ChannelVoice {
+        group: 0,
+        channel: 0,
+        message: ChannelMessage::RegisteredController {
+            bank: 0,
+            index: 0,
+            value: hapto_ump::scale::up_14_to_32(64 << 7),
+        },
+    };
+    assert_eq!(
+        events,
+        [(5, range.words()), (9, off.words), (9, on.words)],
+        "the address first, so the entry has one"
+    );
+}
+
+#[test]
+fn a_packet_pushed_first_goes_before_the_rest_at_its_frame_and_never_to_an_earlier_one() {
+    let mut audio = audio();
+    fill(&mut audio, 32, |into| {
+        into.push(sent(2, 6, 64));
+        into.push(sent(1, 7, 100));
+        into.push_first(sent(2, 101, 0));
+        into.push_first(sent(2, 100, 0));
+    });
+    let events: Vec<_> = audio
+        .events
+        .as_slice()
+        .iter()
+        .map(|event| {
+            (
+                event.offset,
+                event.channel_voice().map(|voice| voice.message),
+            )
+        })
+        .collect();
+    let volume = ChannelMessage::ControlChange {
+        controller: 7,
+        value: hapto_ump::scale::up_7_to_32(100),
+    };
+    let range = ChannelMessage::RegisteredController {
+        bank: 0,
+        index: 0,
+        value: hapto_ump::scale::up_14_to_32(64 << 7),
+    };
+    // The address at frame 2 found by the entry before it, which with no
+    // low byte goes out at the block's last frame; the volume at frame 1
+    // still comes before both.
+    assert_eq!(events, [(1, Some(volume)), (31, Some(range))]);
+}
+
+#[test]
+fn packets_past_the_room_are_dropped_and_counted_before_they_are_put_in_order() {
+    // Room for six.
+    let mut audio = audio();
+    fill(&mut audio, 32, |into| {
+        for frame in (0..8).rev() {
+            into.push(Event::new(frame, [0x4090_3C00, 0xFFFF_0000, 0, 0]));
+        }
+    });
+    let frames: Vec<u32> = audio
+        .events
+        .as_slice()
+        .iter()
+        .map(|event| event.offset)
+        .collect();
+    assert_eq!(frames, [2, 3, 4, 5, 6, 7], "the first six handed over");
+    assert_eq!(audio.events.dropped(), 2);
 }

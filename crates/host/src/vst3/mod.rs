@@ -20,6 +20,11 @@
 //!   instance. A call [`Plugin`]'s threading rule refuses, a release on
 //!   another thread among them, counts as a fault
 //!   ([`boundary_faults`](crate::boundary_faults)), as a panic does.
+//! - A plugin that takes MIDI gets its host's notes, note expressions and
+//!   SysEx as MIDI 2.0, each note named by VST3's `noteId`, and its
+//!   controllers through hidden proxy parameters, one for each channel and
+//!   controller, which `IMidiMapping` names. What the plugin sends reaches
+//!   no host yet.
 //! - On Windows the module stays loaded until the process ends once an
 //!   instance has leaked, since its timer's window outlives it, and once an
 //!   editor has opened, since its toolkit may leave the host something that
@@ -54,8 +59,8 @@ pub(crate) use test_host::TestRunLoop;
 #[cfg(any(test, feature = "test-host"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "test-host")))]
 pub use test_host::{
-    AudioSide, ChildWindow, HiddenWindow, HostCall, Options, ParamInfo, RESTART_LATENCY,
-    RESTART_VALUES, Refused, TestHost, TestView,
+    AudioSide, BusEvent, HostCall, Options, ParamInfo, RESTART_LATENCY, RESTART_VALUES, Refused,
+    TestHost, TestView,
 };
 
 use crate::Plugin;

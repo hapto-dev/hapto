@@ -140,6 +140,24 @@ pub enum Origin {
     /// [`Midi1`](Self::Midi1), so a reader can tell a sent low byte of 0 from
     /// a missing one.
     Midi1HighByte,
+    /// Sent as a format's own note event, which named the note: VST3's
+    /// `noteId`. The packet is the note's message on its key, and `id` is
+    /// the host's name for the note, which the words have no room for.
+    ///
+    /// ```
+    /// use hapto_ump::{Event, Origin};
+    ///
+    /// // A note-on whose host named its note 7.
+    /// let event = Event {
+    ///     origin: Origin::Note { id: 7 },
+    ///     ..Event::new(0, [0x4090_3C00, 0xFFFF_0000, 0, 0])
+    /// };
+    /// assert_eq!(event.message_type(), 4);
+    /// ```
+    Note {
+        /// The host's id for the note, below `0x8000_0000`.
+        id: u32,
+    },
 }
 
 impl Event {

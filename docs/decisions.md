@@ -58,7 +58,7 @@ comments never cite an id: they state the reason in words, and
 | D19 | [Where do the restore counter and the applying-a-restore mark live? (U16, S6, S12)](#d19-the-restore-counter-and-the-applying-mark) | In a `RestoreClock` in `hapto-params`: a count of restores stored and a count completed. The applying mark is the applying thread's own, so only that thread's writes record nothing. | decided |
 | D20 | [What closes the window D13 opens between a restore's store and its apply? (U16, S5)](#d20-the-window-between-a-restores-store-and-its-apply) | Undo clears its history when either count has moved: at its first operation after a restore is stored, and again when that restore's apply completes. | decided |
 | D21 | [What does a learn binding record of where its MIDI came from? (L2, L9)](#d21-what-a-learn-binding-records-of-its-midi-source) | The UMP group and the channel, each with −1 meaning any, in the source and in every saved `midiLearn` entry from schema 1. | decided |
-| D22 | [How do controllers reach learn in VST3, which delivers them only as parameter changes? (L2, L3)](#d22-controllers-reaching-learn-in-vst3) | The VST3 exporter owns hidden proxy parameters in a reserved id range: a 16 × 130 grid listed through both `IMidiMapping` and `IMidiMapping2`, and a fixed pool for MIDI 2.0 assignable controllers. Checked in Cubase; still to build. | decided |
+| D22 | [How do controllers reach learn in VST3, which delivers them only as parameter changes? (L2, L3)](#d22-controllers-reaching-learn-in-vst3) | The VST3 exporter owns hidden proxy parameters in a reserved id range: a 16 × 130 grid listed through both `IMidiMapping` and `IMidiMapping2`, and a fixed pool for MIDI 2.0 assignable controllers. Checked in Cubase. The grid is built, through `IMidiMapping`; the second listing, `IMidiLearn2` and the pool wait on the bindings. | decided |
 | D23 | [How does the processor send MIDI?](#d23-how-the-processor-sends-midi) | `Processor::process` takes one `Block`: its audio in place, `midi`, the block's MIDI decoded once into messages with the packets they came in, and `midi_out`, which sends messages or packets into a list whose capacity `ProcessSetup::max_out_events` fixes at activation. | decided |
 | D24 | [Who answers MIDI-CI when a plugin must answer for itself?](#d24-answering-midi-ci) | A VST3 host speaks MIDI-CI for the plugin, so the VST3 exporter projects declarations onto VST3's interfaces. Everywhere else a core-tier crate, `hapto-ci`, answers, later. | decided |
 | D25 | [Who owns the SysEx manufacturer ID that a MIDI-CI identity needs? (D24)](#d25-the-sysex-manufacturer-id) | None: a business answer. The working group's helper uses `0x7D`, which is reserved for non-commercial use. | held |
@@ -95,7 +95,7 @@ comments never cite an id: they state the reason in words, and
 | D56 | [Which hash names a parameter to hosts, and which ids does D22 reserve? (D31, P10)](#d56-the-hash-that-names-a-parameter) | 32-bit FNV-1a over the key's UTF-8 bytes with the top bit cleared. The builder refuses a key whose id another key already has, or that falls in `0x7FFF_0000` to `0x7FFF_FFFF`, the ids D22's proxies take. | decided |
 | D57 | [From what does a stepped range lay out its lattice? (P2, P4)](#d57-the-lattice-of-a-stepped-range) | From the decimals the range was written with, in whole numbers of its finest place, so every point of a decimal range, 0 dB included, lands on the nearest `f32` to its decimal. | decided |
 | D58 | [What does the plugin trait tell every host, beyond its parameters and state? (H5)](#d58-what-the-plugin-trait-tells-every-host) | `PluginInfo` gains the vendor's addresses, a description, `Feature`s and the main bus widths (D112); `Plugin` gains `latency`, `tail` and `deactivate`; `Processor::process` returns a `Status`. Deferred: whether the host is rendering offline or in real time, which `ProcessSetup` has no field for. | decided |
-| D59 | [What shape does the VST3 exporter give a plugin? (D51, D53, P7, C2)](#d59-the-shape-of-the-vst3-exporter) | One object that is both the audio processor and its own edit controller, a thin shell over an exporter core it shares with the C interface. The plugin is built at `initialize`, on the thread that calls it. No MIDI events are delivered yet. | decided |
+| D59 | [What shape does the VST3 exporter give a plugin? (D51, D53, P7, C2)](#d59-the-shape-of-the-vst3-exporter) | One object that is both the audio processor and its own edit controller, a thin shell over an exporter core it shares with the C interface. The plugin is built at `initialize`, on the thread that calls it. The host's notes, note expressions and SysEx come in as MIDI 2.0, each note named by its `noteId`; MIDI out reaches no host yet. | decided |
 | D60 | [What happens when plugin code panics inside a host's call? (P9)](#d60-a-panic-inside-a-hosts-call) | It is caught at every entry point that can panic and never unwinds into the host. A panic in the processor silences the instance's output until the next activation. | decided |
 | D61 | [Who flushes denormals to zero? (the comparison's fairness row)](#d61-who-flushes-denormals) | Every exporter, around every `process` call: FTZ and DAZ on x86, FZ on AArch64, restoring the host's setting after, so no plugin has to. | decided |
 | D62 | [What shape is the C interface the JUCE adapter is driven by? (H5, D51, D60)](#d62-the-c-interface-for-the-juce-adapter) | One exported symbol, `hapto_plugin`, answering a table of function pointers, as CLAP's entry point does: the plugin's layouts and every call into an instance, each with the thread it may run on. A block's MIDI passes as UMP both ways: MIDI 1.0 or 2.0 in, and out downgraded for a caller that takes MIDI 1.0 alone. | decided |
@@ -152,7 +152,7 @@ comments never cite an id: they state the reason in words, and
 | D113 | [Where do the audio types live? (D112)](#d113-the-audio-types-crate) | In `hapto-audio`, a core crate of layer 1 beside `hapto-params` and `hapto-ump`, which `hapto-host` re-exports, so code that only writes audio, such as a voice, needs no host. | decided |
 | D114 | [Which MIDI does Hapto pass inside, and how does MIDI 1.0 reach it? (D10, D23, D70)](#d114-midi-20-inside) | MIDI 2.0: `ChannelVoice` reads and writes MIDI 2.0's channel voice messages alone. The engine upgrades MIDI 1.0 on the way in with `Upgrade`, for every exporter, and an exporter downgrades with `Downgrade` only for a destination that takes MIDI 1.0 alone, both by the specification's Default Translation. Each packet keeps its `Origin`, so learn reads a value upgraded from MIDI 1.0 at the width it was sent at. | decided |
 | D115 | [How does the standalone app reach the computer's MIDI devices? (D110, D114)](#d115-the-computers-midi-devices) | Through `hapto-midi-devices`, Hapto's own device layer, which only the app links: UMP alone, a device named by an id that survives the system's renumbering, the list's changes told at the tick, and each input read on the system's thread into a ring that never blocks, its packets placed at frames on the audio thread. Every input is merged on group 1, as a host hands a plugin its MIDI, each upgraded with a translation of its own, and a SysEx reaches a block whole. WinMM is its only backend so far. | decided |
-| D116 | [What does a plugin read of MIDI, and in what terms? (D10, D114)](#d116-midi-in-musicians-terms) | `hapto-midi`'s `Message`s, decoded from MIDI 2.0 in its meanings: values from 0 to 1 as `f32`, values with a centre as `Centred`, and keys, channels, groups and programs as types shown as musicians count them. Each note has a `NoteId` from its note-on to its note-off, a note's own message names its key and the newest note on it, and a SysEx comes whole. The `Decoder` keeps its tables fixed, so decoding allocates nothing; what overflows them is counted. | decided |
+| D116 | [What does a plugin read of MIDI, and in what terms? (D10, D114)](#d116-midi-in-musicians-terms) | `hapto-midi`'s `Message`s, decoded from MIDI 2.0 in its meanings: values from 0 to 1 as `f32`, values with a centre as `Centred`, and keys, channels, groups and programs as types shown as musicians count them. Each note has a `NoteId` from its note-on to its note-off, the host's where it names one, a note's own message names its key and the note its host named or else the newest on it, and a SysEx comes whole. The `Decoder` keeps its tables fixed, so decoding allocates nothing; what overflows them is counted. | decided |
 
 **Open.** D25 is held until `hapto-ci` needs it. It keeps its recommendation
 until decided, and no rule depends on it.
@@ -485,8 +485,22 @@ thread, from that proxy's next change.
 The exporter turns each proxy change into a UMP at its offset, so learn has one
 input path, and a proxy is never a target, so a learned write never reaches the
 host as an edit. A product's own controller block (a fixed NRPN range, say) is
-pre-mapped by that plugin, not built into Hapto. Still to build: it comes with
-the VST3 exporter's MIDI input.
+pre-mapped by that plugin, not built into Hapto.
+
+The grid is built. For a plugin that takes MIDI, the exporter lists its 2080
+proxies hidden and not automatable, after the plugin's own parameters, and
+names them through `IMidiMapping`. A proxy's value is its MIDI 1.0
+controller's, which the host divided by 127, or by 16383 for the bend, so the
+exporter rounds it back to those bits and the engine upgrades it as it does any
+MIDI 1.0 (D114): learn then narrows it exactly. The proxies and the host's notes
+come in lists of their own, so the engine puts a block's MIDI in time order,
+those at one frame in the order the exporter handed them over: the controllers
+first, as JUCE's wrapper hands them. Each controller comes in a queue of its
+own, so at one frame a parameter's address, controllers 98 to 101, goes before
+the rest, and its data entry finds it whatever order the host lists the queues
+in; other controllers at one frame come in the queues' order. Open:
+`IMidiMapping2`'s lists, `IMidiLearn2` and the pool, which wait on the `vst3`
+crate's bindings for MIDI 2.0 (D59).
 
 A probe plugin checked the route in Cubase 16 on 2026-11-06. Cubase read both
 of `IMidiMapping2`'s lists at load and again inside every
@@ -527,8 +541,8 @@ keeps the block's `midi_out`. A sidechain or transport joins `Block` later
 without changing the trait. `PluginInfo::midi_output` declares the output to
 the host. Parameter changes still reach the host through the exporter, never
 this list. The C interface carries the list to its host and MIDI in from it,
-and the standalone app brings MIDI in from the computer's inputs; VST3 carries
-none yet (D59, D62, D115).
+the VST3 exporter brings MIDI in from its host and sends none yet, and the
+standalone app brings MIDI in from the computer's inputs (D59, D62, D115).
 
 ### D24. Answering MIDI-CI
 
@@ -1219,6 +1233,20 @@ deactivation, the write is ignored, since the host sends the same value through
 the transport plays, so a host that reads the value straight back sees the new
 one there and the old one here until its next block. A block longer than the
 setup promised plays in pieces.
+
+**MIDI.** For a plugin that takes MIDI, the host's events become MIDI 2.0
+packets (C5): a note-on, its tuning as its pitch attribute, a note-off, a
+note's pressure, and a whole SysEx as 7-bit SysEx packets. Each note carries
+VST3's `noteId` in its packet's `Origin::Note`, so a plugin knows it by the
+host's id (D116). The component lists the six note expressions VST3 defines
+through `INoteExpressionController`, and each becomes a registered per-note
+controller: the tuning as the note's absolute pitch, from its key and its
+note-on's tuning; the volume, pan, expression and brightness as the
+controllers of those numbers; and the vibrato as controller 77, vibrato depth.
+A note expression names its note alone, so the component keeps the channel and
+key of each note its host named, from block to block, and forgets them at an
+activation; one for a note it never saw is dropped. Controllers come through
+hidden proxies (D22). Open: what the plugin sends reaches no VST3 host yet.
 
 Edits reach the host right after each tick (C2), and so does a latency that
 moved, an activation's included, as `kLatencyChanged`. D53's timer is a
@@ -3717,16 +3745,19 @@ numbers them. `controller` names MIDI's controllers. Every message's `Display`
 is one line in those numbers.
 
 A note is a `NoteId` from its note-on to its note-off: the host's own where its
-format names notes, otherwise one the decoder makes up, with the top bit set so
-it never meets a host's. A note-off ends every note on its key, one message for
-each. A note-off for a key with no note the decoder knows of still comes, under
-an id no note has, so a plugin that ends notes by key hears it. A note's own
-message names its `NoteKey`: its key, and the newest note sounding on it, since
-MIDI 2.0 lets a note's controllers come before its note does and gives a key's
-older note no more of them. Per-note management's detach leaves the key's
-notes without them until its next note-on. Registered parameter 0 is
-`BendRange`, in semitones, and a note's pitch comes with its note-on, as MIDI
-2.0's pitch attribute, or on its own, as registered per-note controller 3.
+format names notes, which its exporter puts in the packet's `Origin::Note`,
+otherwise one the decoder makes up, with the top bit set so it never meets a
+host's. A note-off ends every note on its key, one message for each, or the note
+its host named alone, if that one sounds there. A note-off for a key with no
+note the decoder knows of still comes, under the host's id or one no note has,
+so a plugin that ends notes by key hears it. A note's own message names its
+`NoteKey`: its key, and the note its host named, if that one sounds there, or
+else the newest note sounding on it, since MIDI 2.0 lets a note's controllers
+come before its note does and gives a key's older note no more of them.
+Per-note management's detach leaves the key's notes without them until its next
+note-on. Registered parameter 0 is `BendRange`, in semitones, and a note's pitch
+comes with its note-on, as MIDI 2.0's pitch attribute, or on its own, as
+registered per-note controller 3.
 
 A SysEx comes whole once its last packet does, from a buffer the decoder made.
 The decoder's tables are made with it, so decoding allocates nothing and never

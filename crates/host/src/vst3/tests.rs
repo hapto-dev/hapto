@@ -40,7 +40,7 @@ use crate::{
     Tail,
 };
 
-mod run_loop;
+mod midi;
 mod told;
 
 const PARAMS: &[ParamDecl] = &[

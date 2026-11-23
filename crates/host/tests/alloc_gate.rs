@@ -1,9 +1,10 @@
 //! What hapto-host runs over and over does not allocate: the per-block event
 //! list a format exporter fills and a processor reads, a block's spans with
 //! their messages, a block through an
-//! exporter with learn's audio side in it, the standalone exporter's audio
-//! side around the engine, and a plugin's idle tick when nothing changed,
-//! which every instance runs about 60 times a second.
+//! exporter with learn's audio side in it, a block of the host's MIDI
+//! through the VST3 exporter, the standalone exporter's audio side around
+//! the engine, and a plugin's idle tick when nothing changed, which every
+//! instance runs about 60 times a second.
 
 hapto_testkit::install_alloc_gate!();
 
@@ -215,6 +216,72 @@ fn a_block_through_the_engine_with_learn_on_does_not_allocate() {
         || {
             for frames in [256, 600, 1, 255] {
                 host.process_in_place(&mut [&mut left, &mut right], frames);
+            }
+        },
+    );
+    assert_eq!(host.faults(), 0);
+}
+
+#[cfg(all(feature = "vst3", feature = "test-host"))]
+#[test]
+fn a_block_of_notes_controllers_and_sysex_through_the_vst3_exporter_does_not_allocate() {
+    use hapto_host::vst3::{BusEvent, TestHost};
+
+    let mut host = TestHost::<Listening>::new();
+    host.setup(48_000.0, 256).expect("set up");
+    host.activate().expect("active");
+    host.start().expect("started");
+    let volume = host.midi_mapping(0, 7).expect("mapped");
+    let bend = host.midi_mapping(0, 129).expect("mapped");
+    let sysex = [0xF0, 0x7E, 0x7F, 0x06, 0x01, 0xF7];
+    let events = [
+        BusEvent::NoteOn {
+            offset: 0,
+            channel: 0,
+            pitch: 60,
+            velocity: 1.0,
+            tuning: 25.0,
+            id: 1,
+        },
+        BusEvent::Expression {
+            offset: 2,
+            id: 1,
+            kind: 2,
+            value: 0.6,
+        },
+        BusEvent::Pressure {
+            offset: 3,
+            channel: 0,
+            pitch: 60,
+            pressure: 0.5,
+            id: 1,
+        },
+        BusEvent::SysEx {
+            offset: 4,
+            bytes: &sysex,
+        },
+        BusEvent::NoteOff {
+            offset: 5,
+            channel: 0,
+            pitch: 60,
+            velocity: 0.5,
+            id: 1,
+        },
+    ];
+    let volume_points: &[(i32, f64)] = &[(1, 0.5), (6, 1.0)];
+    let bend_points: &[(i32, f64)] = &[(0, 0.5)];
+    let queues = [(volume, volume_points), (bend, bend_points)];
+    let (mut left, mut right) = (vec![0.25f32; 600], vec![-0.25f32; 600]);
+    let first = &mut [&mut left[..256], &mut right[..256]];
+    host.process_events(first, 256, &events, &queues)
+        .expect("played");
+    assert_no_allocations(
+        "blocks with a note, its expression and pressure, a SysEx and controllers through the VST3 exporter",
+        || {
+            for frames in [256, 600, 1, 255] {
+                let block = &mut [&mut left[..frames], &mut right[..frames]];
+                host.process_events(block, frames, &events, &queues)
+                    .expect("played");
             }
         },
     );

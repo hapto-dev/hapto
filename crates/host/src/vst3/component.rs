@@ -18,10 +18,10 @@ use ::vst3::Steinberg::Vst::{
     BusDirection, BusDirections_, BusInfo, BusInfo_::BusFlags_, BusType, BusTypes_,
     IAudioProcessor, IAudioProcessorTrait, IComponent, IComponentHandler, IComponentHandler2,
     IComponentHandler2Trait, IComponentHandlerTrait, IComponentTrait, IEditController,
-    IParamValueQueueTrait, IParameterChanges, IParameterChangesTrait, IProcessContextRequirements,
-    IProcessContextRequirementsTrait, IoMode, MediaType, MediaTypes_, ParamID, ProcessData,
-    ProcessSetup as VstSetup, RestartFlags_, RoutingInfo, SpeakerArrangement, SymbolicSampleSizes_,
-    kInfiniteTail, kNoTail,
+    IMidiMapping, INoteExpressionController, IParamValueQueueTrait, IParameterChanges,
+    IParameterChangesTrait, IProcessContextRequirements, IProcessContextRequirementsTrait, IoMode,
+    MediaType, MediaTypes_, ParamID, ProcessData, ProcessSetup as VstSetup, RestartFlags_,
+    RoutingInfo, SpeakerArrangement, SymbolicSampleSizes_, kInfiniteTail, kNoTail,
 };
 use ::vst3::Steinberg::{
     FIDString, FUnknown, IBStream, IPluginBaseTrait, TBool, TUID, int32, kInternalError,
@@ -33,15 +33,16 @@ use hapto_params::{HostEvent, ParamDecl, ParamId, ParamSet, audio_thread};
 
 mod buses;
 mod controller;
+mod midi;
 
 use super::view;
 
 use super::stream::{read_all, write_all};
 use super::text::copy_utf16;
-use crate::boundary::guard;
-use crate::engine::timer::Source;
+use crate::boundary::{AudioSlot, guard};
 use crate::engine::{
-    Engine, HostLink, Outcome, Points, Release, Restart, Setup, TAIL_INFINITE, TAIL_NONE,
+    Engine, HostLink, MAX_SKIPPED_QUEUES, MidiIn, Outcome, Points, Release, Restart, Setup,
+    TAIL_INFINITE, TAIL_NONE,
 };
 use crate::layout::Width;
 use crate::{MAX_STATE_BYTES, Plugin, first_width, widths};
@@ -111,6 +112,10 @@ pub(crate) struct Component<P: Plugin> {
     /// made ([`wrap`](Self::wrap)), with no reference of its own: what a
     /// view takes a reference to the component through.
     this: OnceLock<usize>,
+    /// The notes the host named, for the note expressions that name them,
+    /// from block to block. The audio thread holds them in a block, and an
+    /// activation clears them.
+    notes: AudioSlot<midi::Notes>,
 }
 
 /// The engine's box, freed in the component's `Drop` when the engine says
@@ -128,6 +133,8 @@ impl<P: Plugin> Class for Component<P> {
         IComponent,
         IAudioProcessor,
         IEditController,
+        IMidiMapping,
+        INoteExpressionController,
         IProcessContextRequirements,
     );
 }
@@ -144,6 +151,7 @@ impl<P: Plugin> Component<P> {
             engine: OnceLock::new(),
             timer,
             this: OnceLock::new(),
+            notes: AudioSlot::new(midi::Notes::new()),
         });
         if let Some(this) = component.as_com_ref::<IEditController>() {
             let _ = component.this.set(this.as_ptr() as usize);
@@ -219,7 +227,14 @@ impl<P: Plugin> Component<P> {
         self.engine().expect("initialized").carried()
     }
 
-    /// Runs one main-thread tick, as `Engine::idle` does. For the test host.
+    /// What `read` makes of the last block's MIDI, decoded as its processor
+    /// read it; `None` before `initialize` or while inactive.
+    #[cfg(test)]
+    pub(crate) fn heard<T>(&self, read: impl FnOnce(hapto_midi::Midi<'_>) -> T) -> Option<T> {
+        self.engine()?.heard(read)
+    }
+
+    /// One main-thread tick, as the timer runs it; for the test host.
     #[cfg(any(test, feature = "test-host"))]
     pub(crate) fn tick(&self) {
         if let Some(engine) = self.engine() {
@@ -234,14 +249,16 @@ impl<P: Plugin> Component<P> {
         self.engine().expect("initialized").ticker()
     }
 
-    /// One block: the host's parameter changes, then the audio.
+    /// One block: the host's parameter changes, then its MIDI, then the
+    /// audio.
     ///
     /// # Safety
     ///
     /// `data` is null, or the host's `ProcessData` for this `process` call,
     /// valid for reads and writes until it returns. Its buses, channel
     /// buffers and parameter changes are valid as the VST3 SDK promises for
-    /// that call. The host touches none of them meanwhile.
+    /// that call, and so are its events. The host touches none of them
+    /// meanwhile.
     unsafe fn process_block(&self, data: *mut ProcessData) -> tresult {
         // SAFETY: the caller's contract, and `data` is used only inside this
         // call.
@@ -268,6 +285,33 @@ impl<P: Plugin> Component<P> {
             unsafe { engine.process(0, &[], &[], writes, |_| {}, |_| {}) };
             return kResultFalse;
         }
+        let events = data.inputEvents;
+        // As many queues as the automation's walk looks at, and the grid.
+        let most = engine
+            .set()
+            .len()
+            .saturating_add(midi::GRID as usize)
+            .saturating_add(MAX_SKIPPED_QUEUES);
+        let mut notes = self.notes.try_hold();
+        let midi = |into: &mut MidiIn<'_>| {
+            if !P::INFO.midi_input {
+                return;
+            }
+            // The controllers first, so at one frame they come before the
+            // notes, as JUCE's wrapper hands them over.
+            // SAFETY: as for the automation above.
+            if let Some(changes) = unsafe { ComRef::from_raw(changes) } {
+                // SAFETY: as above.
+                unsafe { midi::read_controllers(changes, most, into) };
+            }
+            // SAFETY: the SDK makes `inputEvents` null or the host's
+            // `IEventList`, alive with each SysEx's bytes until `process`
+            // returns. `ComRef` borrows it for no longer than that.
+            if let Some(events) = unsafe { ComRef::from_raw(events) } {
+                // SAFETY: as above.
+                unsafe { midi::read_events(events, notes.as_deref_mut(), into) };
+            }
+        };
         let frames = usize::try_from(data.numSamples).unwrap_or(0);
         // SAFETY: the caller's contract: `inputs` and `outputs` are null or
         // hold `numInputs` and `numOutputs` buses for this call, each
@@ -286,7 +330,7 @@ impl<P: Plugin> Component<P> {
         // or an input handed again as its output in place. A host that broke
         // it would get wrong audio, not an unsound access: `Channels` gives
         // no two channels a float in common.
-        match unsafe { engine.process(frames, inputs, outputs, writes, |_| {}, |_| {}) } {
+        match unsafe { engine.process(frames, inputs, outputs, writes, midi, |_| {}) } {
             Outcome::Empty => {}
             // SAFETY: as above, as `silence` requires.
             Outcome::Silent => unsafe { silence(data) },
@@ -506,6 +550,8 @@ impl<P: Plugin> IComponentTrait for Component<P> {
                 return kResultFalse;
             };
             let done = if state != 0 {
+                // Notes named before were for another activation.
+                self.notes.hold().clear();
                 let setup = main.setup().unwrap_or(Setup::FALLBACK);
                 engine.activate(&main, setup, engine.layout())
             } else {

@@ -38,6 +38,9 @@ use crate::{Audio, Block, Event, EventList, Plugin, ProcessSetup, Processor, Sta
 pub(super) struct Active<R> {
     pub(super) processor: R,
     channels: Channels,
+    /// The block's MIDI in as the exporter hands it over, before it is put
+    /// in time order.
+    arrivals: Arrivals,
     /// The block's MIDI in, at frames from the block's start.
     events: EventList,
     /// MIDI 1.0 the host sends, upgraded as it arrives. It holds an NRPN's
@@ -88,6 +91,12 @@ impl<R> Active<R> {
         )
     }
 
+    /// The last block's MIDI, decoded.
+    #[cfg(all(test, feature = "vst3"))]
+    pub(super) fn midi(&self) -> hapto_midi::Midi<'_> {
+        self.midi.midi()
+    }
+
     fn around(
         processor: R,
         layout: Width,
@@ -98,6 +107,7 @@ impl<R> Active<R> {
         Active {
             processor,
             channels: Channels::new(layout.inputs, layout.outputs, max_frames),
+            arrivals: Arrivals::with_room(max_events),
             events: EventList::with_capacity(max_events),
             upgrade: Upgrade::new(),
             // A note-off may end several notes, so room for twice the
@@ -115,40 +125,131 @@ impl<R> Active<R> {
 }
 
 /// The block's MIDI in, as an exporter fills it: each packet its host
-/// sent, at a frame of the block and in time order. A packet of MIDI 1.0 is
-/// upgraded to MIDI 2.0 as it arrives, so nothing above reads MIDI 1.0.
+/// sent, at a frame of the block, in any order. The block takes them in
+/// time order, those at one frame in the order they came, as VST3 needs:
+/// it hands each controller over in a queue of its own, and its notes in a
+/// list beside them. A packet of MIDI 1.0 is upgraded to MIDI 2.0 once in
+/// order, so nothing above reads MIDI 1.0.
 #[cfg_attr(
-    not(any(feature = "standalone", feature = "cabi", test)),
-    expect(dead_code, reason = "VST3 hands over no MIDI yet")
+    not(any(feature = "standalone", feature = "cabi", feature = "vst3", test)),
+    expect(dead_code, reason = "no exporter is built")
 )]
 pub(crate) struct MidiIn<'a> {
-    events: &'a mut EventList,
-    upgrade: &'a mut Upgrade,
+    arrivals: &'a mut Arrivals,
 }
 
 impl MidiIn<'_> {
-    /// Adds the host's next packet. Past the list's room it is dropped and
+    /// Adds the host's next packet. Past the block's room it is dropped and
     /// counted.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     #[cfg_attr(
-        not(any(feature = "standalone", feature = "cabi", test)),
-        expect(dead_code, reason = "VST3 hands over no MIDI yet")
+        not(any(feature = "standalone", feature = "cabi", feature = "vst3", test)),
+        expect(dead_code, reason = "no exporter is built")
     )]
     pub(crate) fn push(&mut self, event: Event) {
-        self.upgrade.event(&event, self.events);
+        self.arrivals.push(event, false);
+    }
+
+    /// Adds a packet that goes before every packet [`push`](Self::push)
+    /// adds at its frame, then in the order it came: a registered or
+    /// assignable parameter's address, which VST3 hands over in a queue of
+    /// its own, so its data entry finds it whatever order the queues come
+    /// in. Past the block's room it is dropped and counted.
+    #[cfg_attr(
+        not(feature = "vst3"),
+        expect(dead_code, reason = "VST3 alone hands controllers over apart")
+    )]
+    pub(crate) fn push_first(&mut self, event: Event) {
+        self.arrivals.push(event, true);
+    }
+
+    /// Whether the block has room for another packet: an exporter whose
+    /// host claims more than it can give stops reading there.
+    #[cfg_attr(
+        not(feature = "vst3"),
+        expect(dead_code, reason = "VST3 alone reads a host's claims")
+    )]
+    pub(crate) fn has_room(&self) -> bool {
+        self.arrivals.packets.len() < self.arrivals.packets.capacity()
+    }
+
+    /// Counts `count` packets the host sent that the exporter did not read,
+    /// for want of room.
+    #[cfg_attr(
+        not(feature = "vst3"),
+        expect(dead_code, reason = "VST3 alone reads a host's claims")
+    )]
+    pub(crate) fn add_dropped(&mut self, count: u32) {
+        self.arrivals.dropped = self.arrivals.dropped.saturating_add(count);
+    }
+}
+
+/// The block's MIDI in as the exporter hands it over: each packet keyed by
+/// its frame, then whether it goes first there, then the order it came in,
+/// so no two keys are equal.
+#[derive(Debug)]
+struct Arrivals {
+    packets: Vec<(u64, Event)>,
+    /// The packets past the room.
+    dropped: u32,
+}
+
+impl Arrivals {
+    fn with_room(room: usize) -> Self {
+        Arrivals {
+            packets: Vec::with_capacity(room),
+            dropped: 0,
+        }
+    }
+
+    /// The key's bit for a packet that does not go first at its frame.
+    const LATER: u64 = 1 << 31;
+
+    /// Adds `event`, `first` at its frame or not, while there is room,
+    /// which never allocates.
+    fn push(&mut self, event: Event, first: bool) {
+        if self.packets.len() < self.packets.capacity() {
+            // Below the bit, since a block's room is far smaller.
+            let order = u64::try_from(self.packets.len()).unwrap_or(0) & (Self::LATER - 1);
+            let later = if first { 0 } else { Self::LATER };
+            let key = u64::from(event.offset).wrapping_shl(32) | later | order;
+            self.packets.push((key, event));
+        } else {
+            self.dropped = self.dropped.saturating_add(1);
+        }
+    }
+
+    fn clear(&mut self) {
+        self.packets.clear();
+        self.dropped = 0;
     }
 }
 
 /// Fills `audio`'s MIDI in for a block of `frames` frames, at least one:
-/// what `midi` pushes, then what the upgrade held to the block's end.
+/// what `midi` pushes, in time order, then what the upgrade held to the
+/// block's end.
 fn fill<R>(audio: &mut Active<R>, frames: usize, midi: impl FnOnce(&mut MidiIn<'_>)) {
-    audio.events.clear();
+    let Active {
+        arrivals,
+        events,
+        upgrade,
+        ..
+    } = audio;
+    arrivals.clear();
     midi(&mut MidiIn {
-        events: &mut audio.events,
-        upgrade: &mut audio.upgrade,
+        arrivals: &mut *arrivals,
     });
+    // No two keys are equal, so a sort that need not keep equal ones in
+    // order, which sorts in place and allocates nothing, keeps them as
+    // they came.
+    arrivals.packets.sort_unstable_by_key(|&(key, _)| key);
+    events.clear();
+    events.add_dropped(arrivals.dropped);
+    for (_, event) in &arrivals.packets {
+        upgrade.event(event, events);
+    }
     let last = u32::try_from(frames.saturating_sub(1)).unwrap_or(u32::MAX);
-    audio.upgrade.end_block(last, &mut audio.events);
+    upgrade.end_block(last, events);
 }
 
 /// What a block found in the audio slot.

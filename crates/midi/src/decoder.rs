@@ -18,7 +18,7 @@
 use std::fmt;
 
 use hapto_ump::scale::down_32_to_14;
-use hapto_ump::{Attribute, ChannelMessage, ChannelVoice, Event};
+use hapto_ump::{Attribute, ChannelMessage, ChannelVoice, Event, Origin};
 
 use crate::message::{Message, NoteKey, NoteOff, NoteOn};
 use crate::values::{Centred, Channel, Group, Key, NoteId, Pitch, Program};
@@ -28,6 +28,15 @@ use crate::values::{Centred, Channel, Group, Key, NoteId, Pitch, Program};
 pub const NOTES: usize = 256;
 /// The longest SysEx message a decoder made with [`Decoder::new`] joins.
 pub const SYSEX_BYTES: usize = 4096;
+
+/// Where a channel voice message came: its group and channel, and its
+/// host's name for the note, if it gave one.
+#[derive(Debug, Clone, Copy)]
+struct Place {
+    group: Group,
+    channel: Channel,
+    named: Option<NoteId>,
+}
 
 /// A note sounding, as the decoder keeps it.
 #[derive(Debug, Clone, Copy)]
@@ -48,10 +57,13 @@ struct Sounding {
 /// so decoding allocates nothing:
 ///
 /// - The notes sounding, so each note-on gets an id, unless its host gave
-///   one, and a note-off ends every note on its key. A note-off for a key
-///   with no note it knows of still comes, under an id no note has, so a
-///   plugin that ends notes by key hears it. A note past the table sounds,
-///   and is counted in [`dropped`](Self::dropped).
+///   one, and a note-off ends every note on its key. A host gives one in
+///   the packet's [`Origin::Note`], as VST3 names its notes: its note-off
+///   ends that note alone, and a note's own message names that note, even
+///   when a newer one sounds on its key. A note-off for a key with no note
+///   it knows of still comes, under an id no note has, so a plugin that ends
+///   notes by key hears it. A note past the table sounds, and is counted in
+///   [`dropped`](Self::dropped).
 /// - A SysEx message as its packets arrive, which comes whole once its last
 ///   does. One past the buffer, one cut short, or one begun on another group
 ///   while one is under way is dropped and counted.
@@ -264,18 +276,28 @@ impl Decoder {
                 if self.sysex_group == Some(Group::field(event.group())) {
                     self.drop_sysex();
                 }
+                let named = match event.origin {
+                    Origin::Note { id } => Some(NoteId::hosts(id)),
+                    _ => None,
+                };
                 match ChannelVoice::decode(event.words) {
-                    Some(voice) => self.voice(voice),
+                    Some(voice) => self.voice(voice, named),
                     None => Decoded::Nothing,
                 }
             }
         }
     }
 
-    fn voice(&mut self, voice: ChannelVoice) -> Decoded {
+    /// One channel voice message; `named` is its host's name for the note.
+    fn voice(&mut self, voice: ChannelVoice, named: Option<NoteId>) -> Decoded {
         let group = Group::field(voice.group);
         let channel = Channel::field(voice.channel);
-        if let Some(message) = self.per_note(group, channel, voice.message) {
+        let at = Place {
+            group,
+            channel,
+            named,
+        };
+        if let Some(message) = self.per_note(at, voice.message) {
             return Decoded::One(message);
         }
         let message = match voice.message {
@@ -283,9 +305,9 @@ impl Decoder {
                 note,
                 velocity,
                 attribute,
-            } => Message::NoteOn(self.note_on(group, channel, Key::new(note), velocity, attribute)),
+            } => Message::NoteOn(self.note_on(at, Key::new(note), velocity, attribute)),
             ChannelMessage::NoteOff { note, velocity, .. } => {
-                return self.note_off(group, channel, Key::new(note), velocity);
+                return self.note_off(at, Key::new(note), velocity);
             }
             ChannelMessage::ControlChange { controller, value } => Message::Control {
                 group,
@@ -338,19 +360,15 @@ impl Decoder {
     }
 
     /// A note's own message, named by its key; `None` for any other.
-    fn per_note(
-        &mut self,
-        group: Group,
-        channel: Channel,
-        message: ChannelMessage,
-    ) -> Option<Message<'static>> {
+    fn per_note(&mut self, at: Place, message: ChannelMessage) -> Option<Message<'static>> {
+        let Place { group, channel, .. } = at;
         Some(match message {
             ChannelMessage::PolyPressure { note, value } => Message::NotePressure {
-                note: self.key(group, channel, note),
+                note: self.key(at, note),
                 value: unit(value),
             },
             ChannelMessage::RegisteredPerNoteController { note, index, value } => {
-                let note = self.key(group, channel, note);
+                let note = self.key(at, note);
                 if index == PER_NOTE_PITCH {
                     Message::NotePitch {
                         note,
@@ -366,13 +384,13 @@ impl Decoder {
             }
             ChannelMessage::AssignablePerNoteController { note, index, value } => {
                 Message::NoteAssignable {
-                    note: self.key(group, channel, note),
+                    note: self.key(at, note),
                     index,
                     value: unit(value),
                 }
             }
             ChannelMessage::PerNotePitchBend { note, value } => Message::NoteBend {
-                note: self.key(group, channel, note),
+                note: self.key(at, note),
                 value: Centred::from_bits(value),
             },
             ChannelMessage::PerNoteManagement {
@@ -380,12 +398,12 @@ impl Decoder {
                 detach,
                 reset,
             } => {
-                let named = self.key(group, channel, note);
+                let key = self.key(at, note);
                 if detach {
                     self.detach(group, channel, Key::new(note));
                 }
                 Message::NoteManagement {
-                    note: named,
+                    note: key,
                     detach,
                     reset,
                 }
@@ -394,15 +412,13 @@ impl Decoder {
         })
     }
 
-    fn note_on(
-        &mut self,
-        group: Group,
-        channel: Channel,
-        key: Key,
-        velocity: u16,
-        attribute: Attribute,
-    ) -> NoteOn {
-        let id = self.make_id();
+    fn note_on(&mut self, at: Place, key: Key, velocity: u16, attribute: Attribute) -> NoteOn {
+        let Place {
+            group,
+            channel,
+            named,
+        } = at;
+        let id = named.unwrap_or_else(|| self.make_id());
         match self.notes.get_mut(self.sounding) {
             Some(slot) => {
                 *slot = Sounding {
@@ -426,15 +442,25 @@ impl Decoder {
         }
     }
 
-    /// Ends every note on the key, moving their ids to `ends`.
-    fn note_off(&mut self, group: Group, channel: Channel, key: Key, velocity: u16) -> Decoded {
+    /// Ends every note on the key, or the note its host named alone when
+    /// that one sounds there, moving their ids to `ends`.
+    fn note_off(&mut self, at: Place, key: Key, velocity: u16) -> Decoded {
+        let Place {
+            group,
+            channel,
+            named,
+        } = at;
+        let on_key =
+            |note: &Sounding| (note.group, note.channel, note.key) == (group, channel, key);
+        let sounding = self.notes.get(..self.sounding).unwrap_or(&[]);
+        let only = named.filter(|id| sounding.iter().any(|note| on_key(note) && note.id == *id));
         self.ended = 0;
         let mut kept = 0;
         for index in 0..self.sounding {
             let Some(&note) = self.notes.get(index) else {
                 break;
             };
-            if (note.group, note.channel, note.key) == (group, channel, key) {
+            if on_key(&note) && only.is_none_or(|id| note.id == id) {
                 if let Some(end) = self.ends.get_mut(self.ended) {
                     *end = note.id;
                     self.ended = self.ended.saturating_add(1);
@@ -448,8 +474,9 @@ impl Decoder {
         }
         self.sounding = kept;
         if self.ended == 0 {
-            // No note it knows of: an id no note has.
-            let id = self.make_id();
+            // No note it knows of: the host's name for it, or an id no note
+            // has.
+            let id = named.unwrap_or_else(|| self.make_id());
             if let Some(end) = self.ends.get_mut(0) {
                 *end = id;
                 self.ended = 1;
@@ -464,19 +491,28 @@ impl Decoder {
         })
     }
 
-    /// The key a per-note message names, with the newest note on it that
-    /// takes per-note messages.
-    fn key(&self, group: Group, channel: Channel, key: u8) -> NoteKey {
+    /// The key a per-note message names, with its note: the one its host
+    /// named, if that one sounds there, and otherwise the newest on the key.
+    /// A detached note takes no per-note messages, so it is never named.
+    fn key(&self, at: Place, key: u8) -> NoteKey {
+        let Place {
+            group,
+            channel,
+            named,
+        } = at;
         let key = Key::new(key);
-        let id = self
+        let mut on_key = self
             .notes
             .get(..self.sounding)
             .unwrap_or(&[])
             .iter()
             .rev()
-            .find(|note| (note.group, note.channel, note.key) == (group, channel, key))
-            .filter(|note| !note.detached)
-            .map(|note| note.id);
+            .filter(|note| (note.group, note.channel, note.key) == (group, channel, key));
+        let note = match named {
+            Some(id) => on_key.find(|note| note.id == id),
+            None => on_key.next(),
+        };
+        let id = note.filter(|note| !note.detached).map(|note| note.id);
         NoteKey {
             group,
             channel,

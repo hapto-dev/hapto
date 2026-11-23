@@ -8,18 +8,21 @@ use std::marker::PhantomData;
 use std::time::{Duration, Instant};
 
 use ::vst3::Steinberg::Vst::{
-    AudioBusBuffers, AudioBusBuffers__type0, BusDirection, BusDirections_, IAudioProcessor,
-    IAudioProcessorTrait, IComponent, IComponentHandler, IComponentHandler2,
-    IComponentHandler2Trait, IComponentHandlerTrait, IComponentTrait, IEditController,
-    IEditControllerTrait, IParamValueQueue, IParamValueQueueTrait, IParameterChanges,
-    IParameterChangesTrait, MediaTypes_, ParamID, ParamValue, ParameterInfo,
-    ParameterInfo_::ParameterFlags_, ProcessData, ProcessModes_, ProcessSetup as VstSetup,
-    SpeakerArr, SpeakerArrangement, String128, SymbolicSampleSizes_,
+    AudioBusBuffers, AudioBusBuffers__type0, BusDirection, BusDirections_, DataEvent,
+    DataEvent_::DataTypes_, Event, Event_::EventTypes_, IAudioProcessor, IAudioProcessorTrait,
+    IComponent, IComponentHandler, IComponentHandler2, IComponentHandler2Trait,
+    IComponentHandlerTrait, IComponentTrait, IEditController, IEditControllerTrait, IEventList,
+    IEventListTrait, IMidiMapping, IMidiMappingTrait, INoteExpressionController,
+    INoteExpressionControllerTrait, IParamValueQueue, IParamValueQueueTrait, IParameterChanges,
+    IParameterChangesTrait, MediaTypes_, NoteExpressionTypeInfo, NoteExpressionValueEvent,
+    NoteOffEvent, NoteOnEvent, ParamID, ParamValue, ParameterInfo, ParameterInfo_::ParameterFlags_,
+    PolyPressureEvent, ProcessData, ProcessModes_, ProcessSetup as VstSetup, SpeakerArr,
+    SpeakerArrangement, String128, SymbolicSampleSizes_,
 };
 use ::vst3::Steinberg::{
     FIDString, IBStream, IBStreamTrait, IPluginBaseTrait, TBool, int32, int64, kInternalError,
     kInvalidArgument, kNoInterface, kNotImplemented, kNotInitialized, kOutOfMemory, kResultFalse,
-    kResultOk, tresult,
+    kResultOk, kResultTrue, tresult, uint32,
 };
 use ::vst3::{Class, ComPtr, ComWrapper};
 
@@ -163,6 +166,9 @@ pub struct ParamInfo {
     pub is_list: bool,
     /// Whether it is the bypass.
     pub is_bypass: bool,
+    /// Whether the host shows it nowhere, as the proxies a plugin's MIDI
+    /// controllers reach it through.
+    pub is_hidden: bool,
 }
 
 /// How a [`TestHost`] makes its instance.
@@ -412,6 +418,7 @@ impl<P: Plugin> TestHost<P> {
             can_automate: info.flags & ParameterFlags_::kCanAutomate != 0,
             is_list: info.flags & ParameterFlags_::kIsList != 0,
             is_bypass: info.flags & ParameterFlags_::kIsBypass != 0,
+            is_hidden: info.flags & ParameterFlags_::kIsHidden != 0,
         })
     }
 
@@ -662,6 +669,65 @@ impl<P: Plugin> TestHost<P> {
         self.blocks.process_queues(channels, frames, queues)
     }
 
+    /// Processes `frames` frames in place with `events` on the event bus,
+    /// after `queues`, as [`process_queues`](Self::process_queues) sends
+    /// them: a host sends a MIDI controller through the proxy that
+    /// [`midi_mapping`](Self::midi_mapping) names.
+    ///
+    /// # Errors
+    ///
+    /// The [`Refused`] answer to `process`.
+    ///
+    /// # Panics
+    ///
+    /// If a buffer is shorter than `frames`.
+    pub fn process_events(
+        &mut self,
+        channels: &mut [&mut [f32]],
+        frames: usize,
+        events: &[BusEvent<'_>],
+        queues: &[(u32, &[(i32, f64)])],
+    ) -> Result<(), Refused> {
+        self.blocks.process_events(channels, frames, events, queues)
+    }
+
+    /// Returns the proxy parameter a MIDI 1.0 controller on `channel`, 0 to
+    /// 15, reaches the plugin through, as a host asks `IMidiMapping`:
+    /// controllers 0 to 127, then 128 for channel pressure and 129 for the
+    /// pitch bend, as VST3 numbers them. `None` for a plugin that takes no
+    /// MIDI.
+    pub fn midi_mapping(&self, channel: i16, controller: i16) -> Option<u32> {
+        let mapping = self.controller.cast::<IMidiMapping>()?;
+        let mut id = 0;
+        // SAFETY: the component is alive while this host holds its
+        // interfaces, and `id` is valid for writing one id during the call.
+        let found = unsafe { mapping.getMidiControllerAssignment(0, channel, controller, &mut id) };
+        (found == kResultTrue).then_some(id)
+    }
+
+    /// Returns the note expressions the plugin offers on `channel`, each its
+    /// VST3 type and its title.
+    pub fn note_expressions(&self, channel: i16) -> Vec<(u32, String)> {
+        let Some(expressions) = self.controller.cast::<INoteExpressionController>() else {
+            return Vec::new();
+        };
+        // SAFETY: the component is alive while this host holds its
+        // interfaces, and the call passes no pointer.
+        let count = unsafe { expressions.getNoteExpressionCount(0, channel) };
+        (0..count)
+            .filter_map(|index| {
+                // SAFETY: all zeros is a valid info, which the call
+                // overwrites.
+                let mut info: NoteExpressionTypeInfo = unsafe { std::mem::zeroed() };
+                // SAFETY: as above; `info` is valid for writing one info
+                // during the call.
+                let read =
+                    unsafe { expressions.getNoteExpressionInfo(0, channel, index, &mut info) };
+                (read == kResultOk).then(|| (info.typeId, wide(&info.title)))
+            })
+            .collect()
+    }
+
     /// Returns the output bus's silence flags after the last block: a bit per
     /// channel the plugin says is silent.
     pub fn silence_flags(&self) -> u64 {
@@ -767,6 +833,7 @@ struct Blocks {
     plugin: ComPtr<IComponent>,
     processor: ComPtr<IAudioProcessor>,
     changes: ComWrapper<Changes>,
+    events: ComWrapper<Events>,
     inputs: Vec<*mut f32>,
     outputs: Vec<*mut f32>,
     /// The output bus's silence flags after the last block.
@@ -779,6 +846,7 @@ impl Blocks {
             plugin,
             processor,
             changes: ComWrapper::new(Changes::with_queues(64)),
+            events: ComWrapper::new(Events::with_room(64)),
             inputs: Vec::with_capacity(16),
             outputs: Vec::with_capacity(16),
             silence: 0,
@@ -824,6 +892,22 @@ impl Blocks {
         let inputs = self.in_place(channels, frames);
         self.changes.fill(queues.iter().copied());
         self.send(frames, inputs)
+    }
+
+    fn process_events(
+        &mut self,
+        channels: &mut [&mut [f32]],
+        frames: usize,
+        events: &[BusEvent<'_>],
+        queues: &[(u32, &[(i32, f64)])],
+    ) -> Result<(), Refused> {
+        let inputs = self.in_place(channels, frames);
+        self.changes.fill(queues.iter().copied());
+        self.events.fill(events);
+        let sent = self.send(frames, inputs);
+        // A SysEx's bytes are the caller's, borrowed for this call alone.
+        self.events.fill(&[]);
+        sent
     }
 
     /// Points both lists at `channels`, the inputs only as many as the
@@ -891,6 +975,11 @@ impl Blocks {
             .as_com_ref::<IParameterChanges>()
             .expect("parameter changes")
             .as_ptr();
+        let events = self
+            .events
+            .as_com_ref::<IEventList>()
+            .expect("events")
+            .as_ptr();
         let mut data = ProcessData {
             processMode: ProcessModes_::kRealtime as int32,
             symbolicSampleSize: SymbolicSampleSizes_::kSample32 as int32,
@@ -901,7 +990,7 @@ impl Blocks {
             outputs: &mut output,
             inputParameterChanges: changes,
             outputParameterChanges: std::ptr::null_mut(),
-            inputEvents: std::ptr::null_mut(),
+            inputEvents: events,
             outputEvents: std::ptr::null_mut(),
             processContext: std::ptr::null_mut(),
         };
@@ -909,7 +998,8 @@ impl Blocks {
         // interfaces. `data` and its two buses live through the call. Each
         // bus's channel list holds `numChannels` pointers into buffers the
         // callers above borrow for at least `frames` floats. The changes and
-        // their queues are this side's objects, alive throughout.
+        // their queues are this side's objects, alive throughout, and so are
+        // the events, each SysEx's bytes borrowed by the caller for the call.
         let processed = unsafe { self.processor.process(&mut data) };
         self.silence = output.silenceFlags;
         Refused::check(processed)
@@ -1228,6 +1318,239 @@ impl IParameterChangesTrait for Changes {
         _index: *mut int32,
     ) -> *mut IParamValueQueue {
         std::ptr::null_mut()
+    }
+}
+
+/// An event a host sends on the plugin's event bus, as VST3 carries it,
+/// for [`TestHost::process_events`]. A note's events name the note by the
+/// host's `id`, or -1 for none; velocity and pressure run from 0 to 1, and
+/// a note-on's tuning is in cents.
+///
+/// # Examples
+///
+/// ```
+#[doc = include_str!("../../doc/gain.rs")]
+/// use hapto_host::vst3::{BusEvent, TestHost};
+///
+/// let mut host = TestHost::<Gain>::new();
+/// host.setup(48_000.0, 4)?;
+/// host.activate()?;
+/// host.start()?;
+/// // Middle C at frame 1, which the host names note 7, and a SysEx.
+/// let events = [
+///     BusEvent::NoteOn { offset: 1, channel: 0, pitch: 60, velocity: 1.0, tuning: 0.0, id: 7 },
+///     BusEvent::SysEx { offset: 2, bytes: &[0xF0, 0x7E, 0x7F, 0x06, 0x01, 0xF7] },
+/// ];
+/// let (mut left, mut right) = ([1.0_f32; 4], [1.0_f32; 4]);
+/// host.process_events(&mut [&mut left[..], &mut right[..]], 4, &events, &[])?;
+/// // The gain takes no MIDI, so it plays on as before.
+/// assert_eq!(left, [1.0; 4]);
+/// # Ok::<(), hapto_host::vst3::Refused>(())
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum BusEvent<'a> {
+    /// A note starting.
+    NoteOn {
+        /// The frame of the block.
+        offset: i32,
+        /// The channel, 0 to 15.
+        channel: i16,
+        /// The key, 0 to 127.
+        pitch: i16,
+        /// From 0 to 1.
+        velocity: f32,
+        /// In cents from the key.
+        tuning: f32,
+        /// The host's name for the note.
+        id: i32,
+    },
+    /// A note ending.
+    NoteOff {
+        /// The frame of the block.
+        offset: i32,
+        /// The channel, 0 to 15.
+        channel: i16,
+        /// The key, 0 to 127.
+        pitch: i16,
+        /// From 0 to 1.
+        velocity: f32,
+        /// The host's name for the note.
+        id: i32,
+    },
+    /// A note's pressure.
+    Pressure {
+        /// The frame of the block.
+        offset: i32,
+        /// The channel, 0 to 15.
+        channel: i16,
+        /// The key, 0 to 127.
+        pitch: i16,
+        /// From 0 to 1.
+        pressure: f32,
+        /// The host's name for the note.
+        id: i32,
+    },
+    /// A note expression: one of VST3's types for a note the host named.
+    Expression {
+        /// The frame of the block.
+        offset: i32,
+        /// The host's name for the note.
+        id: i32,
+        /// VST3's type: 0 the volume, 2 the tuning, 5 the brightness.
+        kind: u32,
+        /// From 0 to 1, as VST3 normalizes it.
+        value: f64,
+    },
+    /// A whole SysEx message.
+    SysEx {
+        /// The frame of the block.
+        offset: i32,
+        /// Its bytes, F0 to F7.
+        bytes: &'a [u8],
+    },
+}
+
+impl BusEvent<'_> {
+    /// The event as VST3 carries it, its bytes borrowed for as long as
+    /// `self`'s are.
+    fn to_vst(self) -> Event {
+        // SAFETY: every field of an `Event` is an integer, a float or a raw
+        // pointer, for which all zeros is a value.
+        let mut event: Event = unsafe { std::mem::zeroed() };
+        match self {
+            BusEvent::NoteOn {
+                offset,
+                channel,
+                pitch,
+                velocity,
+                tuning,
+                id,
+            } => {
+                event.sampleOffset = offset;
+                event.r#type = EventTypes_::kNoteOnEvent as u16;
+                event.__field0.noteOn = NoteOnEvent {
+                    channel,
+                    pitch,
+                    tuning,
+                    velocity,
+                    length: 0,
+                    noteId: id,
+                };
+            }
+            BusEvent::NoteOff {
+                offset,
+                channel,
+                pitch,
+                velocity,
+                id,
+            } => {
+                event.sampleOffset = offset;
+                event.r#type = EventTypes_::kNoteOffEvent as u16;
+                event.__field0.noteOff = NoteOffEvent {
+                    channel,
+                    pitch,
+                    velocity,
+                    noteId: id,
+                    tuning: 0.0,
+                };
+            }
+            BusEvent::Pressure {
+                offset,
+                channel,
+                pitch,
+                pressure,
+                id,
+            } => {
+                event.sampleOffset = offset;
+                event.r#type = EventTypes_::kPolyPressureEvent as u16;
+                event.__field0.polyPressure = PolyPressureEvent {
+                    channel,
+                    pitch,
+                    pressure,
+                    noteId: id,
+                };
+            }
+            BusEvent::Expression {
+                offset,
+                id,
+                kind,
+                value,
+            } => {
+                event.sampleOffset = offset;
+                event.r#type = EventTypes_::kNoteExpressionValueEvent as u16;
+                event.__field0.noteExpressionValue = NoteExpressionValueEvent {
+                    typeId: kind,
+                    noteId: id,
+                    value,
+                };
+            }
+            BusEvent::SysEx { offset, bytes } => {
+                event.sampleOffset = offset;
+                event.r#type = EventTypes_::kDataEvent as u16;
+                event.__field0.data = DataEvent {
+                    size: u32::try_from(bytes.len()).unwrap_or(u32::MAX),
+                    r#type: DataTypes_::kMidiSysEx as uint32,
+                    bytes: bytes.as_ptr(),
+                };
+            }
+        }
+        event
+    }
+}
+
+/// The most events one block's list holds without allocating.
+const EVENTS: usize = 64;
+
+/// A block's events on the event bus.
+struct Events {
+    list: RefCell<Vec<Event>>,
+}
+
+impl Events {
+    fn with_room(room: usize) -> Self {
+        Events {
+            list: RefCell::new(Vec::with_capacity(room.max(EVENTS))),
+        }
+    }
+
+    fn fill(&self, events: &[BusEvent<'_>]) {
+        let mut list = self.list.borrow_mut();
+        list.clear();
+        list.extend(events.iter().map(|event| event.to_vst()));
+    }
+}
+
+impl Class for Events {
+    type Interfaces = (IEventList,);
+}
+
+impl IEventListTrait for Events {
+    unsafe fn getEventCount(&self) -> int32 {
+        int32::try_from(self.list.borrow().len()).unwrap_or(int32::MAX)
+    }
+
+    unsafe fn getEvent(&self, index: int32, event: *mut Event) -> tresult {
+        let list = self.list.borrow();
+        let found = usize::try_from(index)
+            .ok()
+            .and_then(|index| list.get(index));
+        // SAFETY: the exporter passes room for one event, or null.
+        match (found, unsafe { event.as_mut() }) {
+            (Some(found), Some(event)) => {
+                *event = *found;
+                kResultOk
+            }
+            _ => kInvalidArgument,
+        }
+    }
+
+    unsafe fn addEvent(&self, event: *mut Event) -> tresult {
+        // SAFETY: the plugin passes one event to copy, or null.
+        let Some(event) = (unsafe { event.as_ref() }) else {
+            return kInvalidArgument;
+        };
+        self.list.borrow_mut().push(*event);
+        kResultOk
     }
 }
 
