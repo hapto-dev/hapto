@@ -7,7 +7,7 @@ use hapto_ump::{
     ChannelMessage, ChannelVoice, EventList, Midi1Message, Midi1Voice, Origin, Upgrade,
 };
 
-use super::{Active, fill, pieces};
+use super::{Active, Rank, fill, pieces};
 use crate::layout::{AnyLayout, Width};
 use crate::{Block, Event, Processor, Status};
 
@@ -343,8 +343,8 @@ fn a_packet_pushed_first_goes_before_the_rest_at_its_frame_and_never_to_an_earli
     fill(&mut audio, 32, |into| {
         into.push(sent(2, 6, 64));
         into.push(sent(1, 7, 100));
-        into.push_first(sent(2, 101, 0));
-        into.push_first(sent(2, 100, 0));
+        into.push_ranked(sent(2, 101, 0), Rank::Address);
+        into.push_ranked(sent(2, 100, 0), Rank::Address);
     });
     let events: Vec<_> = audio
         .events
@@ -370,6 +370,68 @@ fn a_packet_pushed_first_goes_before_the_rest_at_its_frame_and_never_to_an_earli
     // low byte goes out at the block's last frame; the volume at frame 1
     // still comes before both.
     assert_eq!(events, [(1, Some(volume)), (31, Some(range))]);
+}
+
+#[test]
+fn a_high_byte_goes_before_a_low_byte_at_its_frame_whatever_order_they_come_in() {
+    let mut audio = audio();
+    let entry = |value| ChannelMessage::AssignableController {
+        bank: 2,
+        index: 44,
+        value: hapto_ump::scale::up_14_to_32(value),
+    };
+    // A first move of NRPN 2/44.
+    fill(&mut audio, 32, |into| {
+        into.push_ranked(sent(0, 99, 2), Rank::Address);
+        into.push_ranked(sent(0, 98, 44), Rank::Address);
+        into.push_ranked(sent(0, 6, 64), Rank::HighByte);
+        into.push(sent(0, 38, 10));
+    });
+    // The next, its low byte's queue listed before its high byte's: the
+    // low byte refines its own high byte, not the one before.
+    fill(&mut audio, 32, |into| {
+        into.push(sent(5, 38, 3));
+        into.push_ranked(sent(5, 6, 65), Rank::HighByte);
+    });
+    let events: Vec<_> = audio
+        .events
+        .as_slice()
+        .iter()
+        .map(|event| {
+            (
+                event.offset,
+                event.channel_voice().map(|voice| voice.message),
+            )
+        })
+        .collect();
+    assert_eq!(events, [(5, Some(entry(65 << 7 | 3)))]);
+}
+
+/// Sends a note far past the end of every piece it plays.
+struct Late;
+
+impl Processor for Late {
+    type Layout = AnyLayout;
+
+    fn process(&mut self, mut block: Block<'_, AnyLayout>) -> Status {
+        block.midi_out.extend([note(100, 1)]);
+        Status::Continue
+    }
+}
+
+#[test]
+fn what_a_piece_sends_past_its_end_goes_at_its_last_frame() {
+    let max_frames = NonZeroUsize::new(4).expect("not 0");
+    let mut audio = Active::around(Late, Width::new(0, 0), max_frames, 0, 4);
+    // SAFETY: a layout of no channels, so no buffer is read or written.
+    let status = unsafe { pieces(&mut audio, 10, &[], &[]) };
+    assert_eq!(status, Status::Continue);
+    let sent: Vec<_> = audio.out_events.as_slice().iter().map(tagged).collect();
+    assert_eq!(
+        sent,
+        [(3, 1), (7, 1), (9, 1)],
+        "each in its own piece, in time order, none past the block"
+    );
 }
 
 #[test]

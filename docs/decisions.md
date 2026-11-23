@@ -496,8 +496,9 @@ MIDI 1.0 (D114): learn then narrows it exactly. The proxies and the host's notes
 come in lists of their own, so the engine puts a block's MIDI in time order,
 those at one frame in the order the exporter handed them over: the controllers
 first, as JUCE's wrapper hands them. Each controller comes in a queue of its
-own, so at one frame a parameter's address, controllers 98 to 101, goes before
-the rest, and its data entry finds it whatever order the host lists the queues
+own, so at one frame a parameter's address, controllers 98 to 101, goes first
+and its data entry high byte, controller 6, next, so a data entry finds its
+address and a low byte its high byte whatever order the host lists the queues
 in; other controllers at one frame come in the queues' order. Open:
 `IMidiMapping2`'s lists, `IMidiLearn2` and the pool, which wait on the `vst3`
 crate's bindings for MIDI 2.0 (D59).
@@ -533,17 +534,18 @@ sends a message encoded anew, one that arrived on, as MIDI thru, which is never
 implicit, a note its host named keeping the host's id, or packets as they are,
 all into one list in the order the plugin sends them, whose capacity
 `ProcessSetup::max_out_events` fixes at activation (past it, dropped and
-counted). `Block::spans` cuts a block at each frame a
-message arrives at, and `Spans::at_most` caps a span's length, so a plugin acts
-on each message and renders on to the next. A plugin that never asks keeps its
-block whole, so a convolver or an FFT is never cut short; one that sends while
-it spans makes its spans with `Spans::new` from the block's audio and MIDI and
-keeps the block's `midi_out`. A sidechain or transport joins `Block` later
-without changing the trait. `PluginInfo::midi_output` declares the output to
-the host. Parameter changes still reach the host through the exporter, never
-this list. The C interface and the VST3 exporter carry the list to their host
-and MIDI in from it, and the standalone app brings MIDI in from the computer's
-inputs (D59, D62, D115).
+counted). One sent past its piece's end goes at the piece's last frame, as MIDI
+in does, so nothing lands in a later piece or past the block. `Block::spans`
+cuts a block at each frame a message arrives at, and `Spans::at_most` caps a
+span's length, so a plugin acts on each message and renders on to the next. A
+plugin that never asks keeps its block whole, so a convolver or an FFT is never
+cut short; one that sends while it spans makes its spans with `Spans::new` from
+the block's audio and MIDI and keeps the block's `midi_out`. A sidechain or
+transport joins `Block` later without changing the trait.
+`PluginInfo::midi_output` declares the output to the host. Parameter changes
+still reach the host through the exporter, never this list. The C interface and
+the VST3 exporter carry the list to their host and MIDI in from it, and the
+standalone app brings MIDI in from the computer's inputs (D59, D62, D115).
 
 ### D24. Answering MIDI-CI
 
@@ -1293,7 +1295,9 @@ processor silences the instance's output until the next activation, which builds
 a fresh processor: it is caught while the block still holds the processor's
 slot, and the mark stays with that processor, so an activation racing the block
 installs one that starts clean. A panic elsewhere in the block, in the
-automation walk say, silences that block alone.
+automation walk say, silences that block alone. One in the exporter's own
+hand-off of what the plugin sent comes after the block played, so it is
+counted and the block stands.
 
 Any other call answers the host with an error, or a neutral value where the call
 returns one. Each is counted for its instance, on whatever thread it happens,

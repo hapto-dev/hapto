@@ -147,20 +147,20 @@ impl MidiIn<'_> {
         expect(dead_code, reason = "no exporter is built")
     )]
     pub(crate) fn push(&mut self, event: Event) {
-        self.arrivals.push(event, false);
+        self.arrivals.push(event, Rank::Rest);
     }
 
-    /// Adds a packet that goes before every packet [`push`](Self::push)
-    /// adds at its frame, then in the order it came: a registered or
-    /// assignable parameter's address, which VST3 hands over in a queue of
-    /// its own, so its data entry finds it whatever order the queues come
-    /// in. Past the block's room it is dropped and counted.
+    /// Adds a packet that goes at its frame as `rank` says, then in the
+    /// order it came, for a host that hands controllers over in queues of
+    /// their own, as VST3 does: a data entry then finds its address, and a
+    /// low byte its high byte, whatever order the queues come in. Past the
+    /// block's room it is dropped and counted.
     #[cfg_attr(
         not(feature = "vst3"),
         expect(dead_code, reason = "VST3 alone hands controllers over apart")
     )]
-    pub(crate) fn push_first(&mut self, event: Event) {
-        self.arrivals.push(event, true);
+    pub(crate) fn push_ranked(&mut self, event: Event, rank: Rank) {
+        self.arrivals.push(event, rank);
     }
 
     /// Whether the block has room for another packet: an exporter whose
@@ -184,9 +184,27 @@ impl MidiIn<'_> {
     }
 }
 
+/// Where a packet goes among those at its frame, before the order it came
+/// in: a MIDI 1.0 parameter number's controllers in the order a data entry
+/// needs them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(
+    not(feature = "vst3"),
+    expect(dead_code, reason = "VST3 alone hands controllers over apart")
+)]
+pub(crate) enum Rank {
+    /// A registered or assignable parameter's address (controllers 98 to
+    /// 101), which its data entry needs.
+    Address,
+    /// A data entry high byte (controller 6), which its low byte refines.
+    HighByte,
+    /// Every other packet.
+    Rest,
+}
+
 /// The block's MIDI in as the exporter hands it over: each packet keyed by
-/// its frame, then whether it goes first there, then the order it came in,
-/// so no two keys are equal.
+/// its frame, then its rank there, then the order it came in, so no two
+/// keys are equal.
 #[derive(Debug)]
 struct Arrivals {
     packets: Vec<(u64, Event)>,
@@ -202,17 +220,20 @@ impl Arrivals {
         }
     }
 
-    /// The key's bit for a packet that does not go first at its frame.
-    const LATER: u64 = 1 << 31;
+    /// Where the key's rank begins: two bits below the frame.
+    const RANK: u32 = 30;
 
-    /// Adds `event`, `first` at its frame or not, while there is room,
-    /// which never allocates.
-    fn push(&mut self, event: Event, first: bool) {
+    /// Adds `event` at `rank` while there is room, which never allocates.
+    fn push(&mut self, event: Event, rank: Rank) {
         if self.packets.len() < self.packets.capacity() {
-            // Below the bit, since a block's room is far smaller.
-            let order = u64::try_from(self.packets.len()).unwrap_or(0) & (Self::LATER - 1);
-            let later = if first { 0 } else { Self::LATER };
-            let key = u64::from(event.offset).wrapping_shl(32) | later | order;
+            // Below the rank, since a block's room is far smaller.
+            let order = u64::try_from(self.packets.len()).unwrap_or(0) & ((1 << Self::RANK) - 1);
+            let rank = match rank {
+                Rank::Address => 0_u64,
+                Rank::HighByte => 1,
+                Rank::Rest => 2,
+            };
+            let key = u64::from(event.offset).wrapping_shl(32) | rank << Self::RANK | order;
             self.packets.push((key, event));
         } else {
             self.dropped = self.dropped.saturating_add(1);
@@ -358,7 +379,9 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
     /// A panic in the processor is caught while it is still held (see
     /// [`run_held`]): the block is silent, and so is every block until the
     /// next activation's processor. A panic anywhere else in the block, the
-    /// automation walk say, is caught here and silences that block alone.
+    /// automation walk say, is caught here and silences that block alone. A
+    /// panic in `sent` comes after the block played, so it is counted and
+    /// the block stands.
     ///
     /// The calling thread carries the params crate's audio-thread mark
     /// throughout, so a debug build panics, caught as above, at any lock or
@@ -432,11 +455,19 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
             }
             // SAFETY: this function's contract.
             let status = unsafe { pieces(audio, frames, inputs, outputs) };
-            sent(audio.out_events.as_slice());
-            Some(status)
+            // The exporter's code too: the block has played, so a panic in
+            // it is counted and the block stands.
+            let out = audio.out_events.as_slice();
+            let handed = panic::catch_unwind(AssertUnwindSafe(|| sent(out)));
+            Some((status, handed.is_ok()))
         });
         match held {
-            Held::Ran(Some(status)) => Outcome::Played(status),
+            Held::Ran(Some((status, handed))) => {
+                if !handed {
+                    self.faults.record(Fault::Panic);
+                }
+                Outcome::Played(status)
+            }
             Held::Ran(None) => {
                 self.faults.record(Fault::Panic);
                 Outcome::Silent
@@ -469,8 +500,9 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
 /// the block's count.
 ///
 /// Every piece sends into the block's list, and what it sent moves to the
-/// block's frames once it returns. A later piece finds the earlier pieces'
-/// events already there.
+/// block's frames once it returns, a frame past the piece's end at its last
+/// frame, as MIDI in does: so nothing lands in a later piece or past the
+/// block. A later piece finds the earlier pieces' events already there.
 ///
 /// # Safety
 ///
@@ -516,8 +548,9 @@ unsafe fn pieces<R: Processor>(
             })
         };
         let start = u32::try_from(offset).unwrap_or(u32::MAX);
+        let last = u32::try_from(length.saturating_sub(1)).unwrap_or(u32::MAX);
         for event in out_events.as_mut_slice().iter_mut().skip(sent) {
-            event.offset = event.offset.saturating_add(start);
+            event.offset = event.offset.min(last).saturating_add(start);
         }
         offset = offset.saturating_add(length);
     }

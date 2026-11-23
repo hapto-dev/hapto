@@ -48,13 +48,12 @@ pub(crate) use automation::Point;
 pub(crate) use automation::Points;
 #[cfg(any(feature = "vst3", feature = "standalone"))]
 pub(crate) use editor::{EditorSlot, Opened};
-#[cfg(feature = "vst3")]
-pub(crate) use process::MidiIn;
 #[cfg(any(feature = "vst3", feature = "cabi", feature = "standalone"))]
 pub(crate) use process::Outcome;
 use process::{Active, PendingReset, install};
 #[cfg(feature = "vst3")]
-use timer::{Handle, Timer};
+pub(crate) use process::{MidiIn, Rank};
+use timer::{Handle, Timer, abandon};
 
 #[cfg(feature = "cabi")]
 use crate::boundary::Patience;

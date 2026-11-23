@@ -236,11 +236,11 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d22-controllers-reaching-learn-in-vst3)
 
-- `crates/host/src/vst3/component/midi.rs`: module, `ADDRESS`, `proxy_id`, `proxy`, `proxy_info`, `read_controllers`, `controller_message`
+- `crates/host/src/vst3/component/midi.rs`: module, `proxy_id`, `proxy`, `proxy_info`, `read_controllers`, `controller_message`
 - `crates/host/src/vst3/component/controller.rs`: `Component::getParameterCount`, `Component::getParameterInfo`
-- `crates/host/src/engine/process.rs`: `MidiIn`, `MidiIn::push_first`, `Arrivals`, `fill`
-- test `crates/host/src/vst3/tests/midi.rs`: `a_controller_comes_through_its_proxy_as_midi_1_upgraded_and_before_a_note_at_its_frame`, `every_channel_s_controllers_map_to_hidden_proxies_listed_after_the_plugin_s_own`, `a_host_claiming_more_than_the_block_has_room_for_is_read_as_far_as_there_is_room`, `a_parameter_s_address_comes_before_its_data_entry_at_one_frame_whatever_the_queues_order`
-- test `crates/host/src/engine/process/tests.rs`: `packets_handed_over_out_of_order_reach_the_block_in_time_order_and_at_one_frame_as_they_came`, `a_packet_pushed_first_goes_before_the_rest_at_its_frame_and_never_to_an_earlier_one`
+- `crates/host/src/engine/process.rs`: `MidiIn`, `MidiIn::push_ranked`, `Rank`, `Arrivals`, `fill`
+- test `crates/host/src/vst3/tests/midi.rs`: `a_controller_comes_through_its_proxy_as_midi_1_upgraded_and_before_a_note_at_its_frame`, `every_channel_s_controllers_map_to_hidden_proxies_listed_after_the_plugin_s_own`, `a_host_claiming_more_than_the_block_has_room_for_is_read_as_far_as_there_is_room`, `a_parameter_s_address_comes_before_its_data_entry_at_one_frame_whatever_the_queues_order`, `a_data_entry_s_high_byte_comes_before_its_low_byte_at_one_frame_whatever_the_queues_order`
+- test `crates/host/src/engine/process/tests.rs`: `packets_handed_over_out_of_order_reach_the_block_in_time_order_and_at_one_frame_as_they_came`, `a_packet_pushed_first_goes_before_the_rest_at_its_frame_and_never_to_an_earlier_one`, `a_high_byte_goes_before_a_low_byte_at_its_frame_whatever_order_they_come_in`
 - `crates/params/src/host_id.rs`: `RESERVED_HOST_IDS`
 - `crates/params/src/lib.rs`: module
 - `crates/params/src/set.rs`: `DeclError::ReservedHostId`
@@ -260,7 +260,7 @@ move its line here; when a decision gains code, add one.
 - test `crates/host/tests/spans.rs`: module, `spans_cover_the_block_once_with_every_message_where_it_arrived`
 - `crates/host/src/lib.rs`: module
 - `crates/ump/src/lib.rs`: `EventList::as_mut_slice`, `EventList::add_dropped`
-- test `crates/host/src/engine/process/tests.rs`: `each_piece_gets_its_own_events_and_what_it_sends_lands_at_the_block_s_frames`, `a_block_of_one_piece_hands_its_events_on_and_the_next_starts_clean`
+- test `crates/host/src/engine/process/tests.rs`: `each_piece_gets_its_own_events_and_what_it_sends_lands_at_the_block_s_frames`, `a_block_of_one_piece_hands_its_events_on_and_the_next_starts_clean`, `what_a_piece_sends_past_its_end_goes_at_its_last_frame`
 
 ### D24. Answering MIDI-CI
 
@@ -651,6 +651,7 @@ move its line here; when a decision gains code, add one.
 - test `crates/host/src/engine/process.rs`: `loom_a_panicking_block_racing_an_activation_marks_only_its_own_processor`
 - test `crates/host/src/engine/tests.rs`: `an_activation_while_active_rebuilds_and_recovers_a_panicked_processor`
 - test `crates/host/src/vst3/tests.rs`: `a_panicking_entry_point_answers_an_error`, `an_inactive_or_panicking_processor_plays_silence`
+- test `crates/host/src/standalone/tests.rs`: `a_panic_in_what_is_handed_the_plugins_midi_is_counted_and_the_plugin_plays_on`
 
 ### D61. Who flushes denormals
 

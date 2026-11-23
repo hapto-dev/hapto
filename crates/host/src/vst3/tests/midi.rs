@@ -309,6 +309,38 @@ fn a_parameter_s_address_comes_before_its_data_entry_at_one_frame_whatever_the_q
 }
 
 #[test]
+fn a_data_entry_s_high_byte_comes_before_its_low_byte_at_one_frame_whatever_the_queues_order() {
+    let mut host = running();
+    let proxy = |controller| host.midi_mapping(0, controller).expect("mapped");
+    let (high, low, entry, fine) = (proxy(101), proxy(100), proxy(6), proxy(38));
+    let range = |host: &TestHost<Listener>| {
+        host.component().heard(|midi| {
+            midi.iter()
+                .map(|(frame, message)| match message {
+                    Message::BendRange { semitones, .. } => (frame, semitones),
+                    other => panic!("unexpected: {other}"),
+                })
+                .collect::<Vec<_>>()
+        })
+    };
+    // The bend range, 2 semitones.
+    let first: [(u32, &[(i32, f64)]); 4] = [
+        (high, &[(0, 0.0)]),
+        (low, &[(0, 0.0)]),
+        (entry, &[(0, 2.0 / 127.0)]),
+        (fine, &[(0, 0.0)]),
+    ];
+    play(&mut host, &[], &first);
+    assert_eq!(range(&host).expect("active"), [(0, 2.0)]);
+    // Then 12 and a half, the host listing the low byte's queue first: it
+    // refines its own high byte, not the one before.
+    let next: [(u32, &[(i32, f64)]); 2] =
+        [(fine, &[(4, 50.0 / 127.0)]), (entry, &[(4, 12.0 / 127.0)])];
+    play(&mut host, &[], &next);
+    assert_eq!(range(&host).expect("active"), [(4, 12.5)]);
+}
+
+#[test]
 fn every_channel_s_controllers_map_to_hidden_proxies_listed_after_the_plugin_s_own() {
     let host = running();
     let first = *hapto_params::RESERVED_HOST_IDS.start();

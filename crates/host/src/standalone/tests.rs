@@ -912,6 +912,35 @@ fn a_plugin_with_no_channels_plays_its_midi_for_the_frames_it_is_given() {
 }
 
 #[test]
+fn a_panic_in_what_is_handed_the_plugins_midi_is_counted_and_the_plugin_plays_on() {
+    let app = Standalone::<Thru>::new();
+    assert_eq!(app.activate(48_000.0, 8, Width::STEREO), Ok(()));
+    let mut audio = app.audio();
+    let note = Event::new(2, [0x4090_3C00, 0xFFFF_0000, 0, 0]);
+    let (mut left, mut right) = ([0.0_f32; 8], [0.0_f32; 8]);
+    let mut block = |sent: &mut dyn FnMut(&[Event])| {
+        audio.process(
+            &[],
+            &mut [&mut left[..], &mut right[..]],
+            8,
+            &[note],
+            |packets| sent(packets),
+        )
+    };
+    let played = block(&mut |_| panic!("the app's own mistake"));
+    assert_eq!(played, Some(Status::Continue), "the block had played");
+    assert_eq!(app.faults(), 1, "counted, as the exporter's");
+    let mut sent = 0;
+    let played = block(&mut |packets| sent += packets.len());
+    assert_eq!(
+        played,
+        Some(Status::Continue),
+        "the processor was not faulted"
+    );
+    assert_eq!(sent, 1);
+}
+
+#[test]
 fn the_apps_midi_reaches_the_processor_at_its_frames_and_midi_1_upgraded() {
     use hapto_ump::{Midi1Message, Midi1Voice};
 

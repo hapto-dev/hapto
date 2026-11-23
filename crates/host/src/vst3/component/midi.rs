@@ -51,7 +51,7 @@ use hapto_ump::{
 
 use super::Component;
 use crate::Plugin;
-use crate::engine::MidiIn;
+use crate::engine::{MidiIn, Rank};
 use crate::vst3::text::{copy_utf16, read_utf16};
 
 /// The channels the grid covers.
@@ -63,11 +63,6 @@ const CONTROLLERS: u32 = ControllerNumbers_::kCountCtrlNumber as uint32;
 pub(super) const PRESSURE: u32 = ControllerNumbers_::kAfterTouch as uint32;
 /// VST3's number for the pitch bend.
 pub(super) const BEND: u32 = ControllerNumbers_::kPitchBend as uint32;
-/// The controllers that select a registered or assignable parameter: 98
-/// and 99 an assignable one's, 100 and 101 a registered one's. At one
-/// frame they go before the rest, so a data entry finds its address
-/// whatever order the host lists their queues in.
-const ADDRESS: std::ops::RangeInclusive<u32> = 98..=101;
 /// How many proxies the grid has.
 pub(super) const GRID: u32 = CHANNELS * CONTROLLERS;
 /// The first proxy's id, the reserved range's first.
@@ -318,11 +313,16 @@ pub(super) unsafe fn read_controllers(
                 message: controller_message(controller, value),
             };
             let event = voice.event(u32::try_from(offset).unwrap_or(0));
-            if ADDRESS.contains(&controller) {
-                midi.push_first(event);
-            } else {
-                midi.push(event);
-            }
+            // Each controller comes in a queue of its own. At one frame a
+            // parameter's address goes first and its data entry high byte
+            // next, so a data entry finds its address and a low byte its
+            // high byte whatever order the host lists the queues in.
+            let rank = match controller {
+                98..=101 => Rank::Address,
+                6 => Rank::HighByte,
+                _ => Rank::Rest,
+            };
+            midi.push_ranked(event, rank);
         }
     }
 }
