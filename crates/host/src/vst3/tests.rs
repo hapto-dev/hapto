@@ -3,6 +3,7 @@
 use std::cell::{Cell, RefCell};
 use std::error::Error;
 use std::ffi::{c_char, c_void};
+use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -30,11 +31,11 @@ use hapto_params::{
 use serde_json::{Map, Value as Json};
 
 use super::component::Component;
-use super::test_host::{Recorder, Stream};
+use super::test_host::{BusEvent, Recorder, Stream};
 use super::{HostCall, RESTART_LATENCY, RESTART_VALUES, Refused, TestHost, plugin_factory};
 use crate::engine::timer::pump;
 use crate::faults::{thread_faults, written};
-use crate::layout::{AnyLayout, Width};
+use crate::layout::{AnyLayout, Stereo, Width};
 use crate::{
     AuCodes, Block, Category, Feature, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
     Tail,
@@ -777,12 +778,78 @@ impl<const INPUTS: usize, const OUTPUTS: usize> Plugin for Shaped<INPUTS, OUTPUT
 }
 
 /// A host processing `P` at 48 kHz, up to 64 frames a block.
-fn playing<P: Plugin>() -> TestHost<P> {
+pub(super) fn playing<P: Plugin>() -> TestHost<P> {
     let host = TestHost::<P>::new();
     assert_eq!(host.setup(48_000.0, 64), Ok(()));
     assert_eq!(host.activate(), Ok(()));
     assert_eq!(host.start(), Ok(()));
     host
+}
+
+// What the MIDI tests share.
+
+/// A plugin around processor `R` that takes MIDI, and sends it when
+/// `SENDS`.
+pub(super) struct Sender<R, const SENDS: bool>(PhantomData<R>);
+
+impl<R: Processor<Layout = Stereo> + Default, const SENDS: bool> Plugin for Sender<R, SENDS> {
+    const INFO: PluginInfo = PluginInfo {
+        name: "Sender",
+        vendor: "Hapto",
+        url: "",
+        email: "",
+        description: "",
+        version: "0.1.0",
+        id: "dev.hapto.sender",
+        vst3_class_id: [5; 16],
+        au_codes: AuCodes {
+            subtype: *b"send",
+            manufacturer: *b"Hapt",
+        },
+        category: Category::Instrument,
+        features: &[],
+        layouts: &[],
+        midi_input: true,
+        midi_output: SENDS,
+    };
+    type Params = ();
+    type Processor = R;
+
+    fn new(_: (), _parts: Parts) -> Self {
+        Sender(PhantomData)
+    }
+
+    fn activate(&mut self, _: &ProcessSetup) -> R {
+        R::default()
+    }
+}
+
+/// One block of 16 frames with `events` and `queues`.
+pub(super) fn play<P: Plugin>(
+    host: &mut TestHost<P>,
+    events: &[BusEvent<'_>],
+    queues: &[(u32, &[(i32, f64)])],
+) {
+    let (mut left, mut right) = ([0.0_f32; 16], [0.0_f32; 16]);
+    let block = &mut [&mut left[..], &mut right[..]];
+    assert_eq!(host.process_events(block, 16, events, queues), Ok(()));
+}
+
+pub(super) fn note_on(
+    offset: i32,
+    pitch: i16,
+    velocity: f32,
+    tuning: f32,
+    id: i32,
+) -> BusEvent<'static> {
+    BusEvent::NoteOn {
+        offset,
+        channel: 0,
+        pitch,
+        velocity,
+        tuning,
+        id,
+    }
 }
 
 const AUDIO: MediaType = MediaTypes_::kAudio as MediaType;

@@ -924,8 +924,8 @@ impl Blocks {
             plugin,
             processor,
             changes: ComWrapper::new(Changes::with_queues(64)),
-            events: ComWrapper::new(Events::with_room(64)),
-            sent: ComWrapper::new(Events::with_room(64)),
+            events: ComWrapper::new(Events::new()),
+            sent: ComWrapper::new(Events::new()),
             inputs: Vec::with_capacity(16),
             outputs: Vec::with_capacity(16),
             silence: 0,
@@ -985,7 +985,7 @@ impl Blocks {
         if let Some(first) = self.changes.queues.borrow().first() {
             first.claimed.set(Some(claimed));
         }
-        self.events.fill(&[]);
+        self.events.clear();
         self.send(frames, inputs)?;
         let queues = self.changes.queues.borrow();
         Ok(queues.first().map_or(0, |queue| queue.reads.get()))
@@ -1003,7 +1003,7 @@ impl Blocks {
         self.events.fill(events);
         let sent = self.send(frames, inputs);
         // A SysEx's bytes are the caller's, borrowed for this call alone.
-        self.events.fill(&[]);
+        self.events.clear();
         sent
     }
 
@@ -1077,7 +1077,7 @@ impl Blocks {
             .as_com_ref::<IEventList>()
             .expect("events")
             .as_ptr();
-        self.sent.fill(&[]);
+        self.sent.clear();
         let sent = self
             .sent
             .as_com_ref::<IEventList>()
@@ -1729,10 +1729,14 @@ struct Events {
 }
 
 impl Events {
-    fn with_room(room: usize) -> Self {
+    fn new() -> Self {
         Events {
-            list: RefCell::new(Vec::with_capacity(room.max(EVENTS))),
+            list: RefCell::new(Vec::with_capacity(EVENTS)),
         }
+    }
+
+    fn clear(&self) {
+        self.list.borrow_mut().clear();
     }
 
     fn fill(&self, events: &[BusEvent<'_>]) {

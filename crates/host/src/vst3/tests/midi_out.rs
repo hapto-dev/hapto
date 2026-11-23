@@ -2,13 +2,10 @@
 //! host's ids, a note's expressions, controllers as MIDI 1.0, SysEx whole,
 //! and what VST3 has no event for counted.
 
-use std::marker::PhantomData;
-
-use super::super::{BusEvent, TestHost};
+use super::super::BusEvent;
+use super::{Sender, note_on, play, playing};
 use crate::layout::Stereo;
-use crate::{
-    AuCodes, Block, Category, Event, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
-};
+use crate::{Block, Event, Processor, Status};
 
 /// Sends on every message it reads, at its frame: MIDI thru.
 #[derive(Default)]
@@ -78,80 +75,13 @@ impl Processor for TwoGroups {
     }
 }
 
-/// A plugin around processor `R` that takes MIDI, and sends it when
-/// `SENDS`.
-struct Sender<R, const SENDS: bool>(PhantomData<R>);
-
-impl<R: Processor<Layout = Stereo> + Default, const SENDS: bool> Plugin for Sender<R, SENDS> {
-    const INFO: PluginInfo = PluginInfo {
-        name: "Sender",
-        vendor: "Hapto",
-        url: "",
-        email: "",
-        description: "",
-        version: "0.1.0",
-        id: "dev.hapto.sender",
-        vst3_class_id: [5; 16],
-        au_codes: AuCodes {
-            subtype: *b"send",
-            manufacturer: *b"Hapt",
-        },
-        category: Category::Instrument,
-        features: &[],
-        layouts: &[],
-        midi_input: true,
-        midi_output: SENDS,
-    };
-    type Params = ();
-    type Processor = R;
-
-    fn new(_: (), _parts: Parts) -> Self {
-        Sender(PhantomData)
-    }
-
-    fn activate(&mut self, _: &ProcessSetup) -> R {
-        R::default()
-    }
-}
-
-fn running<R: Processor<Layout = Stereo> + Default, const SENDS: bool>()
--> TestHost<Sender<R, SENDS>> {
-    let host = TestHost::<Sender<R, SENDS>>::new();
-    assert_eq!(host.setup(48_000.0, 64), Ok(()));
-    assert_eq!(host.activate(), Ok(()));
-    assert_eq!(host.start(), Ok(()));
-    host
-}
-
-/// One block of 16 frames with `events` and `queues`.
-fn play<P: Plugin>(
-    host: &mut TestHost<P>,
-    events: &[BusEvent<'_>],
-    queues: &[(u32, &[(i32, f64)])],
-) {
-    let (mut left, mut right) = ([0.0_f32; 16], [0.0_f32; 16]);
-    let block = &mut [&mut left[..], &mut right[..]];
-    assert_eq!(host.process_events(block, 16, events, queues), Ok(()));
-}
-
-fn note_on(offset: i32, pitch: i16, velocity: f32, tuning: f32, id: i32) -> BusEvent<'static> {
-    BusEvent::NoteOn {
-        offset,
-        channel: 0,
-        pitch,
-        velocity,
-        tuning,
-        id,
-    }
-}
-
 fn near(value: f64, expected: f64) -> bool {
     (value - expected).abs() < 1e-4
 }
 
 #[test]
 fn a_note_goes_back_out_under_its_hosts_id_and_one_made_up_under_none() {
-    let mut host = running::<Thru, true>();
+    let mut host = playing::<Sender<Thru, true>>();
     let off = BusEvent::NoteOff {
         offset: 5,
         channel: 0,
@@ -196,7 +126,7 @@ fn a_note_goes_back_out_under_its_hosts_id_and_one_made_up_under_none() {
 
 #[test]
 fn controllers_go_back_out_as_the_midi_1_values_they_came_in_as() {
-    let mut host = running::<Thru, true>();
+    let mut host = playing::<Sender<Thru, true>>();
     let proxy = |controller| host.midi_mapping(0, controller).expect("mapped");
     let (volume, pressure, bend) = (proxy(7), proxy(128), proxy(129));
     let (high, low, entry) = (proxy(101), proxy(100), proxy(6));
@@ -243,7 +173,7 @@ fn controllers_go_back_out_as_the_midi_1_values_they_came_in_as() {
 
 #[test]
 fn a_note_s_expressions_go_back_out_for_a_note_its_host_named() {
-    let mut host = running::<Thru, true>();
+    let mut host = playing::<Sender<Thru, true>>();
     let expression = |kind, value| BusEvent::Expression {
         offset: 4,
         id: 3,
@@ -315,7 +245,7 @@ fn a_note_s_expressions_go_back_out_for_a_note_its_host_named() {
 
 #[test]
 fn a_sysex_goes_back_out_whole() {
-    let mut host = running::<Thru, true>();
+    let mut host = playing::<Sender<Thru, true>>();
     let short = [0xF0, 0x7E, 0x7F, 0x06, 0x01, 0xF7];
     let long: Vec<u8> = [0xF0].into_iter().chain(0..20).chain([0xF7]).collect();
     let events = [
@@ -335,7 +265,7 @@ fn a_sysex_goes_back_out_whole() {
 
 #[test]
 fn a_sysex_begun_on_another_group_while_one_is_under_way_is_dropped() {
-    let mut host = running::<TwoGroups, true>();
+    let mut host = playing::<Sender<TwoGroups, true>>();
     play(&mut host, &[], &[]);
     let whole: Vec<u8> = [0xF0]
         .into_iter()
@@ -355,7 +285,7 @@ fn a_sysex_begun_on_another_group_while_one_is_under_way_is_dropped() {
 
 #[test]
 fn midi_1_a_plugin_builds_goes_out_as_note_events_and_controllers_and_the_rest_is_counted() {
-    let mut host = running::<Raw, true>();
+    let mut host = playing::<Sender<Raw, true>>();
     play(&mut host, &[], &[]);
     let sent = host.sent();
     assert_eq!(sent.len(), 5, "{sent:?}");
@@ -404,7 +334,7 @@ fn midi_1_a_plugin_builds_goes_out_as_note_events_and_controllers_and_the_rest_i
 
 #[test]
 fn a_plugin_that_declares_no_midi_out_writes_none_whatever_it_sends() {
-    let mut host = running::<Raw, false>();
+    let mut host = playing::<Sender<Raw, false>>();
     play(&mut host, &[], &[]);
     assert_eq!(host.sent(), []);
     assert_eq!(host.component().lost_out(), 0);

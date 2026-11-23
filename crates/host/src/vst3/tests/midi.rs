@@ -7,13 +7,15 @@ use hapto_ump::Origin;
 use hapto_ump::scale::up_7_to_32;
 
 use super::super::{BusEvent, TestHost};
+use super::{Sender, note_on, play, playing};
 use crate::layout::Stereo;
-use crate::{AuCodes, Block, Category, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status};
+use crate::{Block, Processor, Status};
 
 /// Takes MIDI and does nothing with it, so a test reads what the block
 /// decoded.
-struct Listener;
+type Listener = Sender<Listening, false>;
 
+#[derive(Default)]
 struct Listening;
 
 impl Processor for Listening {
@@ -24,51 +26,8 @@ impl Processor for Listening {
     }
 }
 
-impl Plugin for Listener {
-    const INFO: PluginInfo = PluginInfo {
-        name: "Listener",
-        vendor: "Hapto",
-        url: "",
-        email: "",
-        description: "",
-        version: "0.1.0",
-        id: "dev.hapto.listener",
-        vst3_class_id: [4; 16],
-        au_codes: AuCodes {
-            subtype: *b"lstn",
-            manufacturer: *b"Hapt",
-        },
-        category: Category::Instrument,
-        features: &[],
-        layouts: &[],
-        midi_input: true,
-        midi_output: false,
-    };
-    type Params = ();
-    type Processor = Listening;
-
-    fn new(_: (), _parts: Parts) -> Self {
-        Listener
-    }
-
-    fn activate(&mut self, _: &ProcessSetup) -> Listening {
-        Listening
-    }
-}
-
 fn running() -> TestHost<Listener> {
-    let host = TestHost::<Listener>::new();
-    assert_eq!(host.setup(48_000.0, 64), Ok(()));
-    assert_eq!(host.activate(), Ok(()));
-    assert_eq!(host.start(), Ok(()));
-    host
-}
-
-/// One block of 16 frames with `events` and `queues`.
-fn play(host: &mut TestHost<Listener>, events: &[BusEvent<'_>], queues: &[(u32, &[(i32, f64)])]) {
-    let (mut left, mut right) = ([0.0_f32; 16], [0.0_f32; 16]);
-    let block = &mut [&mut left[..], &mut right[..]];
-    assert_eq!(host.process_events(block, 16, events, queues), Ok(()));
+    playing()
 }
 
 /// Each message the last block decoded as its line, with its frame.
@@ -80,17 +39,6 @@ fn heard(host: &TestHost<Listener>) -> Vec<(usize, String)> {
                 .collect()
         })
         .expect("active")
-}
-
-fn note_on(offset: i32, pitch: i16, velocity: f32, id: i32) -> BusEvent<'static> {
-    BusEvent::NoteOn {
-        offset,
-        channel: 0,
-        pitch,
-        velocity,
-        tuning: 0.0,
-        id,
-    }
 }
 
 #[test]
@@ -107,7 +55,11 @@ fn a_note_reaches_the_plugin_as_midi_2_named_by_the_hosts_id() {
     // that names the first ends it alone.
     play(
         &mut host,
-        &[note_on(2, 60, 1.0, 7), note_on(2, 60, 0.5, 9), off],
+        &[
+            note_on(2, 60, 1.0, 0.0, 7),
+            note_on(2, 60, 0.5, 0.0, 9),
+            off,
+        ],
         &[],
     );
     let notes = host.component().heard(|midi| {
@@ -201,7 +153,7 @@ fn a_note_on_s_tuning_is_its_pitch_and_its_expressions_name_it() {
 #[test]
 fn a_volume_expression_reads_on_controller_7_s_curve() {
     let mut host = running();
-    let on = note_on(0, 60, 1.0, 3);
+    let on = note_on(0, 60, 1.0, 0.0, 3);
     // 0 dB, then -12 dB, then VST3's boost past 0 dB.
     let volume = |offset, value| BusEvent::Expression {
         offset,
@@ -299,7 +251,7 @@ fn a_controller_comes_through_its_proxy_as_midi_1_upgraded_and_before_a_note_at_
         (pressure, &[(3, 1.0)]),
         (bend, &[(0, 8192.0 / 16383.0)]),
     ];
-    play(&mut host, &[note_on(3, 60, 1.0, -1)], &queues);
+    play(&mut host, &[note_on(3, 60, 1.0, 0.0, -1)], &queues);
     let read = host.component().heard(|midi| {
         let messages: Vec<(usize, String)> = midi
             .iter()
@@ -489,7 +441,11 @@ fn a_host_claiming_more_than_the_block_has_room_for_is_read_as_far_as_there_is_r
     let mut host = running();
     let volume = host.midi_mapping(0, 7).expect("mapped");
     let points: Vec<(i32, f64)> = (0..3000).map(|point| (point % 16, 0.5)).collect();
-    play(&mut host, &[note_on(0, 60, 1.0, 1)], &[(volume, &points)]);
+    play(
+        &mut host,
+        &[note_on(0, 60, 1.0, 0.0, 1)],
+        &[(volume, &points)],
+    );
     let (count, dropped, note) = host
         .component()
         .heard(|midi| {
@@ -545,7 +501,7 @@ fn a_proxy_shows_its_midi_value_as_text_and_reads_one_back() {
 #[test]
 fn a_note_expression_from_before_an_activation_names_no_note() {
     let mut host = running();
-    play(&mut host, &[note_on(0, 60, 1.0, 5)], &[]);
+    play(&mut host, &[note_on(0, 60, 1.0, 0.0, 5)], &[]);
     assert_eq!(host.stop(), Ok(()));
     assert_eq!(host.deactivate(), Ok(()));
     assert_eq!(host.activate(), Ok(()));
