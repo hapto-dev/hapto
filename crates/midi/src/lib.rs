@@ -61,6 +61,7 @@
     )
 )]
 
+mod channels;
 pub mod controller;
 mod decoder;
 mod encode;
@@ -68,6 +69,7 @@ mod message;
 mod midi;
 mod values;
 
+pub use channels::PerChannel;
 pub use controller::{Controller, ControllerValue};
 pub use decoder::{Decoder, Messages, NOTES, SYSEX_BYTES};
 pub use message::{Message, NoteKey, NoteOff, NoteOn};

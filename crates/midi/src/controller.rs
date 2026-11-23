@@ -246,11 +246,36 @@ impl<T: Copy> Controller<T> {
 
 impl<T: ControllerValue> Controller<T> {
     /// Its value, if `message` is a channel's message that sets it: on any
-    /// group and channel, which the message names. A note's own controller
-    /// is read with [`read_note`](Self::read_note).
+    /// group and channel, which [`read_channel`](Self::read_channel) names
+    /// too. A note's own controller is read with
+    /// [`read_note`](Self::read_note).
     pub fn read(&self, message: &Message<'_>) -> Option<T> {
         let (address, value) = message.controller()?;
         (address == self.address).then(|| T::from_unit(value))
+    }
+
+    /// Its value, and the group and channel it came on, if `message` is a
+    /// channel's message that sets it: for a plugin that keeps a value for
+    /// each channel, in a [`PerChannel`](crate::PerChannel) say.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hapto_midi::controller::VOLUME;
+    /// use hapto_midi::{Channel, Decoder, Group};
+    /// use hapto_ump::Event;
+    ///
+    /// // Volume on channel 10, half way.
+    /// let event = Event::new(0, [0x40B9_0700, 0x8000_0000, 0, 0]);
+    /// let mut decoder = Decoder::new();
+    /// let message = decoder.decode(&event).next().expect("a controller");
+    /// let (group, channel, value) = VOLUME.read_channel(&message).expect("the volume");
+    /// assert_eq!((group, channel), (Group::FIRST, Channel::number(10)));
+    /// assert!((value - 0.5).abs() < 1e-6);
+    /// ```
+    pub fn read_channel(&self, message: &Message<'_>) -> Option<(Group, Channel, T)> {
+        let value = self.read(message)?;
+        Some((message.group(), message.channel()?, value))
     }
 
     /// Its value for one note, and the note, if `message` is a note's own

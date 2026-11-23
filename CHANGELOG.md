@@ -172,7 +172,9 @@ exporter.
   typed and sent: `controller::PAN` as `Centred`, `controller::SUSTAIN` as a
   `Pedal`, which keeps half pedal, and a plugin's own with a value type of
   its own by `ControllerValue`; `controller::number` keeps the plain
-  numbers. `NoteOn::with_key` moves a note, its own pitch with it, and
+  numbers. `Controller::read_channel` reads a value with the group and
+  channel it came on, for a `PerChannel`, which keeps a value for each of the
+  256. `NoteOn::with_key` moves a note, its own pitch with it, and
   `NoteOn::with_id` with `NoteId::own` names a note a plugin sends beside
   the host's.
 - `hapto-midi-devices`: the computer's MIDI devices as UMP, for an app that runs

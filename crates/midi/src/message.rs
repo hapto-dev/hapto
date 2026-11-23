@@ -162,7 +162,9 @@ pub struct NoteOff {
     pub velocity: f32,
 }
 
-/// The key a per-note message names, and the note sounding on it.
+/// The key a per-note message names, and the note sounding on it. Match a
+/// voice by its [`id`](Self::id), which the decoder has already found, not by
+/// its key: two notes may sound on one key.
 ///
 /// MIDI 2.0 names a per-note message by its key, and lets it come before
 /// the key's note does, so a message may name a key with no note. With two
