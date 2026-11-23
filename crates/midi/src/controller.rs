@@ -211,7 +211,17 @@ impl<T: Copy> Controller<T> {
     }
 
     /// Registered controller `index` of `bank`, at rest at `default`.
+    ///
+    /// # Panics
+    ///
+    /// For registered controller 0/0, the pitch bend's range, which the
+    /// decoder reads as [`Message::BendRange`], so a controller of it would
+    /// never read: read and send that message instead.
     pub const fn registered(bank: u8, index: u8, default: T) -> Self {
+        assert!(
+            bank != 0 || index != 0,
+            "registered controller 0/0 is the pitch bend's range: read and send Message::BendRange"
+        );
         Controller {
             address: Address::Registered { bank, index },
             default,

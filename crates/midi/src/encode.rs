@@ -288,8 +288,15 @@ fn pitch_7_25(pitch: Pitch) -> u32 {
 /// A bend range in semitones as registered parameter 0's value: semitones
 /// and cents, as MIDI 1.0 sends them, upscaled as the specification does.
 fn bend_range(semitones: f32) -> u32 {
-    let semitones = semitones.clamp(0.0, 127.99);
-    let whole = semitones.trunc();
-    let cents = ((semitones - whole) * 100.0).round().min(99.0);
-    up_14_to_32((whole as u16) << 7 | cents as u16)
+    // In whole cents, so 1.999 carries to 2 semitones, and none for NaN.
+    let cents = if semitones.is_nan() {
+        0
+    } else {
+        (semitones.clamp(0.0, 127.99) * 100.0).round() as u16
+    };
+    let (whole, cents) = (
+        cents.checked_div(100).unwrap_or(0),
+        cents.checked_rem(100).unwrap_or(0),
+    );
+    up_14_to_32(whole << 7 | cents)
 }

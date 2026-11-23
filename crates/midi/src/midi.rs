@@ -504,7 +504,12 @@ impl<'a> MidiOut<'a> {
         MidiOut { packets }
     }
 
-    /// Sends `message` at `frame`, encoded anew: a transposed note, say.
+    /// Sends `message` at `frame`, encoded anew: a note moved with
+    /// [`NoteOn::with_key`](crate::NoteOn::with_key), say. A note keeps its
+    /// id, so one its host named goes out as the host's; a note sent beside
+    /// it takes an id of the plugin's own, [`NoteId::own`](crate::NoteId::own).
+    /// A SysEx goes out whole or not at all: one past the room is dropped and
+    /// its packets counted.
     ///
     /// Thread: audio. Allocates nothing.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
@@ -521,6 +526,19 @@ impl<'a> MidiOut<'a> {
     /// Thread: audio. Allocates nothing.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn forward(&mut self, frame: usize, message: &Message<'_>) {
+        if let Message::SysEx { data, .. } = message {
+            // Six bytes a packet, and one packet for none.
+            let needed = data.len().div_ceil(6).max(1);
+            let room = self
+                .packets
+                .capacity()
+                .saturating_sub(self.packets.as_slice().len());
+            if needed > room {
+                self.packets
+                    .add_dropped(u32::try_from(needed).unwrap_or(u32::MAX));
+                return;
+            }
+        }
         let offset = u32::try_from(frame).unwrap_or(u32::MAX);
         let origin = named(message);
         let packets = &mut *self.packets;

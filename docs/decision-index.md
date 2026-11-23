@@ -250,6 +250,7 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d23-how-the-processor-sends-midi)
 
+- test `crates/midi/tests/send.rs`: `a_sysex_goes_out_whole_or_not_at_all`
 - `crates/midi/src/midi.rs`: `MidiOut::forward`, `named`
 - test `crates/midi/tests/block.rs`: `a_note_its_host_named_goes_out_under_the_hosts_id_and_one_made_up_under_none`
 - `crates/host/src/audio.rs`: `Block`
@@ -1457,6 +1458,11 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d116-midi-in-musicians-terms)
 
+- `crates/midi/src/values.rs`: `NoteId::own`
+- `crates/midi/src/message.rs`: `NoteOn::with_key`, `NoteOn::with_id`
+- `crates/midi/src/controller.rs`: `Controller::registered`
+- `crates/midi/src/encode.rs`: `bend_range`
+- test `crates/midi/tests/send.rs`: module, `a_note_moved_to_another_key_moves_its_own_pitch_with_it`, `a_note_of_the_plugins_own_never_meets_a_hosts_or_a_made_up_one`, `a_bend_range_carries_its_cents_and_a_nan_is_none`, `a_registered_controller_on_the_bend_range_is_refused`
 - `crates/ump/src/lib.rs`: `Origin`
 - test `crates/midi/tests/decode.rs`: `a_note_its_host_named_keeps_that_id_and_its_note_off_ends_it_alone`, `a_notes_own_message_its_host_named_finds_that_note_and_not_the_newest`
 - `crates/midi/src/lib.rs`: module

@@ -355,6 +355,9 @@ pub struct NoteId(u32);
 
 /// The bit every made-up id has, and no host's.
 const MADE_UP: u32 = 0x8000_0000;
+/// The bits a plugin's own id has: the made-up bit and the one below it,
+/// which the decoder's ids never set.
+const OWN: u32 = 0xC000_0000;
 
 impl NoteId {
     /// The host's id `id`, below `0x8000_0000`.
@@ -362,9 +365,29 @@ impl NoteId {
         NoteId(id & !MADE_UP)
     }
 
-    /// The `count`th id made up.
+    /// An id of the plugin's own, `n` of up to 30 bits, for a note it sends
+    /// beside the ones it reads: a chord's other notes, say. It is never a
+    /// host's, so its note goes out under no host id, nor one the decoder
+    /// makes up, so a plugin may keep both in one table.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hapto_midi::{Key, NoteId, NoteOn};
+    ///
+    /// // A fifth above a note the host named, as a note of its own.
+    /// let root = NoteOn::new(Key::new(60), 1.0).with_id(NoteId::hosts(7));
+    /// let fifth = root.with_key(Key::new(67)).with_id(NoteId::own(1));
+    /// assert!(!fifth.id.is_hosts());
+    /// assert_ne!(fifth.id, root.id);
+    /// ```
+    pub const fn own(n: u32) -> Self {
+        NoteId(n & !OWN | OWN)
+    }
+
+    /// The `count`th id made up, wrapping below a plugin's own.
     pub(crate) const fn made_up(count: u32) -> Self {
-        NoteId(count | MADE_UP)
+        NoteId(count & !OWN | MADE_UP)
     }
 
     /// Whether the host named the note, rather than Hapto.
@@ -383,6 +406,8 @@ impl fmt::Display for NoteId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.is_hosts() {
             write!(f, "host's note {}", self.0)
+        } else if self.0 & OWN == OWN {
+            write!(f, "plugin's note {}", self.0 & !OWN)
         } else {
             write!(f, "note {}", self.0 & !MADE_UP)
         }

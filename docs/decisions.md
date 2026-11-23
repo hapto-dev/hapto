@@ -534,18 +534,19 @@ sends a message encoded anew, one that arrived on, as MIDI thru, which is never
 implicit, a note its host named keeping the host's id, or packets as they are,
 all into one list in the order the plugin sends them, whose capacity
 `ProcessSetup::max_out_events` fixes at activation (past it, dropped and
-counted). One sent past its piece's end goes at the piece's last frame, as MIDI
-in does, so nothing lands in a later piece or past the block. `Block::spans`
-cuts a block at each frame a message arrives at, and `Spans::at_most` caps a
-span's length, so a plugin acts on each message and renders on to the next. A
-plugin that never asks keeps its block whole, so a convolver or an FFT is never
-cut short; one that sends while it spans makes its spans with `Spans::new` from
-the block's audio and MIDI and keeps the block's `midi_out`. A sidechain or
-transport joins `Block` later without changing the trait.
-`PluginInfo::midi_output` declares the output to the host. Parameter changes
-still reach the host through the exporter, never this list. The C interface and
-the VST3 exporter carry the list to their host and MIDI in from it, and the
-standalone app brings MIDI in from the computer's inputs (D59, D62, D115).
+counted), a SysEx whole or not at all. One sent past its piece's end goes at the
+piece's last frame, as MIDI in does, so nothing lands in a later piece or past
+the block. `Block::spans` cuts a block at each frame a message arrives at, and
+`Spans::at_most` caps a span's length, so a plugin acts on each message and
+renders on to the next. A plugin that never asks keeps its block whole, so a
+convolver or an FFT is never cut short; one that sends while it spans makes its
+spans with `Spans::new` from the block's audio and MIDI and keeps the block's
+`midi_out`. A sidechain or transport joins `Block` later without changing the
+trait. `PluginInfo::midi_output` declares the output to the host. Parameter
+changes still reach the host through the exporter, never this list. The C
+interface and the VST3 exporter carry the list to their host and MIDI in from
+it, and the standalone app brings MIDI in from the computer's inputs (D59, D62,
+D115).
 
 ### D24. Answering MIDI-CI
 
@@ -3867,19 +3868,24 @@ A note is a `NoteId` from its note-on to its note-off: the host's own where its
 format names notes, which its exporter puts in the packet's `Origin::Note`,
 otherwise one the decoder makes up, with the top bit set so it never meets a
 host's. A note-off ends every note on its key, one message for each, or the note
-its host named alone, under the host's id whether or not the decoder holds it.
-A note-off for a key with no note the decoder knows of still comes, under one
-no note has, so a plugin that ends notes by key hears it. All Notes Off, All
-Sound Off and the mode messages end a channel's notes within its group, as
-MIDI 2.0's channel mode messages read. A note's own message names its
-`NoteKey`: its key, and the note its host named, if that one sounds there, and
-none if not; with no name, the newest note sounding on it, since MIDI 2.0 lets
-a note's controllers come before its note does and gives a key's older note no
-more of them.
-Per-note management's detach leaves the key's notes without them until its next
-note-on. Registered parameter 0 is `BendRange`, in semitones, and a note's pitch
-comes with its note-on, as MIDI 2.0's pitch attribute, or on its own, as
-registered per-note controller 3.
+its host named alone, under the host's id whether or not the decoder holds it. A
+note-off for a key with no note the decoder knows of still comes, under one no
+note has, so a plugin that ends notes by key hears it. All Notes Off, All Sound
+Off and the mode messages end a channel's notes within its group, as MIDI 2.0's
+channel mode messages read. A note's own message names its `NoteKey`: its key,
+and the note its host named, if that one sounds there, and none if not; with no
+name, the newest note sounding on it, since MIDI 2.0 lets a note's controllers
+come before its note does and gives a key's older note no more of them. Per-note
+management's detach leaves the key's notes without them until its next note-on.
+Registered parameter 0 is `BendRange`, in semitones, and a note's pitch comes
+with its note-on, as MIDI 2.0's pitch attribute, or on its own, as registered
+per-note controller 3. Relative registered and assignable controllers are not
+decoded: a plugin that steps by them reads its packets. A plugin moves a note to
+another key with `NoteOn::with_key`, its own pitch moving with it, and keeps its
+id, so its host knows it as the note it came from. A note it sends beside one it
+read, a chord's say, takes an id of its own, `NoteId::own`, which never meets a
+host's or one the decoder makes up. `Controller::registered` refuses 0/0, the
+bend range, which would never read.
 
 A SysEx comes whole once its last packet does, from a buffer the decoder made.
 The decoder's tables are made with it, so decoding allocates nothing and never

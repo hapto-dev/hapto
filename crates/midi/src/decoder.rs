@@ -565,7 +565,7 @@ impl Decoder {
     }
 
     fn make_id(&mut self) -> NoteId {
-        let id = NoteId::made_up(self.made & 0x7FFF_FFFF);
+        let id = NoteId::made_up(self.made);
         self.made = self.made.wrapping_add(1);
         id
     }

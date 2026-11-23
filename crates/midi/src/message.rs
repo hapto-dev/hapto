@@ -43,16 +43,55 @@ pub struct NoteOn {
 
 impl NoteOn {
     /// A note-on for `key` on the first group and channel, with no
-    /// attribute, for testing a voice on its own.
+    /// attribute, for testing a voice on its own: the plugin's own note 0.
     pub fn new(key: Key, velocity: f32) -> Self {
         NoteOn {
-            id: NoteId::made_up(0),
+            id: NoteId::own(0),
             group: Group::FIRST,
             channel: Channel::FIRST,
             key,
             velocity,
             attribute: Attribute::NONE,
         }
+    }
+
+    /// This note moved to `key`, as a transposer sends it. A pitch of its
+    /// own, MIDI 2.0's pitch attribute, moves by the same interval, held to
+    /// MIDI's range, so it sounds where its key says. It keeps its id, so
+    /// its host knows it as the note it came from: send it in that note's
+    /// place. A note sent beside the one it came from takes an id of the
+    /// plugin's own, with [`with_id`](Self::with_id).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hapto_midi::{Key, NoteOn};
+    ///
+    /// let note = NoteOn::new(Key::new(60), 1.0).with_key(Key::new(67));
+    /// assert_eq!(note.key, Key::new(67));
+    /// assert_eq!(note.pitch().semitones(), 67.0);
+    /// ```
+    #[must_use]
+    pub fn with_key(self, key: Key) -> Self {
+        let mut attribute = self.attribute;
+        if attribute.kind == PITCH_7_9 {
+            // 7.9 fixed point: a key is 512.
+            let shift = (i32::from(key.number()) - i32::from(self.key.number())) * 512;
+            let moved = (i32::from(attribute.data) + shift).clamp(0, i32::from(u16::MAX));
+            attribute.data = u16::try_from(moved).unwrap_or(u16::MAX);
+        }
+        NoteOn {
+            key,
+            attribute,
+            ..self
+        }
+    }
+
+    /// This note under `id`: a note sent beside the one it came from, under
+    /// an id of the plugin's own, [`NoteId::own`].
+    #[must_use]
+    pub fn with_id(self, id: NoteId) -> Self {
+        NoteOn { id, ..self }
     }
 
     /// The note-off that ends this note, at `velocity`.
