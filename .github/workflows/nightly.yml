@@ -104,7 +104,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [ump_packets, midi1_bytes, page_message, saved_block, cabi_state]
+        target: [ump_packets, midi1_bytes, midi1_translation, page_message, saved_block, cabi_state]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Toolchain
