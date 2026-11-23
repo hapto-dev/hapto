@@ -235,7 +235,7 @@ fn a_load_is_captured_once_by_its_apply_and_a_later_change_again() {
     let mut parts = parts();
     let driver = Driver::of(&parts);
     let count = parts.saved_value("count", Counted(0)).expect("a free key");
-    let block = br#"{"seamStateVersion": 1, "parameters": {}, "extra": {"count": 2}}"#;
+    let block = br#"{"haptoStateVersion": 1, "parameters": {}, "extra": {"count": 2}}"#;
 
     let before = captures();
     parts.saved().load(block).expect("a saved block");
@@ -283,7 +283,7 @@ fn a_value_another_apply_writes_after_its_own_is_captured_at_the_tick() {
         .register("preset", &preset)
         .expect("a free key");
 
-    let block = br#"{"seamStateVersion": 1, "parameters": {},
+    let block = br#"{"haptoStateVersion": 1, "parameters": {},
         "extra": {"label": "Drums", "preset": "Bass"}}"#;
     parts.saved().load(block).expect("a saved block");
     driver.tick();
@@ -346,7 +346,7 @@ fn a_participant_may_make_a_saved_value_and_sync_from_an_apply_the_tick_runs() {
         .register("reaching", &reaching)
         .expect("a free key");
 
-    let block = br#"{"seamStateVersion": 1, "parameters": {},
+    let block = br#"{"haptoStateVersion": 1, "parameters": {},
         "extra": {"reaching": true, "label": "Drums"}}"#;
     parts.borrow().saved().load(block).expect("a saved block");
     driver.tick();

@@ -33,7 +33,7 @@ impl Participant for Fixed {
 
 /// The block a host writes around a session's `extra`, as text.
 fn block(extra: &Section) -> String {
-    format!(r#"{{"seamStateVersion":1,"parameters":{{}},"extra":{extra}}}"#)
+    format!(r#"{{"haptoStateVersion":1,"parameters":{{}},"extra":{extra}}}"#)
 }
 
 /// Returns whether `serde_json` reads the block back, as a host's load does.

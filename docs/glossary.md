@@ -41,7 +41,7 @@ Three senses:
   [layout](#layout), and the events in and out.
 - **The saved block**: the plugin's saved state, the JSON object a host stores
   and hands back ([`SavedState`](../crates/host/src/state.rs)). It names two
-  versions: `seamStateVersion`, of the frame Hapto gives it, and
+  versions: `haptoStateVersion`, of the frame Hapto gives it, and
   `pluginStateVersion`, of the plugin's own schema, which a migration raises.
 - **A reserved block**: a range of NRPN numbers the plugin's own protocol owns
   (see [reservation](#reservation)).

@@ -1649,7 +1649,7 @@ impl Plugin for Busy {
 fn a_tick_while_the_plugin_is_busy_skips_hapto_s_tick_and_its_idle() {
     let host = TestHost::<Busy>::new();
     BUSY.set(host.instance());
-    let block = br#"{"seamStateVersion": 1, "parameters": {}, "extra": {"zoom": 2}}"#;
+    let block = br#"{"haptoStateVersion": 1, "parameters": {}, "extra": {"zoom": 2}}"#;
     assert_eq!(host.load(block), Ok(()));
     assert_eq!(host.activate(48_000.0, 64, Width::STEREO), Ok(()));
     assert_eq!(BUSY_IDLES.with(Cell::get), 0, "the nested tick ran no idle");
@@ -2189,7 +2189,7 @@ impl Plugin for Stuck {
 #[test]
 fn the_first_refused_load_writes_the_reason_and_is_no_fault_through_the_cabi_exporter() {
     let host = TestHost::<Stuck>::new();
-    let older = br#"{"seamStateVersion":1,"pluginStateVersion":0,"parameters":{}}"#;
+    let older = br#"{"haptoStateVersion":1,"pluginStateVersion":0,"parameters":{}}"#;
     let faults = thread_faults();
     written();
     assert_eq!(host.load(older), Err(Refused), "the host's answer stands");

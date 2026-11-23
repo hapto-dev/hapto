@@ -440,7 +440,7 @@ impl Plugin for Migrating {
 #[test]
 fn a_migration_that_panics_refuses_the_load_and_counts_a_fault() {
     let app = Standalone::<Migrating>::new();
-    let older = br#"{"seamStateVersion": 1, "pluginStateVersion": 0, "parameters": {}}"#;
+    let older = br#"{"haptoStateVersion": 1, "pluginStateVersion": 0, "parameters": {}}"#;
     let refused = app.load(older).expect_err("refused, as a host's load is");
     assert!(matches!(refused, LoadRefused::Panicked), "{refused}");
     assert_eq!(app.faults(), 1);

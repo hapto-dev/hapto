@@ -21,7 +21,7 @@ use run_time::{KEY as RUN_TIME, Loaded};
 pub const STATE_VERSION: u64 = 1;
 
 /// The key of the frame's version, [`STATE_VERSION`].
-const HAPTO_VERSION: &str = "seamStateVersion";
+const HAPTO_VERSION: &str = "haptoStateVersion";
 /// The key of the plugin's own schema version.
 const PLUGIN_VERSION: &str = "pluginStateVersion";
 
@@ -72,7 +72,7 @@ pub enum LoadError {
     NotJson,
     /// The block is JSON, but not an object.
     NotAnObject,
-    /// `seamStateVersion` is missing, not a whole number, or below 1.
+    /// `haptoStateVersion` is missing, not a whole number, or below 1.
     BadVersion,
     /// `pluginStateVersion` is present but not a whole number from 0.
     BadPluginVersion,
@@ -93,7 +93,7 @@ impl fmt::Display for LoadError {
             LoadError::NotJson => "the saved block is not one JSON value",
             LoadError::NotAnObject => "the saved block is not a JSON object",
             LoadError::BadVersion => {
-                "the saved block's seamStateVersion is missing or not a whole number from 1"
+                "the saved block's haptoStateVersion is missing or not a whole number from 1"
             }
             LoadError::BadPluginVersion => {
                 "the saved block's pluginStateVersion is not a whole number from 0"
@@ -182,7 +182,7 @@ struct LastLoad {
 /// plugin's schema.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 struct Versions {
-    /// `seamStateVersion`, from 1.
+    /// `haptoStateVersion`, from 1.
     hapto: u64,
     /// `pluginStateVersion`, 0 when absent.
     plugin: u64,
@@ -404,18 +404,18 @@ impl SavedState {
     ///
     /// // A block from before the rename has no plugin version: it is at 0.
     /// let gain = set.id("gain").ok_or("declared")?;
-    /// state.load(br#"{"seamStateVersion": 1, "parameters": {"level": 6}}"#)?;
+    /// state.load(br#"{"haptoStateVersion": 1, "parameters": {"level": 6}}"#)?;
     /// assert_eq!(set.value(gain), 6.0);
-    /// assert!(state.save().starts_with(br#"{"seamStateVersion":1,"pluginStateVersion":1,"#));
+    /// assert!(state.save().starts_with(br#"{"haptoStateVersion":1,"pluginStateVersion":1,"#));
     ///
     /// // A `gain` the block holds already, kept by an older build from a newer one, stands.
-    /// let both = br#"{"seamStateVersion": 1, "parameters": {"level": 6, "gain": 3}}"#;
+    /// let both = br#"{"haptoStateVersion": 1, "parameters": {"level": 6, "gain": 3}}"#;
     /// state.load(both)?;
     /// assert_eq!(set.value(gain), 3.0);
     ///
     /// // The reason a migration gives reaches the host's load.
     /// let Err(LoadError::MigrationFailed(reason)) =
-    ///     state.load(br#"{"seamStateVersion": 1, "parameters": []}"#)
+    ///     state.load(br#"{"haptoStateVersion": 1, "parameters": []}"#)
     /// else {
     ///     panic!("not migrated");
     /// };
@@ -476,7 +476,7 @@ impl SavedState {
     }
 
     /// Returns the block as UTF-8 JSON with no byte-order mark:
-    /// `{"seamStateVersion": 1, "pluginStateVersion": 0, "parameters": {...},
+    /// `{"haptoStateVersion": 1, "pluginStateVersion": 0, "parameters": {...},
     /// "runTime": {...}, "extra": {...}}`.
     ///
     /// Both versions are always written, the plugin's at 0 too, so every
@@ -520,7 +520,7 @@ impl SavedState {
     /// let block = String::from_utf8(state.save())?;
     /// assert_eq!(
     ///     block,
-    ///     r#"{"seamStateVersion":1,"pluginStateVersion":0,"parameters":{"bypass":true}}"#
+    ///     r#"{"haptoStateVersion":1,"pluginStateVersion":0,"parameters":{"bypass":true}}"#
     /// );
     /// # Ok(())
     /// # }
@@ -618,7 +618,7 @@ impl SavedState {
     /// let state = SavedState::new(&set, &Session::new(&set));
     ///
     /// // The value snaps like any write.
-    /// state.load(br#"{"seamStateVersion":1,"parameters":{"gain":99}}"#)?;
+    /// state.load(br#"{"haptoStateVersion":1,"parameters":{"gain":99}}"#)?;
     /// assert_eq!(set.value(gain), 24.0);
     ///
     /// // A block that is not recognised changes nothing.

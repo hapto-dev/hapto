@@ -18,7 +18,7 @@ fn param(key: &str) -> Param {
 
 #[test]
 fn each_mapping_reaches_the_parameter_its_key_names() {
-    let block = br#"{"seamStateVersion": 1, "parameters": {}, "extra": {"midiLearn": {
+    let block = br#"{"haptoStateVersion": 1, "parameters": {}, "extra": {"midiLearn": {
         "schema": 1,
         "mappings": [
             {"target": "gain", "kind": "cc", "group": 0, "channel": 0, "number": 74},

@@ -86,9 +86,9 @@ impl Plugin for Migrating {
     }
 }
 
-const OLDER: &[u8] = br#"{"seamStateVersion":1,"pluginStateVersion":0,"parameters":{}}"#;
+const OLDER: &[u8] = br#"{"haptoStateVersion":1,"pluginStateVersion":0,"parameters":{}}"#;
 const BROKEN: &[u8] =
-    br#"{"seamStateVersion":1,"pluginStateVersion":0,"parameters":{},"broken":true}"#;
+    br#"{"haptoStateVersion":1,"pluginStateVersion":0,"parameters":{},"broken":true}"#;
 
 #[test]
 fn a_session_with_no_block_loads_nothing() {

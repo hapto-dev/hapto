@@ -120,7 +120,7 @@ comments never cite an id: they state the reason in words, and
 | D81 | [Does a late apply made while a panic unwinds leave the session owing a pass? (S6, S10, D55)](#d81-a-registration-made-while-a-panic-unwinds) | No. Only a panic that began inside a pass or a late apply leaves the pass owed, for the next tick to run again; a registration made from a destructor during another panic owes none, so it clears no undo history. | decided |
 | D82 | [When do a restore and an unmap run a learn target's own code? (L8, L9, D54, D71)](#d82-when-learn-runs-a-targets-own-code) | Last: after learn has settled its table, published it and told the session, so a target whose `end` panics leaves no earlier mapping routing, in learn or on the audio side, and learn usable. | decided |
 | D83 | [Do a page control's `onDrag` and `setValue` differ? (B2)](#d83-a-controls-drag-and-one-shot-set) | Only in the gesture `onDragStart` and `onDragEnd` put around a drag: they are one function, so a `setValue` during a drag joins it. | decided |
-| D84 | [Whose version does the saved block carry? (H1, H2, D80)](#d84-the-saved-blocks-two-versions) | Two, each its own: `seamStateVersion` is Hapto's frame, at 1, and `pluginStateVersion` the plugin's schema, 0 with no migration and when absent. A save writes both, each the higher of the block's and the build's. | decided |
+| D84 | [Whose version does the saved block carry? (H1, H2, D80)](#d84-the-saved-blocks-two-versions) | Two, each its own: `haptoStateVersion` is Hapto's frame, at 1, and `pluginStateVersion` the plugin's schema, 0 with no migration and when absent. A save writes both, each the higher of the block's and the build's. | decided |
 | D85 | [How does a migration say it cannot upgrade a block? (D80)](#d85-a-migration-that-cannot-upgrade-a-block) | It returns a `Result` whose error is a boxed `Error`, so it can use `?`, and `LoadError::MigrationFailed` carries the reason. | decided |
 | D86 | [How does `PluginInfo` hold the AU codes? (D64)](#d86-the-au-codes) | As one `AuCodes` with named `subtype` and `manufacturer` fields, so the two cannot be swapped unseen. | decided |
 | D87 | [How does `ProcessSetup` give the main bus? (D58)](#d87-the-main-bus-in-processsetup) | As one `layout: Width`, the width the host chose among those the processor's layout runs at. | decided |
@@ -1960,12 +1960,12 @@ drift apart.
 **Question and C++ Seam.** Whose version does the saved block carry? (H1, H2,
 D80) The C++ Seam wrote one, `seamStateVersion` (H1).
 
-**Rust.** Two, each its own. `seamStateVersion` is the version of Hapto's frame,
-the shape Hapto gives `parameters`, `extra` and the keys a load keeps:
+**Rust.** Two, each its own. `haptoStateVersion` is the version of Hapto's
+frame, the shape Hapto gives `parameters`, `extra` and the keys a load keeps:
 `STATE_VERSION`, at 1. `pluginStateVersion` is the plugin's own schema, the
 version `with_migration` names (D80). A plugin with no migration is at 0, and a
 block without the key reads as 0. A save always writes both, the plugin's at 0
-too, so every block says what it holds, in this order: `seamStateVersion`,
+too, so every block says what it holds, in this order: `haptoStateVersion`,
 `pluginStateVersion`, `parameters`, `extra`, then the kept keys in key order
 (H1).
 
@@ -4918,7 +4918,7 @@ false`, which is new in Rust. The exporters do not check it yet.
 ### H1. The saved block
 
 **Invariant.** The plugin's saved state is UTF-8 JSON with no byte-order mark or
-framing: one object with `seamStateVersion` (an integer, currently 1),
+framing: one object with `haptoStateVersion` (an integer, currently 1),
 `parameters` (a flat object from key to value in real units) and `extra` (the
 session, left out when empty), in that order. In Rust a second version,
 `pluginStateVersion`, follows the first (D84). Bool parameters write
@@ -4942,12 +4942,12 @@ and the unknown top-level keys follow `extra` (D80).
 (D52), and the session, and saves and loads from any thread but audio. The
 discrete parameters are bool and choice (P17), so a choice writes its index as
 an integer and a stepped continuous range writes a double, 2.0 say.
-`seamStateVersion` is Hapto's frame, at 1, and `pluginStateVersion` the plugin's
-own schema, 0 unless the plugin raises it with a migration, which upgrades a
-block of an older plugin version before it loads (D80, D84). `serde_json`'s
-`float_roundtrip` reads every double back to the bits it was written from, so
-save, load, save writes the same bytes for any double in a section or a kept
-key; without it about one value in ten drifted
+`haptoStateVersion` is Hapto's frame, at 1, and `pluginStateVersion` the
+plugin's own schema, 0 unless the plugin raises it with a migration, which
+upgrades a block of an older plugin version before it loads (D80, D84).
+`serde_json`'s `float_roundtrip` reads every double back to the bits it was
+written from, so save, load, save writes the same bytes for any double in a
+section or a kept key; without it about one value in ten drifted
 by a bit on every load.
 
 [History](decision-history.md#h1-the-saved-block)

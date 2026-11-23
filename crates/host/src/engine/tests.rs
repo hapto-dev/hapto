@@ -1028,7 +1028,7 @@ through_every_shell!(
 
 fn the_plugin_s_migration_upgrades_an_older_block<S: Shell>() {
     let mut host = S::create();
-    let older = br#"{"seamStateVersion": 1, "parameters": {"level": 5}}"#;
+    let older = br#"{"haptoStateVersion": 1, "parameters": {"level": 5}}"#;
     assert_eq!(host.load(older), Ok(()));
     assert_eq!(host.gain(), 0.5, "the renamed parameter took the value");
     let saved: Json = serde_json::from_slice(&host.save()).expect("JSON");
