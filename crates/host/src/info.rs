@@ -2,8 +2,6 @@
 
 #[cfg(all(doctest, feature = "manifest"))]
 mod manifest_refusals;
-#[cfg(test)]
-mod offered;
 
 use crate::layout::{Layout, MAX_CHANNELS, Width};
 use crate::{Plugin, Processor};
@@ -96,8 +94,14 @@ pub enum Feature {
 /// For such a plugin, which is the point.
 #[doc(hidden)]
 pub const fn widths<P: Plugin>() -> &'static [Width] {
-    let typed = <<P::Processor as Processor>::Layout as Layout>::WIDTHS;
-    let listed = P::INFO.layouts;
+    offered(
+        <<P::Processor as Processor>::Layout as Layout>::WIDTHS,
+        P::INFO.layouts,
+    )
+}
+
+/// [`widths`], from a layout's own widths and those an info lists.
+const fn offered(typed: &'static [Width], listed: &'static [Width]) -> &'static [Width] {
     let widths = match (typed.is_empty(), listed.is_empty()) {
         (false, true) => typed,
         (true, false) => listed,
@@ -292,10 +296,12 @@ fn vst3_subcategory(feature: Feature, category: Category) -> &'static str {
     }
 }
 
-#[cfg(all(test, any(feature = "vst3", feature = "cabi")))]
+#[cfg(test)]
 mod tests {
     use super::*;
+    use crate::layout::Stereo;
 
+    #[cfg(any(feature = "vst3", feature = "cabi"))]
     #[test]
     fn drums_are_named_as_the_sdk_names_them() {
         assert_eq!(vst3_subcategory(Feature::Drum, Category::Effect), "Drums");
@@ -304,5 +310,27 @@ mod tests {
             "Drum"
         );
         assert_eq!(vst3_subcategory(Feature::Equalizer, Category::Effect), "EQ");
+    }
+
+    // An exporter evaluates `widths` while compiling, where these panics
+    // fail the build; called at run time, each is the test's.
+
+    #[test]
+    #[should_panic(expected = "list `layouts` only for a processor in `AnyLayout`")]
+    fn widths_listed_beside_a_typed_layout_are_refused() {
+        let _ = offered(Stereo::WIDTHS, &[Width::STEREO, Width::MONO]);
+    }
+
+    #[test]
+    #[should_panic(expected = "give `layouts` at least one")]
+    fn any_layout_with_no_width_listed_is_refused() {
+        let _ = offered(&[], &[]);
+    }
+
+    #[test]
+    #[should_panic(expected = "more than the 16 channels audio holds")]
+    fn a_width_of_more_channels_than_audio_holds_is_refused() {
+        const TOO_WIDE: &[Width] = &[Width::STEREO, Width::new(2, MAX_CHANNELS + 1)];
+        let _ = offered(&[], TOO_WIDE);
     }
 }

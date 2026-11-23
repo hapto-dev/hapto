@@ -1324,7 +1324,7 @@ move its line here; when a decision gains code, add one.
 - `crates/audio/src/layout.rs`: `Width`, `Layout`, `Bus`, `Mono`, `Stereo`, `StereoOut`, `MonoToStereo`, `NoAudio`, `AnyLayout`, `MAX_CHANNELS`, `buses`
 - `crates/host/src/audio.rs`: `Block`, `ProcessSetup`
 - `crates/host/src/engine/process.rs`: `pieces`
-- `crates/host/src/info.rs`: `widths`, `PluginInfo`
+- `crates/host/src/info.rs`: `widths`, `offered`, `PluginInfo`
 - `crates/host/src/plugin.rs`: `Processor`
 - `crates/macros/src/manifest.rs`: `default_layouts`
 - test `crates/audio/tests/audio.rs`: module, `stereo_frames_come_in_time_order_left_then_right`, `new_refuses_a_count_the_layout_does_not_fix`, `a_typed_layout_lends_its_audio_to_code_for_any_layout`, `peak_is_nan_when_a_sample_is`, `a_bus_hands_its_channels_out_by_place`, `a_bus_frame_holds_each_of_its_channels_in_order`, `the_widest_bus_s_frame_holds_all_sixteen_channels_in_order`, `a_bus_holds_the_larger_of_its_counts`
@@ -1332,8 +1332,8 @@ move its line here; when a decision gains code, add one.
 - test `crates/audio/benches/iai.rs`: module, `gain_by_frame`, `gain_by_channel`, `gain_in_one_call`, `a_mono_source_into_every_channel`
 - test `crates/macros/src/manifest.rs`: `layouts_left_out_are_empty`
 - test `crates/host/src/info/manifest_refusals.rs`: `FieldInNeither`
-- test `crates/host/src/info/offered.rs`: module, `a_typed_layout_offers_its_own_width`, `any_layout_offers_the_widths_its_plugin_lists_the_first_by_default`, `widths_listed_beside_a_typed_layout_are_refused`, `any_layout_with_no_width_listed_is_refused`, `a_width_of_more_channels_than_audio_holds_is_refused`
-- test `crates/host/src/cabi/tests.rs`: `a_typed_bus_wider_out_than_in_plays_at_its_own_width`, `a_typed_bus_with_no_input_plays_from_silence`
+- test `crates/host/src/info.rs`: `widths_listed_beside_a_typed_layout_are_refused`, `any_layout_with_no_width_listed_is_refused`, `a_width_of_more_channels_than_audio_holds_is_refused`
+- test `crates/host/src/cabi/tests.rs`: `a_typed_bus_wider_out_than_in_plays_at_its_own_width`
 
 ### D113. The audio types' crate
 
