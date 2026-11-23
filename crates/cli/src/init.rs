@@ -120,8 +120,9 @@ pub(crate) const INSTRUMENT_FILES: &[(&str, &str)] = &[
 const MADE: [&str; 3] = ["", "Params", "Processor"];
 
 /// Names none of the types the template makes from a plugin's may take: the
-/// template's imports, which a test reads, the names of Rust's prelude it
-/// uses, which the type would shadow, and `Self`.
+/// template's imports, which a test reads, the types it defines beside the
+/// plugin's, the names of Rust's prelude it uses, which the type would
+/// shadow, and `Self`.
 const TAKEN: &[&str] = &[
     "AddSample",
     "Asset",
@@ -134,10 +135,13 @@ const TAKEN: &[&str] = &[
     "Debug",
     "Editor",
     "Err",
+    "Expression",
     "Float",
     "Message",
     "None",
     "NoteId",
+    "NoteOff",
+    "NoteOn",
     "Ok",
     "Option",
     "Page",
@@ -145,13 +149,16 @@ const TAKEN: &[&str] = &[
     "Params",
     "Parts",
     "Path",
+    "Play",
     "Plugin",
+    "Poly",
     "PluginInfo",
     "ProcessSetup",
     "Processor",
     "Refused",
     "Result",
     "Self",
+    "Sine",
     "Size",
     "Some",
     "Status",
@@ -161,6 +168,7 @@ const TAKEN: &[&str] = &[
     "TestHost",
     "UiParams",
     "Voice",
+    "VoiceAudio",
 ];
 
 /// Rust's keywords, of edition 2024, reserved ones included: a one-word

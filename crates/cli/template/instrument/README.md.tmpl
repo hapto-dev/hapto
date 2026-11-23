@@ -1,7 +1,9 @@
 # {{name}}
 
 A Hapto instrument: a sine for each note a MIDI keyboard plays, at a level
-in dB.
+in dB. `Poly` gives each note one of its voices, and each voice renders by
+its note's `Expression`, in which every bend and tuning a host sends is
+already in the pitch.
 
 - `cargo hapto dev` runs it as an app of its own while you edit it, played
   by every MIDI input the computer has. `cargo hapto dev --host` runs it
@@ -12,7 +14,8 @@ in dB.
 - `cargo hapto juce` writes `hapto-juce.cmake`, its settings for Hapto's JUCE
   adapter, and prints the CMake that builds it through JUCE: as AU, AAX or a
   JUCE VST3.
-- `cargo test` drives it through the VST3 exporter, as a host does.
+- `cargo test` drives it through the VST3 exporter, as a host does, and
+  plays it with no host at several block sizes, which must sound the same.
 
 Its identity is in `Cargo.toml`, under `[package.metadata.hapto]`: a host
 knows the plugin by its ids for good, so they never change once it ships.

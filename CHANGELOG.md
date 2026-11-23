@@ -382,17 +382,18 @@ window anywhere but Windows.
 - `examples/eq`: an EQ of six biquad bands and an output gain, as a VST3 module
   or a static library for the adapter.
 - `examples/midi-probe`: a plugin that makes a host's MIDI heard, for checks by
-  hand: a sine for each note, which its own pitch, bend, pressure and volume
-  move, the channel's bend and volume, and every message sent back out as it
-  came. It builds as a VST3 module, through the JUCE adapter, and as an app of
-  its own on the computer's MIDI devices.
+  hand: a sine for each note on `Poly`, which its own pitch, bend, pressure,
+  volume and pan move, the channel's bend, volume and sustain pedal, and every
+  message sent back out as it came. It builds as a VST3 module, through the
+  JUCE adapter, and as an app of its own on the computer's MIDI devices.
 - `xtask`: `cargo xtask gen` writes every generated file, and CI fails when one
   drifts. `cargo xtask wrap` holds comments and docs to 80 columns.
 - `cargo-hapto`: the plugin author's command, for a plugin crate in any
   workspace. `cargo hapto init` writes a new plugin crate, a gain with its
   page, a standalone binary and tests, with fresh ids, its Hapto crates from
   a checkout; `--instrument` writes an instrument instead, a sine for each
-  note with no page. `cargo hapto dev` runs the plugin's standalone binary
+  note on `Poly` with no page, whose tests play it at several block sizes.
+  `cargo hapto dev` runs the plugin's standalone binary
   with its page from Vite, and rebuilds and restarts it after each change to
   Rust with its saved block kept; `--host` runs it in the dev host. `cargo
   hapto serve` runs the page's dev server alone, for the debug bundle in a
