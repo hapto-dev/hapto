@@ -179,9 +179,10 @@ exporter.
   its own by `ControllerValue`; `controller::number` keeps the plain
   numbers. `Controller::read_channel` reads a value with the group and
   channel it came on, for a `PerChannel`, which keeps a value for each of the
-  256. `NoteOn::with_key` moves a note, its own pitch with it, and
-  `NoteOn::with_id` with `NoteId::own` names a note a plugin sends beside
-  the host's.
+  256. `packets_of` turns messages into the packets they go out as, for a
+  test or a tool to hand a host. `NoteOn::with_key` moves a note, its own
+  pitch with it, and `NoteOn::with_id` with `NoteId::own` names a note a
+  plugin sends beside the host's.
 - `hapto-midi-devices`: the computer's MIDI devices as UMP, for an app that runs
   a plugin with no host. A device is named by an id that survives the system's
   renumbering, the list's changes are told at the main thread's tick, and each

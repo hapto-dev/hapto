@@ -539,6 +539,41 @@ fn named(message: &Message<'_>) -> Origin {
         .map_or(Origin::Midi2, |id| Origin::Note { id: id.get() })
 }
 
+/// The packets `messages` go out as, each at its frame, as a plugin's
+/// [`MidiOut`] sends them: for a test or a tool to hand a host, a test host
+/// or a device, in place of packets written out by hand. It allocates, so it
+/// is no part of the audio thread's.
+///
+/// # Examples
+///
+/// ```
+/// use hapto_midi::controller::VOLUME;
+/// use hapto_midi::{Channel, Group, Key, NoteOn, packets_of};
+///
+/// let packets = packets_of([
+///     (0, NoteOn::new(Key::A4, 1.0).into()),
+///     (64, VOLUME.message(Group::FIRST, Channel::FIRST, 0.5)),
+/// ]);
+/// assert_eq!(packets.len(), 2);
+/// assert_eq!(packets[0].words[0], 0x4090_4500, "a MIDI 2.0 note-on of A4");
+/// assert_eq!(packets[1].offset, 64);
+/// ```
+pub fn packets_of<'m>(messages: impl IntoIterator<Item = (usize, Message<'m>)>) -> Vec<Event> {
+    let messages: Vec<(usize, Message<'m>)> = messages.into_iter().collect();
+    // A SysEx takes a packet for each six bytes; any other message, a packet
+    // or two.
+    let room = messages
+        .iter()
+        .map(|(_, message)| match message {
+            Message::SysEx { data, .. } => SysEx7::count(data.len()),
+            _ => 2,
+        })
+        .fold(0_usize, usize::saturating_add);
+    let mut packets = EventList::with_capacity(room);
+    MidiOut::new(&mut packets).extend(messages);
+    packets.as_slice().to_vec()
+}
+
 /// Sends each packet as it is, as [`MidiOut::send_packet`] does.
 /// Sends each message at its frame, as [`MidiOut::send`] does: MIDI thru
 /// is `midi_out.extend(midi)`.

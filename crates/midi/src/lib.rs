@@ -73,5 +73,5 @@ pub use channels::PerChannel;
 pub use controller::{Controller, ControllerValue};
 pub use decoder::{Decoder, Messages, NOTES, SYSEX_BYTES};
 pub use message::{Message, NoteKey, NoteOff, NoteOn};
-pub use midi::{BLOCK_SYSEX_BYTES, Iter, MESSAGES, Midi, MidiList, MidiOut, Packets};
+pub use midi::{BLOCK_SYSEX_BYTES, Iter, MESSAGES, Midi, MidiList, MidiOut, Packets, packets_of};
 pub use values::{Centred, Channel, Group, Key, NoteId, Pedal, Pitch, Program};
