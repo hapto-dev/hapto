@@ -448,6 +448,35 @@ fn every_channel_offers_the_note_expressions_a_plugin_reads() {
 }
 
 #[test]
+fn a_note_expression_reads_as_text_and_back_by_its_curve() {
+    let host = running();
+    let (volume, tuning) = (0, 2);
+    // The tuning in semitones, 120 either way; the rest in percent.
+    assert_eq!(
+        host.expression_text(0, tuning, 0.5).as_deref(),
+        Some("+0.00")
+    );
+    assert_eq!(
+        host.expression_text(0, tuning, 0.55).as_deref(),
+        Some("+12.00")
+    );
+    assert_eq!(
+        host.expression_text(0, volume, 0.25).as_deref(),
+        Some("25%")
+    );
+    let near = |read: Option<f64>, value: f64| read.is_some_and(|read| (read - value).abs() < 1e-9);
+    assert!(near(host.expression_value(0, tuning, "+12"), 0.55));
+    assert!(near(host.expression_value(0, volume, "50%"), 0.5));
+    assert!(
+        near(host.expression_value(0, volume, "300"), 1.0),
+        "held to 1"
+    );
+    assert_eq!(host.expression_value(0, volume, "loud"), None);
+    // A channel past the event bus's 16 offers none.
+    assert_eq!(host.expression_text(16, volume, 0.25), None);
+}
+
+#[test]
 fn a_plugin_that_takes_no_midi_maps_no_controller_and_lists_no_proxy() {
     let host = super::running(64);
     assert_eq!(host.midi_mapping(0, 7), None);

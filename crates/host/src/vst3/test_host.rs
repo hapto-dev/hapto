@@ -768,6 +768,42 @@ impl<P: Plugin> TestHost<P> {
             .collect()
     }
 
+    /// Returns the text the plugin shows for note expression `kind`'s
+    /// `value` on `channel`, or `None` where it refuses.
+    pub fn expression_text(&self, channel: i16, kind: u32, value: f64) -> Option<String> {
+        let expressions = self.controller.cast::<INoteExpressionController>()?;
+        let mut text: String128 = [0; 128];
+        // SAFETY: the component is alive while this host holds its
+        // interfaces, and `text` is valid for writing one `String128` during
+        // the call.
+        let result = unsafe {
+            expressions.getNoteExpressionStringByValue(0, channel, kind, value, &mut text)
+        };
+        (result == kResultOk).then(|| wide(&text))
+    }
+
+    /// Returns the value the plugin reads from `text` for note expression
+    /// `kind` on `channel`, or `None` where it refuses.
+    pub fn expression_value(&self, channel: i16, kind: u32, text: &str) -> Option<f64> {
+        let expressions = self.controller.cast::<INoteExpressionController>()?;
+        let mut wide_text: String128 = [0; 128];
+        copy_utf16(text, &mut wide_text);
+        let mut value = 0.0;
+        // SAFETY: the component is alive while this host holds its
+        // interfaces; `wide_text` is a terminated `String128` and `value` is
+        // valid for writing one value, both during the call.
+        let result = unsafe {
+            expressions.getNoteExpressionValueByString(
+                0,
+                channel,
+                kind,
+                wide_text.as_ptr(),
+                &mut value,
+            )
+        };
+        (result == kResultOk).then_some(value)
+    }
+
     /// Returns the output bus's silence flags after the last block: a bit per
     /// channel the plugin says is silent.
     pub fn silence_flags(&self) -> u64 {

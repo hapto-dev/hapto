@@ -236,7 +236,7 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d22-controllers-reaching-learn-in-vst3)
 
-- `crates/host/src/vst3/component/midi.rs`: module, `proxy_id`, `proxy`, `proxy_info`, `read_controllers`, `controller_message`, `proxy_text`, `proxy_value`
+- `crates/host/src/vst3/component/midi.rs`: module, `Proxy`, `Proxy::fill`, `read_controllers`, `Proxy::message`, `Proxy::text`, `Proxy::parse`
 - `crates/host/src/vst3/component/controller.rs`: `Component::getParameterCount`, `Component::getParameterInfo`
 - `crates/host/src/engine/process.rs`: `MidiIn`, `MidiIn::push_ranked`, `Rank`, `Arrivals`, `fill`
 - test `crates/host/src/vst3/tests/midi.rs`: `a_controller_comes_through_its_proxy_as_midi_1_upgraded_and_before_a_note_at_its_frame`, `every_channel_s_controllers_map_to_hidden_proxies_listed_after_the_plugin_s_own`, `a_host_claiming_more_than_the_block_has_room_for_is_read_as_far_as_there_is_room`, `a_parameter_s_address_comes_before_its_data_entry_at_one_frame_whatever_the_queues_order`, `a_data_entry_s_high_byte_comes_before_its_low_byte_at_one_frame_whatever_the_queues_order`, `a_proxy_shows_its_midi_value_as_text_and_reads_one_back`

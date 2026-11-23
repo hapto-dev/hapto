@@ -43,7 +43,7 @@ use hapto_ump::{
 use super::super::events::{
     DATA, EXPRESSION, LEGACY_CC_OUT, NOTE_OFF, NOTE_ON, POLY_PRESSURE, SYSEX, blank,
 };
-use super::midi::{EXPRESSIONS, Named, Notes, PER_NOTE_PITCH, TUNING_REACH, expression_of_volume};
+use super::midi::{Expression, Named, Notes};
 
 /// VST3's numbers for the MIDI 1.0 messages it carries as controllers.
 const PRESSURE: uint8 = ControllerNumbers_::kAfterTouch as uint8;
@@ -295,21 +295,12 @@ fn expression(
     if id < 0 {
         return None;
     }
-    let expression = EXPRESSIONS.iter().find(|kind| kind.controller == index)?;
-    let normalized = if index == PER_NOTE_PITCH {
-        let cents = notes.find(id).map_or(0.0, |named| named.cents);
-        let pitch = scale::semitones_7_25(value);
-        let reach = pitch - f64::from(note) - f64::from(cents) / 100.0;
-        (reach / TUNING_REACH + 1.0) / 2.0
-    } else if index == hapto_midi::controller::number::VOLUME {
-        expression_of_volume(scale::unit_of_32(value))
-    } else {
-        scale::unit_of_32(value)
-    };
+    let expression = Expression::by_controller(index)?;
+    let cents = notes.find(id).map_or(0.0, |named| named.cents);
     Some(NoteExpressionValueEvent {
         typeId: expression.id,
         noteId: id,
-        value: normalized.clamp(0.0, 1.0),
+        value: expression.value(value, note, cents),
     })
 }
 

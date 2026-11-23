@@ -14,6 +14,7 @@ use ::vst3::Steinberg::{
 };
 use hapto_params::Kind;
 
+use super::midi::Proxy;
 use super::{Component, midi, view};
 use crate::Plugin;
 use crate::engine::Engine;
@@ -61,9 +62,14 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
                 return kInvalidArgument;
             };
             let Some(id) = set.id_at(index) else {
-                let proxy = index.saturating_sub(set.len());
-                let listed = P::INFO.midi_input && midi::proxy_info(proxy, info);
-                return if listed { kResultOk } else { kInvalidArgument };
+                let proxy = Proxy::at(index.saturating_sub(set.len()));
+                return match proxy.filter(|_| P::INFO.midi_input) {
+                    Some(proxy) => {
+                        proxy.fill(info);
+                        kResultOk
+                    }
+                    None => kInvalidArgument,
+                };
             };
             let decl = set.decl(id);
             info.id = set.host_id(id);
@@ -101,8 +107,8 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
             let Some(string) = (unsafe { string.as_mut() }) else {
                 return kInvalidArgument;
             };
-            if let Some(text) = midi::proxy_text(id, normalized) {
-                copy_utf16(&text, string);
+            if let Some(proxy) = Proxy::of::<P>(id) {
+                copy_utf16(&proxy.text(normalized), string);
                 return kResultOk;
             }
             let Some((_, decl)) = self.param(id) else {
@@ -131,8 +137,8 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
             let Some(text) = (unsafe { read_utf16(string, 128) }) else {
                 return kInvalidArgument;
             };
-            if let Some(value) = midi::proxy_value(id, &text) {
-                return match value {
+            if let Some(proxy) = Proxy::of::<P>(id) {
+                return match proxy.parse(&text) {
                     Some(value) => {
                         *normalized = value;
                         kResultOk
@@ -174,7 +180,7 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
     unsafe fn getParamNormalized(&self, id: ParamID) -> ParamValue {
         self.guard(0.0, || match (self.engine(), self.param(id)) {
             (Some(engine), Some((param, _))) => engine.set().normalized(param),
-            _ => midi::proxy_default(id).unwrap_or(0.0),
+            _ => Proxy::of::<P>(id).map_or(0.0, Proxy::default),
         })
     }
 
@@ -182,7 +188,7 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
     /// plugin through `process` alone.
     unsafe fn setParamNormalized(&self, id: ParamID, normalized: ParamValue) -> tresult {
         self.guard(kInternalError, || {
-            if P::INFO.midi_input && midi::proxy(id).is_some() {
+            if Proxy::of::<P>(id).is_some() {
                 return kResultOk;
             }
             let (Some(engine), Some((param, _))) = (self.engine(), self.param(id)) else {
