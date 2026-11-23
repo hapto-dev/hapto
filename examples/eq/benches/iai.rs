@@ -8,7 +8,7 @@ use std::hint::black_box;
 
 use hapto_example_eq::ExampleEq;
 use hapto_host::layout::Width;
-use hapto_host::{Audio, Block, EventList, Parts, Plugin, ProcessSetup, Processor};
+use hapto_host::{Audio, Block, EventList, Midi, MidiOut, Parts, Plugin, ProcessSetup, Processor};
 use hapto_params::{AudioParams, ParamId};
 use iai_callgrind::{library_benchmark, library_benchmark_group, main};
 
@@ -18,7 +18,6 @@ struct Rig {
     processor: <ExampleEq as Plugin>::Processor,
     audio: AudioParams,
     gain: ParamId,
-    events: EventList,
     out_events: EventList,
     left: Vec<f32>,
     right: Vec<f32>,
@@ -43,7 +42,6 @@ fn rig() -> Rig {
         processor,
         audio: set.audio(),
         gain: set.id("mid.gain").expect("declared"),
-        events: EventList::with_capacity(0),
         out_events: EventList::with_capacity(0),
         left,
         right,
@@ -56,8 +54,8 @@ fn run(rig: &mut Rig) {
     let mut channels: [&mut [f32]; 2] = [&mut rig.left, &mut rig.right];
     rig.processor.process(Block::new(
         Audio::new(&mut channels, FRAMES),
-        &rig.events,
-        &mut rig.out_events,
+        Midi::default(),
+        MidiOut::new(&mut rig.out_events),
     ));
 }
 

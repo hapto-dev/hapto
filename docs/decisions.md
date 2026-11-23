@@ -59,7 +59,7 @@ comments never cite an id: they state the reason in words, and
 | D20 | [What closes the window D13 opens between a restore's store and its apply? (U16, S5)](#d20-the-window-between-a-restores-store-and-its-apply) | Undo clears its history when either count has moved: at its first operation after a restore is stored, and again when that restore's apply completes. | decided |
 | D21 | [What does a learn binding record of where its MIDI came from? (L2, L9)](#d21-what-a-learn-binding-records-of-its-midi-source) | The UMP group and the channel, each with −1 meaning any, in the source and in every saved `midiLearn` entry from schema 1. | decided |
 | D22 | [How do controllers reach learn in VST3, which delivers them only as parameter changes? (L2, L3)](#d22-controllers-reaching-learn-in-vst3) | The VST3 exporter owns hidden proxy parameters in a reserved id range: a 16 × 130 grid listed through both `IMidiMapping` and `IMidiMapping2`, and a fixed pool for MIDI 2.0 assignable controllers. Checked in Cubase; still to build. | decided |
-| D23 | [How does the processor send MIDI?](#d23-how-the-processor-sends-midi) | `Processor::process` takes one `Block`: its audio in place, the events in, and an events-out list whose capacity `ProcessSetup::max_out_events` fixes at activation. | decided |
+| D23 | [How does the processor send MIDI?](#d23-how-the-processor-sends-midi) | `Processor::process` takes one `Block`: its audio in place, `midi`, the block's MIDI decoded once into messages with the packets they came in, and `midi_out`, which sends messages or packets into a list whose capacity `ProcessSetup::max_out_events` fixes at activation. | decided |
 | D24 | [Who answers MIDI-CI when a plugin must answer for itself?](#d24-answering-midi-ci) | A VST3 host speaks MIDI-CI for the plugin, so the VST3 exporter projects declarations onto VST3's interfaces. Everywhere else a core-tier crate, `hapto-ci`, answers, later. | decided |
 | D25 | [Who owns the SysEx manufacturer ID that a MIDI-CI identity needs? (D24)](#d25-the-sysex-manufacturer-id) | None: a business answer. The working group's helper uses `0x7D`, which is reserved for non-commercial use. | held |
 | D26 | [How does a debug build load the page from a dev server? (B5)](#d26-loading-the-page-from-a-dev-server) | `HAPTO_PAGE_DEV_URL`, read in debug builds only: set, `hapto-webview` loads that URL, so Vite's hot reload works; unset, it serves the bundled page. | decided |
@@ -510,12 +510,19 @@ the pool after the Cubase check, or no learn in VST3 until a later stage.
 `processBlock` takes one `MidiBuffer`, read as input and replaced as output.
 
 **Rust.** `Processor::process` takes one `Block`: its audio in place (D112),
-the events in, and an events-out list whose capacity
-`ProcessSetup::max_out_events` fixes at activation (past it, dropped and
-counted). A sidechain or transport joins `Block` later without changing the
-trait. `PluginInfo::midi_output` declares the output to the host. Parameter
-changes still reach the host through the exporter, never this list. No exporter
-sends the list's events yet, as none delivers MIDI in (D59, D62).
+`midi` and `midi_out`. `midi` is the block's MIDI, decoded once by the engine
+into messages, each at its frame, with the packets they came in beside them
+(D116). The engine decodes every block, read or not, with a decoder that lives
+with the processor, so a note or a SysEx that spans blocks stays right; a block
+in pieces hands each piece its share, at frames from its own start. `midi_out`
+sends a message encoded anew, one that arrived on, as MIDI thru, which is never
+implicit, or packets as they are, all into one list in the order the plugin
+sends them, whose capacity `ProcessSetup::max_out_events` fixes at activation
+(past it, dropped and counted). A sidechain or transport joins `Block` later
+without changing the trait. `PluginInfo::midi_output` declares the output to
+the host. Parameter changes still reach the host through the exporter, never
+this list. No exporter sends the list yet, and only the standalone app brings
+MIDI in (D59, D62, D115).
 
 ### D24. Answering MIDI-CI
 
@@ -3712,8 +3719,8 @@ panics: a note past its table still sounds and is counted, and a SysEx past its
 buffer, cut short, or begun on another group while one is under way is dropped
 and counted.
 
-Open: the engine does not decode a block's MIDI yet, so a plugin reads its
-packets.
+The engine decodes every block's MIDI once into a `MidiList` that lives with
+the processor, and a block hands it out as `Midi` (D23).
 
 **Alternatives.** The alternatives were MIDI 1.0 bytes with accessors, as JUCE
 hands them, which D114 rules out; values at their widths, raw, which leaves

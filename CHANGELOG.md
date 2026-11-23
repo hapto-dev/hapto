@@ -35,6 +35,13 @@ exporter.
 - **Breaking.** `ProcessSetup` is made with `ProcessSetup::new`, with room for
   no MIDI until a test sets `max_events` or `max_out_events`, so the buses
   beyond the main one can join it later without breaking a caller.
+- **Breaking.** A processor reads its block's MIDI decoded: `block.midi` is
+  a `Midi`, each `Message` at its frame with the packets it came in, and
+  `block.midi_out` a `MidiOut`, which sends messages or packets, in place of
+  `block.events` and `block.out_events`. `Block::new` takes the two, and
+  `Midi::default()` is a block with no MIDI. The engine decodes every block
+  once, and a block in pieces hands each piece its share. `hapto_host::midi`
+  re-exports `hapto-midi`.
 - **Breaking.** MIDI is MIDI 2.0 inside. `ChannelVoice` reads and writes MIDI
   2.0's channel voice messages alone, a `ChannelMessage` for each status MIDI
   2.0 has, and `Voice` with its MIDI 1.0 variants is gone. MIDI 1.0 becomes

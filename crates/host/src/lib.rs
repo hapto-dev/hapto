@@ -230,6 +230,10 @@ pub use hapto_audio::{Audio, AudioBuf, Frame, layout};
 #[cfg(feature = "manifest")]
 #[cfg_attr(docsrs, doc(cfg(feature = "manifest")))]
 pub use hapto_macros::manifest_info;
+/// MIDI in musicians' terms: the messages a block's [`Midi`] holds, and
+/// the values they carry.
+pub use hapto_midi as midi;
+pub use hapto_midi::{Message, Midi, MidiOut};
 pub use info::{AuCodes, Category, Feature, PluginInfo};
 #[doc(hidden)]
 pub use info::{first_width, widths};

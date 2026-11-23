@@ -862,6 +862,7 @@ dependencies = [
  "hapto-audio",
  "hapto-learn",
  "hapto-macros",
+ "hapto-midi",
  "hapto-params",
  "hapto-session",
  "hapto-testkit",

@@ -6,10 +6,11 @@ use std::sync::Arc;
 
 use hapto_example_gain::Gain;
 use hapto_host::layout::Width;
+use hapto_host::midi::MidiList;
 use hapto_host::vst3::TestHost;
 use hapto_host::{
-    AuCodes, Audio, Block, Category, Driver, EventList, Parts, Plugin, PluginInfo, ProcessSetup,
-    Processor, SavedState,
+    AuCodes, Audio, Block, Category, Driver, EventList, MidiOut, Parts, Plugin, PluginInfo,
+    ProcessSetup, Processor, SavedState,
 };
 use hapto_params::host_id;
 use hapto_ump::{Midi1Message, Midi1Voice, Upgrade};
@@ -196,14 +197,20 @@ fn a_learned_controller_drives_the_gain() {
         Upgrade::new().block(&[sent], &mut events);
         events
     };
+    let mut midi = MidiList::new();
     let mut run = |processor: &mut _, events: &EventList| {
         learn.process(events);
+        midi.read(events, 8);
         let (mut left, mut right) = ([0.5_f32; 8], [0.5_f32; 8]);
         let mut out = EventList::with_capacity(0);
         let mut channels = [&mut left[..], &mut right[..]];
         Processor::process(
             processor,
-            Block::new(Audio::new(&mut channels, 8), events, &mut out),
+            Block::new(
+                Audio::new(&mut channels, 8),
+                midi.midi(),
+                MidiOut::new(&mut out),
+            ),
         );
         left[0]
     };

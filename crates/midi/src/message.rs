@@ -91,7 +91,8 @@ impl NoteOn {
 /// ```
 /// use hapto_midi::{Key, NoteOn};
 ///
-/// let off = NoteOn::new(Key::C4, 1.0).off(0.25);
+/// let middle_c = Key::C4;
+/// let off = NoteOn::new(middle_c, 1.0).off(0.25);
 /// assert_eq!(off.velocity, 0.25);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq)]

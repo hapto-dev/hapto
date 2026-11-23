@@ -1,11 +1,12 @@
 //! Decoding neither allocates nor frees: every kind of message, notes and
-//! their ids, a note's own messages, and a SysEx joined across packets.
+//! their ids, a note's own messages, and a SysEx joined across packets; nor
+//! does reading a block's list whole and in parts, or sending.
 
 hapto_testkit::install_alloc_gate!();
 
-use hapto_midi::{Decoder, Message};
+use hapto_midi::{Decoder, Key, Message, MidiList, MidiOut, NoteOn};
 use hapto_testkit::alloc::assert_no_allocations;
-use hapto_ump::Event;
+use hapto_ump::{Event, EventList};
 
 #[test]
 fn decoding_every_kind_of_packet_does_not_allocate() {
@@ -49,4 +50,39 @@ fn decoding_every_kind_of_packet_does_not_allocate() {
     // for the two notes on its key, and the SysEx once whole with its eight
     // bytes; its first part and the clock are none.
     assert_eq!(seen, 4 * (12 + 2 + 1 + 8));
+}
+
+#[test]
+fn reading_a_block_and_sending_does_not_allocate() {
+    let mut packets = EventList::with_capacity(16);
+    for (offset, words) in [
+        (0, [0x4090_3C00, 0xFFFF_0000]),
+        (3, [0x40B0_0700, u32::MAX]),
+        (5, [0x3016_0102, 0x0304_0506]),
+        (6, [0x3032_0708, 0]),
+        (9, [0x4080_3C00, 0x8000_0000]),
+    ] {
+        packets.push(Event::new(offset, [words[0], words[1], 0, 0]));
+    }
+    let mut list = MidiList::new();
+    let mut sent = EventList::with_capacity(64);
+    let seen = assert_no_allocations("a block read and sent", || {
+        let mut seen = 0;
+        for _ in 0..4 {
+            sent.clear();
+            list.read(&packets, 16);
+            for part in [list.midi(), list.between(0, 8), list.between(8, 16)] {
+                let mut out = MidiOut::new(&mut sent);
+                for (frame, message) in part {
+                    out.forward(frame, &message);
+                    seen += 1;
+                }
+                out.extend(part.packets());
+            }
+            MidiOut::new(&mut sent).send(0, NoteOn::new(Key::C4, 1.0));
+        }
+        seen
+    });
+    // The block's four messages, whole, then split two and two.
+    assert_eq!(seen, 4 * 8);
 }

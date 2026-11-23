@@ -15,7 +15,7 @@ use crate::{Block, Event, Processor, Status};
 struct Piece {
     frames: usize,
     events: Vec<(u32, u32)>,
-    dropped: u32,
+    dropped: u64,
 }
 
 /// Records each piece, and sends every event it gets back at the same
@@ -28,16 +28,14 @@ struct Echo {
 impl Processor for Echo {
     type Layout = AnyLayout;
 
-    fn process(&mut self, block: Block<'_, AnyLayout>) -> Status {
-        let events = block.events.as_slice().iter().map(tagged).collect();
+    fn process(&mut self, mut block: Block<'_, AnyLayout>) -> Status {
+        let events = block.midi.packets().map(|event| tagged(&event)).collect();
         self.pieces.push(Piece {
             frames: block.audio.frames(),
             events,
-            dropped: block.events.dropped(),
+            dropped: block.midi.dropped(),
         });
-        for &event in block.events.as_slice() {
-            block.out_events.push(event);
-        }
+        block.midi_out.extend(block.midi.packets());
         Status::Continue
     }
 }
@@ -143,7 +141,7 @@ impl Processor for Reads {
     type Layout = AnyLayout;
 
     fn process(&mut self, block: Block<'_, AnyLayout>) -> Status {
-        let events = block.events.as_slice().len();
+        let events = block.midi.packets().len();
         self.pieces.push((self.set.value(self.gain), events));
         Status::Continue
     }

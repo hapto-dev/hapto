@@ -721,7 +721,7 @@ impl Processor for Counts {
     fn process(&mut self, mut block: Block<'_, Stereo>) -> Status {
         block.audio.clear();
         let [at, upgraded] = block.audio.channels_mut();
-        for event in block.events.as_slice() {
+        for event in block.midi.packets() {
             let frame = event.offset as usize;
             at[frame] += 1.0;
             if event.origin == hapto_ump::Origin::Midi1 {

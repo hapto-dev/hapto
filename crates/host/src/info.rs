@@ -236,14 +236,14 @@ pub struct PluginInfo {
     pub layouts: &'static [Width],
     /// Whether it takes MIDI input (for MIDI learn, or notes).
     ///
-    /// Open: no exporter carries MIDI either way yet. The VST3 exporter shows
-    /// a host an event bus for each direction a plugin declares, but a
-    /// block's [`events`](crate::Block::events) stay empty, and what a
-    /// processor pushes to [`out_events`](crate::Block::out_events) reaches
-    /// no host.
+    /// Open: only the standalone app brings MIDI in so far, from the
+    /// computer's inputs. The VST3 exporter shows a host an event bus for each
+    /// direction a plugin declares, but a VST3 or C interface block's
+    /// [`midi`](crate::Block::midi) stays empty, and what a processor sends
+    /// through [`midi_out`](crate::Block::midi_out) reaches no host.
     pub midi_input: bool,
     /// Whether it sends MIDI (a MIDI effect, or MIDI-CI replies), through
-    /// [`Block::out_events`](crate::Block::out_events).
+    /// [`Block::midi_out`](crate::Block::midi_out).
     ///
     /// Open: no exporter sends it yet, as [`midi_input`](Self::midi_input)
     /// says.

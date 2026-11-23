@@ -30,8 +30,9 @@ use std::time::{Duration, Instant};
 use hapto_example_eq::ExampleEq;
 use hapto_host::cabi::TestHost as CHost;
 use hapto_host::layout::Width;
+use hapto_host::midi::{Decoder, MidiList};
 use hapto_host::vst3::TestHost as Vst3Host;
-use hapto_host::{Audio, Block, Event, EventList, Plugin, ProcessSetup, Processor};
+use hapto_host::{Audio, Block, Event, EventList, MidiOut, Plugin, ProcessSetup, Processor};
 use hapto_params::{ParamDecl, audio_thread, host_id};
 use hapto_testkit::alloc::assert_no_allocations;
 
@@ -123,6 +124,8 @@ struct Direct {
     processor: Option<<ExampleEq as Plugin>::Processor>,
     saved: std::sync::Arc<hapto_host::SavedState>,
     events: EventList,
+    /// `events`, decoded as the engine decodes a block's.
+    midi: MidiList,
     out_events: EventList,
 }
 
@@ -138,6 +141,7 @@ impl Direct {
             processor: Some(processor),
             saved,
             events: EventList::with_capacity(EVENT_ROOM),
+            midi: MidiList::with_room(EVENT_ROOM, 0, Decoder::new()),
             out_events: EventList::with_capacity(EVENT_ROOM),
         }
     }
@@ -164,11 +168,13 @@ impl Direct {
         }
         let _audio_thread = audio_thread::enter();
         let processor = self.processor.as_mut().expect("active");
+        let (events, midi) = (&self.events, &mut self.midi);
         assert_no_allocations("the processor driven directly", || {
+            midi.read(events, frames);
             processor.process(Block::new(
                 Audio::new(channels, frames),
-                &self.events,
-                &mut self.out_events,
+                midi.midi(),
+                MidiOut::new(&mut self.out_events),
             ));
         });
     }

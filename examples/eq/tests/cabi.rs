@@ -5,7 +5,7 @@
 use hapto_example_eq::ExampleEq;
 use hapto_host::cabi::{KIND_BOOL, KIND_CONTINUOUS, TestHost};
 use hapto_host::layout::Width;
-use hapto_host::{Audio, Block, EventList, Plugin, ProcessSetup, Processor};
+use hapto_host::{Audio, Block, EventList, Midi, MidiOut, Plugin, ProcessSetup, Processor};
 use hapto_params::{Kind, host_id};
 
 mod common;
@@ -52,7 +52,7 @@ fn audio_through_the_c_interface_matches_the_processor_driven_directly() {
     let mut processor =
         plugin.activate(&ProcessSetup::new(RATE, MAX_FRAMES as usize, Width::STEREO));
     let writes = saved.set().audio();
-    let (events, mut out_events) = (EventList::with_capacity(0), EventList::with_capacity(0));
+    let mut out_events = EventList::with_capacity(0);
     let keys: Vec<String> = (0..host.parameter_count() as u32)
         .map(|index| host.parameter(index).expect("listed").key)
         .collect();
@@ -75,8 +75,8 @@ fn audio_through_the_c_interface_matches_the_processor_driven_directly() {
         let mut channels: [&mut [f32]; 2] = [&mut expected_left, &mut expected_right];
         processor.process(Block::new(
             Audio::new(&mut channels, frames),
-            &events,
-            &mut out_events,
+            Midi::default(),
+            MidiOut::new(&mut out_events),
         ));
 
         let (mut got_left, mut got_right) = (vec![0.0f32; frames], vec![0.0f32; frames]);

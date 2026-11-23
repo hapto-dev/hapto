@@ -13,8 +13,9 @@ use std::sync::Arc;
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 
 use hapto_host::layout::{AnyLayout, Width};
+use hapto_host::midi::MidiList;
 use hapto_host::{
-    AuCodes, Audio, Block, Category, Driver, EventList, Maker, Parts, Plugin, PluginInfo,
+    AuCodes, Audio, Block, Category, Driver, EventList, Maker, MidiOut, Parts, Plugin, PluginInfo,
     ProcessSetup, Processor, SavedState, Status,
 };
 use hapto_learn::{Config, Control, DEFAULT_MAX_MAPPINGS, Mapping, Source, Takes};
@@ -557,8 +558,14 @@ fn activated(plugin: &mut Mixer) -> MixerProcessor {
 fn block(processor: &mut MixerProcessor, events: &EventList) -> f32 {
     let (mut left, mut right) = ([1.0_f32; 8], [1.0_f32; 8]);
     let mut out = EventList::with_capacity(0);
+    let mut midi = MidiList::new();
+    midi.read(events, 8);
     let mut channels = [&mut left[..], &mut right[..]];
-    let block = Block::new(Audio::new(&mut channels, 8), events, &mut out);
+    let block = Block::new(
+        Audio::new(&mut channels, 8),
+        midi.midi(),
+        MidiOut::new(&mut out),
+    );
     hapto_testkit::alloc::assert_no_allocations("a block", || {
         let _mark = audio_thread::enter();
         Processor::process(processor, block);

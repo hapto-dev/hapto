@@ -23,6 +23,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 
 use hapto_learn::LearnAudio;
+use hapto_midi::{Decoder, MidiList, MidiOut};
 use hapto_params::audio_thread;
 use hapto_ump::Upgrade;
 
@@ -42,9 +43,10 @@ pub(super) struct Active<R> {
     /// MIDI 1.0 the host sends, upgraded as it arrives. It holds an NRPN's
     /// high byte from block to block, so it lives with the processor.
     upgrade: Upgrade,
-    /// One piece's share of `events`, at frames from the piece's start. It
-    /// has the room `events` has, so a piece's share never drops.
-    piece_events: EventList,
+    /// The block's MIDI in, decoded once: each piece reads its share. It
+    /// lives with the processor, as its notes and a SysEx under way span
+    /// blocks.
+    midi: MidiList,
     /// The block's MIDI out. Every piece pushes to it, and what a piece
     /// pushed moves to the block's frames once the piece returns.
     out_events: EventList,
@@ -98,7 +100,13 @@ impl<R> Active<R> {
             channels: Channels::new(layout.inputs, layout.outputs, max_frames),
             events: EventList::with_capacity(max_events),
             upgrade: Upgrade::new(),
-            piece_events: EventList::with_capacity(max_events),
+            // A note-off may end several notes, so room for twice the
+            // packets.
+            midi: MidiList::with_room(
+                max_events.saturating_mul(2),
+                hapto_midi::BLOCK_SYSEX_BYTES,
+                Decoder::new(),
+            ),
             out_events: EventList::with_capacity(max_out_events),
             learn: None,
             faulted: false,
@@ -344,13 +352,14 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
 /// its wait for the second half of a 14-bit pair. In a block that plays in
 /// pieces, a controller in a later piece applies from the block's start.
 ///
-/// Each piece is handed the block's events that fall in it, at frames from
-/// its own start. An event past the block's end plays at its last frame, in
-/// the last piece: dropping it could lose a note-off and leave a note
-/// hanging. The first piece also reports the block's drops. They were lost
-/// before any piece ran, at frames no one knows, and the first piece is the
-/// earliest a processor can act on them. Reported once, they add up over the
-/// pieces to the block's count.
+/// The block's MIDI is decoded once, after learn, and each piece is handed
+/// the messages and packets that fall in it, at frames from its own start.
+/// One past the block's end plays at its last frame, in the last piece:
+/// dropping it could lose a note-off and leave a note hanging. The first
+/// piece also reports the block's drops. They were lost before any piece
+/// ran, at frames no one knows, and the first piece is the earliest a
+/// processor can act on them. Reported once, they add up over the pieces to
+/// the block's count.
 ///
 /// Every piece sends into the block's list, and what it sent moves to the
 /// block's frames once it returns. A later piece finds the earlier pieces'
@@ -369,7 +378,7 @@ unsafe fn pieces<R: Processor>(
         processor,
         channels,
         events,
-        piece_events,
+        midi,
         out_events,
         learn,
         ..
@@ -377,6 +386,7 @@ unsafe fn pieces<R: Processor>(
     if let Some(learn) = learn {
         learn.process(events);
     }
+    midi.read(events, frames);
     out_events.clear();
     let mut status = Status::Continue;
     let mut offset = 0;
@@ -386,7 +396,7 @@ unsafe fn pieces<R: Processor>(
         let length = frames
             .saturating_sub(offset)
             .min(channels.max_frames().get());
-        share(events, piece_events, frames, offset, length);
+        let piece = midi.between(offset, offset.saturating_add(length));
         let sent = out_events.as_slice().len();
         // SAFETY: each non-null channel holds `frames` floats (this
         // function's contract), so `offset + length` of them, nothing else
@@ -395,7 +405,7 @@ unsafe fn pieces<R: Processor>(
         status = unsafe {
             channels.run(inputs, outputs, offset, length, |block| {
                 let audio = Audio::new(block, length);
-                processor.process(Block::new(audio, piece_events, out_events))
+                processor.process(Block::new(audio, piece, MidiOut::new(out_events)))
             })
         };
         let start = u32::try_from(offset).unwrap_or(u32::MAX);
@@ -405,26 +415,6 @@ unsafe fn pieces<R: Processor>(
         offset = offset.saturating_add(length);
     }
     status
-}
-
-/// Fills `piece` with its share of a block of `frames` frames, for the
-/// piece of `length` frames from `offset`, as [`pieces`] says.
-fn share(block: &EventList, piece: &mut EventList, frames: usize, offset: usize, length: usize) {
-    piece.clear();
-    if offset == 0 {
-        piece.add_dropped(block.dropped());
-    }
-    let last = frames.saturating_sub(1);
-    let end = offset.saturating_add(length);
-    for event in block.as_slice() {
-        let at = usize::try_from(event.offset).map_or(last, |at| at.min(last));
-        if (offset..end).contains(&at) {
-            piece.push(Event {
-                offset: u32::try_from(at.saturating_sub(offset)).unwrap_or(u32::MAX),
-                ..*event
-            });
-        }
-    }
 }
 
 #[cfg(test)]

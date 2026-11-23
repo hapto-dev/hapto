@@ -246,7 +246,8 @@ move its line here; when a decision gains code, add one.
 [Record section](decisions.md#d23-how-the-processor-sends-midi)
 
 - `crates/host/src/audio.rs`: `Block`
-- `crates/host/src/engine/process.rs`: `pieces`, `share`
+- `crates/host/src/engine/process.rs`: `pieces`
+- `crates/midi/src/midi.rs`: `MidiList::read`, `MidiList::between`, `Midi`, `MidiOut`
 - `crates/host/src/lib.rs`: module
 - `crates/ump/src/lib.rs`: `EventList::as_mut_slice`, `EventList::add_dropped`
 - test `crates/host/src/engine/process/tests.rs`: `each_piece_gets_its_own_events_and_what_it_sends_lands_at_the_block_s_frames`, `a_block_of_one_piece_hands_its_events_on_and_the_next_starts_clean`
@@ -1427,6 +1428,8 @@ move its line here; when a decision gains code, add one.
 - `crates/midi/src/message.rs`: `Message`, `NoteOn`, `NoteOff`, `NoteKey`
 - `crates/midi/src/decoder.rs`: `Decoder`, `Decoder::decode`, `Messages`
 - `crates/midi/src/controller.rs`: module, `name`
+- `crates/midi/src/midi.rs`: module, `MidiList`, `Midi`, `MidiOut`
+- `crates/midi/src/encode.rs`: module, `encode`
 - test `crates/midi/tests/decode.rs`: module, `a_note_off_ends_the_notes_its_key_has`, `a_notes_own_message_names_its_key_and_the_newest_note_on_it`, `a_sysex_too_long_cut_short_or_begun_elsewhere_is_dropped_and_counted`, `each_message_is_one_line_in_musicians_numbers`
 - test `crates/midi/tests/alloc_gate.rs`: module
 

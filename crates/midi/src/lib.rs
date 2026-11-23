@@ -11,12 +11,13 @@
 //! from its note-on to its note-off, and a note's own message by the
 //! [`NoteKey`] it names. [`controller`] names MIDI's controllers.
 //!
-//! The crate is in the core tier, on `hapto-ump`, and depends on nothing
-//! else. Decoding is fit for the audio thread: it allocates nothing and
-//! never panics.
+//! A block's MIDI is a [`Midi`]: its messages, each at its frame, and the
+//! packets they came in, read from a [`MidiList`] the engine decodes each
+//! block into once. What a block sends goes through its [`MidiOut`].
 //!
-//! Open: the engine does not decode a block's MIDI yet, so a plugin reads
-//! its packets.
+//! The crate is in the core tier, on `hapto-ump`, and depends on nothing
+//! else. Decoding, reading a block and sending are fit for the audio thread:
+//! they allocate nothing and never panic.
 //!
 //! # Examples
 //!
@@ -33,7 +34,8 @@
 //! let Some(Message::NoteOn(note)) = decoder.decode(&on).next() else {
 //!     panic!("a note-on");
 //! };
-//! assert_eq!((note.key, note.velocity), (Key::C4, 1.0));
+//! let middle_c = Key::C4;
+//! assert_eq!((note.key, note.velocity), (middle_c, 1.0));
 //! assert_eq!(note.channel.to_string(), "1");
 //!
 //! // Its note-off names the same note.
@@ -45,9 +47,12 @@
 
 pub mod controller;
 mod decoder;
+mod encode;
 mod message;
+mod midi;
 mod values;
 
 pub use decoder::{Decoder, Messages, NOTES, SYSEX_BYTES};
 pub use message::{Message, NoteKey, NoteOff, NoteOn};
+pub use midi::{BLOCK_SYSEX_BYTES, Iter, MESSAGES, Midi, MidiList, MidiOut, Packets};
 pub use values::{Centred, Channel, Group, Key, NoteId, Pitch, Program};

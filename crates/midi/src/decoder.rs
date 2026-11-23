@@ -109,7 +109,7 @@ impl Default for Decoder {
 
 /// What one packet decoded to, before it is handed out as messages.
 #[derive(Debug, Clone, Copy)]
-enum Decoded {
+pub(crate) enum Decoded {
     Nothing,
     One(Message<'static>),
     /// A note-off for each note in the decoder's `ends`.
@@ -218,6 +218,16 @@ impl Decoder {
         }
     }
 
+    /// The notes the last note-off ended.
+    pub(crate) fn ended(&self) -> &[NoteId] {
+        self.ends.get(..self.ended).unwrap_or(&[])
+    }
+
+    /// The SysEx last whole.
+    pub(crate) fn sysex_bytes(&self) -> &[u8] {
+        self.sysex.get(..self.sysex_len).unwrap_or(&[])
+    }
+
     /// How many notes found no room in the table, and how many SysEx
     /// messages were dropped, since it was made.
     pub fn dropped(&self) -> u64 {
@@ -239,7 +249,9 @@ impl Decoder {
         self.sysex_over = false;
     }
 
-    fn read(&mut self, event: &Event) -> Decoded {
+    /// What `event` decoded to, the note-offs' ids in [`ended`](Self::ended)
+    /// and a whole SysEx in [`sysex_bytes`](Self::sysex_bytes).
+    pub(crate) fn read(&mut self, event: &Event) -> Decoded {
         let head = event.words[0];
         match head >> 28 {
             // Real time may fall inside a SysEx, and so may the groupless

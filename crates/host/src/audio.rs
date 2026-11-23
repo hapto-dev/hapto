@@ -4,6 +4,7 @@ pub use hapto_ump::{Event, EventList};
 
 use crate::Audio;
 use crate::layout::{Layout, Width};
+use crate::{Midi, MidiOut};
 
 /// The most frames a processor is built for per block: 65,536, about 1.4
 /// seconds at 48 kHz.
@@ -94,11 +95,12 @@ impl ProcessSetup {
 ///         Status::Continue
 ///     }
 /// }
-/// # use hapto_host::{Audio, EventList};
-/// # let (events, mut out) = (EventList::with_capacity(0), EventList::with_capacity(0));
+/// # use hapto_host::{Audio, EventList, Midi, MidiOut};
+/// # let mut out = EventList::with_capacity(0);
 /// # let mut left = [1.0_f32; 4];
 /// # let mut channels = [&mut left[..]];
-/// # Half.process(Block::new(Audio::new(&mut channels, 4), &events, &mut out));
+/// # let block = Block::new(Audio::new(&mut channels, 4), Midi::default(), MidiOut::new(&mut out));
+/// # Half.process(block);
 /// # assert_eq!(left, [0.5; 4]);
 /// ```
 #[derive(Debug)]
@@ -112,10 +114,13 @@ pub struct Block<'a, L: Layout> {
     /// On entry the first `inputs` carry the input, and any further ones are
     /// zeroed. On return the first `outputs` carry the output.
     pub audio: Audio<'a, L>,
-    /// The MIDI that arrived, in delivery order.
-    pub events: &'a EventList,
-    /// The MIDI to send; push in offset order. MIDI only: parameter changes
-    /// reach the host through the exporter.
+    /// The MIDI that arrived, decoded once by the engine: each
+    /// [`Message`](crate::Message) at its frame, in the order it came, with
+    /// the packets it came in. Read it as often as needed, as a `MidiBuffer`
+    /// is read.
+    pub midi: Midi<'a>,
+    /// The MIDI to send, in time order: messages, or packets as they are.
+    /// MIDI only: parameter changes reach the host through the exporter.
     ///
     /// Empty on entry, but for a host's block longer than
     /// [`ProcessSetup::max_frames`], which plays as several blocks. Each
@@ -124,7 +129,7 @@ pub struct Block<'a, L: Layout> {
     ///
     /// Open: no exporter sends it to a host yet, as
     /// [`PluginInfo::midi_input`](crate::PluginInfo::midi_input) says.
-    pub out_events: &'a mut EventList,
+    pub midi_out: MidiOut<'a>,
 }
 
 /// What a block's processing tells the host about the next ones.
@@ -161,13 +166,14 @@ pub enum Status {
 }
 
 impl<'a, L: Layout> Block<'a, L> {
-    /// Creates a block over `audio` and the MIDI lists, for an exporter or a
-    /// test that drives a processor.
-    pub fn new(audio: Audio<'a, L>, events: &'a EventList, out_events: &'a mut EventList) -> Self {
+    /// Creates a block over `audio`, with `midi` in and `midi_out` to send
+    /// into, for an exporter or a test that drives a processor.
+    /// [`Midi::default`] is a block with no MIDI in.
+    pub fn new(audio: Audio<'a, L>, midi: Midi<'a>, midi_out: MidiOut<'a>) -> Self {
         Block {
             audio,
-            events,
-            out_events,
+            midi,
+            midi_out,
         }
     }
 }
@@ -186,9 +192,7 @@ mod tests {
             type Layout = Mono;
 
             fn process(&mut self, mut block: Block<'_, Mono>) -> Status {
-                for &event in block.events.as_slice() {
-                    block.out_events.push(event);
-                }
+                block.midi_out.extend(block.midi.packets());
                 block.audio.clear();
                 Status::Sleep
             }
@@ -197,10 +201,17 @@ mod tests {
         let mut events = EventList::with_capacity(2);
         // The first packet of a MIDI-CI Discovery inquiry, as SysEx7.
         events.push(Event::new(3, [0x3016_7E7F, 0x0D70_0201, 0, 0]));
+        let mut list = hapto_midi::MidiList::new();
+        list.read(&events, 4);
         let mut out = EventList::with_capacity(1);
         let mut left = [1.0_f32; 4];
         let mut channels = [&mut left[..]];
-        let status = Echo.process(Block::new(Audio::new(&mut channels, 4), &events, &mut out));
+        let block = Block::new(
+            Audio::new(&mut channels, 4),
+            list.midi(),
+            MidiOut::new(&mut out),
+        );
+        let status = Echo.process(block);
         assert_eq!(status, Status::Sleep);
         assert_eq!(out.as_slice(), events.as_slice());
         assert_eq!(left, [0.0; 4]);

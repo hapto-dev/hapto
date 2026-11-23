@@ -7,7 +7,7 @@ use hapto_example_eq::ExampleEq;
 use hapto_example_eq::dsp::{Shape, coefficients};
 use hapto_example_eq::params::EqParams;
 use hapto_host::layout::Width;
-use hapto_host::{Audio, Block, EventList, Parts, Plugin, ProcessSetup, Processor};
+use hapto_host::{Audio, Block, EventList, Midi, MidiOut, Parts, Plugin, ProcessSetup, Processor};
 use hapto_params::{Float, Kind, ParamDecl, ParamSet, Range};
 
 fn bits(value: f32) -> String {
@@ -214,7 +214,6 @@ pub(crate) fn audio(input: impl BufRead, out: &mut impl Write) {
     let audio = set.audio();
     let mut processor = None;
     let mut noise = Noise(0x1234_5678);
-    let events = EventList::with_capacity(0);
     let mut events_out = EventList::with_capacity(0);
     let (mut left, mut right) = (vec![0.0f32; 4_096], vec![0.0f32; 4_096]);
     for line in input.lines() {
@@ -244,8 +243,8 @@ pub(crate) fn audio(input: impl BufRead, out: &mut impl Write) {
                     .expect("a rate first")
                     .process(Block::new(
                         Audio::new(&mut channels, frames),
-                        &events,
-                        &mut events_out,
+                        Midi::default(),
+                        MidiOut::new(&mut events_out),
                     ));
                 let [left, right] = channels;
                 for (left, right) in left.iter().zip(right.iter()) {

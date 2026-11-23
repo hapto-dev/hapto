@@ -7,7 +7,7 @@ hapto_testkit::install_alloc_gate!();
 use hapto_example_eq::ExampleEq;
 use hapto_host::layout::Width;
 use hapto_host::vst3::TestHost;
-use hapto_host::{Audio, Block, EventList, Plugin, ProcessSetup, Processor};
+use hapto_host::{Audio, Block, EventList, Midi, MidiOut, Plugin, ProcessSetup, Processor};
 use hapto_params::host_id;
 use hapto_testkit::alloc::assert_no_allocations;
 
@@ -23,7 +23,6 @@ fn processing_and_retuning_never_allocate() {
     let on = set.id("high.on").expect("declared");
     let setup = ProcessSetup::new(48_000.0, 256, Width::STEREO);
     let mut processor = plugin.activate(&setup);
-    let events = EventList::with_capacity(0);
     let mut out = EventList::with_capacity(0);
     let (mut left, mut right) = (vec![0.25f32; 256], vec![-0.25f32; 256]);
     for round in 0..64u8 {
@@ -33,8 +32,8 @@ fn processing_and_retuning_never_allocate() {
             let mut channels: [&mut [f32]; 2] = [&mut left, &mut right];
             processor.process(Block::new(
                 Audio::new(&mut channels, 256),
-                &events,
-                &mut out,
+                Midi::default(),
+                MidiOut::new(&mut out),
             ));
         });
     }

@@ -142,9 +142,11 @@ Read these in order to change what happens to a block.
    activation took through the parts' `Driver`, runs once over the block's
    MIDI, so learned writes land before the processor reads. A learned write to
    a parameter made at run time goes through the store learn's table holds
-   for it. Then `pieces`
-   calls `Processor::process` with a `Block` (`crates/host/src/audio.rs`) in
-   [pieces](docs/glossary.md#piece) of at most the activation's `max_frames`.
+   for it. The block's MIDI is then decoded once into the activation's
+   `MidiList` (`crates/midi`), and `pieces` calls `Processor::process` with a
+   `Block` (`crates/host/src/audio.rs`) in
+   [pieces](docs/glossary.md#piece) of at most the activation's `max_frames`,
+   each with its share of the messages as `block.midi`.
    `Channels::run` (`boundary/channels.rs`) builds each piece's channels in
    place, and `pieces` lends them to the processor as `Audio` in its
    layout. Channel `c` is the host's output buffer `c` when that overlaps no
@@ -271,7 +273,8 @@ with `cargo doc -p hapto-host --features vst3,cabi,test-host
   `hapto-webview` offers no editor, and a host shows its own controls ([where
   the WebView pieces live][webview]). So does the standalone app, which says
   so and ends elsewhere ([the standalone exporter and app][standalone]).
-  Absent: no exporter delivers MIDI events yet ([the VST3 exporter's
+  Absent: only the standalone app delivers MIDI so far, from the computer's
+  inputs; VST3 and the C interface deliver none yet ([the VST3 exporter's
   shape][vst3]).
 
 ## Threads

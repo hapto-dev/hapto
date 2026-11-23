@@ -52,6 +52,7 @@ manifest = ["dep:hapto-macros", "hapto-macros/manifest"]
 hapto-audio.workspace = true
 hapto-learn.workspace = true
 hapto-macros = { workspace = true, optional = true }
+hapto-midi.workspace = true
 hapto-params.workspace = true
 hapto-session.workspace = true
 hapto-ump.workspace = true
