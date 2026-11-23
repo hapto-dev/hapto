@@ -622,7 +622,8 @@ unsafe extern "C" fn process<P: Plugin>(
     // or valid for `frames` floats (the outputs for writing too) until this
     // call returns. The host touches none of them meanwhile, and any two are
     // one buffer or share no float.
-    let outcome = unsafe { instance.process(block.frames as usize, inputs, outputs, |_| {}) };
+    let outcome =
+        unsafe { instance.process(block.frames as usize, inputs, outputs, |_| {}, |_| {}) };
     match outcome {
         Outcome::Empty => STATUS_CONTINUE,
         Outcome::Silent => {

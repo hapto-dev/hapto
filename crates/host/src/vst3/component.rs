@@ -265,7 +265,7 @@ impl<P: Plugin> Component<P> {
         if data.symbolicSampleSize != SymbolicSampleSizes_::kSample32 as int32 {
             // The host's writes still land; the block is refused unplayed.
             // SAFETY: no channel is passed, so none needs to be valid.
-            unsafe { engine.process(0, &[], &[], writes) };
+            unsafe { engine.process(0, &[], &[], writes, |_| {}) };
             return kResultFalse;
         }
         let frames = usize::try_from(data.numSamples).unwrap_or(0);
@@ -286,7 +286,7 @@ impl<P: Plugin> Component<P> {
         // or an input handed again as its output in place. A host that broke
         // it would get wrong audio, not an unsound access: `Channels` gives
         // no two channels a float in common.
-        match unsafe { engine.process(frames, inputs, outputs, writes) } {
+        match unsafe { engine.process(frames, inputs, outputs, writes, |_| {}) } {
             Outcome::Empty => {}
             // SAFETY: as above, as `silence` requires.
             Outcome::Silent => unsafe { silence(data) },

@@ -150,7 +150,7 @@ comments never cite an id: they state the reason in words, and
 | D111 | [How does a plugin's author see it through a plugin format while working on it, with no real host? (D109, D110)](#d111-the-dev-host) | The standalone app's dev host: the plugin through Hapto's own VST3 and C interface test hosts, in process, its editor as the exporter's view below a bar that names the format, with a settings window of what the host sees, a tab each. It changes the sample rate, of those the device takes, and the most frames a block holds by reactivating the plugin as a host does, cuts blocks by a plan, and logs what the plugin tells the host. A switch of format starts the app again with the saved block, and a block the plugin refused is kept for the next run. It stands in for no real host. | to confirm |
 | D112 | [How does a processor see its block's audio, and the widths it runs at? (D23, D97)](#d112-the-blocks-audio-and-the-layout-as-a-type) | As a type: `Processor::Layout` names the main bus's channels, a `Bus<IN, OUT>` at one width, with `Mono`, `Stereo` and the like for the common ones, or `AnyLayout` at each width `PluginInfo::layouts` lists. `Block::audio` lends the channels as `Audio`, walked by frame or by channel with no index or frame count, and in a `Bus` both are arrays that destructure. `Width` counts channels at run time, and `AudioBuf` owns audio for tests. | decided |
 | D113 | [Where do the audio types live? (D112)](#d113-the-audio-types-crate) | In `hapto-audio`, a core crate of layer 1 beside `hapto-params` and `hapto-ump`, which `hapto-host` re-exports, so code that only writes audio, such as a voice, needs no host. | decided |
-| D114 | [Which MIDI does Hapto pass inside, and how does MIDI 1.0 reach it? (D10, D23, D70)](#d114-midi-20-inside) | MIDI 2.0: `ChannelVoice` reads and writes MIDI 2.0's channel voice messages alone. An exporter is to upgrade MIDI 1.0 on the way in with `Upgrade`, and to downgrade with `Downgrade` only for a destination that takes MIDI 1.0 alone, both by the specification's Default Translation; no exporter passes MIDI yet. Each packet keeps its `Origin`, so learn reads a value upgraded from MIDI 1.0 at the width it was sent at. | to confirm |
+| D114 | [Which MIDI does Hapto pass inside, and how does MIDI 1.0 reach it? (D10, D23, D70)](#d114-midi-20-inside) | MIDI 2.0: `ChannelVoice` reads and writes MIDI 2.0's channel voice messages alone. The engine upgrades MIDI 1.0 on the way in with `Upgrade`, for every exporter, and an exporter downgrades with `Downgrade` only for a destination that takes MIDI 1.0 alone, both by the specification's Default Translation. Each packet keeps its `Origin`, so learn reads a value upgraded from MIDI 1.0 at the width it was sent at. | decided |
 
 **Open.** D25 is held until `hapto-ci` needs it. It keeps its recommendation
 until decided, and no rule depends on it.
@@ -3535,38 +3535,31 @@ with no host below it.
 
 **Rust.** MIDI 2.0. Everything above the exporters reads MIDI 2.0's channel
 voice messages, a `ChannelMessage` per status at MIDI 2.0's widths, so a
-processor and learn read one protocol. An exporter is to upgrade MIDI 1.0 on
-the way in with `Upgrade`, by the Default Translation in appendix D of the UMP
-and MIDI 2.0 Protocol specification. Not built yet: no exporter passes MIDI
-(D59, D62). Values scale Min-Center-Max, a note-on at velocity 0 becomes a
-note-off at the centre velocity, controllers 0 and 32 wait for the program
-change that carries their bank, and an RPN or NRPN becomes one registered or
-assignable controller.
+processor and learn read one protocol. MIDI 1.0 is upgraded on the way in
+with `Upgrade`, by the Default Translation in appendix D of the UMP and MIDI
+2.0 Protocol specification. Values scale Min-Center-Max, a note-on at velocity
+0 becomes a note-off at the centre velocity, controllers 0 and 32 wait for the
+program change that carries their bank, and an RPN or NRPN becomes one
+registered or assignable controller.
 
-Controllers 0 and 32 also pass on as controllers when they come. That departs
-from appendix D.3.4, which carries them in the program change alone, and from
-section 7.4.6, which tells a MIDI 2.0 receiver to ignore them: common
-controllers send a fader or a button on them, which a plugin learns as any
-other. The downgrade still sends every program change on a bank after its bank
-select, so MIDI 1.0 sent through both repeats its bank select before the
-program: a receiver ends on the same bank, and a processor that drops
-controllers 0 and 32 still sends the bank.
+An exporter hands the engine its host's packets for each block as they come,
+and the engine upgrades them as they arrive, with an `Upgrade` of the
+activation's own, so every exporter shares the one edge and a high byte held
+at a block's end refines in the next.
 
-The upgrade sends a data entry high byte (6) at once, at its own frame, with
-its low byte at 0, so no later message overtakes it and a MIDI 1.0 receiver of
-the downgrade steps the value it set. A low byte (38) at the same frame joins
-it into one message, as the upgrade rewrites the packet it just sent, and one
-at a later frame refines it as a second. Nothing waits for a later message, so
-where a host cuts its blocks changes nothing: any stream, cut anywhere,
-upgrades to the same packets at the same frames. The null number (127, 127)
-translates to nothing, increment and decrement pass on as controllers, which
-name no number, so a MIDI 1.0 destination of the downgrade steps the number it
-last saw, and the address and the departures from the Default Translation read
-as D70 states. A bank byte sent alone selects a bank with its partner at 0,
-since a program change carries the bank select values current.
+The upgrade holds a data entry high byte (6) until its low byte (38), another
+high byte, an address byte, data increment or decrement (96, 97) or the end of
+the block sends it, so a MIDI 1.0 receiver of the downgrade steps the value
+the high byte set. A pair one block carries becomes one message, a high byte
+alone goes out at the block's last frame with its low byte at 0, and a low
+byte a block later refines it. The null number (127, 127) translates to
+nothing, increment and decrement pass on as controllers, and the address and
+the departures from the Default Translation read as D70 states. A bank byte
+sent alone selects a bank with its partner at 0, since a program change carries
+the bank select values current.
 
-An exporter is to downgrade with `Downgrade` only for a destination that takes
-MIDI 1.0 alone, by the same appendix. Values cut their low bits, a note-on that
+An exporter downgrades with `Downgrade` only for a destination that takes MIDI
+1.0 alone, by the same appendix. Values cut their low bits, a note-on that
 would cut to velocity 0 goes out at 1, a registered or assignable controller
 becomes its four controllers, and a program change with a bank goes out after
 bank select. What MIDI 1.0 cannot carry is dropped and counted: relative and

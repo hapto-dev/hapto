@@ -24,6 +24,7 @@ use std::sync::atomic::Ordering;
 
 use hapto_learn::LearnAudio;
 use hapto_params::audio_thread;
+use hapto_ump::Upgrade;
 
 use super::{Engine, HostLink, Points, Setup};
 use crate::boundary::{AudioSlot, Channels, FlushDenormals};
@@ -38,6 +39,9 @@ pub(super) struct Active<R> {
     channels: Channels,
     /// The block's MIDI in, at frames from the block's start.
     events: EventList,
+    /// MIDI 1.0 the host sends, upgraded as it arrives. It holds an NRPN's
+    /// high byte from block to block, so it lives with the processor.
+    upgrade: Upgrade,
     /// One piece's share of `events`, at frames from the piece's start. It
     /// has the room `events` has, so a piece's share never drops.
     piece_events: EventList,
@@ -93,12 +97,42 @@ impl<R> Active<R> {
             processor,
             channels: Channels::new(layout.inputs, layout.outputs, max_frames),
             events: EventList::with_capacity(max_events),
+            upgrade: Upgrade::new(),
             piece_events: EventList::with_capacity(max_events),
             out_events: EventList::with_capacity(max_out_events),
             learn: None,
             faulted: false,
         }
     }
+}
+
+/// The block's MIDI in, as an exporter fills it: each packet its host
+/// sent, at a frame of the block and in time order. A packet of MIDI 1.0 is
+/// upgraded to MIDI 2.0 as it arrives, so nothing above reads MIDI 1.0.
+pub(crate) struct MidiIn<'a> {
+    events: &'a mut EventList,
+    upgrade: &'a mut Upgrade,
+}
+
+impl MidiIn<'_> {
+    /// Adds the host's next packet. Past the list's room it is dropped and
+    /// counted.
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
+    pub(crate) fn push(&mut self, event: Event) {
+        self.upgrade.event(&event, self.events);
+    }
+}
+
+/// Fills `audio`'s MIDI in for a block of `frames` frames, at least one:
+/// what `midi` pushes, then what the upgrade held to the block's end.
+fn fill<R>(audio: &mut Active<R>, frames: usize, midi: impl FnOnce(&mut MidiIn<'_>)) {
+    audio.events.clear();
+    midi(&mut MidiIn {
+        events: &mut audio.events,
+        upgrade: &mut audio.upgrade,
+    });
+    let last = u32::try_from(frames.saturating_sub(1)).unwrap_or(u32::MAX);
+    audio.upgrade.end_block(last, &mut audio.events);
 }
 
 /// What a block found in the audio slot.
@@ -195,10 +229,12 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
     /// One block of `frames` frames.
     ///
     /// First comes the host's automation for it, which `automation` hands over
-    /// queue by queue and which lands before the block. Then learn's audio
-    /// side runs over the block's MIDI, when the plugin's parts have learn
-    /// on, and then the processor, in pieces when the block is longer than
-    /// the activation promised.
+    /// queue by queue and which lands before the block. Then `midi` hands
+    /// over the host's MIDI for it, upgraded as it arrives, and learn's audio
+    /// side runs over that, when the plugin's parts have learn on. Then the
+    /// processor runs, in pieces when the block is longer than the activation
+    /// promised. A block of no frames carries no MIDI: `midi` is not called,
+    /// and neither is it when no processor runs.
     ///
     /// A panic in the processor is caught while it is still held (see
     /// [`run_held`]): the block is silent, and so is every block until the
@@ -209,7 +245,8 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
     /// throughout, so a debug build panics, caught as above, at any lock or
     /// audio-side drop the block reaches. Nothing here drops a processor:
     /// one that panicked stays in its slot until the main thread replaces
-    /// or takes it.
+    /// or takes it. A panic in `midi` silences the block, as one in the
+    /// automation walk does, and leaves the processor alone.
     ///
     /// # Safety
     ///
@@ -225,10 +262,11 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
         inputs: &[*mut f32],
         outputs: &[*mut f32],
         automation: impl FnOnce(&mut Points<'_>),
+        midi: impl FnOnce(&mut MidiIn<'_>),
     ) -> Outcome {
         let _audio = audio_thread::enter();
         // SAFETY: this function's contract, passed on whole.
-        let block = || unsafe { self.play(frames, inputs, outputs, automation) };
+        let block = || unsafe { self.play(frames, inputs, outputs, automation, midi) };
         panic::catch_unwind(AssertUnwindSafe(block)).unwrap_or_else(|_| {
             self.faults.record(Fault::Panic);
             Outcome::Silent
@@ -247,6 +285,7 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
         inputs: &[*mut f32],
         outputs: &[*mut f32],
         automation: impl FnOnce(&mut Points<'_>),
+        midi: impl FnOnce(&mut MidiIn<'_>),
     ) -> Outcome {
         {
             let mut room = self.automation.try_hold();
@@ -264,13 +303,21 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
             if self.reset.take() {
                 audio.processor.reset();
             }
-            // An exporter's MIDI in is to fill the list here; none does yet.
-            audio.events.clear();
+            // The exporter's code, not the processor's: a panic in it
+            // silences the block without faulting the processor.
+            let filled = panic::catch_unwind(AssertUnwindSafe(|| fill(audio, frames, midi)));
+            if filled.is_err() {
+                return None;
+            }
             // SAFETY: this function's contract.
-            unsafe { pieces(audio, frames, inputs, outputs) }
+            Some(unsafe { pieces(audio, frames, inputs, outputs) })
         });
         match held {
-            Held::Ran(status) => Outcome::Played(status),
+            Held::Ran(Some(status)) => Outcome::Played(status),
+            Held::Ran(None) => {
+                self.faults.record(Fault::Panic);
+                Outcome::Silent
+            }
             Held::Panicked => {
                 self.faults.record(Fault::AudioPanic);
                 Outcome::Silent

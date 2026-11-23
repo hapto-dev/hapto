@@ -3,9 +3,9 @@ use std::sync::Arc;
 
 use hapto_learn::{Config, Control, Learn, Learned, Mapping, Source, Takes};
 use hapto_params::{Kind, ParamDecl, ParamId, ParamSet};
-use hapto_ump::{EventList, Midi1Message, Midi1Voice, Upgrade};
+use hapto_ump::{ChannelMessage, EventList, Midi1Message, Midi1Voice, Origin, Upgrade};
 
-use super::{Active, pieces};
+use super::{Active, fill, pieces};
 use crate::layout::{AnyLayout, Width};
 use crate::{Block, Event, Processor, Status};
 
@@ -237,4 +237,64 @@ fn a_controller_a_block_brings_while_a_target_is_armed_is_learned_at_the_next_po
         learn.mapping(gain).map(|mapping| mapping.source.control),
         Some(Control::Cc(74))
     );
+}
+
+/// A MIDI 1.0 control change at `offset`, as a host sends it.
+fn sent(offset: u32, controller: u8, value: u8) -> Event {
+    let message = Midi1Message::ControlChange { controller, value };
+    Midi1Voice {
+        group: 0,
+        channel: 0,
+        message,
+    }
+    .event(offset)
+}
+
+#[test]
+fn midi_1_an_exporter_hands_over_reaches_the_block_as_midi_2_and_midi_2_as_sent() {
+    let mut audio = audio();
+    let midi2 = Event::new(9, [0x40B0_0700, 1, 0, 0]);
+    fill(&mut audio, 64, |into| {
+        into.push(sent(3, 7, 127));
+        into.push(midi2);
+    });
+    let events = audio.events.as_slice();
+    assert_eq!(events.len(), 2);
+    assert_eq!((events[0].offset, events[0].origin), (3, Origin::Midi1));
+    let message = events[0].channel_voice().map(|voice| voice.message);
+    let full = ChannelMessage::ControlChange {
+        controller: 7,
+        value: u32::MAX,
+    };
+    assert_eq!(message, Some(full));
+    assert_eq!(events[1], midi2);
+}
+
+#[test]
+fn a_high_byte_sent_alone_reaches_its_block_at_the_last_frame_and_the_next_starts_clean() {
+    let mut audio = audio();
+    fill(&mut audio, 32, |into| {
+        into.push(sent(0, 99, 2));
+        into.push(sent(0, 98, 44));
+        into.push(sent(4, 6, 64));
+    });
+    let events: Vec<_> = audio
+        .events
+        .as_slice()
+        .iter()
+        .map(|event| {
+            (
+                event.offset,
+                event.channel_voice().map(|voice| voice.message),
+            )
+        })
+        .collect();
+    let entry = ChannelMessage::AssignableController {
+        bank: 2,
+        index: 44,
+        value: hapto_ump::scale::up_14_to_32(64 << 7),
+    };
+    assert_eq!(events, [(31, Some(entry))]);
+    fill(&mut audio, 32, |_| {});
+    assert!(audio.events.as_slice().is_empty(), "nothing held over");
 }

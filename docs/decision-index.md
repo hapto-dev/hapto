@@ -1380,8 +1380,10 @@ move its line here; when a decision gains code, add one.
 - `crates/ump/src/lib.rs`: module, `Origin`
 - `crates/ump/src/voice.rs`: `ChannelVoice`, `ChannelMessage`
 - `crates/ump/src/midi1.rs`: module, `Midi1Voice`, `Midi1Message`
-- `crates/ump/src/upgrade.rs`: module, `Upgrade`, `Numbers::control`, `Channel::translate`, `Channel::control_change`, `Sender::refine`, `Entry::message`
-- `crates/ump/src/downgrade.rs`: module, `Downgrade`, `Downgrade::event`
+- `crates/ump/src/upgrade.rs`: module, `Upgrade`, `Numbers::control`, `Channel::translate`, `Entry::send`
+- `crates/ump/src/downgrade.rs`: module, `Downgrade`
+- `crates/host/src/engine/process.rs`: `MidiIn`, `fill`
+- `crates/host/src/standalone.rs`: `StandaloneAudio::process`
 - `crates/ump/src/scale.rs`: module
 - `crates/ump/src/bytes.rs`: module, `ByteStream`, `Bytes`
 - `crates/learn/src/parse.rs`: module, `parse`, `Value::nrpn`, `Value::normalized`

@@ -128,7 +128,9 @@ Read these in order to change what happens to a block.
 3. A [block](docs/glossary.md#block) is `Engine::process` (`engine/process.rs`).
    On the audio thread it hands the exporter a `Points` over the engine's
    `Automation` to fill (step 4), applies it to the parameter set, and flushes
-   denormals. Then `run_held` takes the processor out of its `AudioSlot`.
+   denormals. Then `run_held` takes the processor out of its `AudioSlot`,
+   and the exporter hands over the block's MIDI through a `MidiIn`, which
+   upgrades MIDI 1.0 as it arrives with the activation's own `Upgrade`.
    When the plugin's parts have learn on, learn's audio side, which the
    activation took through the parts' `Driver`, runs once over the block's
    MIDI, so learned writes land before the processor reads. A learned write to

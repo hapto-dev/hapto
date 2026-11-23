@@ -30,7 +30,7 @@ use raw_window_handle::{HandleError, HasWindowHandle};
 use crate::boundary::{ParentWindow, guard};
 use crate::engine::{EditorSlot, Engine, HostLink, Opened, Outcome, Release, Restart, Setup};
 use crate::layout::Width;
-use crate::{LoadError, Plugin, Size, Status, Tail, widths};
+use crate::{Event, LoadError, Plugin, Size, Status, Tail, widths};
 
 /// The most channels a block of the audio side carries each way: its lists
 /// of them live on the audio thread's stack, so a block allocates nothing.
@@ -77,7 +77,7 @@ impl HostLink for Link {
 /// let input = [1.0_f32; 4];
 /// let (mut left, mut right) = ([0.0_f32; 4], [0.0_f32; 4]);
 /// let inputs = [&input[..], &input[..]];
-/// audio.process(&inputs, &mut [&mut left[..], &mut right[..]]);
+/// audio.process(&inputs, &mut [&mut left[..], &mut right[..]], &[]);
 /// assert_eq!(left, [1.0; 4], "0 dB");
 ///
 /// // The app's tick, about 60 times a second; its saved block, between runs.
@@ -378,7 +378,8 @@ impl<P: Plugin> Drop for Standalone<P> {
 /// let mut out = [[0.5_f32; 8]; 2];
 /// let [left, right] = &mut out;
 /// // Before an activation a block is silence.
-/// assert_eq!(audio.process(&[], &mut [&mut left[..], &mut right[..]]), None);
+/// let played = audio.process(&[], &mut [&mut left[..], &mut right[..]], &[]);
+/// assert_eq!(played, None);
 /// assert_eq!(out, [[0.0; 8]; 2]);
 /// ```
 pub struct StandaloneAudio<P: Plugin> {
@@ -394,9 +395,16 @@ impl<P: Plugin> fmt::Debug for StandaloneAudio<P> {
 }
 
 impl<P: Plugin> StandaloneAudio<P> {
-    /// Plays one block from `inputs` into `outputs`, each a channel, and
-    /// returns the processor's status; `None` for a block that did not play,
-    /// whose outputs are silence.
+    /// Plays one block from `inputs` into `outputs`, each a channel, with
+    /// `midi` as its MIDI in, and returns the processor's status; `None` for
+    /// a block that did not play, whose outputs are silence.
+    ///
+    /// `midi` is the app's packets for the block, each at a frame of it and
+    /// in time order, MIDI 1.0 or MIDI 2.0: the engine upgrades MIDI 1.0 as
+    /// an exporter's MIDI arrives. A packet at or past the block's end plays
+    /// at its last frame, and one past the room
+    /// [`ProcessSetup::max_events`](crate::ProcessSetup::max_events) gives is
+    /// dropped and counted.
     ///
     /// The block is as long as its shortest channel. Channels past
     /// [`MAX_CHANNELS`] are passed over: an output among them is left as it
@@ -404,7 +412,12 @@ impl<P: Plugin> StandaloneAudio<P> {
     /// layout: a missing input reads silence. Two inputs may be one buffer,
     /// but inputs that share part of one are refused, and the block is
     /// silence.
-    pub fn process(&mut self, inputs: &[&[f32]], outputs: &mut [&mut [f32]]) -> Option<Status> {
+    pub fn process(
+        &mut self,
+        inputs: &[&[f32]],
+        outputs: &mut [&mut [f32]],
+        midi: &[Event],
+    ) -> Option<Status> {
         let ins = &inputs[..inputs.len().min(MAX_CHANNELS)];
         let outs_len = outputs.len().min(MAX_CHANNELS);
         let frames = ins
@@ -434,8 +447,17 @@ impl<P: Plugin> StandaloneAudio<P> {
         // are one buffer or share no float in their first `frames`, as the
         // check above refused any other. The engine writes no input.
         let outcome = unsafe {
-            self.engine
-                .process(frames, &in_ptrs[..ins.len()], &out_ptrs[..outs_len], |_| {})
+            self.engine.process(
+                frames,
+                &in_ptrs[..ins.len()],
+                &out_ptrs[..outs_len],
+                |_| {},
+                |into| {
+                    for &event in midi {
+                        into.push(event);
+                    }
+                },
+            )
         };
         match outcome {
             Outcome::Played(status) => Some(status),
