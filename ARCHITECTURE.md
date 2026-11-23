@@ -75,7 +75,8 @@ reading how Hapto works inside, start with
   knows no toolkit; `engine/editor.rs` drives one for each view a host asks
   for, and the VST3 exporter's view is `vst3/view.rs`, with each system's
   window type in a file of its own in `vst3/view/`. The `standalone`
-  exporter (`standalone.rs`) drives the same engine for an app with no host.
+  exporter (`standalone.rs`) drives the same engine for an app with no host,
+  and `Play` (`play.rs`, under `test-host`) drives it for a plugin's tests.
 - `crates/bridge`: the page protocol, its native side (`Dispatcher`, which
   answers a page and tells it of every change to the parameters and to the
   values a plugin binds for it in `Values`), and the TypeScript generated from

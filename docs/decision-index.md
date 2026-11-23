@@ -1503,6 +1503,9 @@ move its line here; when a decision gains code, add one.
 - `crates/audio/src/frame.rs`: `AddSample`
 - `crates/audio/src/audio.rs`: `Audio::reborrow`
 - `crates/host/src/spans.rs`: module
+- `crates/host/src/play.rs`: module, `Play`, `Sound`, `Sound::difference`, `HostNote`
+- test `examples/synth/tests/synth.rs`: `the_sound_is_the_same_whatever_the_block_size`, `a_phrase_sounds_the_same_however_the_host_sends_it`
+- test `examples/synth/tests/alloc_gate.rs`: module
 - test `crates/midi/src/voices/tests.rs`: module
 - test `crates/midi/src/voices/audio.rs`: `the_centre_is_full_level_on_both_sides_and_a_side_fades_away_from_it`
 

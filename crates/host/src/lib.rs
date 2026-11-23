@@ -154,6 +154,9 @@ mod engine;
     expect(dead_code, reason = "only an exporter drives the core")
 )]
 mod faults;
+#[cfg(feature = "test-host")]
+#[cfg_attr(docsrs, doc(cfg(feature = "test-host")))]
+pub mod play;
 #[cfg(feature = "standalone")]
 #[cfg_attr(docsrs, doc(cfg(feature = "standalone")))]
 #[allow(unsafe_code, reason = "a host boundary: every block says why it holds")]

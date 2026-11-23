@@ -79,6 +79,9 @@ const KEYS: usize = 256;
 ///     }
 ///
 ///     fn render(&mut self, expression: &Expression<'_>, out: &mut VoiceAudio<'_, StereoOut>) {
+///         if !self.on {
+///             return;
+///         }
 ///         let step = expression.pitch.hz() / 48_000.0;
 ///         for frame in out.frames_mut() {
 ///             frame.add(0.1 * (self.phase * std::f32::consts::TAU).sin());

@@ -1,0 +1,54 @@
+[package]
+name = "hapto-example-synth"
+description = "A polyphonic synth a MIDI keyboard plays"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords = ["audio", "plugin", "synth", "midi", "example"]
+categories = ["multimedia::audio"]
+publish.workspace = true
+
+# Who the plugin is, to every host: `hapto_host::manifest_info!` reads it,
+# with the version and description above.
+[package.metadata.hapto]
+name = "Hapto Example Synth"
+vendor = "Hapto"
+id = "dev.hapto.example-synth"
+vst3-class-id = "b89a6c24-ca5c-472b-8d7b-48fe232795b6"
+au-codes = { subtype = "SmSy", manufacturer = "Hapt" }
+category = "instrument"
+
+[lib]
+# The cdylib is the VST3 module; the rlib lets tests drive it in-process.
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["vst3"]
+# The VST3 module's entry points, through Hapto's exporter.
+vst3 = ["hapto-host/vst3"]
+# The synth as an app of its own, played from the computer's MIDI inputs;
+# the module never links it.
+standalone = ["dep:hapto-standalone"]
+
+[dependencies]
+hapto-host = { workspace = true, features = ["manifest"] }
+hapto-standalone = { workspace = true, optional = true }
+
+[dev-dependencies]
+hapto-host = { workspace = true, features = ["test-host"] }
+# MIDI 2.0's messages, for the tests that send them.
+hapto-ump.workspace = true
+# The allocation gate (`tests/alloc_gate.rs`).
+hapto-testkit.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "hapto-example-synth-standalone"
+path = "src/bin/standalone.rs"
+required-features = ["standalone"]

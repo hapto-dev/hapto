@@ -4046,7 +4046,17 @@ off and sound off messages, and reads a controller its own channel has not set
 from its master's. With it off, a configuration message changes nothing.
 
 `Poly::new` allocates the voices and the tables. `play`, `handle` and `render`
-allocate nothing and never panic.
+allocate nothing and never panic. A voice adds nothing once it is done, since
+`Poly` frees it after the span it rendered, and a sound that went on would
+change with the host's block size.
+
+`hapto-host`'s `play::Play`, under its `test-host` feature, plays a plugin in a
+test as an exporter does, through the standalone exporter's engine: MIDI 1.0's
+bytes through the same upgrade as a host's, MIDI 2.0's messages, and notes
+named as VST3 names them, with their tuning and pressure, each at a frame of
+the whole play, in blocks of any sizes, into a `Sound`. The example synth's
+tests hold a phrase to the same sound, bit for bit, in every form and at every
+block size.
 
 **Alternatives.** The alternatives were voices rendering in `AnyLayout`, whose
 frames are some 80 times slower than a typed layout's; a scratch buffer for

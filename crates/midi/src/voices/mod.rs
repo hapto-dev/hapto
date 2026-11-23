@@ -50,12 +50,13 @@ use crate::message::{NoteOff, NoteOn};
 ///     fn render(&mut self, _: &Expression<'_>, out: &mut VoiceAudio<'_, StereoOut>) {
 ///         for frame in out.frames_mut() {
 ///             frame.add(self.level);
-///             self.level *= 0.5;
+///             // Halving, and silent once below -80 dB.
+///             self.level = if self.level < 1e-4 { 0.0 } else { 0.5 * self.level };
 ///         }
 ///     }
 ///
 ///     fn is_done(&self) -> bool {
-///         self.level < 1e-4
+///         self.level == 0.0
 ///     }
 /// }
 ///
@@ -80,6 +81,9 @@ pub trait Voice<L: Layout> {
     /// `expression` holds the note's values until the next.
     fn render(&mut self, expression: &Expression<'_>, out: &mut VoiceAudio<'_, L>);
 
-    /// Whether the voice has gone quiet, so `Poly` may free it.
+    /// Whether the voice has gone quiet, so `Poly` may free it. A voice
+    /// adds nothing more once it is done: `Poly` frees it after the span it
+    /// rendered, so a voice that went on sounding would sound different as
+    /// the blocks a host sends change size.
     fn is_done(&self) -> bool;
 }

@@ -213,6 +213,14 @@ window anywhere but Windows.
   `Poly::with_mpe` turns MPE on: a lower zone of 15 member channels, moved by
   an MPE Configuration Message, each member's note bent by its own channel
   and its master's and held by its master's pedals.
+- `hapto-host`: `play::Play`, under `test-host`, plays an instrument in a test
+  with no host: MIDI 1.0's bytes through a host's upgrade, MIDI 2.0's
+  messages and notes named as VST3 names them, at any block sizes, into a
+  `Sound`, whose `difference` says where two renders part. `test-host` now
+  turns on `standalone`, which `Play` plays through.
+- `examples/synth`: a polyphonic synth on `Poly`, as a VST3 module and an app
+  of its own, whose tests hold a phrase to one sound in every form a host
+  sends it and at every block size.
   `AddSample::add_scaled` adds a sample at a gain per channel, and
   `Audio::reborrow` lends audio again. `Spans` and `Span` are hapto-midi's,
   and `Status` hapto-audio's, both re-exported where they were.

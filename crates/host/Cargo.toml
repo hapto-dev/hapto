@@ -40,9 +40,10 @@ cabi = []
 # own, which `hapto-standalone` makes.
 standalone = []
 # The test hosts, `vst3::TestHost` and `cabi::TestHost`, which drive a plugin
-# through an exporter in tests: for a plugin crate's dev-dependencies, so a
-# shipping plugin carries none of it.
-test-host = []
+# through an exporter in tests, and `play::Play`, which plays one through the
+# standalone exporter: for a plugin crate's dev-dependencies, so a shipping
+# plugin carries none of it.
+test-host = ["standalone"]
 # `manifest_info!`, which writes a plugin's `PluginInfo` from its manifest's
 # `[package.metadata.hapto]`, checked while compiling.
 manifest = ["dep:hapto-macros", "hapto-macros/manifest"]
