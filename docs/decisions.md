@@ -3785,16 +3785,21 @@ that has passed: never earlier, and never dropped for being late. Once a block
 has handed an output MIDI, the writer sets the output's signal, an event whose
 setting never blocks: the one call the audio thread makes, so a block's MIDI
 leaves the moment the block has played. The thread waits on that signal while
-nothing waits to be sent, and for a packet due later on a high-resolution
-timer of its own as well, which ends about a millisecond late, the same for
-every packet, so a block's spacing holds; a wait's own timeout follows the
-system's tick, about 15.6 ms. A SysEx is joined from its packets and sent whole
-as one long message, which that thread waits on while the driver sends it, so a
-slow port holds up only its own output. JUCE's standalone sends a block's MIDI
-from the audio thread instead, in one burst as the block ends, through calls
-that can block: a SysEx sleeps the audio thread until the driver has sent its
-last byte. Its scheduler, which the standalone does not start, takes a lock
-and allocates on the audio thread, and drops what is 200 ms late.
+nothing waits to be sent, and for a packet due later on a high-resolution timer
+of its own as well, which ends about a millisecond late, the same for every
+packet, so a block's spacing holds; a wait's own timeout follows the system's
+tick, about 15.6 ms. A SysEx is joined from its packets and sent whole as one
+long message, which that thread waits on while the driver sends it, so a slow
+port holds up only its own output. One that lost a packet to a full ring, or
+came on another group while one was under way, is dropped and counted rather
+than sent with a hole. A close resets the device, which hands a SysEx back, and
+waits a second for it: a driver that never does keeps the SysEx's room, which is
+left to it, and its device is taken as gone. The thread marks its ring read
+while it runs, however it ends. JUCE's standalone sends a block's MIDI from the
+audio thread instead, in one burst as the block ends, through calls that can
+block: a SysEx sleeps the audio thread until the driver has sent its last byte.
+Its scheduler, which the standalone does not start, takes a lock and allocates
+on the audio thread, and drops what is 200 ms late.
 
 Neither timing is better at everything, so the app's binary chooses
 (decided 23 November). A message from an input is placed in a block by when it

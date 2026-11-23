@@ -35,6 +35,9 @@ use crate::ring::Consumer;
 /// How long the output's thread waits at a time for the driver to send a
 /// SysEx.
 const SYSEX_WAIT_MS: u32 = 10;
+/// How long a close waits, after its reset, for the driver to hand a SysEx
+/// back, before it leaves the SysEx's room to the driver.
+const RESET_WAIT: std::time::Duration = std::time::Duration::from_secs(1);
 /// The longest SysEx an output sends whole; a longer one is dropped and
 /// counted.
 pub(crate) const SYSEX_BYTES: usize = 64 * 1024;
@@ -83,8 +86,14 @@ struct Header(MIDIHDR);
 struct Sysex {
     header: Box<Header>,
     bytes: Vec<u8>,
-    /// Whether the SysEx outgrew its room, and is dropped.
+    /// Whether the SysEx outgrew its room, lost a packet, or began before
+    /// the output opened, and is dropped.
     over: bool,
+    /// The group of the SysEx under way: another group's is dropped.
+    group: u8,
+    /// The ring's dropped count as the SysEx began: one that moved lost a
+    /// packet of it.
+    dropped_at_start: u64,
 }
 
 /// What one SysEx packet came to.
@@ -93,8 +102,9 @@ enum Joined {
     Part,
     /// It is whole, and in the buffer.
     Whole,
-    /// It is whole, but outgrew the buffer or began before the output
-    /// opened, and is dropped.
+    /// It is whole, but outgrew the buffer, lost a packet to a full ring,
+    /// began before the output opened, or came on another group while one
+    /// was under way, and is dropped.
     Dropped,
 }
 
@@ -104,17 +114,28 @@ impl Sysex {
             header: Box::new(Header(MIDIHDR::default())),
             bytes: Vec::with_capacity(SYSEX_BYTES),
             over: false,
+            group: 0,
+            dropped_at_start: 0,
         }
     }
 
     /// Adds one 7-bit SysEx packet, whose bytes `Bytes` gave, F0 and F7
-    /// among them where it begins or ends one.
-    fn join(&mut self, words: [u32; 4], bytes: &[u8]) -> Joined {
+    /// among them where it begins or ends one. `dropped` is the ring's
+    /// dropped count now.
+    fn join(&mut self, words: [u32; 4], bytes: &[u8], dropped: u64) -> Joined {
         let status = (words[0] >> 20) & 0xF;
+        let group = ((words[0] >> 24) & 0xF) as u8;
         let (begins, ends) = (matches!(status, 0 | 1), matches!(status, 0 | 3));
+        if group != self.group && !self.bytes.is_empty() {
+            // Another group's SysEx while one is under way: a device takes
+            // one at a time, so it is dropped, counted at its end.
+            return if ends { Joined::Dropped } else { Joined::Part };
+        }
         if begins {
             self.bytes.clear();
             self.over = false;
+            self.group = group;
+            self.dropped_at_start = dropped;
         } else if self.bytes.is_empty() {
             // Its start came before the output opened.
             self.over = true;
@@ -126,6 +147,10 @@ impl Sysex {
         }
         if !ends {
             return Joined::Part;
+        }
+        if dropped != self.dropped_at_start {
+            // The ring dropped a packet while it came: maybe one of its.
+            self.over = true;
         }
         if self.over {
             self.bytes.clear();
@@ -158,13 +183,25 @@ impl Sysex {
         // SAFETY: as above, the header prepared.
         let sent = unsafe { midiOutLongMsg(handle.0, header, size) };
         if sent == MMSYSERR_NOERROR {
-            let mut reset = false;
+            let mut reset: Option<Instant> = None;
             while !done(header) {
-                if !reset && shared.stop.load(Ordering::Acquire) {
+                if reset.is_none() && shared.stop.load(Ordering::Acquire) {
                     // SAFETY: the open handle; the reset hands the header
                     // back marked done.
                     unsafe { midiOutReset(handle.0) };
-                    reset = true;
+                    reset = Some(Instant::now());
+                }
+                if reset.is_some_and(|at| Instant::now().since(at) > RESET_WAIT) {
+                    // A driver that never hands it back, a device unplugged
+                    // mid-SysEx say, may still read the header and its
+                    // bytes: they are left to it, and the device is gone.
+                    std::mem::forget(std::mem::replace(
+                        &mut self.header,
+                        Box::new(Header(MIDIHDR::default())),
+                    ));
+                    std::mem::forget(std::mem::take(&mut self.bytes));
+                    shared.left.store(true, Ordering::Release);
+                    return false;
                 }
                 // SAFETY: the shared event, which the device sets as it
                 // finishes with the header.
@@ -255,7 +292,6 @@ impl Output {
             return Err((refusal(opened), Some(consumer)));
         }
         let handle = Handle(handle);
-        consumer.set_reading(true);
         let (thread_shared, thread_signal) = (Arc::clone(&shared), Arc::clone(&signal));
         let started = thread::Builder::new()
             .name("hapto midi out".to_owned())
@@ -324,7 +360,10 @@ impl Drop for Output {
 /// the output stops it, and hands the ring back. It waits for `signal`
 /// while nothing waits to be sent, and on its own timer for a packet due
 /// later, which the signal also ends.
-fn send(handle: Handle, shared: &Shared, signal: &Signal, mut consumer: Consumer) -> Consumer {
+fn send(handle: Handle, shared: &Shared, signal: &Signal, consumer: Consumer) -> Consumer {
+    // The ring is read from here until the thread ends however it ends, so
+    // the writer pushes into no ring nobody reads.
+    let mut consumer = Reading::new(consumer);
     let timer = Timer::new();
     let mut sysex = Sysex::new();
     while !shared.stop.load(Ordering::Acquire) {
@@ -343,7 +382,7 @@ fn send(handle: Handle, shared: &Shared, signal: &Signal, mut consumer: Consumer
             continue;
         };
         if words[0] >> 28 == 0x3 {
-            match sysex.join(words, &bytes) {
+            match sysex.join(words, &bytes, consumer.dropped()) {
                 Joined::Part => {}
                 Joined::Whole => {
                     if !sysex.send(handle, shared) {
@@ -356,8 +395,47 @@ fn send(handle: Handle, shared: &Shared, signal: &Signal, mut consumer: Consumer
             short(handle, shared, &bytes);
         }
     }
-    consumer.set_reading(false);
-    consumer
+    consumer.into_inner()
+}
+
+/// A consumer its output's thread reads from, marked read while it lives.
+struct Reading(Option<Consumer>);
+
+impl Reading {
+    fn new(consumer: Consumer) -> Reading {
+        consumer.set_reading(true);
+        Reading(Some(consumer))
+    }
+
+    /// The consumer, no longer read.
+    fn into_inner(mut self) -> Consumer {
+        let consumer = self.0.take().expect("held until here");
+        consumer.set_reading(false);
+        consumer
+    }
+}
+
+impl std::ops::Deref for Reading {
+    type Target = Consumer;
+
+    fn deref(&self) -> &Consumer {
+        self.0.as_ref().expect("held until into_inner")
+    }
+}
+
+impl std::ops::DerefMut for Reading {
+    fn deref_mut(&mut self) -> &mut Consumer {
+        self.0.as_mut().expect("held until into_inner")
+    }
+}
+
+impl Drop for Reading {
+    fn drop(&mut self) {
+        // A thread that ends in a panic: the ring is read no more.
+        if let Some(consumer) = &self.0 {
+            consumer.set_reading(false);
+        }
+    }
 }
 
 /// Sends one message of up to three bytes, packed as WinMM takes it: the

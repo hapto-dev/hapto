@@ -166,7 +166,8 @@ enum Slot {
     Free(Consumer),
     /// A device, sending from the room.
     Open(Device, backend::Output),
-    /// A device the system would not close, whose room went with it.
+    /// A device whose thread could not start or ended in a panic, whose
+    /// room went with it.
     Lost,
 }
 

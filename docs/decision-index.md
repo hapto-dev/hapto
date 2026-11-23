@@ -1436,7 +1436,7 @@ move its line here; when a decision gains code, add one.
 - `crates/ump/src/bytes.rs`: `ByteStream::cut`
 - test `crates/ump/tests/bytes.rs`: `a_cut_ends_a_sysex_that_began_and_drops_one_that_did_not`
 - `crates/midi-devices/src/outputs.rs`: `Timing`, `Outputs`, `Outputs::open`, `OutputsWriter::write`, `MAX_OUTPUTS`
-- `crates/midi-devices/src/winmm/output.rs`: module, `Sysex::join`, `Sysex::send`, `Output::shut`, `send`
+- `crates/midi-devices/src/winmm/output.rs`: module, `Sysex::join`, `Sysex::send`, `Output::shut`, `send`, `Reading`, `RESET_WAIT`
 - `crates/midi-devices/src/winmm/signal.rs`: module, `Signal`, `Timer::wait`
 - `crates/standalone/src/midi.rs`: module, `Midi::streams`, `Midi::tick`, `follow`
 - `crates/standalone/src/routing.rs`: `MidiDevices`, `plan`
