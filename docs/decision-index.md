@@ -1318,7 +1318,7 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d112-the-blocks-audio-and-the-layout-as-a-type)
 
-- `crates/audio/src/audio.rs`: `Audio`, `Audio::new`, `Audio::frames_mut`, `Audio::channels`, `Audio::channels_mut`, `Audio::channel_mut`, `Audio::as_any_layout`, `Audio::peak`
+- `crates/audio/src/audio.rs`: `Audio`, `Audio::new`, `Audio::frames_mut`, `Audio::channels`, `Audio::channels_mut`, `Audio::channel_mut`, `Audio::as_any_layout`, `Audio::peak`, `AnyFrames`, `BusFrames`, `bus_frames`
 - `crates/audio/src/buf.rs`: `AudioBuf`
 - `crates/audio/src/frame.rs`: `Frame`
 - `crates/audio/src/layout.rs`: `Width`, `Layout`, `Bus`, `Mono`, `Stereo`, `StereoOut`, `MonoToStereo`, `NoAudio`, `AnyLayout`, `MAX_CHANNELS`, `buses`
@@ -1327,7 +1327,7 @@ move its line here; when a decision gains code, add one.
 - `crates/host/src/info.rs`: `widths`, `PluginInfo`
 - `crates/host/src/plugin.rs`: `Processor`
 - `crates/macros/src/manifest.rs`: `default_layouts`
-- test `crates/audio/tests/audio.rs`: module, `stereo_frames_come_in_time_order_left_then_right`, `new_refuses_a_count_the_layout_does_not_fix`, `a_typed_layout_lends_its_audio_to_code_for_any_layout`, `peak_is_nan_when_a_sample_is`, `a_bus_hands_its_channels_out_by_place`, `a_bus_frame_holds_each_of_its_channels_in_order`, `a_bus_holds_the_larger_of_its_counts`
+- test `crates/audio/tests/audio.rs`: module, `stereo_frames_come_in_time_order_left_then_right`, `new_refuses_a_count_the_layout_does_not_fix`, `a_typed_layout_lends_its_audio_to_code_for_any_layout`, `peak_is_nan_when_a_sample_is`, `a_bus_hands_its_channels_out_by_place`, `a_bus_frame_holds_each_of_its_channels_in_order`, `the_widest_bus_s_frame_holds_all_sixteen_channels_in_order`, `a_bus_holds_the_larger_of_its_counts`
 - test `crates/audio/tests/alloc_gate.rs`: `walking_audio_allocates_nothing`
 - test `crates/audio/benches/iai.rs`: module, `gain_by_frame`, `gain_by_channel`, `gain_in_one_call`, `a_mono_source_into_every_channel`
 - test `crates/macros/src/manifest.rs`: `layouts_left_out_are_empty`

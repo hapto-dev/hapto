@@ -4,6 +4,7 @@
 use std::iter::Take;
 
 use crate::Frame;
+use crate::audio::{AnyFrames, BusFrames};
 
 /// The most channels audio holds, and so the widest [`Width`] a plugin may
 /// offer: 16, enough for a 9.1.6 layout. A plugin that offers a wider one
@@ -105,10 +106,18 @@ pub trait Layout: sealed::Sealed + 'static {
     /// an array in a `Bus`, an iterator in `AnyLayout`.
     type ChannelsMut<'a>: IntoIterator<Item = &'a mut [f32]>;
 
-    /// The frame of one sample from each channel, in order; `None` when
-    /// there are too few for this layout.
+    /// The frames in turn, as
+    /// [`Audio::frames_mut`](crate::Audio::frames_mut) walks them.
     #[doc(hidden)]
-    fn frame<'a>(samples: impl Iterator<Item = &'a mut f32>) -> Option<Self::Frame<'a>>;
+    type Frames<'a>: ExactSizeIterator<Item = Self::Frame<'a>>;
+
+    /// The frames of the first `count` of `channels`, each `frames` long.
+    #[doc(hidden)]
+    fn frames_of(
+        channels: [&mut [f32]; MAX_CHANNELS],
+        count: usize,
+        frames: usize,
+    ) -> Self::Frames<'_>;
 
     /// The first `count` of `channels`, as this layout hands them out.
     #[doc(hidden)]
@@ -296,11 +305,16 @@ impl Layout for AnyLayout {
     const WIDTHS: &'static [Width] = &[];
 
     type Frame<'a> = Frame<'a>;
+    type Frames<'a> = AnyFrames<'a>;
     type Channels<'a> = Take<std::array::IntoIter<&'a [f32], MAX_CHANNELS>>;
     type ChannelsMut<'a> = Take<std::array::IntoIter<&'a mut [f32], MAX_CHANNELS>>;
 
-    fn frame<'a>(samples: impl Iterator<Item = &'a mut f32>) -> Option<Frame<'a>> {
-        Some(Frame::of(samples))
+    fn frames_of(
+        channels: [&mut [f32]; MAX_CHANNELS],
+        count: usize,
+        frames: usize,
+    ) -> AnyFrames<'_> {
+        AnyFrames::new(channels, count, frames)
     }
 
     fn channels_of(channels: [&[f32]; MAX_CHANNELS], count: usize) -> Self::Channels<'_> {
@@ -318,16 +332,6 @@ impl Layout for AnyLayout {
 /// The channels a bus's audio holds: the larger of its counts.
 const fn held(inputs: usize, outputs: usize) -> usize {
     Width::new(inputs, outputs).channels()
-}
-
-/// The first `N` of `items`, or `None` if there are fewer.
-fn array_of<T, const N: usize>(mut items: impl Iterator<Item = T>) -> Option<[T; N]> {
-    let slots: [Option<T>; N] = std::array::from_fn(|_| items.next());
-    if slots.iter().any(Option::is_none) {
-        return None;
-    }
-    // Every slot holds a value, as just checked, so none of these unwraps.
-    Some(slots.map(Option::unwrap))
 }
 
 /// The first `N` of `channels`, which hold at least `N`: a layout's count
@@ -355,11 +359,16 @@ macro_rules! buses {
             const WIDTHS: &'static [Width] = &[Width::new($inputs, $outputs)];
 
             type Frame<'a> = [&'a mut f32; held($inputs, $outputs)];
+            type Frames<'a> = BusFrames<'a, { held($inputs, $outputs) }>;
             type Channels<'a> = [&'a [f32]; held($inputs, $outputs)];
             type ChannelsMut<'a> = [&'a mut [f32]; held($inputs, $outputs)];
 
-            fn frame<'a>(samples: impl Iterator<Item = &'a mut f32>) -> Option<Self::Frame<'a>> {
-                array_of(samples)
+            fn frames_of(
+                channels: [&mut [f32]; MAX_CHANNELS],
+                _: usize,
+                frames: usize,
+            ) -> Self::Frames<'_> {
+                BusFrames::new(first_of(channels), frames)
             }
 
             fn channels_of(channels: [&[f32]; MAX_CHANNELS], _: usize) -> Self::Channels<'_> {

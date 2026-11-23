@@ -82,6 +82,18 @@ fn a_bus_frame_holds_each_of_its_channels_in_order() {
 }
 
 #[test]
+fn the_widest_bus_s_frame_holds_all_sixteen_channels_in_order() {
+    let mut buffer = AudioBuf::<Bus<MAX_CHANNELS, MAX_CHANNELS>>::new(2);
+    for frame in buffer.audio().frames_mut() {
+        for (sample, value) in frame.into_iter().zip(1..) {
+            *sample = value as f32;
+        }
+    }
+    let firsts = buffer.channels().map(|channel| channel[0]);
+    assert_eq!(firsts, std::array::from_fn(|index| (index + 1) as f32));
+}
+
+#[test]
 fn a_bus_holds_the_larger_of_its_counts() {
     assert_eq!(AudioBuf::<MonoToStereo>::new(4).channels().len(), 2);
     assert_eq!(AudioBuf::<Bus<6, 2>>::new(4).channels().len(), 6);

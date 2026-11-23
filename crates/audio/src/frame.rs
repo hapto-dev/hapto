@@ -12,9 +12,14 @@ use crate::layout::MAX_CHANNELS;
 /// It holds up to [`MAX_CHANNELS`] samples inline, so making one allocates
 /// nothing.
 ///
-/// Open: whether walking frames vectorises worse than walking channels.
-/// Hapto's instruction-count benchmarks are to measure the two before the
-/// effect examples settle on one.
+/// Open: a `Frame` is built and walked a slot at a time, so a loop over
+/// frames in `AnyLayout` costs far more than one over channels. Hapto's
+/// instruction-count benchmarks put a mono source added through 512 stereo
+/// frames at about 80 times a gain walked by channel. It is to be made
+/// cheaper before voices are built on it. Until then a loop that carries a
+/// plugin's load walks [`channels_mut`](crate::Audio::channels_mut), or the
+/// frames of a [`Bus`](crate::layout::Bus), which cost about what its
+/// channels do.
 ///
 /// # Examples
 ///

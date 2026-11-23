@@ -3,6 +3,7 @@
 use std::fmt;
 use std::marker::PhantomData;
 
+use crate::Frame;
 use crate::layout::{AnyLayout, Layout, MAX_CHANNELS};
 
 /// A block's channels over the same frames, lent for one call: the host's,
@@ -137,7 +138,8 @@ impl<'a, L: Layout> Audio<'a, L> {
     /// assert!(buffer.audio().peak() > 0.99);
     /// ```
     pub fn frames_mut(&mut self) -> impl ExactSizeIterator<Item = L::Frame<'_>> {
-        self.frames_as::<L>()
+        let (count, frames) = (self.count, self.frames);
+        L::frames_of(self.lend(), count, frames)
     }
 
     /// Each channel, as a slice: an array in a [`Bus`](crate::layout::Bus),
@@ -232,7 +234,9 @@ impl<'a, L: Layout> Audio<'a, L> {
     /// assert!(buffer.channels().all(|channel| channel == [0.0, 1.0, 2.0, 3.0]));
     /// ```
     pub fn add_to_all(&mut self, samples: impl IntoIterator<Item = f32>) {
-        for (frame, sample) in self.frames_as::<AnyLayout>().zip(samples) {
+        let (count, frames) = (self.count, self.frames);
+        let frames = AnyLayout::frames_of(self.lend(), count, frames);
+        for (frame, sample) in frames.zip(samples) {
             frame.add(sample);
         }
     }
@@ -279,18 +283,6 @@ impl<'a, L: Layout> Audio<'a, L> {
         let (count, frames) = (self.count, self.frames);
         Audio::over(self.lend().into_iter().take(count), frames)
     }
-
-    /// The frames, as layout `M` makes them: `L`'s own, or a
-    /// [`Frame`](crate::Frame) of every channel whatever `L` is.
-    fn frames_as<M: Layout>(&mut self) -> FramesMut<'_, M> {
-        let (count, remaining) = (self.count, self.frames);
-        FramesMut {
-            channels: self.lend(),
-            count,
-            remaining,
-            layout: PhantomData,
-        }
-    }
 }
 
 impl<L: Layout> Audio<'_, L> {
@@ -314,20 +306,36 @@ impl<L: Layout> fmt::Debug for Audio<'_, L> {
     }
 }
 
-/// The frames of some audio, each made by splitting the next sample off the
-/// front of each channel, so no two frames share a sample.
-struct FramesMut<'a, L: Layout> {
+/// The frames of audio in any layout, each a [`Frame`] made by splitting
+/// the next sample off the front of each channel, so no two frames share a
+/// sample.
+#[derive(Debug)]
+pub struct AnyFrames<'a> {
     /// What is left of each channel; the first `count` are the channels.
     channels: [&'a mut [f32]; MAX_CHANNELS],
     count: usize,
     remaining: usize,
-    layout: PhantomData<L>,
 }
 
-impl<'a, L: Layout> Iterator for FramesMut<'a, L> {
-    type Item = L::Frame<'a>;
+impl<'a> AnyFrames<'a> {
+    /// The frames of the first `count` of `channels`, each `frames` long.
+    pub(crate) fn new(
+        channels: [&'a mut [f32]; MAX_CHANNELS],
+        count: usize,
+        frames: usize,
+    ) -> Self {
+        AnyFrames {
+            channels,
+            count,
+            remaining: frames,
+        }
+    }
+}
 
-    fn next(&mut self) -> Option<L::Frame<'a>> {
+impl<'a> Iterator for AnyFrames<'a> {
+    type Item = Frame<'a>;
+
+    fn next(&mut self) -> Option<Frame<'a>> {
         self.remaining = self.remaining.checked_sub(1)?;
         let samples = self
             .channels
@@ -338,7 +346,7 @@ impl<'a, L: Layout> Iterator for FramesMut<'a, L> {
                 *channel = rest;
                 Some(first)
             });
-        L::frame(samples)
+        Some(Frame::of(samples))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -346,4 +354,75 @@ impl<'a, L: Layout> Iterator for FramesMut<'a, L> {
     }
 }
 
-impl<L: Layout> ExactSizeIterator for FramesMut<'_, L> {}
+impl ExactSizeIterator for AnyFrames<'_> {}
+
+/// The frames of a bus of `N` channels, each an array made by splitting the
+/// next sample off the front of every channel, so no two frames share a
+/// sample.
+///
+/// It holds the bus's own channels and no more, so a loop over a bus's
+/// frames costs about what a loop over its channels does.
+#[derive(Debug)]
+pub struct BusFrames<'a, const N: usize> {
+    /// What is left of each channel.
+    channels: [&'a mut [f32]; N],
+    remaining: usize,
+}
+
+impl<'a, const N: usize> BusFrames<'a, N> {
+    /// The frames of `channels`, each `frames` long.
+    pub(crate) fn new(channels: [&'a mut [f32]; N], frames: usize) -> Self {
+        BusFrames {
+            channels,
+            remaining: frames,
+        }
+    }
+}
+
+/// [`BusFrames`] as an iterator for each count of channels listed, with a
+/// name for each channel. A frame takes a sample from every channel or is
+/// not made, which a pattern over the whole array says with nothing to
+/// unwrap, and stable Rust has no such pattern for a generic count.
+macro_rules! bus_frames {
+    ($($count:literal: [$($channel:ident)*])*) => {$(
+        impl<'a> Iterator for BusFrames<'a, $count> {
+            type Item = [&'a mut f32; $count];
+
+            fn next(&mut self) -> Option<Self::Item> {
+                self.remaining = self.remaining.checked_sub(1)?;
+                let [$($channel),*] = &mut self.channels;
+                Some([$({
+                    let (first, rest) = std::mem::take($channel).split_first_mut()?;
+                    *$channel = rest;
+                    first
+                }),*])
+            }
+
+            fn size_hint(&self) -> (usize, Option<usize>) {
+                (self.remaining, Some(self.remaining))
+            }
+        }
+
+        impl ExactSizeIterator for BusFrames<'_, $count> {}
+    )*};
+}
+
+bus_frames! {
+    0: []
+    1: [a]
+    2: [a b]
+    3: [a b c]
+    4: [a b c d]
+    5: [a b c d e]
+    6: [a b c d e f]
+    7: [a b c d e f g]
+    8: [a b c d e f g h]
+    9: [a b c d e f g h i]
+    10: [a b c d e f g h i j]
+    11: [a b c d e f g h i j k]
+    12: [a b c d e f g h i j k l]
+    13: [a b c d e f g h i j k l m]
+    14: [a b c d e f g h i j k l m n]
+    15: [a b c d e f g h i j k l m n o]
+    16: [a b c d e f g h i j k l m n o p]
+}

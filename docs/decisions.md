@@ -3418,11 +3418,13 @@ buses at run time. Not checked against C++.
 - **The audio.** `Block::audio` holds the channels in place, over the block's
   frames: `frames_mut` walks a moment at a time across every channel, and
   `channels_mut` a channel at a time, so audio code needs no index, frame
-  count or bounds check. `Audio` holds up to 16 channel slices inline, under
-  one lifetime and in safe Rust, and a plugin that offers a wider width fails
-  to build. A processor that writes its block's audio takes `mut block`, and
-  one in a typed layout lends it to code written for any layout, such as a
-  voice, through `as_any_layout`.
+  count or bounds check. A `Bus` splits its frames off its own channels and
+  no others, so a loop over them costs about what a loop over its channels
+  does. `Audio` holds up to 16 channel slices inline, under one lifetime and
+  in safe Rust, and a plugin that offers a wider width fails to build. A
+  processor that writes its block's audio takes `mut block`, and one in a
+  typed layout lends it to code written for any layout, such as a voice,
+  through `as_any_layout`.
 - **Widths.** `Width`, the old `Layout` struct, counts channels at run time:
   the width the host chose in `ProcessSetup::layout`, the C interface's
   layout table and VST3's bus arrangements. The C ABI is unchanged.
@@ -3433,12 +3435,15 @@ buses at run time. Not checked against C++.
 Every processor names its layout: Rust has no default for an associated
 type. Stable Rust cannot work out an array's length from a generic count,
 so `hapto-audio` writes the `Layout` of each `Bus` up to 16 channels each
-way with a macro.
+way with a macro. A second writes a bus's walk over its frames for each count
+of channels, where a pattern names every channel, so making a frame has
+nothing to unwrap.
 
 **Open.** A plugin that offers several typed widths, as a set it matches on,
-takes `AnyLayout` until that set is designed. Whether walking frames
-vectorises worse than walking channels is to be measured with the
-instruction-count benchmarks before the effect examples settle on one.
+takes `AnyLayout` until that set is designed. A `Frame` in `AnyLayout` is
+built and walked a slot at a time: the instruction-count benchmarks put a
+mono source added through 512 stereo frames at about 80 times a gain walked
+by channel. It is to be made cheaper before voices are built on it.
 
 ### D113. The audio types' crate
 
