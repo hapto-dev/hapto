@@ -63,9 +63,10 @@ use crate::message::{NoteOff, NoteOn};
 /// // A voice's test needs no `Poly`: here, panned hard left.
 /// let mut click = Click::default();
 /// let mut buffer = AudioBuf::<StereoOut>::new(3);
-/// click.start(&NoteOn::new(Key::C4, 1.0));
+/// let middle_c = Key::C4;
+/// click.start(&NoteOn::new(middle_c, 1.0));
 /// let mut out = VoiceAudio::new(buffer.audio(), Centred::new(-1.0));
-/// click.render(&Expression::at(Key::C4), &mut out);
+/// click.render(&Expression::at(middle_c), &mut out);
 /// assert_eq!(buffer.channels(), [[1.0, 0.5, 0.25], [0.0, 0.0, 0.0]]);
 /// ```
 pub trait Voice<L: Layout> {

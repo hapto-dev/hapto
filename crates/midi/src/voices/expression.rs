@@ -149,7 +149,7 @@ impl<'a> Expression<'a> {
     ///
     /// // A plugin's own controller, 20, resting at 0.7.
     /// const DRIVE: Controller<f32> = Controller::control(20, 0.7);
-    /// let expression = Expression::at(Key::C4);
+    /// let expression = Expression::at(Key::A4);
     /// assert_eq!(expression.get(DRIVE), 0.7);
     /// assert!(!expression.get(controller::SUSTAIN).is_down());
     /// ```
@@ -178,7 +178,7 @@ impl<'a> Expression<'a> {
     ///     ParamDecl::new("cutoff", "Cutoff", Kind::continuous(20.0, 20_000.0, 1.0, None), 800.0),
     /// ])?;
     /// let cutoff: Float = set.bind("cutoff")?;
-    /// assert_eq!(Expression::at(Key::C4).modulated(&cutoff), 800.0);
+    /// assert_eq!(Expression::at(Key::A4).modulated(&cutoff), 800.0);
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     pub fn modulated(&self, param: &Float) -> f32 {

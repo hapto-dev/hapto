@@ -286,7 +286,8 @@ impl<V, L> Poly<V, L> {
     /// };
     /// // A note on member channel 2, bent a quarter of its 48 semitones up,
     /// // and the whole zone half of its master's 2 down.
-    /// let mut note = NoteOn::new(Key::C4, 1.0);
+    /// let middle_c = Key::C4;
+    /// let mut note = NoteOn::new(middle_c, 1.0);
     /// note.channel = Channel::number(2);
     /// voices.handle(&Message::NoteOn(note));
     /// voices.handle(&bend(2, 0.25));
