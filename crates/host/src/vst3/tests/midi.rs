@@ -403,13 +403,56 @@ fn a_host_claiming_more_than_the_block_has_room_for_is_read_as_far_as_there_is_r
     let volume = host.midi_mapping(0, 7).expect("mapped");
     let points: Vec<(i32, f64)> = (0..3000).map(|point| (point % 16, 0.5)).collect();
     play(&mut host, &[note_on(0, 60, 1.0, 1)], &[(volume, &points)]);
+    let (count, dropped, note) = host
+        .component()
+        .heard(|midi| {
+            let note = midi
+                .iter()
+                .any(|(_, message)| matches!(message, Message::NoteOn(_)));
+            (midi.len(), midi.dropped(), note)
+        })
+        .expect("active");
+    // The block's room, 2048 packets: the controllers leave the note its
+    // room, and the rest of their points are counted.
+    assert_eq!((count, dropped, note), (2048, 3000 - 2047, true));
+}
+
+#[test]
+fn a_host_whose_reads_fail_is_read_no_further_than_the_block_has_room() {
+    let mut host = running();
+    let volume = host.midi_mapping(0, 7).expect("mapped");
+    let (mut left, mut right) = ([0.0_f32; 16], [0.0_f32; 16]);
+    // One point it can give, and as many as an `int32` holds claimed.
+    let reads = host
+        .process_claiming(
+            &mut [&mut left[..], &mut right[..]],
+            16,
+            (volume, &[(0, 0.5)]),
+            i32::MAX,
+        )
+        .expect("played");
+    assert_eq!(reads, 2048, "a failed read uses up the room too");
     let (count, dropped) = host
         .component()
         .heard(|midi| (midi.len(), midi.dropped()))
         .expect("active");
-    // The block's room, 2048 packets, all controllers, which come first;
-    // the rest of the points and the note are counted.
-    assert_eq!((count, dropped), (2048, 3000 - 2048 + 1));
+    assert_eq!(
+        (count, dropped),
+        (1, u64::from(i32::MAX.unsigned_abs()) - 2048)
+    );
+}
+
+#[test]
+fn a_proxy_shows_its_midi_value_as_text_and_reads_one_back() {
+    let host = running();
+    let volume = host.midi_mapping(0, 7).expect("mapped");
+    let bend = host.midi_mapping(0, 129).expect("mapped");
+    assert_eq!(host.text(volume, 100.0 / 127.0).as_deref(), Some("100"));
+    assert_eq!(host.text(bend, 0.5).as_deref(), Some("8192"));
+    assert_eq!(host.parse(volume, "64"), Some(64.0 / 127.0));
+    assert_eq!(host.parse(volume, " 300 "), Some(1.0), "held to its range");
+    assert_eq!(host.parse(bend, "0"), Some(0.0));
+    assert_eq!(host.parse(volume, "loud"), None);
 }
 
 #[test]

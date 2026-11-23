@@ -310,17 +310,21 @@ impl<P: Plugin> Component<P> {
             if !P::INFO.midi_input {
                 return;
             }
-            // The controllers first, so at one frame they come before the
-            // notes, as JUCE's wrapper hands them over.
-            // SAFETY: as for the automation above.
-            if let Some(changes) = unsafe { ComRef::from_raw(changes) } {
-                // SAFETY: as above.
-                unsafe { midi::read_controllers(changes, most, into) };
-            }
             // SAFETY: the SDK makes `inputEvents` null or the host's
             // `IEventList`, alive with each SysEx's bytes until `process`
             // returns. `ComRef` borrows it for no longer than that.
-            if let Some(events) = unsafe { ComRef::from_raw(events) } {
+            let events = unsafe { ComRef::from_raw(events) };
+            // SAFETY: as above.
+            let keep = events.map_or(0, |events| unsafe { midi::event_count(events) });
+            // The controllers first, so at one frame they come before the
+            // notes, as JUCE's wrapper hands them over, leaving the notes
+            // their room so dense controllers drop no note-off.
+            // SAFETY: as for the automation above.
+            if let Some(changes) = unsafe { ComRef::from_raw(changes) } {
+                // SAFETY: as above.
+                unsafe { midi::read_controllers(changes, most, keep, into) };
+            }
+            if let Some(events) = events {
                 // SAFETY: as above.
                 unsafe { midi::read_events(events, notes.as_deref_mut(), into) };
             }

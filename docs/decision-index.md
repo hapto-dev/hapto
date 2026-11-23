@@ -236,10 +236,10 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d22-controllers-reaching-learn-in-vst3)
 
-- `crates/host/src/vst3/component/midi.rs`: module, `proxy_id`, `proxy`, `proxy_info`, `read_controllers`, `controller_message`
+- `crates/host/src/vst3/component/midi.rs`: module, `proxy_id`, `proxy`, `proxy_info`, `read_controllers`, `controller_message`, `proxy_text`, `proxy_value`
 - `crates/host/src/vst3/component/controller.rs`: `Component::getParameterCount`, `Component::getParameterInfo`
 - `crates/host/src/engine/process.rs`: `MidiIn`, `MidiIn::push_ranked`, `Rank`, `Arrivals`, `fill`
-- test `crates/host/src/vst3/tests/midi.rs`: `a_controller_comes_through_its_proxy_as_midi_1_upgraded_and_before_a_note_at_its_frame`, `every_channel_s_controllers_map_to_hidden_proxies_listed_after_the_plugin_s_own`, `a_host_claiming_more_than_the_block_has_room_for_is_read_as_far_as_there_is_room`, `a_parameter_s_address_comes_before_its_data_entry_at_one_frame_whatever_the_queues_order`, `a_data_entry_s_high_byte_comes_before_its_low_byte_at_one_frame_whatever_the_queues_order`
+- test `crates/host/src/vst3/tests/midi.rs`: `a_controller_comes_through_its_proxy_as_midi_1_upgraded_and_before_a_note_at_its_frame`, `every_channel_s_controllers_map_to_hidden_proxies_listed_after_the_plugin_s_own`, `a_host_claiming_more_than_the_block_has_room_for_is_read_as_far_as_there_is_room`, `a_parameter_s_address_comes_before_its_data_entry_at_one_frame_whatever_the_queues_order`, `a_data_entry_s_high_byte_comes_before_its_low_byte_at_one_frame_whatever_the_queues_order`, `a_proxy_shows_its_midi_value_as_text_and_reads_one_back`
 - test `crates/host/src/engine/process/tests.rs`: `packets_handed_over_out_of_order_reach_the_block_in_time_order_and_at_one_frame_as_they_came`, `a_packet_pushed_first_goes_before_the_rest_at_its_frame_and_never_to_an_earlier_one`, `a_high_byte_goes_before_a_low_byte_at_its_frame_whatever_order_they_come_in`
 - `crates/params/src/host_id.rs`: `RESERVED_HOST_IDS`
 - `crates/params/src/lib.rs`: module
@@ -798,9 +798,11 @@ move its line here; when a decision gains code, add one.
 - `crates/host/src/state.rs`: `MAX_STATE_BYTES`, `SavedState::load`
 - `crates/host/src/vst3/component.rs`: `read_changes`
 - `crates/host/src/vst3/stream.rs`: `read_all`
+- `crates/host/src/vst3/component/midi.rs`: `read_controllers`, `event_count`
 - test `crates/host/src/cabi/tests.rs`: `an_activation_past_the_block_size_limit_builds_for_the_limit`
 - test `crates/host/src/engine/automation.rs`: `a_queue_whose_reads_fail_is_read_no_further_than_the_block_has_room`, `a_first_queue_whose_last_read_fails_still_wins_over_a_repeat`, `while_another_block_holds_the_room_a_repeat_stands_and_takes_a_place`, `a_queue_given_no_room_lands_its_last_point_and_counts_only_the_rest_dropped`
 - test `crates/host/src/vst3/tests.rs`: `a_host_claiming_more_queues_than_parameters_is_walked_no_further`, `queues_for_ids_the_plugin_does_not_know_never_starve_its_own`, `a_block_moving_every_proxy_of_learn_s_grid_still_reaches_the_plugin_s_own_queue`, `a_parameter_in_two_queues_takes_one_parameter_s_place_and_its_first_queue_wins`, `the_first_queue_for_a_parameter_wins_wherever_the_repeat_comes`, `a_host_claiming_millions_of_queues_it_does_not_know_is_walked_a_bounded_way`, `a_queue_claiming_millions_of_points_it_cannot_give_is_read_as_far_as_there_is_room`, `a_queue_claiming_millions_of_points_is_read_as_far_as_there_is_room`, `a_setup_with_no_block_size_keeps_its_rate_and_one_past_the_limit_is_built_for_the_limit`
+- test `crates/host/src/vst3/tests/midi.rs`: `a_host_claiming_more_than_the_block_has_room_for_is_read_as_far_as_there_is_room`, `a_host_whose_reads_fail_is_read_no_further_than_the_block_has_room`
 - test `crates/host/tests/state.rs`: `a_block_past_the_limit_is_refused_unread`
 - test `examples/eq/tests/overflow.rs`: `a_block_with_more_points_than_the_room_allocates_nothing_and_lands_each_last_point`
 

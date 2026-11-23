@@ -52,11 +52,12 @@ exporter.
   named by the host's `noteId`, and SysEx. A MIDI 1.0 controller, channel
   pressure and the pitch bend come through hidden proxy parameters, 16
   channels by 130, which `IMidiMapping` names; a host lists them after the
-  plugin's own. `Origin::Note` carries a format's note id beside its packet,
-  and the decoder names the note by it: its note-off ends that note alone.
-  An exporter may hand the engine a block's MIDI in any order; the block takes
-  it in time order. The VST3 test host gains `process_events`, `BusEvent`,
-  `midi_mapping`, `note_expressions` and `ParamInfo::is_hidden`.
+  plugin's own, and each shows its MIDI 1.0 value as text. `Origin::Note`
+  carries a format's note id beside its packet, and the decoder names the note
+  by it: its note-off ends that note alone. An exporter may hand the engine a
+  block's MIDI in any order; the block takes it in time order. The VST3 test
+  host gains `process_events`, `process_claiming`, `BusEvent`, `midi_mapping`,
+  `note_expressions` and `ParamInfo::is_hidden`.
 - **Breaking.** The C interface carries a block's MIDI as Universal MIDI
   Packets both ways, so `HAPTO_ABI_VERSION` is 3. `HaptoProcess` gains the
   packets in and the room for packets out, each a `HaptoPacket` of a frame and

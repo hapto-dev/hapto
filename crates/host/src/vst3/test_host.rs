@@ -691,6 +691,29 @@ impl<P: Plugin> TestHost<P> {
         self.blocks.process_events(channels, frames, events, queues)
     }
 
+    /// Processes `frames` frames in place with `queue` alone, which claims
+    /// `claimed` points however many it holds, as a broken host's: a read
+    /// past the points it holds fails. Answers how many points the plugin
+    /// asked for.
+    ///
+    /// # Errors
+    ///
+    /// The [`Refused`] answer to `process`.
+    ///
+    /// # Panics
+    ///
+    /// If a buffer is shorter than `frames`.
+    pub fn process_claiming(
+        &mut self,
+        channels: &mut [&mut [f32]],
+        frames: usize,
+        queue: (u32, &[(i32, f64)]),
+        claimed: i32,
+    ) -> Result<usize, Refused> {
+        self.blocks
+            .process_claiming(channels, frames, queue, claimed)
+    }
+
     /// Returns the proxy parameter a MIDI 1.0 controller on `channel`, 0 to
     /// 15, reaches the plugin through, as a host asks `IMidiMapping`:
     /// controllers 0 to 127, then 128 for channel pressure and 129 for the
@@ -909,6 +932,24 @@ impl Blocks {
         let inputs = self.in_place(channels, frames);
         self.changes.fill(queues.iter().copied());
         self.send(frames, inputs)
+    }
+
+    fn process_claiming(
+        &mut self,
+        channels: &mut [&mut [f32]],
+        frames: usize,
+        queue: (u32, &[(i32, f64)]),
+        claimed: int32,
+    ) -> Result<usize, Refused> {
+        let inputs = self.in_place(channels, frames);
+        self.changes.fill([queue].into_iter());
+        if let Some(first) = self.changes.queues.borrow().first() {
+            first.claimed.set(Some(claimed));
+        }
+        self.events.fill(&[]);
+        self.send(frames, inputs)?;
+        let queues = self.changes.queues.borrow();
+        Ok(queues.first().map_or(0, |queue| queue.reads.get()))
     }
 
     fn process_events(
@@ -1214,6 +1255,10 @@ const QUEUE_POINTS: usize = 64;
 struct Queue {
     id: Cell<u32>,
     points: RefCell<Vec<(i32, f64)>>,
+    /// How many points it says it holds, when a broken host says more.
+    claimed: Cell<Option<int32>>,
+    /// How many points the plugin asked for.
+    reads: Cell<usize>,
 }
 
 impl Default for Queue {
@@ -1221,6 +1266,8 @@ impl Default for Queue {
         Queue {
             id: Cell::new(0),
             points: RefCell::new(Vec::with_capacity(QUEUE_POINTS)),
+            claimed: Cell::new(None),
+            reads: Cell::new(0),
         }
     }
 }
@@ -1250,10 +1297,13 @@ impl IParamValueQueueTrait for Queue {
     }
 
     unsafe fn getPointCount(&self) -> int32 {
-        int32::try_from(self.points.borrow().len()).unwrap_or(int32::MAX)
+        self.claimed
+            .get()
+            .unwrap_or_else(|| int32::try_from(self.points.borrow().len()).unwrap_or(int32::MAX))
     }
 
     unsafe fn getPoint(&self, index: int32, offset: *mut int32, value: *mut ParamValue) -> tresult {
+        self.reads.set(self.reads.get().saturating_add(1));
         let points = self.points.borrow();
         let point = usize::try_from(index)
             .ok()
@@ -1305,6 +1355,8 @@ impl Changes {
         for (queue, send) in queues.iter().zip(sends) {
             let Queued(id, points) = send.into();
             queue.id.set(id);
+            queue.claimed.set(None);
+            queue.reads.set(0);
             let mut held = queue.points.borrow_mut();
             held.clear();
             match points {

@@ -170,7 +170,19 @@ impl MidiIn<'_> {
         expect(dead_code, reason = "VST3 alone reads a host's claims")
     )]
     pub(crate) fn has_room(&self) -> bool {
-        self.arrivals.packets.len() < self.arrivals.packets.capacity()
+        self.room() > 0
+    }
+
+    /// How many more packets the block has room for.
+    #[cfg_attr(
+        not(feature = "vst3"),
+        expect(dead_code, reason = "VST3 alone reads a host's claims")
+    )]
+    pub(crate) fn room(&self) -> usize {
+        self.arrivals
+            .packets
+            .capacity()
+            .saturating_sub(self.arrivals.packets.len())
     }
 
     /// Counts `count` packets the host sent that the exporter did not read,

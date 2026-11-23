@@ -488,18 +488,18 @@ host as an edit. A product's own controller block (a fixed NRPN range, say) is
 pre-mapped by that plugin, not built into Hapto.
 
 The grid is built. For a plugin that takes MIDI, the exporter lists its 2080
-proxies hidden and not automatable, after the plugin's own parameters, and
-names them through `IMidiMapping`. A proxy's value is its MIDI 1.0
-controller's, which the host divided by 127, or by 16383 for the bend, so the
-exporter rounds it back to those bits and the engine upgrades it as it does any
-MIDI 1.0 (D114): learn then narrows it exactly. The proxies and the host's notes
-come in lists of their own, so the engine puts a block's MIDI in time order,
-those at one frame in the order the exporter handed them over: the controllers
-first, as JUCE's wrapper hands them. Each controller comes in a queue of its
-own, so at one frame a parameter's address, controllers 98 to 101, goes first
-and its data entry high byte, controller 6, next, so a data entry finds its
-address and a low byte its high byte whatever order the host lists the queues
-in; other controllers at one frame come in the queues' order. Open:
+proxies hidden and not automatable, after the plugin's own parameters, and names
+them through `IMidiMapping`. A proxy's value is its MIDI 1.0 controller's, which
+the host divided by 127, or by 16383 for the bend, and it shows as that number,
+so the exporter rounds it back to those bits and the engine upgrades it as it
+does any MIDI 1.0 (D114): learn then narrows it exactly. The proxies and the
+host's notes come in lists of their own, so the engine puts a block's MIDI in
+time order, those at one frame in the order the exporter handed them over: the
+controllers first, as JUCE's wrapper hands them. Each controller comes in a
+queue of its own, so at one frame a parameter's address, controllers 98 to 101,
+goes first and its data entry high byte, controller 6, next, so a data entry
+finds its address and a low byte its high byte whatever order the host lists the
+queues in; other controllers at one frame come in the queues' order. Open:
 `IMidiMapping2`'s lists, `IMidiLearn2` and the pool, which wait on the `vst3`
 crate's bindings for MIDI 2.0 (D59).
 
@@ -1750,7 +1750,11 @@ threads at once, cannot tell a repeat apart. There each queue writes its last
 point at once and counts toward the parameters, so a repeat's value stands and
 the walk ends a queue sooner for each.
 
-MIDI keeps 2,048 events each way per block, as before.
+MIDI keeps 2,048 events each way per block, as before. VST3's controllers
+come through their proxies' queues, read while the room lasts, a read that
+fails using it up too, so a host that claims more points than it can give is
+read no further than the room. They leave room for every event the event list
+claims, up to its 65,536, so dense controllers drop no note-off.
 
 **Alternatives.** The alternatives were other sizes, 256 MiB for the state say,
 room per queue rather than shared, or a setup past the frame limit refused

@@ -98,8 +98,14 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
         self.guard(kInternalError, || {
             // SAFETY: the SDK's contract: `string` is null or valid for
             // writing one `String128` until this call returns.
-            let (Some(string), Some((_, decl))) = (unsafe { string.as_mut() }, self.param(id))
-            else {
+            let Some(string) = (unsafe { string.as_mut() }) else {
+                return kInvalidArgument;
+            };
+            if let Some(text) = midi::proxy_text(id, normalized) {
+                copy_utf16(&text, string);
+                return kResultOk;
+            }
+            let Some((_, decl)) = self.param(id) else {
                 return kInvalidArgument;
             };
             copy_utf16(&decl.format_real(decl.host_value(normalized)), string);
@@ -116,15 +122,25 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
         self.guard(kInternalError, || {
             // SAFETY: the SDK's contract: `normalized` is null or valid for
             // writing one value until this call returns.
-            let (Some(normalized), Some((param, decl))) =
-                (unsafe { normalized.as_mut() }, self.param(id))
-            else {
+            let Some(normalized) = (unsafe { normalized.as_mut() }) else {
                 return kInvalidArgument;
             };
             // SAFETY: the SDK's contract: `string` is null or a
             // NUL-terminated string of at most a `String128`, readable until
             // this call returns, as `read_utf16` requires.
             let Some(text) = (unsafe { read_utf16(string, 128) }) else {
+                return kInvalidArgument;
+            };
+            if let Some(value) = midi::proxy_value(id, &text) {
+                return match value {
+                    Some(value) => {
+                        *normalized = value;
+                        kResultOk
+                    }
+                    None => kResultFalse,
+                };
+            }
+            let Some((param, decl)) = self.param(id) else {
                 return kInvalidArgument;
             };
             let Some(engine) = self.engine() else {

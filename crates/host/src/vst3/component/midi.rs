@@ -272,7 +272,10 @@ impl std::fmt::Debug for Notes {
 /// Pushes each proxy's points as the MIDI 1.0 controller it stands for,
 /// a packet a point at its offset, looking at no more than `most` queues:
 /// a parameter's address first at its frame, then the rest in the host's
-/// order. Once the block has no room, the points left are counted, unread.
+/// order. Every read, carried or failed, uses up a packet of the block's
+/// room, less `keep` packets left for the event list, so a host whose reads
+/// fail is read no further than that. Once the room is used up, the points
+/// left are counted, unread.
 ///
 /// # Safety
 ///
@@ -281,8 +284,10 @@ impl std::fmt::Debug for Notes {
 pub(super) unsafe fn read_controllers(
     changes: ComRef<'_, IParameterChanges>,
     most: usize,
+    keep: usize,
     midi: &mut MidiIn<'_>,
 ) {
+    let mut reads = midi.room().saturating_sub(keep);
     // SAFETY: the caller's contract, for each call below.
     let claimed = usize::try_from(unsafe { changes.getParameterCount() }).unwrap_or(0);
     for index in 0..claimed.min(most) {
@@ -298,10 +303,11 @@ pub(super) unsafe fn read_controllers(
         // SAFETY: as above.
         let points = unsafe { queue.getPointCount() }.max(0);
         for point in 0..points {
-            if !midi.has_room() {
+            let Some(left) = reads.checked_sub(1) else {
                 midi.add_dropped(u32::try_from(points.saturating_sub(point)).unwrap_or(u32::MAX));
                 break;
-            }
+            };
+            reads = left;
             let (mut offset, mut value) = (0, 0.0);
             // SAFETY: as above; `offset` and `value` are room for the point.
             if unsafe { queue.getPoint(point, &mut offset, &mut value) } != kResultOk {
@@ -347,6 +353,45 @@ fn controller_message(controller: u32, value: f64) -> Midi1Message {
 /// `value`, 0 to 1, as the nearest of `most` steps, held to the ends.
 fn steps(value: f64, most: u32) -> u32 {
     (value.clamp(0.0, 1.0) * f64::from(most)).round() as u32
+}
+
+/// The most a proxy's MIDI 1.0 value reaches: 16383 for the bend, 127 for
+/// the rest.
+fn most(controller: u32) -> u32 {
+    if controller == BEND { 0x3FFF } else { 127 }
+}
+
+/// A proxy's `normalized` value as text: the MIDI 1.0 value it stands for,
+/// as the engine rounds it. `None` for an id that is no proxy.
+pub(super) fn proxy_text(id: ParamID, normalized: f64) -> Option<String> {
+    let (_, controller) = proxy(id)?;
+    Some(steps(normalized, most(controller)).to_string())
+}
+
+/// The normalized value of a proxy's `text`, a MIDI 1.0 value held to its
+/// range: `Some(None)` for text that is no whole number, `None` for an id
+/// that is no proxy.
+pub(super) fn proxy_value(id: ParamID, text: &str) -> Option<Option<f64>> {
+    let (_, controller) = proxy(id)?;
+    let most = most(controller);
+    Some(
+        text.trim()
+            .parse::<i64>()
+            .ok()
+            .map(|value| value.clamp(0, i64::from(most)) as f64 / f64::from(most)),
+    )
+}
+
+/// How many events the host says `events` holds, at most as many as
+/// [`read_events`] reads.
+///
+/// # Safety
+///
+/// `events` is alive until this call returns.
+pub(super) unsafe fn event_count(events: ComRef<'_, IEventList>) -> usize {
+    // SAFETY: the caller's contract.
+    let count = unsafe { events.getEventCount() }.clamp(0, MOST_EVENTS);
+    usize::try_from(count).unwrap_or(0)
 }
 
 /// Pushes the host's events on the plugin's event bus as packets: notes,
