@@ -1262,14 +1262,9 @@ layout whose count was known. `AnyLayout` kept its iterators.
 
 The review on 2026-11-22 read the benchmark lane's counts for 512 stereo
 frames: a gain walked by frame took 23,758 instructions against 1,285 by
-channel, and a mono source added through `Frame`s 102,602. One iterator had
-served every layout, over 16 slots and a count read at run time. A `Bus` now
-splits its frames off its own channels alone, each named in a pattern. Timed
-on Windows in release, the gain by frame went from 545 ns a block to 57,
-against 50 by channel. What a `Frame` costs in `AnyLayout` stays open. The
-same review found the real-time sanitizer's canary still written for the old
-block, which no lane of a pull request builds, and no test of the three
-plugins `widths` refuses; the canary is ported and the tests written.
+channel, since one iterator had served every layout, over 16 slots and a
+count read at run time. A `Bus` now splits its frames off its own channels
+alone, and the same gain takes 1,481.
 
 ### D113. The audio types' crate
 

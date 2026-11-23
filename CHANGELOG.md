@@ -21,11 +21,11 @@ exporter.
 - **Breaking.** A processor names its main bus's channels as a type,
   `Processor::Layout`: a `Bus<IN, OUT>` of up to 16 channels each way, with
   `Mono`, `Stereo`, `StereoOut`, `MonoToStereo` and `NoAudio` for the common
-  ones, or `AnyLayout` for one that runs at each width its plugin lists. No
-  width is wider than 16 channels in either, where the C interface took any.
-  Its `Block` lends them as `Audio`, walked with `frames_mut` and
-  `channels_mut`, with no index and no frame count, so `Block::channels` and
-  `Block::frames` are gone. In a `Bus` both are arrays: `let [left, right] =
+  ones, or `AnyLayout` for one that runs at each width its plugin lists,
+  none wider than 16 channels, where the C interface took any. Its `Block`
+  lends them as `Audio`, walked with `frames_mut` and `channels_mut`, with no
+  index and no frame count, so `Block::channels` and `Block::frames` are
+  gone. In a `Bus` both are arrays: `let [left, right] =
   block.audio.channels_mut()` reaches each channel by its place. The `Layout`
   struct is `layout::Width`, and `manifest_info!` takes `layouts` only for a
   processor in `AnyLayout`. The audio types are in a new core crate,

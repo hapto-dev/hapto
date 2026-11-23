@@ -13,13 +13,10 @@ use crate::layout::MAX_CHANNELS;
 /// nothing.
 ///
 /// Open: a `Frame` is built and walked a slot at a time, so a loop over
-/// frames in `AnyLayout` costs far more than one over channels. Hapto's
-/// instruction-count benchmarks put a mono source added through 512 stereo
-/// frames at about 80 times a gain walked by channel. It is to be made
-/// cheaper before voices are built on it. Until then a loop that carries a
-/// plugin's load walks [`channels_mut`](crate::Audio::channels_mut), or the
-/// frames of a [`Bus`](crate::layout::Bus), which cost about what its
-/// channels do.
+/// frames in `AnyLayout` costs far more than one over channels. A loop that
+/// carries a plugin's load walks [`channels_mut`](crate::Audio::channels_mut)
+/// or the frames of a [`Bus`](crate::layout::Bus); on a bus wider than about
+/// eight channels, one that does the same to every sample walks channels.
 ///
 /// # Examples
 ///
