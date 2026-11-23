@@ -1280,8 +1280,7 @@ moved, an activation's included, as `kLatencyChanged`. D53's timer is a
 message-only window per instance on Windows. It asks for 15 ms, which the system
 clock's 15.6 ms tick gives: about 64 Hz, so learn's burst of 15 ticks lasts
 about 234 ms, not D53's 250. On macOS it is a run loop timer at 60 Hz, and for
-any other platform the exporter does not build (D74). No MIDI events are
-delivered yet.
+any other platform the exporter does not build (D74).
 
 **Alternatives.** The alternative was a separate controller class, as JUCE built
 it, which needs a second copy of every value kept in step through the host; for
@@ -3460,20 +3459,19 @@ hosts, in process, linked into the app.
   cannot resize fixes the window's size; one that can fills it below the
   bar. With no view, the bar fills the window and says the parameters are in
   the settings window, which opens with it.
-- **The settings window** is a WebView with its browser data in the
-  session's folder, shown ten times a second, a tab each: the audio; the
-  parameters as the host lists them, each with its kind, a control, the text
-  the plugin gives its value and the MIDI learn mappings in the saved block
-  that name it, matched by the host id a mapping's key hashes to; the
-  Activity log; the saved block; the faults; and MIDI and MIDI-CI, marked
-  planned, since no exporter passes MIDI yet. Its header switches the format
-  and shows whether the plugin processes, its latency and its faults; AU,
-  AUv3 and CLAP show there too, out of reach. It opens beside the main
-  window, and a close hides it, so it opens again as it was. Its page says
-  when it has loaded, and is told everything then: wry keeps no script run
-  before then. The bar's page and its own go to no other page, since each
-  posts to the dev host: navigation away, a dropped file and a new window
-  are refused.
+- **The settings window** is a WebView with its browser data in the session's
+  folder, shown ten times a second, a tab each: the audio; the parameters as the
+  host lists them, each with its kind, a control, the text the plugin gives its
+  value and the MIDI learn mappings in the saved block that name it, matched by
+  the host id a mapping's key hashes to; the Activity log; the saved block; the
+  faults; and MIDI and MIDI-CI, marked planned, since the dev host hands the
+  formats no MIDI yet. Its header switches the format and shows whether the
+  plugin processes, its latency and its faults; AU, AUv3 and CLAP show there
+  too, out of reach. It opens beside the main window, and a close hides it, so
+  it opens again as it was. Its page says when it has loaded, and is told
+  everything then: wry keeps no script run before then. The bar's page and its
+  own go to no other page, since each posts to the dev host: navigation away, a
+  dropped file and a new window are refused.
 - **The Activity log** is laid out as Windows MIDI Services' `midi endpoint
   monitor`: what the plugin told the host, each call by its name in the
   format with what it carried, and what the dev host did to the plugin, such

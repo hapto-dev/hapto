@@ -36,8 +36,8 @@
 //! Windows only for now, as the page in a window is: elsewhere [`main`] says
 //! so and ends.
 
-// Each module but the app and the device is platform-neutral and tested
-// everywhere, but only Windows runs them.
+// Each module but the app, the device, the MIDI devices and the dev host is
+// platform-neutral and tested everywhere, but only Windows runs them.
 #[cfg(windows)]
 mod app;
 #[cfg(any(windows, test))]

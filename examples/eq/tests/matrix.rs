@@ -19,8 +19,8 @@
 //!     --test matrix -- --ignored soak
 //! ```
 //!
-//! The exporters hand a plugin no MIDI yet, so only the processor-direct
-//! side fills its event lists, to capacity.
+//! The EQ takes no MIDI, so only the processor-direct side fills its event
+//! lists, to capacity.
 
 hapto_testkit::install_alloc_gate!();
 

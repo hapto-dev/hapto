@@ -157,14 +157,15 @@ impl Consumer {
         self.0.dropped.fetch_add(1, Ordering::Relaxed);
     }
 
-    /// The oldest packet not taken yet, and when it came. Thread: audio.
+    /// The oldest packet not taken yet, and when it came. Thread: the
+    /// consumer's.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub(crate) fn peek(&self) -> Option<(Instant, [u32; 4])> {
         self.peek_at(0)
     }
 
     /// The packet `index` places after the oldest not taken yet, and when
-    /// it came: `None` past the last. Thread: audio.
+    /// it came: `None` past the last. Thread: the consumer's.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub(crate) fn peek_at(&self, index: usize) -> Option<(Instant, [u32; 4])> {
         if index >= self.len() {
@@ -182,7 +183,7 @@ impl Consumer {
         Some((at, words))
     }
 
-    /// Takes the packet [`peek`](Self::peek) showed. Thread: audio.
+    /// Takes the packet [`peek`](Self::peek) showed. Thread: the consumer's.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub(crate) fn pop(&mut self) {
         let ring = &*self.0;
@@ -194,7 +195,7 @@ impl Consumer {
         }
     }
 
-    /// How many packets wait to be taken. Thread: audio.
+    /// How many packets wait to be taken. Thread: the consumer's.
     pub(crate) fn len(&self) -> usize {
         let ring = &*self.0;
         let tail = ring.tail.load(Ordering::Relaxed);
@@ -209,7 +210,7 @@ impl Consumer {
     }
 
     /// How many devices have pushed into the ring: a change means a new
-    /// one took it. Thread: audio.
+    /// one took it. Thread: the consumer's.
     pub(crate) fn generation(&self) -> u32 {
         self.0.generation.load(Ordering::Acquire)
     }

@@ -635,9 +635,6 @@ pub trait Processor: Send + 'static {
     /// Learned controllers have written the parameters before this call, as
     /// the host's automation has: [`Parts::midi_learn`] says how.
     ///
-    /// Open: no exporter carries a block's MIDI either way yet, as
-    /// [`PluginInfo::midi_input`] says.
-    ///
     /// Thread: audio. Never allocates, locks or makes a system call.
     fn process(&mut self, block: Block<'_, Self::Layout>) -> Status;
 

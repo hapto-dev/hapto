@@ -19,7 +19,7 @@ pub(crate) struct Watch;
 
 impl Watch {
     pub(crate) fn new(_marked: Arc<AtomicBool>) -> Option<Watch> {
-        Some(Watch)
+        None
     }
 }
 

@@ -53,7 +53,8 @@ pub enum Control {
     /// A binding reads only its own controller, so a MIDI 1.0 14-bit pair
     /// plays at 7 bits through the bound byte. In the cases that
     /// [`Learn::poll`](crate::Learn::poll) names, that is the high byte (below
-    /// 32). Open: reading both bytes waits for an exporter that delivers MIDI.
+    /// 32). Open: now that the exporters deliver MIDI, a binding could read
+    /// both bytes.
     Cc(u8),
     /// A non-registered (assignable) parameter number, 0 to 16383. In MIDI
     /// 1.0 it is an NRPN, assembled from controllers 99, 98, 6 and 38. In

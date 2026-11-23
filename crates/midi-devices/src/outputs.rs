@@ -130,8 +130,10 @@ pub fn outputs(room: usize) -> (Outputs, OutputsWriter) {
 /// The main thread's side of the app's MIDI out: the devices open now.
 ///
 /// Each device gets every message the plugin sends, whatever its group: a
-/// MIDI 1.0 device has none. A device that leaves while open is closed at
-/// the next [`tick`](Self::tick). Every output closes as this drops.
+/// MIDI 1.0 device has none. A device found gone as the output sends to it
+/// is closed at the next [`tick`](Self::tick); one that leaves while nothing
+/// is sent is closed once the system's list no longer shows it. Every output
+/// closes as this drops.
 ///
 /// Thread: main.
 ///

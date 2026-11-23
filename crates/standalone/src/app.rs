@@ -295,7 +295,8 @@ pub(crate) fn tick_from_a_thread(proxy: EventLoopProxy<Wake>) {
 struct App<P: Plugin> {
     /// The audio, while a device plays the plugin.
     audio: Option<Audio>,
-    /// The computer's MIDI inputs, for a plugin that takes MIDI.
+    /// The computer's MIDI inputs and outputs, for a plugin that takes MIDI
+    /// or sends it.
     midi: Option<Midi>,
     editor: Option<StandaloneEditor<P>>,
     window: Option<Window>,

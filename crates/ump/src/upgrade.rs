@@ -379,7 +379,7 @@ impl Upgrade {
     /// };
     /// let mut upgrade = Upgrade::new();
     /// let mut out = EventList::with_capacity(4);
-    /// // An NRPN's address, then a new source sends its low byte alone.
+    /// // An NRPN's address, then a new source sends its high byte alone.
     /// upgrade.block(&[cc(99, 2), cc(98, 5)], 63, &mut out);
     /// upgrade.reset();
     /// upgrade.block(&[cc(6, 64)], 63, &mut out);

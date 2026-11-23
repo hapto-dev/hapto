@@ -43,8 +43,9 @@ pub struct ProcessSetup {
     /// The main bus's channels in and out: the width the host chose among
     /// those the processor's [layout](crate::Processor::Layout) runs at.
     pub layout: Width,
-    /// The most MIDI events one block may carry in; more are dropped and
-    /// counted.
+    /// The most MIDI packets one block may carry in; more are dropped and
+    /// counted. A block's decoded messages have room for twice as many,
+    /// since one note-off may end several notes on its key.
     pub max_events: usize,
     /// The most MIDI events one block may send; more are dropped and
     /// counted. Zero for a plugin without
@@ -125,10 +126,9 @@ pub struct Block<'a, L: Layout> {
     /// Empty on entry, but for a host's block longer than
     /// [`ProcessSetup::max_frames`], which plays as several blocks. Each
     /// later one finds what the earlier ones sent, already at frames from
-    /// the host's block's start.
-    ///
-    /// Open: no exporter sends it to a host yet, as
-    /// [`PluginInfo::midi_input`](crate::PluginInfo::midi_input) says.
+    /// the host's block's start. The exporter hands it to the host once the
+    /// block has played, for a plugin that declares
+    /// [`PluginInfo::midi_output`](crate::PluginInfo::midi_output).
     pub midi_out: MidiOut<'a>,
 }
 

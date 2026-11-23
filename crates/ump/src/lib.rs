@@ -20,9 +20,6 @@
 //!   a stream of words into events.
 //! - [`ByteStream`] and [`Bytes`] for a MIDI 1.0 device's bytes, at the edge.
 //!
-//! Open: no exporter fills a block's list from the host's MIDI yet, so a
-//! processor's list stays empty.
-//!
 //! The crate is in the core tier and depends on nothing. Every call except
 //! those that make a list or an [`Upgrade`] can run on the audio thread, and
 //! none panics.

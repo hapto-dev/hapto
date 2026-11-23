@@ -366,8 +366,8 @@ pub const BRIGHTNESS: Controller<Centred> =
 /// Registered controller 1: the channel's fine tuning, a semitone either
 /// way, at none.
 pub const FINE_TUNING: Controller<Centred> = Controller::registered(0, 1, Centred::CENTRE);
-/// Registered controller 2: the channel's coarse tuning, 64 semitones
-/// either way, at none.
+/// Registered controller 2: the channel's coarse tuning, from 64 semitones
+/// down to 63 up, at none.
 pub const COARSE_TUNING: Controller<Centred> = Controller::registered(0, 2, Centred::CENTRE);
 
 /// MIDI 1.0's controllers by number, for a match on a message's controller
