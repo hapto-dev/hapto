@@ -49,11 +49,13 @@
 
 mod clock;
 mod devices;
+mod error;
 mod id;
 mod inputs;
 #[cfg(not(windows))]
 mod none;
 mod outputs;
+mod ports;
 mod ring;
 #[cfg(windows)]
 #[allow(
@@ -69,6 +71,8 @@ use winmm as backend;
 
 pub use clock::Instant;
 pub use devices::{Changes, Devices};
+pub use error::OpenError;
 pub use id::{Device, DeviceId, Direction};
-pub use inputs::{Inputs, InputsReader, MAX_INPUTS, OpenError, inputs};
+pub use inputs::{Inputs, InputsReader, MAX_INPUTS, inputs};
 pub use outputs::{MAX_OUTPUTS, Outputs, OutputsWriter, Timing, outputs};
+pub use ports::OpenDevices;

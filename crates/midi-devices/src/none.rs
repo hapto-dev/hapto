@@ -5,8 +5,8 @@ use std::convert::Infallible;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
+use crate::error::OpenError;
 use crate::id::Device;
-use crate::inputs::OpenError;
 use crate::ring::{Consumer, Producer};
 
 pub(crate) fn list() -> Vec<Device> {

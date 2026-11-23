@@ -25,8 +25,9 @@ use hapto_ump::{Downgrade, Event};
 
 use crate::Instant;
 use crate::backend;
+use crate::error::OpenError;
 use crate::id::{Device, DeviceId, Direction};
-use crate::inputs::OpenError;
+use crate::ports::{OpenDevices, Port, Ports};
 use crate::ring::{Consumer, Producer, ring};
 
 /// How many outputs may be open at once.
@@ -115,7 +116,7 @@ pub fn outputs(room: usize) -> (Outputs, OutputsWriter) {
         .collect();
     let timing = Arc::new(AtomicU8::new(Timing::default().index()));
     let outputs = Outputs {
-        slots: consumers.into_iter().map(Slot::Free).collect(),
+        ports: Ports::new(consumers),
         signals: signals.iter().map(Arc::clone).collect(),
         timing: Arc::clone(&timing),
     };
@@ -156,21 +157,23 @@ pub fn outputs(room: usize) -> (Outputs, OutputsWriter) {
 /// assert_eq!(outputs.devices().count(), 0, "none opened");
 /// ```
 pub struct Outputs {
-    slots: Vec<Slot>,
+    ports: Ports<backend::Output>,
     /// What wakes each output's thread, the writer setting it.
     signals: Box<[Arc<backend::Signal>]>,
     /// When the writer has the outputs send, shared with it.
     timing: Arc<AtomicU8>,
 }
 
-enum Slot {
-    /// No device: the room waits for one.
-    Free(Consumer),
-    /// A device, sending from the room.
-    Open(Device, backend::Output),
-    /// A device whose thread could not start or ended in a panic, whose
-    /// room went with it.
-    Lost,
+impl Port for backend::Output {
+    type Room = Consumer;
+
+    fn has_left(&self) -> bool {
+        backend::Output::has_left(self)
+    }
+
+    fn close(self) -> Option<Consumer> {
+        backend::Output::close(self)
+    }
 }
 
 impl fmt::Debug for Outputs {
@@ -189,51 +192,26 @@ impl Outputs {
         if device.direction() != Direction::Output {
             return Err(OpenError::NotAnOutput);
         }
-        if self.is_open(device.id()) {
-            return Ok(());
-        }
-        let (slot, signal) = self
-            .slots
-            .iter_mut()
-            .zip(self.signals.iter())
-            .find(|(slot, _)| matches!(slot, Slot::Free(_)))
-            .ok_or(OpenError::NoRoom)?;
-        let Slot::Free(mut consumer) = std::mem::replace(slot, Slot::Lost) else {
-            return Err(OpenError::NoRoom);
-        };
-        // What a block pushed before the device came is not its to send.
-        consumer.clear();
-        match backend::Output::open(device, consumer, Arc::clone(signal)) {
-            Ok(output) => {
-                *slot = Slot::Open(device.clone(), output);
-                Ok(())
-            }
-            Err((why, consumer)) => {
-                *slot = consumer.map_or(Slot::Lost, Slot::Free);
-                Err(why)
-            }
-        }
+        let signals = &self.signals;
+        self.ports.open(device, |place, mut consumer| {
+            let Some(signal) = signals.get(place) else {
+                return Err((OpenError::NoRoom, Some(consumer)));
+            };
+            // What a block pushed before the device came is not its to send.
+            consumer.clear();
+            backend::Output::open(device, consumer, Arc::clone(signal))
+        })
     }
 
     /// Closes the device `id` names, if it is open, and says whether it was.
     /// What it had not sent yet is dropped with it.
     pub fn close(&mut self, id: &DeviceId) -> bool {
-        let Some(slot) = self
-            .slots
-            .iter_mut()
-            .find(|slot| matches!(slot, Slot::Open(device, _) if device.id() == id))
-        else {
-            return false;
-        };
-        if let Slot::Open(_, output) = std::mem::replace(slot, Slot::Lost) {
-            *slot = output.close().map_or(Slot::Lost, Slot::Free);
-        }
-        true
+        self.ports.close(id)
     }
 
     /// Whether the device `id` names is open.
     pub fn is_open(&self, id: &DeviceId) -> bool {
-        self.devices().any(|device| device.id() == id)
+        self.ports.is_open(id)
     }
 
     /// From the next block on, has every output send as `timing` says.
@@ -248,27 +226,13 @@ impl Outputs {
 
     /// The devices open now.
     pub fn devices(&self) -> impl Iterator<Item = &Device> {
-        self.slots.iter().filter_map(|slot| match slot {
-            Slot::Open(device, _) => Some(device),
-            Slot::Free(_) | Slot::Lost => None,
-        })
+        self.ports.devices()
     }
 
     /// Closes the outputs whose device left while open, and returns them.
     /// Call it once per tick.
     pub fn tick(&mut self) -> Vec<Device> {
-        let left: Vec<Device> = self
-            .slots
-            .iter()
-            .filter_map(|slot| match slot {
-                Slot::Open(device, output) if output.has_left() => Some(device.clone()),
-                _ => None,
-            })
-            .collect();
-        for device in &left {
-            self.close(device.id());
-        }
-        left
+        self.ports.tick()
     }
 
     /// Takes every packet waiting in output `output`'s room, as its device
@@ -278,9 +242,7 @@ impl Outputs {
     /// A hook for tests, which have no device to send to.
     #[doc(hidden)]
     pub fn take(&mut self, output: usize) -> Option<Vec<(Instant, [u32; 4])>> {
-        let Some(Slot::Free(consumer)) = self.slots.get_mut(output) else {
-            return None;
-        };
+        let consumer = self.ports.free_mut(output)?;
         consumer.set_reading(true);
         let mut taken = Vec::new();
         while let Some(packet) = consumer.peek() {
@@ -288,6 +250,24 @@ impl Outputs {
             consumer.pop();
         }
         Some(taken)
+    }
+}
+
+impl OpenDevices for Outputs {
+    fn devices(&self) -> impl Iterator<Item = &Device> {
+        Outputs::devices(self)
+    }
+
+    fn open(&mut self, device: &Device) -> Result<(), OpenError> {
+        Outputs::open(self, device)
+    }
+
+    fn close(&mut self, id: &DeviceId) -> bool {
+        Outputs::close(self, id)
+    }
+
+    fn tick(&mut self) -> Vec<Device> {
+        Outputs::tick(self)
     }
 }
 

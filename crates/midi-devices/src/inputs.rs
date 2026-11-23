@@ -17,14 +17,15 @@
     )
 )]
 
-use std::error::Error;
 use std::fmt;
 
 use hapto_ump::{Event, EventList, SysEx7, SysExForm, Upgrade};
 
 use crate::Instant;
 use crate::backend;
+use crate::error::OpenError;
 use crate::id::{Device, DeviceId, Direction};
+use crate::ports::{OpenDevices, Port, Ports};
 use crate::ring::{Consumer, Producer, ring};
 
 /// How many inputs may be open at once.
@@ -61,7 +62,7 @@ pub const MAX_INPUTS: usize = 16;
 pub fn inputs(room: usize) -> (Inputs, InputsReader) {
     let (producers, consumers): (Vec<_>, Vec<_>) = (0..MAX_INPUTS).map(|_| ring(room)).unzip();
     let inputs = Inputs {
-        slots: producers.into_iter().map(Slot::Free).collect(),
+        ports: Ports::new(producers),
     };
     let reader = InputsReader {
         upgrades: (0..MAX_INPUTS).map(|_| Upgrade::new()).collect(),
@@ -109,16 +110,19 @@ pub fn inputs(room: usize) -> (Inputs, InputsReader) {
 /// }
 /// ```
 pub struct Inputs {
-    slots: Vec<Slot>,
+    ports: Ports<backend::Input>,
 }
 
-enum Slot {
-    /// No device: the room waits for one.
-    Free(Producer),
-    /// A device, reading into the room.
-    Open(Device, backend::Input),
-    /// A device the system would not close, whose room went with it.
-    Lost,
+impl Port for backend::Input {
+    type Room = Producer;
+
+    fn has_left(&self) -> bool {
+        backend::Input::has_left(self)
+    }
+
+    fn close(self) -> Option<Producer> {
+        backend::Input::close(self)
+    }
 }
 
 impl fmt::Debug for Inputs {
@@ -126,58 +130,6 @@ impl fmt::Debug for Inputs {
         f.debug_list().entries(self.devices()).finish()
     }
 }
-
-/// Why a device did not open.
-///
-/// # Examples
-///
-/// ```
-/// use hapto_midi_devices::{Devices, OpenError, inputs};
-///
-/// let (mut inputs, _reader) = inputs(64);
-/// // An output cannot be read.
-/// if let Some(synth) = Devices::new().outputs().next() {
-///     assert_eq!(inputs.open(synth), Err(OpenError::NotAnInput));
-/// }
-/// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum OpenError {
-    /// The device takes MIDI and sends none, so it cannot be read.
-    NotAnInput,
-    /// The device sends MIDI and takes none, so nothing can be sent to it.
-    NotAnOutput,
-    /// The device is not in the system's list now.
-    Gone,
-    /// Another app holds it: WinMM lets one app at a time open a device.
-    InUse,
-    /// [`MAX_INPUTS`] inputs, or [`MAX_OUTPUTS`](crate::MAX_OUTPUTS)
-    /// outputs, are open already.
-    NoRoom,
-    /// The system had no memory for it.
-    NoMemory,
-    /// No backend is built for this system.
-    NoBackend,
-    /// The system refused it, with this code of its own.
-    System(u32),
-}
-
-impl fmt::Display for OpenError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            OpenError::NotAnInput => f.write_str("the device takes MIDI and sends none"),
-            OpenError::NotAnOutput => f.write_str("the device sends MIDI and takes none"),
-            OpenError::Gone => f.write_str("the device is not there now"),
-            OpenError::InUse => f.write_str("another app holds the device"),
-            OpenError::NoRoom => write!(f, "{MAX_INPUTS} devices are open already"),
-            OpenError::NoMemory => f.write_str("the system had no memory for the device"),
-            OpenError::NoBackend => f.write_str("Hapto reads no MIDI devices on this system yet"),
-            OpenError::System(code) => write!(f, "the system refused the device (error {code})"),
-        }
-    }
-}
-
-impl Error for OpenError {}
 
 impl Inputs {
     /// Opens `device`. A device open already stays open.
@@ -189,56 +141,25 @@ impl Inputs {
         if device.direction() != Direction::Input {
             return Err(OpenError::NotAnInput);
         }
-        if self.is_open(device.id()) {
-            return Ok(());
-        }
-        let slot = self
-            .slots
-            .iter_mut()
-            .find(|slot| matches!(slot, Slot::Free(_)))
-            .ok_or(OpenError::NoRoom)?;
-        let Slot::Free(mut producer) = std::mem::replace(slot, Slot::Lost) else {
-            return Err(OpenError::NoRoom);
-        };
-        producer.renew();
-        match backend::Input::open(device, producer) {
-            Ok(input) => {
-                *slot = Slot::Open(device.clone(), input);
-                Ok(())
-            }
-            Err((why, producer)) => {
-                *slot = producer.map_or(Slot::Lost, Slot::Free);
-                Err(why)
-            }
-        }
+        self.ports.open(device, |_, mut producer| {
+            producer.renew();
+            backend::Input::open(device, producer)
+        })
     }
 
     /// Closes the device `id` names, if it is open, and says whether it was.
     pub fn close(&mut self, id: &DeviceId) -> bool {
-        let Some(slot) = self
-            .slots
-            .iter_mut()
-            .find(|slot| matches!(slot, Slot::Open(device, _) if device.id() == id))
-        else {
-            return false;
-        };
-        if let Slot::Open(_, input) = std::mem::replace(slot, Slot::Lost) {
-            *slot = input.close().map_or(Slot::Lost, Slot::Free);
-        }
-        true
+        self.ports.close(id)
     }
 
     /// Whether the device `id` names is open.
     pub fn is_open(&self, id: &DeviceId) -> bool {
-        self.devices().any(|device| device.id() == id)
+        self.ports.is_open(id)
     }
 
     /// The devices open now.
     pub fn devices(&self) -> impl Iterator<Item = &Device> {
-        self.slots.iter().filter_map(|slot| match slot {
-            Slot::Open(device, _) => Some(device),
-            Slot::Free(_) | Slot::Lost => None,
-        })
+        self.ports.devices()
     }
 
     /// Pushes a packet into input `input`'s ring as a device would, when no
@@ -247,30 +168,35 @@ impl Inputs {
     /// A hook for tests, which have no device to read.
     #[doc(hidden)]
     pub fn push(&mut self, input: usize, at: Instant, words: [u32; 4]) -> bool {
-        match self.slots.get_mut(input) {
-            Some(Slot::Free(producer)) => {
-                producer.push(at, words);
-                true
-            }
-            _ => false,
-        }
+        let Some(producer) = self.ports.free_mut(input) else {
+            return false;
+        };
+        producer.push(at, words);
+        true
     }
 
     /// Closes the inputs whose device left while open, and returns them.
     /// Call it once per tick.
     pub fn tick(&mut self) -> Vec<Device> {
-        let left: Vec<Device> = self
-            .slots
-            .iter()
-            .filter_map(|slot| match slot {
-                Slot::Open(device, input) if input.has_left() => Some(device.clone()),
-                _ => None,
-            })
-            .collect();
-        for device in &left {
-            self.close(device.id());
-        }
-        left
+        self.ports.tick()
+    }
+}
+
+impl OpenDevices for Inputs {
+    fn devices(&self) -> impl Iterator<Item = &Device> {
+        Inputs::devices(self)
+    }
+
+    fn open(&mut self, device: &Device) -> Result<(), OpenError> {
+        Inputs::open(self, device)
+    }
+
+    fn close(&mut self, id: &DeviceId) -> bool {
+        Inputs::close(self, id)
+    }
+
+    fn tick(&mut self) -> Vec<Device> {
+        Inputs::tick(self)
     }
 }
 

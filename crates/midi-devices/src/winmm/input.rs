@@ -28,8 +28,8 @@ use windows::core::{PCWSTR, PSTR};
 
 use super::{CLOSE_TRIES, UNPREPARE_TRIES, refusal, retry};
 use crate::Instant;
+use crate::error::OpenError;
 use crate::id::{Device, Direction};
-use crate::inputs::OpenError;
 use crate::ring::Producer;
 
 /// How many SysEx buffers an input keeps with the driver, and how long each

@@ -7,7 +7,8 @@
 use std::time::{Duration, Instant};
 
 use hapto_midi_devices::{
-    Device, DeviceId, Devices, Direction, Inputs, InputsReader, OpenError, Outputs, OutputsWriter,
+    Device, DeviceId, Devices, Direction, Inputs, InputsReader, OpenDevices, OpenError, Outputs,
+    OutputsWriter,
 };
 
 use crate::routing::{MidiDevices, plan};
@@ -152,7 +153,7 @@ impl Midi {
                 .inputs()
                 .map(|device| (device, passes(device, &*takes)))
                 .collect();
-            follow(self.name, &listed, Ends::In(inputs), &mut self.said);
+            follow(self.name, &listed, inputs, &mut self.said);
         }
         if let Some(outputs) = &mut self.outputs {
             outputs.set_timing(self.routing.timing());
@@ -161,7 +162,7 @@ impl Midi {
                 .outputs()
                 .map(|device| (device, passes(device, &*sends)))
                 .collect();
-            follow(self.name, &listed, Ends::Out(outputs), &mut self.said);
+            follow(self.name, &listed, outputs, &mut self.said);
         }
         self.report();
     }
@@ -179,49 +180,20 @@ impl Midi {
     }
 }
 
-/// One direction's devices, open or to open.
-enum Ends<'a> {
-    In(&'a mut Inputs),
-    Out(&'a mut Outputs),
-}
-
-impl Ends<'_> {
-    fn open_now(&self) -> Vec<Device> {
-        match self {
-            Ends::In(inputs) => inputs.devices().cloned().collect(),
-            Ends::Out(outputs) => outputs.devices().cloned().collect(),
-        }
-    }
-
-    fn open(&mut self, device: &Device) -> Result<(), OpenError> {
-        match self {
-            Ends::In(inputs) => inputs.open(device),
-            Ends::Out(outputs) => outputs.open(device),
-        }
-    }
-
-    fn close(&mut self, device: &Device) -> bool {
-        match self {
-            Ends::In(inputs) => inputs.close(device.id()),
-            Ends::Out(outputs) => outputs.close(device.id()),
-        }
-    }
-}
-
 /// Opens the `listed` devices that pass and are not open, and closes the
 /// open ones that do not pass or are not listed, saying so for each. A
 /// device is the same one by its id, whatever its name.
-fn follow(name: &str, listed: &[(&Device, bool)], mut ends: Ends<'_>, said: &mut Said) {
+fn follow(name: &str, listed: &[(&Device, bool)], ends: &mut impl OpenDevices, said: &mut Said) {
     let keyed: Vec<(DeviceId, bool)> = listed
         .iter()
         .map(|&(device, passes)| (device.id().clone(), passes))
         .collect();
-    let open = ends.open_now();
+    let open: Vec<Device> = ends.devices().cloned().collect();
     let open_ids: Vec<DeviceId> = open.iter().map(|device| device.id().clone()).collect();
     let (to_open, to_close) = plan(&keyed, &open_ids);
     for id in &to_close {
         if let Some(device) = open.iter().find(|device| device.id() == id)
-            && ends.close(device)
+            && ends.close(device.id())
         {
             eprintln!("{name}: {} closed", line(device));
             said.forget(id);

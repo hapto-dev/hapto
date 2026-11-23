@@ -21,8 +21,8 @@ pub(crate) use output::Output;
 pub(crate) use signal::Signal;
 pub(crate) use watch::Watch;
 
+use crate::error::OpenError;
 use crate::id::{Device, DeviceId, Direction, named};
-use crate::inputs::OpenError;
 
 /// How often, and how far apart, a close asks again of a driver that is
 /// still busy with a buffer, as JUCE does.

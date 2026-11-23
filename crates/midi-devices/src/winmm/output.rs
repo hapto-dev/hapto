@@ -28,8 +28,8 @@ use windows::core::{PCWSTR, PSTR};
 use super::signal::{Signal, Timer};
 use super::{CLOSE_TRIES, UNPREPARE_TRIES, refusal, retry};
 use crate::Instant;
+use crate::error::OpenError;
 use crate::id::{Device, Direction};
-use crate::inputs::OpenError;
 use crate::ring::Consumer;
 
 /// How long the output's thread waits at a time for the driver to send a

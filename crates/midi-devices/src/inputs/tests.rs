@@ -271,10 +271,6 @@ fn a_device_not_in_the_list_is_gone_and_leaves_its_input_free() {
         matches!(refused, Err(OpenError::Gone | OpenError::NoBackend)),
         "{refused:?}"
     );
-    assert!(
-        inputs
-            .slots
-            .iter()
-            .all(|slot| matches!(slot, Slot::Free(_)))
-    );
+    let free = (0..MAX_INPUTS).all(|input| inputs.push(input, at(0), [0x10F8_0000, 0, 0, 0]));
+    assert!(free, "every input free");
 }
