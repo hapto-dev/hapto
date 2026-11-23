@@ -126,7 +126,9 @@ exporter.
   mistake in the plugin's source, such as either turned on twice, panics with
   what to change, which refuses the instance. While a plugin keeps its parts,
   Hapto ticks them and the session before each `Plugin::idle`, which holds only
-  the plugin's own work; a plugin never ticks them. With learn on, each
+  the plugin's own work; a plugin never ticks them. It ticks them before each
+  activation too, so a project a host loads and plays at once, with no tick
+  between, plays its saved session from the first block. With learn on, each
   activation takes learn's audio side and each block runs it over the block's
   MIDI before the processor, so a processor holds no part of learn and never
   calls it. A plugin declares its saved-state migration as

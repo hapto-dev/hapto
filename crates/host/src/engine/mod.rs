@@ -263,8 +263,8 @@ pub(crate) struct Main<P: Plugin, H> {
 /// The main-thread state that is not `Send`, so that an engine bound to no
 /// thread holds none of it.
 struct OnThread {
-    /// Ticks the plugin's parts before each of its idles, and gives each
-    /// activation learn's audio side.
+    /// Ticks the plugin's parts before each of its idles and each of its
+    /// activations, and gives each activation learn's audio side.
     driver: Driver,
     timer: RefCell<Option<Timer>>,
     /// The editors the plugin handed out, one for each view a host asked
@@ -314,7 +314,12 @@ impl<P: Plugin, H> Main<P, H> {
 ///   thread shares its loan. A refused call counts as a fault. The parameter
 ///   store, the saved block and the answers are safe from any thread. The audio
 ///   thread owns the processor and never waits.
-/// - **Activation** builds a fresh processor for the setup and layout it is
+/// - **Activation** first ticks the plugin's parts ([`Driver::tick`]), so a
+///   load the host made since the last tick is applied before the plugin
+///   builds from it, and the first block plays the loaded session. That is
+///   the parts' tick alone: the plugin's idle does not run, and the host,
+///   which is inside its own call, is told nothing until the next tick. The
+///   activation then builds a fresh processor for the setup and layout it is
 ///   given and hands it to the audio thread, replacing any running one,
 ///   which goes back to the plugin. With it goes a fresh audio side of
 ///   learn, when the plugin's parts have learn on, which each block runs
@@ -664,6 +669,16 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
     ///
     /// False for a layout the plugin does not declare, or when the plugin is
     /// busy in a call that reached the host, which counts as a fault.
+    ///
+    /// A participant of the session that is busy here, held by an editor's
+    /// code that reached the host say, keeps its section of a load owed, as
+    /// at any tick. The processor is then built from what the participant
+    /// held, and the next tick applies the load. A panic in the parts' tick,
+    /// in a saved value's serialisation say, counts as a fault and the
+    /// activation goes on, building from what the tick reached. Learn
+    /// already borrowed as the activation starts is the exception: the tick
+    /// panics at learn's poll, the take of learn's audio side panics on the
+    /// same borrow, and the activation is refused with a second fault.
     pub(crate) fn activate(&self, main: &Main<P, H>, setup: Setup, layout: Width) -> bool {
         if !widths::<P>().contains(&layout) {
             return false;
@@ -672,6 +687,12 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
             self.faults.record(Fault::Reentered);
             return false;
         };
+        // Before the plugin builds its processor, so it builds from a
+        // session the host loaded since the last tick. Inside the plugin's
+        // borrow, as every tick of the parts is.
+        if let Some(on_thread) = &main.on_thread {
+            self.guard((), || on_thread.driver.tick());
+        }
         let mut audio = Active::new(&mut *plugin, setup, layout, |midi| {
             if midi { MAX_EVENTS } else { 0 }
         });

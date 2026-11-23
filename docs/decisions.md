@@ -127,7 +127,7 @@ comments never cite an id: they state the reason in words, and
 | D88 | [What does a test host answer for a call the plugin refused? (D60)](#d88-a-call-a-test-host-was-refused) | `Err(Refused)`: the VST3 host's carries the `tresult` it was answered, the C interface's stands for its `false`. | decided |
 | D89 | [How does plugin code name a parameter and read its value? (P1, P10)](#d89-how-plugin-code-names-a-parameter) | As a typed parameter, `Float`, `Bool` or `Choice<E>`, that carries its store and is read with `get`, as an `f32`, a `bool` or the plugin's enum, on any thread. `ParamSet::bind` makes one by key, once, and checks the declaration. `Changes` holds a stamp and asks once per block whether any of the parameters it is given moved. | decided |
 | D90 | [How does a plugin declare its parameters? (P1, P10, D89)](#d90-how-a-plugin-declares-its-parameters) | In one function that returns them: `Params::declare` adds each through a `Declarer`, and a typed declaration, `FloatDecl`, `BoolDecl` or `ChoiceDecl<E>`, hands back its kind of parameter. A mistake is a compile error where it can be, through `checked`, and otherwise one `DeclError` when `ParamSet::declare` builds the set. | decided |
-| D91 | [Who builds a plugin's parameter set, session and saved state? (D51, D52, D53, D90)](#d91-who-builds-a-plugins-parts) | Hapto, once per instance: `Parts::for_plugin` declares the plugin's `Params` and builds the set, the session and the saved state over it, and `Plugin::new` takes the parameters and the `Parts`. The plugin owns its parts, and Hapto ticks them before each `idle` through a `Driver`, a link that does not keep them alive, and runs learn's audio side before each block, taken through it at each activation; a plugin never ticks them or runs learn, and a test with no host does both through a `Driver`. | decided |
+| D91 | [Who builds a plugin's parameter set, session and saved state? (D51, D52, D53, D90)](#d91-who-builds-a-plugins-parts) | Hapto, once per instance: `Parts::for_plugin` declares the plugin's `Params` and builds the set, the session and the saved state over it, and `Plugin::new` takes the parameters and the `Parts`. The plugin owns its parts, and Hapto ticks them before each `idle` and each activation through a `Driver`, a link that does not keep them alive, and runs learn's audio side before each block, taken through it at each activation; a plugin never ticks them or runs learn, and a test with no host does both through a `Driver`. | decided |
 | D92 | [When does a plain value saved through `Parts::saved_value` reach the session? (D44, D91)](#d92-when-a-saved-plain-value-is-captured) | At the tick: `Driver::tick` ends with `Parts::sync`, which captures each saved value whose change count moved, and skips one whose newest write was its own apply's, which the session's apply pass captured already. A save between a change and the next tick holds the value from before the change. | decided |
 | D93 | [How does a plugin declare a struct of parameters without writing `declare`? (D90)](#d93-a-derive-that-writes-declare) | `#[derive(Params)]`, under `hapto-params`'s `derive` feature: a `#[param(...)]` mark on each field holds the declaration's arguments, then `name = value` options and lone-word flags, and the field's type names the kind through `Declared`. Each declaration is a named constant ending in `checked`, so `cargo check` refuses a mistake on the mark, two fields with one key included. | decided |
 | D94 | [How does a plugin name a choice's values without writing `Choices`? (D89, D93)](#d94-a-derive-that-writes-choices) | `#[derive(Choices)]`, under the same `derive` feature: the labels and both mappings in the order of the variants, a label being the variant's name unless a `#[choice("...")]` mark gives one. A written discriminant must be the variant's position, and a bad label is refused on itself: `cargo check` evaluates both checks. | decided |
@@ -2215,6 +2215,38 @@ The driver is not `Send`, so the engine keeps one, beside the timer, only for
 a plugin bound to its thread; a plugin that is `Send` holds no parts. A test
 with no host makes a `Driver` from the parts and ticks through it.
 
+An activation ticks the parts too, before `Plugin::activate` and inside the same
+borrow of the plugin. A host may load a project and activate with no tick
+between, and render at once; the standalone app does so at every start. A load
+writes the listed parameters itself and only stores the rest (D13, D96), so
+without this tick the processor would be built from the session before the load.
+What it reads each block, a parameter made at run time or learn's mappings,
+would catch up at the first tick; what the plugin read as it activated, a
+participant's section or a saved value, only at the next activation. It is the
+parts' tick alone, in `Driver::tick`'s one order. `Plugin::idle` does not run,
+and the host, which is inside its own call, is told nothing: what the tick
+captured is told at the next one, and a load is no change to tell there either
+(D108). It runs at every activation, a rebuild while active included, and costs
+what any tick costs when nothing changed. A panic in it, from plugin code it
+runs such as a saved value's serialisation, counts as a fault and the activation
+goes on from what the tick reached, so a bug there costs the rest of one tick,
+as at an idle, and not the activation. Learn borrowed then is the one exception,
+below. A participant that is busy then, held by an editor's code that reached
+the host, keeps its section owed as at any tick: the processor is built from
+what it held, the load's parameters made at run time wait with it, and the next
+tick applies the load. An engine bound to no thread holds no driver, so nothing
+is ticked there.
+
+Open: a load made while the plugin is active reaches a running processor only
+through what it reads each block: the listed parameters at once, a parameter
+made at run time and learn's mappings at the next tick. What the plugin read as
+it activated keeps the session from before the load until the next activation,
+since nothing yet crosses to a processor that is running (D96).
+
+To confirm, the choices made beyond the owner's for the tick at an activation:
+that it is the parts' tick alone, that it runs at every activation and not
+only when a load is owed, and that a load while active is left as it is.
+
 Hapto runs learn's audio side too, so a plugin's processor never does. At each
 activation, after `Plugin::activate` returns and inside the plugin's borrow,
 the engine takes a fresh one through `Driver::learn_audio` (D50) and keeps it
@@ -2226,9 +2258,10 @@ controller arrived in, and learn counts a host's blocks, which times its wait
 for the second half of a 14-bit pair. In a block that plays in pieces, a
 controller in a later piece applies from the block's start, as the host's
 automation does. A plugin with learn off, one that dropped its parts, and so
-a `Send` one, has none. Learn borrowed at the take panics inside the
-exporter's guard, and the activation fails with a fault, rather than going on
-without learn. `Parts` hands out no audio side. `Parts::learn` still lends
+a `Send` one, has none. Learn borrowed at an activation panics twice: at the
+tick's poll, which is contained and counted, and at the take, inside the
+exporter's guard, so the activation fails, with two faults, rather than going
+on without learn. `Parts` hands out no audio side. `Parts::learn` still lends
 `Learn`, whose `replace_audio` would retire the engine's; its doc says so. A
 test with no host takes one through its `Driver` and runs it before each
 block it hands the processor.
@@ -2242,6 +2275,15 @@ threads, and a clone of a handle the plugin kept on the first would then be
 used on another, so that is unsound. Hapto's tick leaves ownership alone: the
 plugin keeps its parts, and the engine reaches them only on the plugin's own
 thread.
+
+For a load made before an activation, the alternatives were the whole tick at
+the activation, which would call the host from inside its own `setActive` or
+`activate` and run plugin code that may call it there too; applying at the
+load while no processor is built, which a load cannot do, since it arrives on
+any thread but audio and the participants live on the main thread; and a call
+that runs the owed pass alone, which would leave the load's parameters made at
+run time and learn's mappings to a later step, in a second order beside the
+one `Driver::tick` keeps.
 
 The plugin calling `Parts::tick` from `idle`, with the engine reporting, once,
 a plugin that kept its parts and let an idle pass without the call, was built
@@ -2502,22 +2544,22 @@ tree the load replaces, still playing. It holds the entries, counted against
 the room it leaves `extra` with each value at its longest, and a declare under
 a held path is born holding the value. Learn's restore clears every mapping,
 those of parameters made at run time included. Once a pass of the session that
-began after the load stored its sections has finished, the tick assigns the
-load in one step. Each one declared before the load and still held takes the
-value held for its path, or its default, as a restore: a parameter made once
-in `new`, or an owner a participant kept. Every one still held takes the
-mapping held for its path, and one declared before the load with none held is
-left unmapped. So the result does not depend on whether the plugin's tree or
-learn applied first, or on where in a tick the load landed, and no mapping is
-refused as full for one of the tree the load replaced. Then the entries go; a
-save meanwhile writes them as loaded, and a parameter declared since the load
-with the mapping held for its path. The restore clock's stored count orders
-the pass against the load: the entries record it after the load's parameter
-writes, and the session's store moves it under the session's lock, where a
-pass reads it. Which parameters were declared before the load is decided by a
-count of loads the saved state keeps under its own lock, which each declare
-reads before the plugin's code runs, so a declare a load lands inside counts
-as declared before it.
+began after the load stored its sections has finished, the parts' tick, at an
+idle or at an activation (D91), assigns the load in one step. Each one declared
+before the load and still held takes the value held for its path, or its
+default, as a restore: a parameter made once in `new`, or an owner a participant
+kept. Every one still held takes the mapping held for its path, and one declared
+before the load with none held is left unmapped. So the result does not depend
+on whether the plugin's tree or learn applied first, or on where in a tick the
+load landed, and no mapping is refused as full for one of the tree the load
+replaced. Then the entries go; a save meanwhile writes them as loaded, and a
+parameter declared since the load with the mapping held for its path. The
+restore clock's stored count orders the pass against the load: the entries
+record it after the load's parameter writes, and the session's store moves it
+under the session's lock, where a pass reads it. Which parameters were declared
+before the load is decided by a count of loads the saved state keeps under its
+own lock, which each declare reads before the plugin's code runs, so a declare a
+load lands inside counts as declared before it.
 
 Handing an owner's audio half to the processor and back, and a page naming one
 by its path, are not built.

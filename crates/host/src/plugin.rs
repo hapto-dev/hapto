@@ -51,7 +51,7 @@ use crate::parts::Parts;
 ///   that set, and saves and loads through that saved state. A declaration
 ///   refused fails the instance's creation, with the reason in the fault
 ///   report. While the plugin keeps the parts, Hapto ticks them before each
-///   [`idle`](Self::idle).
+///   [`idle`](Self::idle) and each [`activate`](Self::activate).
 /// - **Learn.** When the plugin turned learn on
 ///   ([`Parts::midi_learn`]), each activation takes a fresh audio side of
 ///   learn, and each block runs it over the block's MIDI before the
@@ -232,7 +232,12 @@ pub trait Plugin: 'static {
     /// Builds the processor for `setup`.
     ///
     /// Everything the audio thread will touch is allocated here, at a fixed
-    /// capacity.
+    /// capacity. When the plugin keeps its [`Parts`], Hapto
+    /// [ticks](crate::Driver::tick) them first, so a session the host loaded
+    /// before it activates is applied by now, and the processor can be built
+    /// from it. A participant that was busy then is the exception, as at
+    /// any [tick](hapto_session::SessionUi::tick): it takes its section at
+    /// the next one.
     ///
     /// Thread: main.
     fn activate(&mut self, setup: &ProcessSetup) -> Self::Processor;

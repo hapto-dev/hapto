@@ -254,7 +254,9 @@ with `cargo doc -p hapto-host --features vst3,cabi,test-host
 
 - [Main](docs/glossary.md#main-thread): owns the plugin, builds the `Processor`
   at activation, with learn's audio side when the parts have learn on, and
-  takes both back at deactivation. A tick, about 60 times a second, ticks the
+  takes both back at deactivation. An activation ticks the parts first, so a
+  load the host made just before it is applied when the plugin builds, and
+  plays from the first block. A tick, about 60 times a second, ticks the
   parts the plugin keeps, then calls `Plugin::idle`, then tells the host of
   the plugin's [edits](docs/glossary.md#edit) and of state it does not list
   that changed, then ticks each open editor

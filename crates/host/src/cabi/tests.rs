@@ -1582,7 +1582,8 @@ fn a_release_refused_on_another_thread_drops_learn_s_audio_side_there() {
 }
 
 thread_local! {
-    /// The instance [`Busy`] has its host tick from inside its activation.
+    /// The instance [`Busy`] has its host load into and tick from inside its
+    /// activation.
     static BUSY: Cell<*mut HaptoInstance> = const { Cell::new(std::ptr::null_mut()) };
     /// What [`Busy`]'s participant holds, and how many idles it had.
     static BUSY_ZOOM: Rc<RefCell<Option<Json>>> = Rc::default();
@@ -1606,8 +1607,9 @@ impl hapto_session::Participant for Restored {
     }
 }
 
-/// Keeps its parts and a participant, and has its host tick it from inside
-/// its activation, as a host's nested message loop would.
+/// Keeps its parts and a participant, and has its host load a block and
+/// tick it from inside its activation, as a host's nested message loop
+/// would.
 struct Busy {
     _parts: Parts,
     _participant: Rc<RefCell<Restored>>,
@@ -1633,10 +1635,20 @@ impl Plugin for Busy {
     }
 
     fn activate(&mut self, _: &ProcessSetup) -> Through {
-        // SAFETY: the live instance the test made, ticked on its main
-        // thread from inside one of its own calls, as the header lets a
-        // host's nested message loop.
-        unsafe { (plugin::<Busy>().idle)(BUSY.get()) };
+        // The load comes here, after the activation ticked the parts
+        // itself, so only the nested tick could apply it.
+        let block = br#"{"haptoStateVersion": 1, "parameters": {}, "extra": {"zoom": 2}}"#;
+        // SAFETY: the live instance the test made, loaded into and ticked on
+        // its main thread from inside one of its own calls, as the header
+        // lets a host's nested message loop; `block` is valid for the call.
+        unsafe {
+            assert!((plugin::<Busy>().load)(
+                BUSY.get(),
+                block.as_ptr(),
+                block.len()
+            ));
+            (plugin::<Busy>().idle)(BUSY.get());
+        }
         Through
     }
 
@@ -1649,8 +1661,6 @@ impl Plugin for Busy {
 fn a_tick_while_the_plugin_is_busy_skips_hapto_s_tick_and_its_idle() {
     let host = TestHost::<Busy>::new();
     BUSY.set(host.instance());
-    let block = br#"{"haptoStateVersion": 1, "parameters": {}, "extra": {"zoom": 2}}"#;
-    assert_eq!(host.load(block), Ok(()));
     assert_eq!(host.activate(48_000.0, 64, Width::STEREO), Ok(()));
     assert_eq!(BUSY_IDLES.with(Cell::get), 0, "the nested tick ran no idle");
     assert_eq!(
@@ -1665,6 +1675,96 @@ fn a_tick_while_the_plugin_is_busy_skips_hapto_s_tick_and_its_idle() {
         Some(Json::from(2))
     );
     assert_eq!(host.faults(), 0);
+}
+
+thread_local! {
+    /// The instance [`SelfActivating`] loads into and activates from inside its
+    /// first idle, and what that activation answered.
+    static SELF_ACTIVATING: Cell<*mut HaptoInstance> = const { Cell::new(std::ptr::null_mut()) };
+    static SELF_ACTIVATING_ACTIVATED: Cell<Option<bool>> = const { Cell::new(None) };
+    /// What [`SelfActivating`]'s participant holds.
+    static SELF_ACTIVATING_ZOOM: Rc<RefCell<Option<Json>>> = Rc::default();
+}
+
+/// Keeps its parts and a participant, and has its host load a block and
+/// activate it from inside its first idle, as a host's nested message loop
+/// would.
+struct SelfActivating {
+    _parts: Parts,
+    _participant: Rc<RefCell<Restored>>,
+    _registration: hapto_session::Registration,
+}
+
+impl Plugin for SelfActivating {
+    const INFO: PluginInfo = Probe::INFO;
+    type Params = Table;
+    type Processor = Through;
+
+    fn new(_: Table, parts: Parts) -> Self {
+        let participant = Rc::new(RefCell::new(Restored(SELF_ACTIVATING_ZOOM.with(Rc::clone))));
+        let registration = parts
+            .session()
+            .register("zoom", &participant)
+            .expect("registered");
+        SelfActivating {
+            _parts: parts,
+            _participant: participant,
+            _registration: registration,
+        }
+    }
+
+    fn activate(&mut self, _: &ProcessSetup) -> Through {
+        Through
+    }
+
+    fn idle(&mut self) {
+        if SELF_ACTIVATING_ACTIVATED.get().is_some() {
+            return;
+        }
+        let block = br#"{"haptoStateVersion": 1, "parameters": {}, "extra": {"zoom": 2}}"#;
+        let stereo = HaptoLayout {
+            inputs: 2,
+            outputs: 2,
+        };
+        let table = plugin::<SelfActivating>();
+        // SAFETY: the live instance the test made, loaded into and activated
+        // on its main thread from inside one of its own calls, as the header
+        // lets a host's nested message loop; `block` is valid for the call.
+        let activated = unsafe {
+            assert!((table.load)(
+                SELF_ACTIVATING.get(),
+                block.as_ptr(),
+                block.len()
+            ));
+            (table.activate)(SELF_ACTIVATING.get(), 48_000.0, 64, stereo)
+        };
+        SELF_ACTIVATING_ACTIVATED.set(Some(activated));
+    }
+}
+
+#[test]
+fn an_activation_refused_while_the_plugin_is_busy_ticks_no_parts() {
+    let host = TestHost::<SelfActivating>::new();
+    SELF_ACTIVATING.set(host.instance());
+    host.expect_faults(1);
+    host.idle();
+    assert_eq!(
+        SELF_ACTIVATING_ACTIVATED.get(),
+        Some(false),
+        "refused: the plugin is inside its idle"
+    );
+    assert_eq!(
+        SELF_ACTIVATING_ZOOM.with(|zoom| zoom.borrow().clone()),
+        None,
+        "and the parts were not ticked from inside the plugin's own call"
+    );
+    host.idle();
+    assert_eq!(
+        SELF_ACTIVATING_ZOOM.with(|zoom| zoom.borrow().clone()),
+        Some(Json::from(2)),
+        "the next tick applies the load"
+    );
+    assert_eq!(host.faults(), 1);
 }
 
 /// Creates an instance from `table` on another thread, then activates and
