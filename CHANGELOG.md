@@ -51,8 +51,9 @@ exporter.
   as MIDI 1.0 controllers, downgraded, and so do the system messages VST3
   numbers, from start and stop to song position. `MidiOut::send` keeps a
   host's note id in the packet's origin, and `midi_out.extend(midi)` is MIDI
-  thru. The VST3 test host gains `sent` and
-  `BusEvent::Controller`.
+  thru. The VST3 test host gains `sent`, `BusEvent::Controller` and
+  `parameters`, which lists those a host shows, without the 2,080 hidden
+  proxies for a plugin that takes MIDI.
 - The VST3 exporter brings a host's MIDI in, for a plugin that takes MIDI:
   notes, a note's pressure and VST3's note expressions as MIDI 2.0, each note
   named by the host's `noteId`, and SysEx. A MIDI 1.0 controller, channel
@@ -349,10 +350,12 @@ exporter.
 - `cargo-hapto`: the plugin author's command, for a plugin crate in any
   workspace. `cargo hapto init` writes a new plugin crate, a gain with its
   page, a standalone binary and tests, with fresh ids, its Hapto crates from
-  a checkout. `cargo hapto dev` runs the plugin's standalone binary with its
-  page from Vite, and rebuilds and restarts it after each change to Rust with
-  its saved block kept; `--host` runs it in the dev host. `cargo hapto serve`
-  runs the page's dev server alone, for the debug bundle in a real host.
+  a checkout; `--instrument` writes an instrument instead, a sine for each
+  note with no page. `cargo hapto dev` runs the plugin's standalone binary
+  with its page from Vite, and rebuilds and restarts it after each change to
+  Rust with its saved block kept; `--host` runs it in the dev host. `cargo
+  hapto serve` runs the page's dev server alone, for the debug bundle in a
+  real host.
   `cargo hapto build` writes a plugin crate's page map, builds its page and
   the crate in release, lays out its VST3 bundle under `target/bundle/` and
   installs it, per user or for every user, on Windows. `cargo hapto validate`

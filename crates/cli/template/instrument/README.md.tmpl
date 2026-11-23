@@ -1,0 +1,18 @@
+# {{name}}
+
+A Hapto instrument: a sine for each note a MIDI keyboard plays, at a level
+in dB.
+
+- `cargo hapto dev` runs it as an app of its own while you edit it, played
+  by every MIDI input the computer has. `cargo hapto dev --host` runs it
+  through the dev host, in VST3 or the C interface, with a settings window of
+  what the host sees.
+- `cargo hapto build --install` lays out its VST3 bundle and installs it for
+  the hosts on this machine; `cargo hapto validate` runs pluginval on it.
+- `cargo hapto juce` writes `hapto-juce.cmake`, its settings for Hapto's JUCE
+  adapter, and prints the CMake that builds it through JUCE: as AU, AAX or a
+  JUCE VST3.
+- `cargo test` drives it through the VST3 exporter, as a host does.
+
+Its identity is in `Cargo.toml`, under `[package.metadata.hapto]`: a host
+knows the plugin by its ids for good, so they never change once it ships.

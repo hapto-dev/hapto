@@ -3260,7 +3260,11 @@ lockfile pins the crates it builds.
   from it. Its Hapto crates and `@hapto/page` come by path from a checkout,
   `--hapto` or the one the command was built from, until they are published. A
   test, in the full CI run on Windows, writes a crate with this checkout's
-  crates and builds and tests it.
+  crates and builds and tests it. `--instrument` writes an instrument from a
+  template of its own instead: no audio in, MIDI in, a sine for each note at a
+  level in dB, and no page, with a test through the VST3 exporter that plays a
+  note; it shares the JUCE settings' test with the gain, which a second test
+  builds as the first.
 - **`dev`** runs the plugin while its author edits it (D110): its standalone
   binary, a `bin` target that needs the crate's `standalone` feature, in debug
   by default. Off Windows, where the app does not run yet, it refuses at once,

@@ -394,7 +394,19 @@ impl<P: Plugin> TestHost<P> {
         (&self.plugin, &self.processor, &self.controller)
     }
 
-    /// Returns how many parameters the host lists.
+    /// Returns the parameters a host shows, in its order: the plugin's own,
+    /// without the hidden proxies the exporter lists for each MIDI 1.0
+    /// controller of a plugin that takes MIDI, 2,080 of them, which
+    /// [`parameter_count`](Self::parameter_count) counts.
+    pub fn parameters(&self) -> Vec<ParamInfo> {
+        (0..self.parameter_count())
+            .filter_map(|index| self.parameter(index))
+            .filter(|info| !info.is_hidden)
+            .collect()
+    }
+
+    /// Returns how many parameters the host lists, the hidden ones among
+    /// them.
     pub fn parameter_count(&self) -> usize {
         // SAFETY: the component is alive while this host holds its
         // interfaces, and the call passes no pointer.

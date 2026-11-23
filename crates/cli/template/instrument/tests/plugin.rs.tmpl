@@ -1,0 +1,63 @@
+//! {{name}} through the VST3 exporter, as a host drives it: the level it
+//! lists, a note it plays until it is released, and its saved block.
+
+use hapto_host::vst3::{BusEvent, Refused, TestHost};
+use {{lib}}::{{type}};
+
+#[test]
+fn the_host_shows_the_level() {
+    let host = TestHost::<{{type}}>::new();
+    // The level alone: the hidden parameters a plugin that takes MIDI lists
+    // for each controller are left out.
+    let shown = host.parameters();
+    assert_eq!(shown.len(), 1);
+    assert_eq!((shown[0].title.as_str(), shown[0].units.as_str()), ("Level", "dB"));
+}
+
+#[test]
+fn a_note_sounds_until_it_is_released() -> Result<(), Refused> {
+    let mut host = TestHost::<{{type}}>::new();
+    host.setup(48_000.0, 256)?;
+    host.activate()?;
+    host.start()?;
+    let (mut left, mut right) = ([0.0_f32; 256], [0.0_f32; 256]);
+    // A4 at full velocity, as a host's note-on.
+    let on = BusEvent::NoteOn {
+        offset: 0,
+        channel: 0,
+        pitch: 69,
+        velocity: 1.0,
+        tuning: 0.0,
+        id: 1,
+    };
+    host.process_events(&mut [&mut left[..], &mut right[..]], 256, &[on], &[])?;
+    assert!(left.iter().any(|sample| sample.abs() > 0.05), "the note sounds");
+    let off = BusEvent::NoteOff {
+        offset: 0,
+        channel: 0,
+        pitch: 69,
+        velocity: 0.5,
+        id: 1,
+    };
+    host.process_events(&mut [&mut left[..], &mut right[..]], 256, &[off], &[])?;
+    // Its release falls 60 dB in 0.3 s: under 60 blocks of 256 frames.
+    for _ in 0..60 {
+        left.fill(0.0);
+        right.fill(0.0);
+        host.process_events(&mut [&mut left[..], &mut right[..]], 256, &[], &[])?;
+    }
+    assert!(left.iter().all(|sample| sample.abs() < 1e-3), "silent once released");
+    Ok(())
+}
+
+#[test]
+fn the_saved_block_brings_the_level_back() -> Result<(), Refused> {
+    let first = TestHost::<{{type}}>::new();
+    let level = first.parameter(0).expect("listed first").id;
+    first.set_normalized(level, 0.25)?;
+    let saved = first.save()?;
+    let second = TestHost::<{{type}}>::new();
+    second.load(&saved)?;
+    assert_eq!(second.normalized(level), first.normalized(level));
+    Ok(())
+}

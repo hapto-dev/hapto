@@ -39,7 +39,7 @@ cmake -S .github/juce-adapter -B <folder> -DHAPTO_CHECK_PLUGIN=midi-probe -DHAPT
 cargo run -p hapto-example-midi-probe --features standalone   # by hand, Windows: the probe as an app on the computer's MIDI devices, its echo sent to the system's synth
 cargo hapto dev -p hapto-example-gain   # by hand, Windows: the gain standalone with its page from Vite, restarted with its saved block after a change to Rust
 cargo hapto dev -p hapto-example-gain --host   # by hand, Windows: the same through the dev host, in VST3 and, after its switch, the C interface
-cargo test -p cargo-hapto -- --ignored   # full run, Windows: `cargo hapto init` writes a crate with this checkout's crates, which builds and passes its tests
+cargo test -p cargo-hapto -- --ignored   # full run, Windows: `cargo hapto init` writes a gain and an instrument with this checkout's crates, and each builds and passes its tests
 cargo hapto validate -p hapto-example-eq   # full run (the validator lane), Windows, with pluginval 1.0.4 on the PATH or in PLUGINVAL
 ```
 

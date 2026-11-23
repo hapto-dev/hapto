@@ -1,0 +1,6 @@
+//! {{name}} as an app of its own, which `cargo hapto dev` runs: every MIDI
+//! input the computer has plays it, to the audio output.
+
+fn main() -> std::process::ExitCode {
+    hapto_standalone::main::<{{lib}}::{{type}}>()
+}
