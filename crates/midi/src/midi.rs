@@ -358,8 +358,9 @@ impl<'a> Midi<'a> {
     }
 
     /// How many messages the block lost: packets past its list's room,
-    /// messages and SysEx bytes past the decoded room, notes past the
-    /// decoder's table, and SysEx messages cut short.
+    /// messages and SysEx bytes past the decoded room, and SysEx messages cut
+    /// short; and how many notes gave up their place in the decoder's full
+    /// table, whose note-offs name them no more.
     pub fn dropped(&self) -> u64 {
         self.dropped
     }

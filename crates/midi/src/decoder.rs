@@ -59,11 +59,13 @@ struct Sounding {
 /// - The notes sounding, so each note-on gets an id, unless its host gave
 ///   one, and a note-off ends every note on its key. A host gives one in
 ///   the packet's [`Origin::Note`], as VST3 names its notes: its note-off
-///   ends that note alone, and a note's own message names that note, even
-///   when a newer one sounds on its key. A note-off for a key with no note
-///   it knows of still comes, under an id no note has, so a plugin that ends
-///   notes by key hears it. A note past the table sounds, and is counted in
-///   [`dropped`](Self::dropped).
+///   ends that note alone, under the host's id whether or not the table
+///   holds it, and a note's own message names that note, even when a newer
+///   one sounds on its key. A note-off for a key with no note it knows of
+///   still comes, under an id no note has, so a plugin that ends notes by key
+///   hears it. All Notes Off, All Sound Off and the mode messages end a
+///   channel's notes in the table. A note past the table takes the place of
+///   the oldest, which is counted in [`dropped`](Self::dropped).
 /// - A SysEx message as its packets arrive, which comes whole once its last
 ///   does. One past the buffer, one cut short, or one begun on another group
 ///   while one is under way is dropped and counted.
@@ -240,8 +242,8 @@ impl Decoder {
         self.sysex.get(..self.sysex_len).unwrap_or(&[])
     }
 
-    /// How many notes found no room in the table, and how many SysEx
-    /// messages were dropped, since it was made.
+    /// How many notes gave up their place in the full table, and how many
+    /// SysEx messages were dropped, since it was made.
     pub fn dropped(&self) -> u64 {
         self.dropped
     }
@@ -309,12 +311,19 @@ impl Decoder {
             ChannelMessage::NoteOff { note, velocity, .. } => {
                 return self.note_off(at, Key::new(note), velocity);
             }
-            ChannelMessage::ControlChange { controller, value } => Message::Control {
-                group,
-                channel,
-                controller,
-                value: unit(value),
-            },
+            ChannelMessage::ControlChange { controller, value } => {
+                // All Sound Off, All Notes Off and the mode messages end the
+                // channel's notes, within its group.
+                if matches!(controller, 120 | 123..=127) {
+                    self.forget(group, channel);
+                }
+                Message::Control {
+                    group,
+                    channel,
+                    controller,
+                    value: unit(value),
+                }
+            }
             ChannelMessage::ProgramChange { program, bank } => Message::Program {
                 group,
                 channel,
@@ -419,18 +428,24 @@ impl Decoder {
             named,
         } = at;
         let id = named.unwrap_or_else(|| self.make_id());
-        match self.notes.get_mut(self.sounding) {
-            Some(slot) => {
-                *slot = Sounding {
-                    group,
-                    channel,
-                    key,
-                    id,
-                    detached: false,
-                };
-                self.sounding = self.sounding.saturating_add(1);
+        if self.sounding >= self.notes.len() {
+            // A full table: the oldest note gives up its place, so the
+            // newest, which a note-off is likeliest to name, is kept.
+            self.dropped = self.dropped.saturating_add(1);
+            if !self.notes.is_empty() {
+                self.notes.copy_within(1.., 0);
+                self.sounding = self.sounding.saturating_sub(1);
             }
-            None => self.dropped = self.dropped.saturating_add(1),
+        }
+        if let Some(slot) = self.notes.get_mut(self.sounding) {
+            *slot = Sounding {
+                group,
+                channel,
+                key,
+                id,
+                detached: false,
+            };
+            self.sounding = self.sounding.saturating_add(1);
         }
         NoteOn {
             id,
@@ -442,8 +457,10 @@ impl Decoder {
         }
     }
 
-    /// Ends every note on the key, or the note its host named alone when
-    /// that one sounds there, moving their ids to `ends`.
+    /// Ends every note on the key, or the note its host named alone, moving
+    /// their ids to `ends`. A named note the table does not hold, one it
+    /// lost or one from before a reset, ends under the host's id, and no
+    /// other note with it.
     fn note_off(&mut self, at: Place, key: Key, velocity: u16) -> Decoded {
         let Place {
             group,
@@ -452,8 +469,7 @@ impl Decoder {
         } = at;
         let on_key =
             |note: &Sounding| (note.group, note.channel, note.key) == (group, channel, key);
-        let sounding = self.notes.get(..self.sounding).unwrap_or(&[]);
-        let only = named.filter(|id| sounding.iter().any(|note| on_key(note) && note.id == *id));
+        let only = named;
         self.ended = 0;
         let mut kept = 0;
         for index in 0..self.sounding {
@@ -492,8 +508,9 @@ impl Decoder {
     }
 
     /// The key a per-note message names, with its note: the one its host
-    /// named, if that one sounds there, and otherwise the newest on the key.
-    /// A detached note takes no per-note messages, so it is never named.
+    /// named, if that one sounds there, and none if not; with no name, the
+    /// newest on the key. A detached note takes no per-note messages, so it
+    /// is never named.
     fn key(&self, at: Place, key: u8) -> NoteKey {
         let Place {
             group,
@@ -519,6 +536,23 @@ impl Decoder {
             key,
             id,
         }
+    }
+
+    /// Forgets every note on `group` and `channel`.
+    fn forget(&mut self, group: Group, channel: Channel) {
+        let mut kept = 0;
+        for index in 0..self.sounding {
+            let Some(&note) = self.notes.get(index) else {
+                break;
+            };
+            if (note.group, note.channel) != (group, channel) {
+                if let Some(slot) = self.notes.get_mut(kept) {
+                    *slot = note;
+                }
+                kept = kept.saturating_add(1);
+            }
+        }
+        self.sounding = kept;
     }
 
     fn detach(&mut self, group: Group, channel: Channel, key: Key) {

@@ -3867,12 +3867,15 @@ A note is a `NoteId` from its note-on to its note-off: the host's own where its
 format names notes, which its exporter puts in the packet's `Origin::Note`,
 otherwise one the decoder makes up, with the top bit set so it never meets a
 host's. A note-off ends every note on its key, one message for each, or the note
-its host named alone, if that one sounds there. A note-off for a key with no
-note the decoder knows of still comes, under the host's id or one no note has,
-so a plugin that ends notes by key hears it. A note's own message names its
-`NoteKey`: its key, and the note its host named, if that one sounds there, or
-else the newest note sounding on it, since MIDI 2.0 lets a note's controllers
-come before its note does and gives a key's older note no more of them.
+its host named alone, under the host's id whether or not the decoder holds it.
+A note-off for a key with no note the decoder knows of still comes, under one
+no note has, so a plugin that ends notes by key hears it. All Notes Off, All
+Sound Off and the mode messages end a channel's notes within its group, as
+MIDI 2.0's channel mode messages read. A note's own message names its
+`NoteKey`: its key, and the note its host named, if that one sounds there, and
+none if not; with no name, the newest note sounding on it, since MIDI 2.0 lets
+a note's controllers come before its note does and gives a key's older note no
+more of them.
 Per-note management's detach leaves the key's notes without them until its next
 note-on. Registered parameter 0 is `BendRange`, in semitones, and a note's pitch
 comes with its note-on, as MIDI 2.0's pitch attribute, or on its own, as
@@ -3880,7 +3883,8 @@ registered per-note controller 3.
 
 A SysEx comes whole once its last packet does, from a buffer the decoder made.
 The decoder's tables are made with it, so decoding allocates nothing and never
-panics: a note past its table still sounds and is counted, and a SysEx past its
+panics: a note past its table takes the oldest's place, which is counted, so
+the newest notes are the ones a note-off finds, and a SysEx past its
 buffer, cut short, or begun on another group while one is under way is dropped
 and counted.
 

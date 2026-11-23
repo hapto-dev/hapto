@@ -238,13 +238,55 @@ fn a_note_its_host_named_keeps_that_id_and_its_note_off_ends_it_alone() {
         .map(|m| note_id(&m))
         .collect();
     assert_eq!((ended, decoder.sounding()), (vec![NoteId::hosts(7)], 1));
-    // One that names a note no longer sounding ends every note on the key,
-    // so none hangs.
+    // One that names a note the decoder does not hold comes under the
+    // host's id alone: the other note on the key sounds on, and its own
+    // note-off ends it.
     let ended: Vec<NoteId> = decoder
         .decode(&named(off(60), 7))
         .map(|m| note_id(&m))
         .collect();
+    assert_eq!((ended, decoder.sounding()), (vec![NoteId::hosts(7)], 1));
+    let ended: Vec<NoteId> = decoder
+        .decode(&named(off(60), 9))
+        .map(|m| note_id(&m))
+        .collect();
     assert_eq!((ended, decoder.sounding()), (vec![NoteId::hosts(9)], 0));
+}
+
+#[test]
+fn a_note_past_a_full_table_takes_the_oldest_notes_place() {
+    let mut decoder = Decoder::with_room(2, 0);
+    let ids: Vec<NoteId> = [60, 62, 64]
+        .map(|key| note_id(&decode(&mut decoder, on(key, 0xFFFF))[0]))
+        .to_vec();
+    assert_eq!((decoder.sounding(), decoder.dropped()), (2, 1));
+    // The newest are held, and their note-offs name them.
+    let ended = note_id(&decode(&mut decoder, off(64))[0]);
+    assert_eq!(ended, ids[2]);
+    // The oldest's comes under an id no note has, for a plugin that ends
+    // notes by key.
+    let ended = note_id(&decode(&mut decoder, off(60))[0]);
+    assert!(!ids.contains(&ended));
+    assert_eq!(decoder.sounding(), 1);
+}
+
+#[test]
+fn all_notes_off_ends_its_channels_notes_in_the_table_and_no_others() {
+    let mut decoder = Decoder::new();
+    decode(&mut decoder, on(60, 0xFFFF));
+    decode(&mut decoder, on(64, 0xFFFF));
+    // A note on the second channel.
+    decode(&mut decoder, [0x4091_3C00, 0xFFFF_0000]);
+    assert_eq!(decoder.sounding(), 3);
+    let all_off = decode(&mut decoder, [0x40B0_7B00, 0]);
+    assert!(matches!(
+        all_off[0],
+        Message::Control {
+            controller: 123,
+            ..
+        }
+    ));
+    assert_eq!(decoder.sounding(), 1, "the second channel's note sounds on");
 }
 
 #[test]

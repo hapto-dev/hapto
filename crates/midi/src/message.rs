@@ -115,7 +115,9 @@ pub struct NoteOff {
 /// MIDI 2.0 names a per-note message by its key, and lets it come before
 /// the key's note does, so a message may name a key with no note. With two
 /// notes on one key, it is for the newer: the older takes no more per-note
-/// messages, as MIDI 2.0's per-note management reads it.
+/// messages, as MIDI 2.0's per-note management reads it. A host that names
+/// its notes, as VST3 does, names the note itself, older or not, and a
+/// message for a note no longer sounding, or one detached, names none.
 ///
 /// # Examples
 ///
@@ -139,7 +141,9 @@ pub struct NoteKey {
     pub channel: Channel,
     /// The key it names.
     pub key: Key,
-    /// The newest note sounding on the key, if one is.
+    /// The note it is for: the one its host named, or else the newest
+    /// sounding on the key; `None` when that one does not sound or is
+    /// detached.
     pub id: Option<NoteId>,
 }
 

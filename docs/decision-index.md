@@ -1462,12 +1462,12 @@ move its line here; when a decision gains code, add one.
 - `crates/midi/src/lib.rs`: module
 - `crates/midi/src/values.rs`: `Key`, `Group`, `Channel`, `Program`, `Centred`, `Pedal`, `Pitch`, `NoteId`
 - `crates/midi/src/message.rs`: `Message`, `NoteOn`, `NoteOff`, `NoteKey`
-- `crates/midi/src/decoder.rs`: `Decoder`, `Decoder::decode`, `Messages`
+- `crates/midi/src/decoder.rs`: `Decoder`, `Decoder::decode`, `Messages`, `Decoder::note_on`, `Decoder::note_off`, `Decoder::forget`
 - `crates/midi/src/controller.rs`: module, `Controller`, `Address`, `ControllerValue`, `Controller::read`, `Controller::read_note`, `Controller::message`, `sent`, `number`, `name`
 - test `crates/midi/tests/controller.rs`: module
 - `crates/midi/src/midi.rs`: module, `MidiList`, `Midi`, `MidiOut`
 - `crates/midi/src/encode.rs`: module, `encode`
-- test `crates/midi/tests/decode.rs`: module, `a_note_off_ends_the_notes_its_key_has`, `a_notes_own_message_names_its_key_and_the_newest_note_on_it`, `a_sysex_too_long_cut_short_or_begun_elsewhere_is_dropped_and_counted`, `each_message_is_one_line_in_musicians_numbers`
+- test `crates/midi/tests/decode.rs`: module, `a_note_off_ends_the_notes_its_key_has`, `a_notes_own_message_names_its_key_and_the_newest_note_on_it`, `a_sysex_too_long_cut_short_or_begun_elsewhere_is_dropped_and_counted`, `each_message_is_one_line_in_musicians_numbers`, `a_note_past_a_full_table_takes_the_oldest_notes_place`, `all_notes_off_ends_its_channels_notes_in_the_table_and_no_others`
 - test `crates/midi/tests/alloc_gate.rs`: module
 
 ## Parameters
