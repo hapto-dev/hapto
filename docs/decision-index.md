@@ -669,7 +669,7 @@ move its line here; when a decision gains code, add one.
 [Record section](decisions.md#d62-the-c-interface-for-the-juce-adapter)
 
 - `crates/host/src/cabi/abi.rs`: `HaptoPacket`, `HaptoProcess`, `MIDI_OUT_1`
-- `crates/host/src/cabi/mod.rs`: `packets_in`, `send_out`
+- `crates/host/src/cabi/mod.rs`: `process`, `send_out`
 - `adapters/juce/HaptoPluginProcessor.cpp`: `addPackets`, `PluginProcessor::addMessage`, `PluginProcessor::prepareToPlay`, `PluginProcessor::processBlock`, `midiOutBytes`, `sysexRoom`
 - test `crates/host/tests/cabi_midi.rs`: module, `midi_2_in_and_a_sysex_go_through_and_back_out`
 - test `crates/host/tests/alloc_gate.rs`: `midi_through_the_c_interface_with_learn_mapped_and_armed_does_not_allocate`
@@ -794,10 +794,10 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d72-how-much-a-host-may-ask)
 
-- `crates/host/src/audio.rs`: `MAX_FRAMES`
-- `crates/host/src/cabi/abi.rs`: `MAX_FRAMES`
+- `crates/host/src/audio.rs`: `MAX_FRAMES`, `MAX_EVENTS`
+- `crates/host/src/cabi/abi.rs`: `MAX_FRAMES`, `MAX_EVENTS`
 - `crates/host/src/engine/automation.rs`: module, `POINTS_PER_PARAMETER`, `MAX_SKIPPED_QUEUES`, `Automation::new`, `Points::queue`, `Points::walking`, `Points::skip`
-- `crates/host/src/engine/mod.rs`: `MAX_EVENTS`, `Setup::new`
+- `crates/host/src/engine/mod.rs`: `Setup::new`
 - `crates/host/src/state.rs`: `MAX_STATE_BYTES`, `SavedState::load`
 - `crates/host/src/vst3/component.rs`: `read_changes`
 - `crates/host/src/vst3/stream.rs`: `read_all`

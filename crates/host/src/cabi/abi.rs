@@ -5,6 +5,8 @@
 use std::ffi::{c_char, c_void};
 use std::marker::{PhantomData, PhantomPinned};
 
+use crate::Event;
+
 /// A struct as the header declares it.
 #[derive(Debug)]
 pub(super) struct CStruct {
@@ -270,6 +272,10 @@ c_consts! {
     /// this many, and one of 0 for 1,024 frames; a longer block plays in
     /// pieces.
     pub const MAX_FRAMES = crate::MAX_FRAMES as u32 => "HAPTO_MAX_FRAMES";
+    /// The most MIDI packets one block carries each way: room past it in
+    /// `midi_in` or `midi_out` goes unused, and a block's packets past it
+    /// are dropped.
+    pub const MAX_EVENTS = crate::MAX_EVENTS as u32 => "HAPTO_MAX_EVENTS";
     /// `tail` answers this when the output falls silent with the input.
     pub const TAIL_NONE = 0 => "HAPTO_TAIL_NONE";
     /// `tail` answers this when the output may never fall silent.
@@ -553,9 +559,10 @@ c_structs! {
         pub frames: u32,
         /// How many packets `midi_in` holds.
         pub midi_in_count: u32,
-        /// The block's MIDI in: `midi_in_count` packets in time order, MIDI
-        /// 1.0 or MIDI 2.0 as the host sends it, which the plugin upgrades;
-        /// null for none. A packet at or past the block's end plays at its
+        /// The block's MIDI in: `midi_in_count` packets, MIDI 1.0 or MIDI 2.0
+        /// as the host sends it, which the plugin upgrades; null for none.
+        /// They may come in any order, but those at one frame are read in
+        /// the order given. A packet at or past the block's end plays at its
         /// last frame.
         pub midi_in: *const HaptoPacket,
         /// Room for the block's MIDI out: `midi_out_capacity` packets, which
@@ -810,6 +817,31 @@ impl HaptoStr {
         HaptoStr {
             data: text.as_ptr().cast(),
             length: text.len(),
+        }
+    }
+}
+
+impl HaptoPacket {
+    /// No packet: frame 0 and every word 0, to fill a caller's room with.
+    pub const NONE: HaptoPacket = HaptoPacket {
+        frame: 0,
+        words: [0; 4],
+    };
+}
+
+impl From<HaptoPacket> for Event {
+    /// The packet at its frame, sent as it is.
+    fn from(packet: HaptoPacket) -> Event {
+        Event::new(packet.frame, packet.words)
+    }
+}
+
+impl From<Event> for HaptoPacket {
+    /// The event's packet at its frame; where it came from stays behind.
+    fn from(event: Event) -> HaptoPacket {
+        HaptoPacket {
+            frame: event.offset,
+            words: event.words,
         }
     }
 }

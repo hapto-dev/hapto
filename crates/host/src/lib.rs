@@ -166,7 +166,7 @@ pub mod vst3;
 // Inlined: `Event` and `EventList` are `hapto_ump`'s, shown here as this
 // crate's, so a plugin needs no `hapto_ump` import for its blocks.
 #[doc(inline)]
-pub use audio::{Block, Event, EventList, MAX_FRAMES, ProcessSetup, Status};
+pub use audio::{Block, Event, EventList, MAX_EVENTS, MAX_FRAMES, ProcessSetup, Status};
 pub use boundary::ParentWindow;
 pub use editor::{Editor, Size};
 #[cfg(any(feature = "vst3", feature = "cabi", feature = "standalone"))]

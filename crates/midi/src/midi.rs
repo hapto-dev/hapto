@@ -129,7 +129,7 @@ impl MidiList {
         room.clear();
         room.dropped = u64::from(block.dropped());
         let decoder_drops = self.decoder.dropped();
-        let last = u32::try_from(frames.saturating_sub(1)).unwrap_or(u32::MAX);
+        let last = Event::last_offset(frames);
         let mut floor = 0;
         for event in block.as_slice() {
             let frame = event.offset.min(last).max(floor);

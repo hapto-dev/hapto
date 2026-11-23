@@ -403,9 +403,10 @@ impl<P: Plugin> StandaloneAudio<P> {
     /// status; `None` for a block that did not play, whose outputs are
     /// silence.
     ///
-    /// `midi` is the app's packets for the block, each at a frame of it and
-    /// in time order, MIDI 1.0 or MIDI 2.0: the engine upgrades MIDI 1.0 as
-    /// an exporter's MIDI arrives. A packet at or past the block's end plays
+    /// `midi` is the app's packets for the block, each at a frame of it, MIDI
+    /// 1.0 or MIDI 2.0: the engine upgrades MIDI 1.0 as an exporter's MIDI
+    /// arrives. They may come in any order, but those at one frame are read
+    /// in the order given. A packet at or past the block's end plays
     /// at its last frame, and one past the room
     /// [`ProcessSetup::max_events`](crate::ProcessSetup::max_events) gives is
     /// dropped and counted.
@@ -463,11 +464,7 @@ impl<P: Plugin> StandaloneAudio<P> {
                 &in_ptrs[..ins.len()],
                 &out_ptrs[..outs_len],
                 |_| {},
-                |into| {
-                    for &event in midi {
-                        into.push(event);
-                    }
-                },
+                |into| into.extend(midi.iter().copied()),
                 sent,
             )
         };

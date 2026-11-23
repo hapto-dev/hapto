@@ -169,7 +169,24 @@ impl Event {
         }
     }
 
-    /// Returns the packet's message type.
+    /// The offset of the last frame of a block of `frames` frames, where a
+    /// packet at or past the block's end goes: 0 for a block of none, and
+    /// the last offset there is for a block longer than offsets reach.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hapto_ump::Event;
+    ///
+    /// assert_eq!(Event::last_offset(512), 511);
+    /// assert_eq!(Event::last_offset(0), 0);
+    /// ```
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
+    pub fn last_offset(frames: usize) -> u32 {
+        u32::try_from(frames.saturating_sub(1)).unwrap_or(u32::MAX)
+    }
+
+    /// The packet's message type.
     ///
     /// # Examples
     ///

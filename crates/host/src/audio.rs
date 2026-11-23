@@ -13,6 +13,21 @@ use crate::{Midi, MidiOut};
 /// setup that promises more for this many, and a longer block plays in pieces.
 pub const MAX_FRAMES: usize = 65_536;
 
+/// The most MIDI packets one block carries in, and the most events it
+/// sends, for a plugin that takes or sends MIDI: the room every exporter
+/// builds, and the C interface's `HAPTO_MAX_EVENTS`.
+///
+/// # Examples
+///
+/// ```
+/// use hapto_host::{EventList, MAX_EVENTS};
+///
+/// // Room for a block's MIDI, as an app that feeds a plugin keeps it.
+/// let block = EventList::with_capacity(MAX_EVENTS);
+/// assert!(block.as_slice().is_empty());
+/// ```
+pub const MAX_EVENTS: usize = 2048;
+
 /// How the host will run the processor.
 ///
 /// The main bus only. Open: a sidechain or any other extra bus is not

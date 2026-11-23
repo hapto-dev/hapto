@@ -103,11 +103,6 @@ fn packet(frame: u32, first: u32) -> HaptoPacket {
     }
 }
 
-const EMPTY: HaptoPacket = HaptoPacket {
-    frame: 0,
-    words: [0; 4],
-};
-
 /// One block of 16 frames with `midi_in`, room for `room` packets out, and
 /// what came out.
 fn play<P: Plugin>(
@@ -117,7 +112,7 @@ fn play<P: Plugin>(
     midi_1_out: bool,
 ) -> Vec<HaptoPacket> {
     let (mut left, mut right) = ([0.0_f32; 16], [0.0_f32; 16]);
-    let mut out = vec![EMPTY; room];
+    let mut out = vec![HaptoPacket::NONE; room];
     let midi = MidiBlock {
         midi_in,
         midi_out: &mut out,

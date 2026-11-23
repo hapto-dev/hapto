@@ -15,7 +15,7 @@ use std::time::Duration;
 
 use hapto_host::layout::Width;
 use hapto_host::standalone::{MAX_CHANNELS, Standalone, StandaloneAudio};
-use hapto_host::{Event, EventList, Plugin};
+use hapto_host::{Event, EventList, MAX_EVENTS, Plugin};
 use hapto_midi_devices::{InputsReader, Instant, OutputsWriter};
 
 use crate::settings::Blocks;
@@ -28,10 +28,6 @@ const PART: usize = 1024;
 
 /// How many of the latest blocks' lengths a [`Plan`] keeps.
 pub(crate) const RECENT: usize = 40;
-
-/// The most MIDI packets one block carries from the app's inputs: an
-/// exporter's room for a block's MIDI.
-const MIDI_ROOM: usize = 2048;
 
 /// What the app plays its blocks through: a plugin's audio side, in any
 /// format.
@@ -339,7 +335,7 @@ impl<R: Render> Player<R> {
     pub(crate) fn with_midi(mut self, reader: InputsReader) -> Self {
         self.midi = Some(MidiIn {
             reader,
-            block: EventList::with_capacity(MIDI_ROOM),
+            block: EventList::with_capacity(MAX_EVENTS),
         });
         self
     }

@@ -94,19 +94,34 @@ pub(super) fn status_code(status: Status) -> u32 {
     }
 }
 
-/// A host's list of channel pointers.
+/// A list a host lends: `count` items at `items`.
 ///
 /// # Safety
 ///
-/// `channels` is null, or points to `count` pointers that stay valid for
-/// reads, and unchanged, for `'a`.
-pub(super) unsafe fn channel_list<'a>(channels: *const *mut f32, count: u32) -> &'a [*mut f32] {
-    if channels.is_null() || count == 0 {
+/// `items` is null, or points to `count` items that stay valid for reads,
+/// and unchanged, for `'a`.
+pub(super) unsafe fn lent<'a, T>(items: *const T, count: u32) -> &'a [T] {
+    if items.is_null() || count == 0 {
         return &[];
     }
-    // SAFETY: the caller's contract, with `channels` non-null and `count`
+    // SAFETY: the caller's contract, with `items` non-null and `count`
     // above 0 here.
-    unsafe { std::slice::from_raw_parts(channels, count as usize) }
+    unsafe { std::slice::from_raw_parts(items, count as usize) }
+}
+
+/// Room a host lends to write: `count` items at `items`.
+///
+/// # Safety
+///
+/// `items` is null, or points to `count` items that stay valid for writes,
+/// and touched by nothing else, for `'a`.
+pub(super) unsafe fn lent_mut<'a, T>(items: *mut T, count: u32) -> &'a mut [T] {
+    if items.is_null() || count == 0 {
+        return &mut [];
+    }
+    // SAFETY: the caller's contract, with `items` non-null and `count`
+    // above 0 here.
+    unsafe { std::slice::from_raw_parts_mut(items, count as usize) }
 }
 
 /// Zeroes every output channel.
@@ -119,8 +134,8 @@ pub(super) unsafe fn channel_list<'a>(channels: *const *mut f32, count: u32) -> 
 pub(super) unsafe fn silence(block: &HaptoProcess) {
     let frames = block.frames as usize;
     // SAFETY: the caller's contract gives `output_count` pointers for the
-    // call, as `channel_list` requires.
-    for &channel in unsafe { channel_list(block.outputs, block.output_count) } {
+    // call, as `lent` requires.
+    for &channel in unsafe { lent(block.outputs, block.output_count) } {
         if !channel.is_null() {
             // SAFETY: the caller's contract: a non-null output channel is
             // valid for writing `frames` floats.

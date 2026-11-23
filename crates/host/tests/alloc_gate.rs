@@ -314,7 +314,7 @@ fn midi_through_the_c_interface_with_learn_mapped_and_armed_does_not_allocate() 
         packet(4, 0x3032_0405, 0),
         packet(5, 0x4080_3C00, 0x8000_0000),
     ];
-    let mut out = [packet(0, 0, 0); 64];
+    let mut out = [HaptoPacket::NONE; 64];
     let (mut left, mut right) = (vec![0.25f32; 600], vec![-0.25f32; 600]);
     let mut sent = 0;
     assert_no_allocations(

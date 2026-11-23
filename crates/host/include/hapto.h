@@ -102,6 +102,11 @@ extern "C" {
 // pieces.
 #define HAPTO_MAX_FRAMES 65536u
 
+// The most MIDI packets one block carries each way: room past it in
+// `midi_in` or `midi_out` goes unused, and a block's packets past it
+// are dropped.
+#define HAPTO_MAX_EVENTS 2048u
+
 // `tail` answers this when the output falls silent with the input.
 #define HAPTO_TAIL_NONE 0u
 
@@ -179,9 +184,10 @@ typedef struct HaptoProcess {
     uint32_t frames;
     // How many packets `midi_in` holds.
     uint32_t midi_in_count;
-    // The block's MIDI in: `midi_in_count` packets in time order, MIDI
-    // 1.0 or MIDI 2.0 as the host sends it, which the plugin upgrades;
-    // null for none. A packet at or past the block's end plays at its
+    // The block's MIDI in: `midi_in_count` packets, MIDI 1.0 or MIDI 2.0
+    // as the host sends it, which the plugin upgrades; null for none.
+    // They may come in any order, but those at one frame are read in
+    // the order given. A packet at or past the block's end plays at its
     // last frame.
     const HaptoPacket* midi_in;
     // Room for the block's MIDI out: `midi_out_capacity` packets, which

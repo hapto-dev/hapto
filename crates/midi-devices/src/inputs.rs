@@ -306,9 +306,8 @@ impl InputsReader {
             }
             lane.head = ready(&lane.ring, now);
         }
-        let last_frame = u32::try_from(frames.saturating_sub(1)).unwrap_or(u32::MAX);
         for lane in &mut self.lanes {
-            lane.upgrade.end_block(last_frame, out);
+            lane.upgrade.end_block(Event::last_offset(frames), out);
         }
     }
 
@@ -372,13 +371,14 @@ fn ready(ring: &Consumer, now: Instant) -> Option<(Instant, usize)> {
 fn frame(at: Instant, last: Instant, now: Instant, frames: usize) -> u32 {
     let span = u128::from(now.nanos().saturating_sub(last.nanos()));
     let into = u128::from(at.nanos().saturating_sub(last.nanos()));
-    let last_frame = frames.saturating_sub(1);
     // A span of nothing puts everything at the first frame.
     let frame = into
         .saturating_mul(frames as u128)
         .checked_div(span)
-        .map_or(0, |frame| usize::try_from(frame).unwrap_or(last_frame));
-    u32::try_from(frame.min(last_frame)).unwrap_or(u32::MAX)
+        .unwrap_or(0);
+    u32::try_from(frame)
+        .unwrap_or(u32::MAX)
+        .min(Event::last_offset(frames))
 }
 
 #[cfg(test)]

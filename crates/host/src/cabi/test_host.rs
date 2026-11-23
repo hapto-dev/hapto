@@ -628,7 +628,9 @@ impl AudioSide<'_> {
             output_list.as_ptr(),
             outputs.len(),
             frames,
+            MidiBlock::default(),
         )
+        .0
     }
 
     /// As [`TestHost::process_in_place`], on this side's thread.
@@ -637,12 +639,8 @@ impl AudioSide<'_> {
     ///
     /// As [`process`](Self::process).
     pub fn process_in_place(&self, channels: &mut [&mut [f32]], frames: usize) -> u32 {
-        let midi = MidiBlock {
-            midi_in: &[],
-            midi_out: &mut [],
-            midi_1_out: false,
-        };
-        self.process_with_midi(channels, frames, midi).0
+        self.process_with_midi(channels, frames, MidiBlock::default())
+            .0
     }
 
     /// As [`TestHost::process_with_midi`], on this side's thread.
@@ -662,25 +660,15 @@ impl AudioSide<'_> {
         for (slot, channel) in list.iter_mut().zip(channels.iter_mut()) {
             *slot = channel.as_mut_ptr();
         }
-        // Not 0, so a block that does not answer how many it wrote shows.
-        let mut sent = u32::MAX;
-        let block = HaptoProcess {
-            inputs: list.as_ptr().cast::<*const f32>(),
-            outputs: list.as_ptr(),
-            input_count: channels.len() as u32,
-            output_count: channels.len() as u32,
-            frames: u32::try_from(frames).expect("frames fit"),
-            midi_in_count: u32::try_from(midi.midi_in.len()).expect("packets fit"),
-            midi_in: midi.midi_in.as_ptr(),
-            midi_out: midi.midi_out.as_mut_ptr(),
-            midi_out_count: &raw mut sent,
-            midi_out_capacity: u32::try_from(midi.midi_out.len()).expect("room fits"),
-            flags: if midi.midi_1_out { MIDI_OUT_1 } else { 0 },
-        };
-        // SAFETY: as `run` says. The MIDI lists are borrowed for this call,
-        // the room out mutably, and `sent` lives to its end.
-        let status = unsafe { (self.table.process)(self.instance, &block) };
-        (status, sent as usize)
+        let inputs = list.as_ptr().cast::<*const f32>();
+        self.run(
+            inputs,
+            channels.len(),
+            list.as_ptr(),
+            channels.len(),
+            frames,
+            midi,
+        )
     }
 
     /// Writes a host's 0..1 value, as JUCE's wrappers do on the audio
@@ -691,6 +679,8 @@ impl AudioSide<'_> {
         unsafe { (self.table.set)(self.instance, index, normalized) }
     }
 
+    /// One block through the plugin's table, with `midi`: the status, and
+    /// how many packets the plugin wrote.
     fn run(
         &self,
         inputs: *const *const f32,
@@ -698,22 +688,32 @@ impl AudioSide<'_> {
         outputs: *const *mut f32,
         output_count: usize,
         frames: usize,
-    ) -> u32 {
+        midi: MidiBlock<'_>,
+    ) -> (u32, usize) {
+        // Not 0, so a block that does not answer how many it wrote shows.
+        let mut sent = u32::MAX;
         let block = HaptoProcess {
             inputs,
             outputs,
             input_count: input_count as u32,
             output_count: output_count as u32,
             frames: u32::try_from(frames).expect("frames fit"),
-            ..HaptoProcess::NONE
+            midi_in_count: u32::try_from(midi.midi_in.len()).expect("packets fit"),
+            midi_in: midi.midi_in.as_ptr(),
+            midi_out: midi.midi_out.as_mut_ptr(),
+            midi_out_count: &raw mut sent,
+            midi_out_capacity: u32::try_from(midi.midi_out.len()).expect("room fits"),
+            flags: if midi.midi_1_out { MIDI_OUT_1 } else { 0 },
         };
         // SAFETY: `self.instance` is the host's live instance (see `Send`
         // above). The callers above fill each list with the given count of
         // pointers into buffers of at least `frames` floats. They borrow the
         // buffers for this call, mutably for the outputs, so nothing else
         // touches them. In place, one buffer is in both lists, which the
-        // header allows.
-        unsafe { (self.table.process)(self.instance, &block) }
+        // header allows. The MIDI lists are borrowed for this call, the room
+        // out mutably, and `sent` lives to its end.
+        let status = unsafe { (self.table.process)(self.instance, &block) };
+        (status, sent as usize)
     }
 }
 
@@ -805,7 +805,7 @@ unsafe extern "C" fn collect(context: *mut c_void, data: *const u8, length: usiz
 /// let (mut left, mut right) = ([0.5_f32; 4], [0.5_f32; 4]);
 /// // A MIDI 1.0 note-on at frame 2, and room for four packets back.
 /// let note = HaptoPacket { frame: 2, words: [0x2090_3C7F, 0, 0, 0] };
-/// let mut room = [HaptoPacket { frame: 0, words: [0; 4] }; 4];
+/// let mut room = [HaptoPacket::NONE; 4];
 /// let midi = MidiBlock {
 ///     midi_in: &[note],
 ///     midi_out: &mut room,
@@ -816,9 +816,12 @@ unsafe extern "C" fn collect(context: *mut c_void, data: *const u8, length: usiz
 /// // The gain plugin reads no MIDI, and sends none.
 /// assert_eq!(sent, 0);
 /// ```
-#[derive(Debug)]
+///
+/// The default is no MIDI either way.
+#[derive(Debug, Default)]
 pub struct MidiBlock<'a> {
-    /// The packets in, in time order.
+    /// The packets in. They may come in any order, but those at one frame
+    /// are read in the order given.
     pub midi_in: &'a [HaptoPacket],
     /// The room for the packets out, which the plugin writes from the
     /// first.

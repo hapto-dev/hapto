@@ -191,7 +191,9 @@ impl<'a, L: Layout> Iterator for Spans<'a, L> {
             .between(self.at.saturating_add(1), usize::MAX)
             .first_frame()
             .map_or(left, |frame| frame.saturating_add(1));
-        let length = next.min(self.most).min(left).max(1);
+        // At least a frame, since each bound is: `at_most` keeps the most
+        // above 0, and the rest is never empty. So every span moves on.
+        let length = next.min(self.most).min(left);
         let (audio, later) = rest.split_at(length);
         let start = self.at;
         let midi = self.midi.between(start, start.saturating_add(1));

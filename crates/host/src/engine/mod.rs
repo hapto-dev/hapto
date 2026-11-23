@@ -60,7 +60,9 @@ use crate::boundary::Patience;
 use crate::boundary::{AudioSlot, Lent, MainThread, Refused};
 use crate::faults::{Fault, Faults, report_refused_declarations};
 use crate::layout::Width;
-use crate::{Driver, LoadError, MAX_FRAMES, Parts, Plugin, SavedState, Tail, first_width, widths};
+use crate::{
+    Driver, LoadError, MAX_EVENTS, MAX_FRAMES, Parts, Plugin, SavedState, Tail, first_width, widths,
+};
 
 /// What `tail` answers for a plugin whose output falls silent with its
 /// input; VST3's `kNoTail` and the C interface's `HAPTO_TAIL_NONE`.
@@ -68,10 +70,6 @@ pub(crate) const TAIL_NONE: u32 = 0;
 /// What `tail` answers for a plugin that may never fall silent; VST3's
 /// `kInfiniteTail` and the C interface's `HAPTO_TAIL_INFINITE`.
 pub(crate) const TAIL_INFINITE: u32 = u32::MAX;
-
-/// The most MIDI events one block carries each way, for a plugin that takes
-/// or sends MIDI.
-const MAX_EVENTS: usize = 2048;
 
 /// How long a main-thread call waits for a plugin bound to no thread that
 /// another thread's call has on loan, before it is refused.

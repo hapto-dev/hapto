@@ -196,10 +196,19 @@ impl MidiIn<'_> {
     }
 }
 
+impl Extend<Event> for MidiIn<'_> {
+    /// Adds each packet as [`push`](Self::push) does.
+    fn extend<I: IntoIterator<Item = Event>>(&mut self, events: I) {
+        for event in events {
+            self.push(event);
+        }
+    }
+}
+
 /// Where a packet goes among those at its frame, before the order it came
 /// in: a MIDI 1.0 parameter number's controllers in the order a data entry
-/// needs them.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// needs them, which is the order of the variants.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(
     not(feature = "vst3"),
     expect(dead_code, reason = "VST3 alone hands controllers over apart")
@@ -214,12 +223,12 @@ pub(crate) enum Rank {
     Rest,
 }
 
-/// The block's MIDI in as the exporter hands it over: each packet keyed by
-/// its frame, then its rank there, then the order it came in, so no two
-/// keys are equal.
+/// The block's MIDI in as the exporter hands it over: each packet with its
+/// rank at its frame and the order it came in, so that it sorts by its
+/// frame, then its rank, then that order, and no two sort as equal.
 #[derive(Debug)]
 struct Arrivals {
-    packets: Vec<(u64, Event)>,
+    packets: Vec<(Event, Rank, usize)>,
     /// The packets past the room.
     dropped: u32,
 }
@@ -232,21 +241,11 @@ impl Arrivals {
         }
     }
 
-    /// Where the key's rank begins: two bits below the frame.
-    const RANK: u32 = 30;
-
     /// Adds `event` at `rank` while there is room, which never allocates.
     fn push(&mut self, event: Event, rank: Rank) {
         if self.packets.len() < self.packets.capacity() {
-            // Below the rank, since a block's room is far smaller.
-            let order = u64::try_from(self.packets.len()).unwrap_or(0) & ((1 << Self::RANK) - 1);
-            let rank = match rank {
-                Rank::Address => 0_u64,
-                Rank::HighByte => 1,
-                Rank::Rest => 2,
-            };
-            let key = u64::from(event.offset).wrapping_shl(32) | rank << Self::RANK | order;
-            self.packets.push((key, event));
+            let order = self.packets.len();
+            self.packets.push((event, rank, order));
         } else {
             self.dropped = self.dropped.saturating_add(1);
         }
@@ -275,14 +274,15 @@ fn fill<R>(audio: &mut Active<R>, frames: usize, midi: impl FnOnce(&mut MidiIn<'
     // No two keys are equal, so a sort that need not keep equal ones in
     // order, which sorts in place and allocates nothing, keeps them as
     // they came.
-    arrivals.packets.sort_unstable_by_key(|&(key, _)| key);
+    arrivals
+        .packets
+        .sort_unstable_by_key(|&(event, rank, order)| (event.offset, rank, order));
     events.clear();
     events.add_dropped(arrivals.dropped);
-    for (_, event) in &arrivals.packets {
+    for (event, ..) in &arrivals.packets {
         upgrade.event(event, events);
     }
-    let last = u32::try_from(frames.saturating_sub(1)).unwrap_or(u32::MAX);
-    upgrade.end_block(last, events);
+    upgrade.end_block(Event::last_offset(frames), events);
 }
 
 /// What a block found in the audio slot.
@@ -422,13 +422,11 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
         let _audio = audio_thread::enter();
         // SAFETY: this function's contract, passed on whole.
         let block = || unsafe { self.play(frames, inputs, outputs, automation, midi, sent) };
-        panic::catch_unwind(AssertUnwindSafe(block)).unwrap_or_else(|_| {
-            self.faults.record(Fault::Panic);
-            Outcome::Silent
-        })
+        self.faults.guard(Outcome::Silent, block)
     }
 
-    /// The block, with only the processor's panics caught.
+    /// The block, with the processor's panics caught, and those of `midi`
+    /// and `sent`.
     ///
     /// # Safety
     ///
@@ -461,29 +459,19 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
             }
             // The exporter's code, not the processor's: a panic in it
             // silences the block without faulting the processor.
-            let filled = panic::catch_unwind(AssertUnwindSafe(|| fill(audio, frames, midi)));
-            if filled.is_err() {
-                return None;
+            if self.faults.caught(|| fill(audio, frames, midi)) {
+                return Outcome::Silent;
             }
             // SAFETY: this function's contract.
             let status = unsafe { pieces(audio, frames, inputs, outputs) };
             // The exporter's code too: the block has played, so a panic in
             // it is counted and the block stands.
             let out = audio.out_events.as_slice();
-            let handed = panic::catch_unwind(AssertUnwindSafe(|| sent(out)));
-            Some((status, handed.is_ok()))
+            self.faults.caught(|| sent(out));
+            Outcome::Played(status)
         });
         match held {
-            Held::Ran(Some((status, handed))) => {
-                if !handed {
-                    self.faults.record(Fault::Panic);
-                }
-                Outcome::Played(status)
-            }
-            Held::Ran(None) => {
-                self.faults.record(Fault::Panic);
-                Outcome::Silent
-            }
+            Held::Ran(outcome) => outcome,
             Held::Panicked => {
                 self.faults.record(Fault::AudioPanic);
                 Outcome::Silent
@@ -560,7 +548,7 @@ unsafe fn pieces<R: Processor>(
             })
         };
         let start = u32::try_from(offset).unwrap_or(u32::MAX);
-        let last = u32::try_from(length.saturating_sub(1)).unwrap_or(u32::MAX);
+        let last = Event::last_offset(length);
         for event in out_events.as_mut_slice().iter_mut().skip(sent) {
             event.offset = event.offset.min(last).saturating_add(start);
         }
