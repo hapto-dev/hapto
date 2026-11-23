@@ -2230,11 +2230,12 @@ captured is told at the next one, and a load is no change to tell there either
 what any tick costs when nothing changed. A panic in it, from plugin code it
 runs such as a saved value's serialisation, counts as a fault and the activation
 goes on from what the tick reached, so a bug there costs the rest of one tick,
-as at an idle, and not the activation. A participant that is busy then, held by
-an editor's code that reached the host, keeps its section owed as at any tick:
-the processor is built from what it held, the load's parameters made at run time
-wait with it, and the next tick applies the load. An engine bound to no thread
-holds no driver, so nothing is ticked there.
+as at an idle, and not the activation. Learn borrowed then is the one exception,
+below. A participant that is busy then, held by an editor's code that reached
+the host, keeps its section owed as at any tick: the processor is built from
+what it held, the load's parameters made at run time wait with it, and the next
+tick applies the load. An engine bound to no thread holds no driver, so nothing
+is ticked there.
 
 Open: a load made while the plugin is active reaches a running processor only
 through what it reads each block: the listed parameters at once, a parameter
@@ -2257,9 +2258,10 @@ controller arrived in, and learn counts a host's blocks, which times its wait
 for the second half of a 14-bit pair. In a block that plays in pieces, a
 controller in a later piece applies from the block's start, as the host's
 automation does. A plugin with learn off, one that dropped its parts, and so
-a `Send` one, has none. Learn borrowed at the take panics inside the
-exporter's guard, and the activation fails with a fault, rather than going on
-without learn. `Parts` hands out no audio side. `Parts::learn` still lends
+a `Send` one, has none. Learn borrowed at an activation panics twice: at the
+tick's poll, which is contained and counted, and at the take, inside the
+exporter's guard, so the activation fails, with two faults, rather than going
+on without learn. `Parts` hands out no audio side. `Parts::learn` still lends
 `Learn`, whose `replace_audio` would retire the engine's; its doc says so. A
 test with no host takes one through its `Driver` and runs it before each
 block it hands the processor.

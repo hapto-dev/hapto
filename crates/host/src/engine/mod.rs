@@ -675,7 +675,10 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
     /// at any tick. The processor is then built from what the participant
     /// held, and the next tick applies the load. A panic in the parts' tick,
     /// in a saved value's serialisation say, counts as a fault and the
-    /// activation goes on, building from what the tick reached.
+    /// activation goes on, building from what the tick reached. Learn
+    /// already borrowed as the activation starts is the exception: the tick
+    /// panics at learn's poll, the take of learn's audio side panics on the
+    /// same borrow, and the activation is refused with a second fault.
     pub(crate) fn activate(&self, main: &Main<P, H>, setup: Setup, layout: Width) -> bool {
         if !widths::<P>().contains(&layout) {
             return false;
