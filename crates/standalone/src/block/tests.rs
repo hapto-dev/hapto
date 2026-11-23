@@ -358,3 +358,37 @@ fn at_frames_each_blocks_midi_is_due_where_its_frames_fall_in_the_devices_buffer
     // Downgraded, as a device takes it.
     assert_eq!(taken[0].1[0], 0x2090_3C7F);
 }
+
+#[test]
+fn at_frames_the_spacing_holds_across_a_buffers_parts_and_its_queue() {
+    let plan = Plan::new(Blocks::Fixed, Signal::Silence);
+    let (mut outputs, writer) = outputs(64);
+    outputs.set_timing(hapto_midi_devices::Timing::AtFrames);
+    outputs.take(0);
+    let mut player =
+        Player::new(Sender, Width::STEREO, 2, 48_000.0, 64, plan).with_midi_out(writer);
+    let frames = |count: u64| count * 1_000_000_000 / 48_000;
+    let asked = 1_000_000_000;
+    // A buffer of 2048 frames, two parts of 1024: 32 blocks of 64.
+    let mut long = vec![0.0_f32; 2048 * 2];
+    player.play_at(&mut long, Instant::from_nanos(asked));
+    // Two of 100 frames, each asked as the last ran out: the queue carries
+    // what a block of 64 leaves over.
+    let mut short = vec![0.0_f32; 100 * 2];
+    player.play_at(&mut short, Instant::from_nanos(asked + frames(2048)));
+    player.play_at(&mut short, Instant::from_nanos(asked + frames(2148)));
+    let dues: Vec<u64> = outputs
+        .take(0)
+        .expect("no device there")
+        .iter()
+        .map(|(at, _)| at.nanos())
+        .collect();
+    assert_eq!(dues.len(), 36);
+    for (index, &due) in (0_u64..).zip(&dues) {
+        let expected = asked + frames(64 * index);
+        assert!(
+            due.abs_diff(expected) <= 2,
+            "block {index}: {due} not {expected}"
+        );
+    }
+}

@@ -21,13 +21,6 @@ pub enum Direction {
 }
 
 impl Direction {
-    #[cfg_attr(
-        all(not(windows), not(test)),
-        expect(
-            dead_code,
-            reason = "only a backend names a device, and this system has none"
-        )
-    )]
     fn tag(self) -> &'static str {
         match self {
             Direction::Input => "in",
@@ -62,13 +55,6 @@ pub struct DeviceId(String);
 impl DeviceId {
     /// The id of the `place`th device, from 0, whose backend names it by
     /// `key` in `direction`.
-    #[cfg_attr(
-        all(not(windows), not(test)),
-        expect(
-            dead_code,
-            reason = "only a backend names a device, and this system has none"
-        )
-    )]
     pub(crate) fn new(direction: Direction, key: &str, place: usize) -> DeviceId {
         DeviceId(format!("{}:{key}#{place}", direction.tag()))
     }
@@ -105,19 +91,23 @@ pub struct Device {
 }
 
 impl Device {
-    #[cfg_attr(
-        all(not(windows), not(test)),
-        expect(
-            dead_code,
-            reason = "only a backend names a device, and this system has none"
-        )
-    )]
     pub(crate) fn new(id: DeviceId, name: String, direction: Direction) -> Device {
         Device {
             id,
             name,
             direction,
         }
+    }
+
+    /// A device named `name` that no system lists, for another crate's tests
+    /// of what it does with one.
+    #[doc(hidden)]
+    pub fn for_tests(name: &str, direction: Direction) -> Device {
+        Device::new(
+            DeviceId::new(direction, name, 0),
+            name.to_owned(),
+            direction,
+        )
     }
 
     /// What names it from one look at the list to the next.

@@ -1,13 +1,25 @@
 //! The app's MIDI routing with no device: filters set and changed, and what
 //! a change opens and closes.
 
+use hapto_midi_devices::Direction;
+
 use super::*;
+
+fn keys() -> Device {
+    Device::for_tests("Keys", Direction::Input)
+}
+
+fn synth() -> Device {
+    Device::for_tests("Synth", Direction::Output)
+}
 
 #[test]
 fn every_input_and_no_output_by_default_and_each_change_is_counted() {
     let midi = MidiDevices::new();
-    let (changes, _, _) = midi.filters();
+    let (changes, inputs, outputs) = midi.filters();
     assert_eq!(changes, 0);
+    assert!(inputs(&keys()), "every input");
+    assert!(!outputs(&synth()), "no output");
     midi.set_outputs(|_| true);
     midi.set_inputs(|_| false);
     assert_eq!(midi.timing(), hapto_midi_devices::Timing::Immediate);
@@ -43,12 +55,10 @@ fn a_clone_reaches_the_same_routing_from_another_thread() {
         .expect("the other thread");
     let (changes, _, outputs) = midi.filters();
     assert_eq!(changes, 1);
+    assert!(outputs(&synth()), "the other thread's filter");
     // Called with no lock held, a filter may reach the routing itself.
     let reaching = midi.clone();
     midi.set_inputs(move |_| reaching.open().is_empty());
     let (_, inputs, _) = midi.filters();
-    for device in hapto_midi_devices::Devices::new().inputs() {
-        assert!(inputs(device));
-        assert!(outputs(device));
-    }
+    assert!(inputs(&keys()), "no deadlock, and nothing open");
 }
