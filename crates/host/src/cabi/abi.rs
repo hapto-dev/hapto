@@ -87,6 +87,12 @@ impl<T: CType> CType for *const T {
     }
 }
 
+impl<T: CType, const N: usize> CType for [T; N] {
+    fn declare(name: &str, _: &[&str]) -> String {
+        format!("{}[{N}]", T::declare(name, &[]))
+    }
+}
+
 impl<T: CType> CType for *mut T {
     fn declare(name: &str, _: &[&str]) -> String {
         named(&format!("{}*", T::declare("", &[])), name)
@@ -227,7 +233,11 @@ c_consts! {
     /// The interface's version: the adapter refuses a plugin built against
     /// another. The header and the plugin are built from one commit, so it
     /// moves only when the interface does.
-    pub const ABI_VERSION = 2 => "HAPTO_ABI_VERSION";
+    pub const ABI_VERSION = 3 => "HAPTO_ABI_VERSION";
+    /// In `HaptoProcess`'s `flags`: the caller takes MIDI 1.0 out alone, as
+    /// JUCE's `MidiBuffer` does, so the plugin downgrades what it sends, by
+    /// the specification's Default Translation.
+    pub const MIDI_OUT_1 = 1 => "HAPTO_MIDI_OUT_1";
     /// A parameter whose value is a number in a range, continuous or
     /// stepped; a stepped range stays continuous to the host.
     pub const KIND_CONTINUOUS = 0 => "HAPTO_KIND_CONTINUOUS";
@@ -472,8 +482,29 @@ c_structs! {
         pub outputs: u32,
     }
 
-    /// One block of audio. A host processing in place passes the same
-    /// buffers in both lists.
+    /// One packet of a block's MIDI: a Universal MIDI Packet at a frame of
+    /// the block.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hapto_host::cabi::HaptoPacket;
+    ///
+    /// // A MIDI 1.0 note-on at frame 16, as a MIDI 1.0 host's byte 0x90 0x3C
+    /// // 0x7F becomes.
+    /// let note = HaptoPacket { frame: 16, words: [0x2090_3C7F, 0, 0, 0] };
+    /// assert_eq!(note.words[0] >> 28, 2, "message type 2: MIDI 1.0");
+    /// ```
+    pub struct HaptoPacket {
+        /// The frame of the block it is at, from 0.
+        pub frame: u32,
+        /// The packet's words, the first holding its message type; a
+        /// packet shorter than four words leaves the rest 0.
+        pub words: [u32; 4],
+    }
+
+    /// One block of audio and MIDI. A host processing in place passes the
+    /// same buffers in both lists.
     ///
     /// # Examples
     ///
@@ -494,6 +525,7 @@ c_structs! {
     ///     input_count: 2,
     ///     output_count: 2,
     ///     frames: 4,
+    ///     ..HaptoProcess::NONE // no MIDI either way
     /// };
     /// // SAFETY: a host's calls, all on this thread; both lists hold two
     /// // channels of four frames that nothing else touches during the call.
@@ -518,6 +550,25 @@ c_structs! {
         /// The frames in this block. A block longer than the activation
         /// promised plays in pieces.
         pub frames: u32,
+        /// How many packets `midi_in` holds.
+        pub midi_in_count: u32,
+        /// The block's MIDI in: `midi_in_count` packets in time order, MIDI
+        /// 1.0 or MIDI 2.0 as the host sends it, which the plugin upgrades;
+        /// null for none. A packet at or past the block's end plays at its
+        /// last frame.
+        pub midi_in: *const HaptoPacket,
+        /// Room for the block's MIDI out: `midi_out_capacity` packets, which
+        /// the plugin writes in time order; null for none.
+        pub midi_out: *mut HaptoPacket,
+        /// Where the plugin answers how many packets it wrote to
+        /// `midi_out`, every block; null when `midi_out` is.
+        pub midi_out_count: *mut u32,
+        /// How many packets `midi_out` has room for. Past it, a packet is
+        /// dropped.
+        pub midi_out_capacity: u32,
+        /// `HAPTO_MIDI_OUT_1` for a caller that takes MIDI 1.0 out alone;
+        /// otherwise 0.
+        pub flags: u32,
     }
 
     /// What the plugin calls back, only inside `idle` or `destroy`, on the
@@ -630,6 +681,7 @@ c_structs! {
     ///     input_count: 2,
     ///     output_count: 2,
     ///     frames: 4,
+    ///     ..HaptoProcess::NONE
     /// };
     /// // SAFETY: all calls on this thread; the lists hold two channels of four
     /// // frames that nothing else touches during the call.
@@ -758,6 +810,24 @@ impl HaptoStr {
             length: text.len(),
         }
     }
+}
+
+impl HaptoProcess {
+    /// A block of no frames, no channels and no MIDI, to fill in with what
+    /// a caller has.
+    pub const NONE: HaptoProcess = HaptoProcess {
+        inputs: std::ptr::null(),
+        outputs: std::ptr::null(),
+        input_count: 0,
+        output_count: 0,
+        frames: 0,
+        midi_in_count: 0,
+        midi_in: std::ptr::null(),
+        midi_out: std::ptr::null_mut(),
+        midi_out_count: std::ptr::null_mut(),
+        midi_out_capacity: 0,
+        flags: 0,
+    };
 }
 
 impl HaptoHost {

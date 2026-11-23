@@ -11,6 +11,50 @@ namespace hapto
 namespace
 {
 
+// The most MIDI packets one block carries each way, and the longest SysEx
+// the plugin may send whole.
+constexpr std::size_t midiRoom = 2048;
+constexpr std::size_t sysexRoom = 64 * 1024;
+
+// One whole MIDI 1.0 message, as a MidiBuffer holds it, as Universal MIDI
+// Packets on the first group, written to `packets` from `count` while they
+// have room: a channel message as message type 2, a system message as 1, a
+// SysEx as 7-bit SysEx packets of six bytes each.
+void addPackets (std::vector<HaptoPacket>& packets, std::uint32_t& count, const juce::uint8* bytes,
+                 int size, std::uint32_t frame) noexcept
+{
+    const auto push = [&] (std::uint32_t first, std::uint32_t second) {
+        if (count < packets.size())
+            packets[count++] = HaptoPacket { frame, { first, second, 0, 0 } };
+    };
+    if (size <= 0)
+        return;
+    const auto status = static_cast<std::uint32_t> (bytes[0]);
+    if (status == 0xF0)
+    {
+        const auto* data = bytes + 1;
+        auto length = size - 1;
+        if (length > 0 && data[length - 1] == 0xF7)
+            --length;
+        const auto parts = juce::jmax (1, (length + 5) / 6);
+        for (int part = 0; part < parts; ++part)
+        {
+            const auto chunk = juce::jlimit (0, 6, length - part * 6);
+            const std::uint32_t form = parts == 1 ? 0 : part == 0 ? 1 : part == parts - 1 ? 3 : 2;
+            std::array<std::uint32_t, 6> b {};
+            for (int index = 0; index < chunk; ++index)
+                b[static_cast<std::size_t> (index)] = data[part * 6 + index] & 0x7Fu;
+            push (0x30000000u | form << 20 | static_cast<std::uint32_t> (chunk) << 16 | b[0] << 8 | b[1],
+                  b[2] << 24 | b[3] << 16 | b[4] << 8 | b[5]);
+        }
+        return;
+    }
+    const std::uint32_t kind = status >= 0xF0 ? 0x1 : 0x2;
+    const std::uint32_t first = size > 1 ? bytes[1] & 0x7Fu : 0;
+    const std::uint32_t second = size > 2 ? bytes[2] & 0x7Fu : 0;
+    push (kind << 28 | status << 16 | first << 8 | second, 0);
+}
+
 // The plugin's table, checked against the header this adapter was built with.
 const HaptoPlugin& table() noexcept
 {
@@ -215,6 +259,10 @@ void PluginProcessor::prepareToPlay (double sampleRate, int maximumExpectedSampl
                           juce::jmax (1, getLatencySamples()));
     bypassDelay_.clear();
     bypassPosition_ = 0;
+    midiIn_.assign (midiRoom, HaptoPacket {});
+    midiOut_.assign (midiRoom, HaptoPacket {});
+    sysexOut_.clear();
+    sysexOut_.reserve (sysexRoom);
 }
 
 void PluginProcessor::releaseResources()
@@ -248,9 +296,13 @@ bool PluginProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 
 void PluginProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
-    // The buffer carries the block's MIDI in and takes its MIDI out. The C
-    // interface carries none yet, so what came in must not go back out.
-    // Clearing keeps the buffer's storage, so it does not allocate.
+    // The buffer carries the block's MIDI in and takes its MIDI out: what came
+    // in goes to the plugin as packets, and only what the plugin sends goes
+    // back out. Clearing keeps the buffer's storage, so it does not allocate.
+    std::uint32_t received = 0;
+    for (const auto message : midi)
+        addPackets (midiIn_, received, message.data, message.numBytes,
+                    static_cast<std::uint32_t> (juce::jmax (0, message.samplePosition)));
     midi.clear();
     bypassing_ = false;
     if (instance_ == nullptr)
@@ -262,12 +314,81 @@ void PluginProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     // In place: JUCE's buffer holds the input in its first channels and
     // takes the output in the same ones.
     const auto channels = buffer.getNumChannels();
+    std::uint32_t sent = 0;
     const HaptoProcess block { buffer.getArrayOfReadPointers(),
                               buffer.getArrayOfWritePointers(),
                               static_cast<std::uint32_t> (juce::jmin (getMainBusNumInputChannels(), channels)),
                               static_cast<std::uint32_t> (juce::jmin (getMainBusNumOutputChannels(), channels)),
-                              static_cast<std::uint32_t> (buffer.getNumSamples()) };
+                              static_cast<std::uint32_t> (buffer.getNumSamples()),
+                              received,
+                              midiIn_.data(),
+                              midiOut_.data(),
+                              &sent,
+                              static_cast<std::uint32_t> (midiOut_.size()),
+                              // A MidiBuffer holds MIDI 1.0 alone.
+                              HAPTO_MIDI_OUT_1 };
     plugin_.process (instance_, &block);
+    for (std::uint32_t index = 0; index < sent && index < midiOut_.size(); ++index)
+        addMessage (midi, midiOut_[index]);
+}
+
+void PluginProcessor::addMessage (juce::MidiBuffer& midi, const HaptoPacket& packet)
+{
+    const auto head = packet.words[0];
+    const auto frame = static_cast<int> (packet.frame);
+    const auto status = static_cast<juce::uint8> ((head >> 16) & 0xFF);
+    const std::array<juce::uint8, 3> bytes { status, static_cast<juce::uint8> ((head >> 8) & 0x7F),
+                                             static_cast<juce::uint8> (head & 0x7F) };
+    switch (head >> 28)
+    {
+        case 0x2:
+        {
+            const auto high = status & 0xF0;
+            midi.addEvent (bytes.data(), high == 0xC0 || high == 0xD0 ? 2 : 3, frame);
+            return;
+        }
+        case 0x1:
+            midi.addEvent (bytes.data(), status == 0xF2 ? 3 : status == 0xF1 || status == 0xF3 ? 2 : 1, frame);
+            return;
+        case 0x3:
+        {
+            const auto form = (head >> 20) & 0xF;
+            const auto count = juce::jmin (6u, (head >> 16) & 0xF);
+            const auto second = packet.words[1];
+            const std::array<juce::uint8, 6> data { static_cast<juce::uint8> ((head >> 8) & 0x7F),
+                                                    static_cast<juce::uint8> (head & 0x7F),
+                                                    static_cast<juce::uint8> ((second >> 24) & 0x7F),
+                                                    static_cast<juce::uint8> ((second >> 16) & 0x7F),
+                                                    static_cast<juce::uint8> ((second >> 8) & 0x7F),
+                                                    static_cast<juce::uint8> (second & 0x7F) };
+            // A first or whole packet begins a SysEx; the room was reserved,
+            // so joining one allocates nothing, and one past it is dropped.
+            if (form == 0 || form == 1)
+            {
+                sysexOut_.clear();
+                sysexOut_.push_back (0xF0);
+                sysexOverflow_ = false;
+            }
+            if (sysexOut_.size() + count + 1 > sysexOut_.capacity())
+                sysexOverflow_ = true;
+            if (! sysexOverflow_)
+                sysexOut_.insert (sysexOut_.end(), data.begin(), data.begin() + count);
+            if ((form == 0 || form == 3) && ! sysexOut_.empty())
+            {
+                if (! sysexOverflow_)
+                {
+                    sysexOut_.push_back (0xF7);
+                    midi.addEvent (sysexOut_.data(), static_cast<int> (sysexOut_.size()), frame);
+                }
+                sysexOut_.clear();
+            }
+            return;
+        }
+        default:
+            // A MIDI 2.0 or utility packet, which a MidiBuffer cannot hold; the
+            // plugin was asked for MIDI 1.0.
+            return;
+    }
 }
 
 void PluginProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)

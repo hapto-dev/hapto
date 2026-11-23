@@ -35,6 +35,12 @@ exporter.
 - **Breaking.** `ProcessSetup` is made with `ProcessSetup::new`, with room for
   no MIDI until a test sets `max_events` or `max_out_events`, so the buses
   beyond the main one can join it later without breaking a caller.
+- **Breaking.** The C interface carries a block's MIDI as Universal MIDI
+  Packets both ways, so `HAPTO_ABI_VERSION` is 3. `HaptoProcess` gains the
+  packets in and the room for packets out, each a `HaptoPacket` of a frame and
+  four words, with `HAPTO_MIDI_OUT_1` for a caller that takes MIDI 1.0 out
+  alone, and `HaptoProcess::NONE` fills what a Rust caller leaves out. The
+  JUCE adapter passes the host's `MidiBuffer` in and the plugin's MIDI back.
 - **Breaking.** A processor reads its block's MIDI decoded: `block.midi` is
   a `Midi`, each `Message` at its frame with the packets it came in, and
   `block.midi_out` a `MidiOut`, which sends messages or packets, in place of

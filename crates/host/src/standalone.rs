@@ -457,6 +457,8 @@ impl<P: Plugin> StandaloneAudio<P> {
                         into.push(event);
                     }
                 },
+                // Open: the app sends the plugin's MIDI to no device yet.
+                |_| {},
             )
         };
         match outcome {

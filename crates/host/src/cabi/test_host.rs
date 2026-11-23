@@ -7,7 +7,8 @@ use std::marker::PhantomData;
 use std::rc::Rc;
 
 use super::abi::{
-    HaptoHost, HaptoInstance, HaptoLayout, HaptoParamInfo, HaptoPlugin, HaptoProcess,
+    HaptoHost, HaptoInstance, HaptoLayout, HaptoPacket, HaptoParamInfo, HaptoPlugin, HaptoProcess,
+    MIDI_OUT_1,
 };
 use super::{CChar, HaptoStr, plugin, plugin_moving};
 use crate::Plugin;
@@ -484,6 +485,21 @@ impl<P: Plugin> TestHost<P> {
         self.audio().process_in_place(channels, frames)
     }
 
+    /// Processes one block in place with `midi`, as the JUCE adapter hands
+    /// it, and returns the status and how many packets the plugin sent.
+    ///
+    /// # Panics
+    ///
+    /// As [`process`](Self::process).
+    pub fn process_with_midi(
+        &self,
+        channels: &mut [&mut [f32]],
+        frames: usize,
+        midi: MidiBlock<'_>,
+    ) -> (u32, usize) {
+        self.audio().process_with_midi(channels, frames, midi)
+    }
+
     /// Returns a side of this host for its audio thread, which processes
     /// blocks and writes values on a thread of its own while this one goes on.
     pub fn audio_side(&self) -> AudioSide<'_> {
@@ -621,19 +637,49 @@ impl AudioSide<'_> {
     ///
     /// As [`process`](Self::process).
     pub fn process_in_place(&self, channels: &mut [&mut [f32]], frames: usize) -> u32 {
+        let midi = MidiBlock {
+            midi_in: &[],
+            midi_out: &mut [],
+            midi_1_out: false,
+        };
+        self.process_with_midi(channels, frames, midi).0
+    }
+
+    /// As [`TestHost::process_with_midi`], on this side's thread.
+    ///
+    /// # Panics
+    ///
+    /// As [`process`](Self::process).
+    pub fn process_with_midi(
+        &self,
+        channels: &mut [&mut [f32]],
+        frames: usize,
+        midi: MidiBlock<'_>,
+    ) -> (u32, usize) {
         assert!(channels.len() <= MAX_CHANNELS);
         assert!(channels.iter().all(|channel| channel.len() >= frames));
         let mut list = [std::ptr::null_mut::<f32>(); MAX_CHANNELS];
         for (slot, channel) in list.iter_mut().zip(channels.iter_mut()) {
             *slot = channel.as_mut_ptr();
         }
-        self.run(
-            list.as_ptr().cast::<*const f32>(),
-            channels.len(),
-            list.as_ptr(),
-            channels.len(),
-            frames,
-        )
+        let mut sent = 0;
+        let block = HaptoProcess {
+            inputs: list.as_ptr().cast::<*const f32>(),
+            outputs: list.as_ptr(),
+            input_count: channels.len() as u32,
+            output_count: channels.len() as u32,
+            frames: u32::try_from(frames).expect("frames fit"),
+            midi_in_count: u32::try_from(midi.midi_in.len()).expect("packets fit"),
+            midi_in: midi.midi_in.as_ptr(),
+            midi_out: midi.midi_out.as_mut_ptr(),
+            midi_out_count: &raw mut sent,
+            midi_out_capacity: u32::try_from(midi.midi_out.len()).expect("room fits"),
+            flags: if midi.midi_1_out { MIDI_OUT_1 } else { 0 },
+        };
+        // SAFETY: as `run` says. The MIDI lists are borrowed for this call,
+        // the room out mutably, and `sent` lives to its end.
+        let status = unsafe { (self.table.process)(self.instance, &block) };
+        (status, sent as usize)
     }
 
     /// Writes a host's 0..1 value, as JUCE's wrappers do on the audio
@@ -658,6 +704,7 @@ impl AudioSide<'_> {
             input_count: input_count as u32,
             output_count: output_count as u32,
             frames: u32::try_from(frames).expect("frames fit"),
+            ..HaptoProcess::NONE
         };
         // SAFETY: `self.instance` is the host's live instance (see `Send`
         // above). The callers above fill each list with the given count of
@@ -742,4 +789,40 @@ unsafe extern "C" fn collect(context: *mut c_void, data: *const u8, length: usiz
             bytes.extend_from_slice(std::slice::from_raw_parts(data, length));
         }
     }
+}
+
+/// A block's MIDI, as a test host passes it through the C interface.
+///
+/// # Examples
+///
+/// ```
+#[doc = include_str!("../../doc/gain.rs")]
+/// use hapto_host::cabi::{HaptoPacket, MidiBlock, TestHost};
+///
+/// let host = TestHost::<Gain>::new();
+/// assert_eq!(host.activate(48_000.0, 4, Width::STEREO), Ok(()));
+/// let (mut left, mut right) = ([0.5_f32; 4], [0.5_f32; 4]);
+/// // A MIDI 1.0 note-on at frame 2, and room for four packets back.
+/// let note = HaptoPacket { frame: 2, words: [0x2090_3C7F, 0, 0, 0] };
+/// let mut room = [HaptoPacket { frame: 0, words: [0; 4] }; 4];
+/// let midi = MidiBlock {
+///     midi_in: &[note],
+///     midi_out: &mut room,
+///     midi_1_out: true,
+/// };
+/// let channels = &mut [&mut left[..], &mut right[..]];
+/// let (_, sent) = host.process_with_midi(channels, 4, midi);
+/// // The gain plugin reads no MIDI, and sends none.
+/// assert_eq!(sent, 0);
+/// ```
+#[derive(Debug)]
+pub struct MidiBlock<'a> {
+    /// The packets in, in time order.
+    pub midi_in: &'a [HaptoPacket],
+    /// The room for the packets out, which the plugin writes from the
+    /// first.
+    pub midi_out: &'a mut [HaptoPacket],
+    /// Whether the host takes MIDI 1.0 out alone, as JUCE's `MidiBuffer`
+    /// does.
+    pub midi_1_out: bool,
 }

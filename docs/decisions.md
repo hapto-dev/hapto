@@ -98,7 +98,7 @@ comments never cite an id: they state the reason in words, and
 | D59 | [What shape does the VST3 exporter give a plugin? (D51, D53, P7, C2)](#d59-the-shape-of-the-vst3-exporter) | One object that is both the audio processor and its own edit controller, a thin shell over an exporter core it shares with the C interface. The plugin is built at `initialize`, on the thread that calls it. No MIDI events are delivered yet. | decided |
 | D60 | [What happens when plugin code panics inside a host's call? (P9)](#d60-a-panic-inside-a-hosts-call) | It is caught at every entry point that can panic and never unwinds into the host. A panic in the processor silences the instance's output until the next activation. | decided |
 | D61 | [Who flushes denormals to zero? (the comparison's fairness row)](#d61-who-flushes-denormals) | Every exporter, around every `process` call: FTZ and DAZ on x86, FZ on AArch64, restoring the host's setting after, so no plugin has to. | decided |
-| D62 | [What shape is the C interface the JUCE adapter is driven by? (H5, D51, D60)](#d62-the-c-interface-for-the-juce-adapter) | One exported symbol, `hapto_plugin`, answering a table of function pointers, as CLAP's entry point does: the plugin's layouts and every call into an instance, each with the thread it may run on. No MIDI passes yet; it arrives as UMP both ways with the exporters' MIDI input. | decided |
+| D62 | [What shape is the C interface the JUCE adapter is driven by? (H5, D51, D60)](#d62-the-c-interface-for-the-juce-adapter) | One exported symbol, `hapto_plugin`, answering a table of function pointers, as CLAP's entry point does: the plugin's layouts and every call into an instance, each with the thread it may run on. A block's MIDI passes as UMP both ways: MIDI 1.0 or 2.0 in, and out downgraded for a caller that takes MIDI 1.0 alone. | decided |
 | D63 | [How is the C header kept true to the Rust side? (D27)](#d63-keeping-the-c-header-true) | Hapto's own generator writes `crates/host/include/hapto.h` from the Rust declarations, and the header asserts every struct's size and every field's offset as Rust laid them out. | decided |
 | D64 | [How does the JUCE adapter build a plugin? (H5, D18)](#d64-how-the-juce-adapter-builds-a-plugin) | It links the plugin crate as a static library built with only its `cabi` feature. `cargo xtask gen` writes a `hapto-juce.cmake` per plugin, and `hapto_add_juce_plugin` runs cargo and adds the adapter's one processor class. | decided |
 | D65 | [What does a host see of a plugin through JUCE? (D31, D53, D58, C4)](#d65-what-a-host-sees-through-juce) | What JUCE 9 makes of it, as of the JUCE EQ; checked with VST3 on Windows. Parameter ids are JUCE's hash of the key, not D31's, and the one program has the plugin's name. | decided |
@@ -526,8 +526,9 @@ it spans makes its spans with `Spans::new` from the block's audio and MIDI and
 keeps the block's `midi_out`. A sidechain or transport joins `Block` later
 without changing the trait. `PluginInfo::midi_output` declares the output to
 the host. Parameter changes still reach the host through the exporter, never
-this list. No exporter sends the list yet, and only the standalone app brings
-MIDI in (D59, D62, D115).
+this list. The C interface carries the list to its host and MIDI in from it,
+and the standalone app brings MIDI in from the computer's inputs; VST3 carries
+none yet (D59, D62, D115).
 
 ### D24. Answering MIDI-CI
 
@@ -1355,8 +1356,17 @@ the adapter checks and no other compatibility promise. Panics are caught at
 every entry point (D60), and the processor flushes denormals inside `process`
 (D61).
 
-**MIDI.** No MIDI passes yet; it arrives as UMP both ways with the exporters'
-MIDI input (C5).
+**MIDI.** A block's MIDI passes as Universal MIDI Packets both ways (C5), each
+a `HaptoPacket` of a frame and four words. The caller lends the packets in, MIDI
+1.0 or MIDI 2.0 as its host sends them, which the engine upgrades (D114), and
+room for the packets out, into which the plugin writes what it sent and answers
+how many, every block. A caller that takes MIDI 1.0 alone sets
+`HAPTO_MIDI_OUT_1`, and the plugin downgrades what it sends. The JUCE adapter
+does both, since a `MidiBuffer` holds MIDI 1.0: it reads the host's messages
+into packets on the first group, and writes the plugin's back, joining a SysEx
+again, all in room it makes in `prepareToPlay`. What a downgrade drops is what
+MIDI 1.0 has no message for, as the specification's Default Translation says,
+so the caller gets no count of it: its host could not take what was dropped.
 
 **Alternatives.** The alternatives were one exported function per call, or a
 table filled in by the adapter. For the main thread, they were:

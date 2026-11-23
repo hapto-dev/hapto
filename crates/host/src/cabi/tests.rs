@@ -747,11 +747,10 @@ fn null_pointers_are_answered_not_followed() {
         default_normalized: 0.0,
     };
     let block = HaptoProcess {
-        inputs: std::ptr::null(),
-        outputs: std::ptr::null(),
         input_count: 2,
         output_count: 2,
         frames: 64,
+        ..HaptoProcess::NONE
     };
     let stereo = HaptoLayout {
         inputs: 2,
@@ -802,9 +801,11 @@ fn null_pointers_are_answered_not_followed() {
 fn the_header_declares_every_struct_and_asserts_its_layout() {
     let text = header();
     assert!(text.starts_with("// hapto.h"));
-    assert!(text.contains("#define HAPTO_ABI_VERSION 2u"));
+    assert!(text.contains("#define HAPTO_ABI_VERSION 3u"));
     assert!(text.contains("#define HAPTO_TAIL_INFINITE 4294967295u"));
     assert!(text.contains("const HaptoPlugin* hapto_plugin(void);"));
+    // An array spells its length after the name, as C declares one.
+    assert!(text.contains("    uint32_t words[4];"));
     for item in super::abi::structs() {
         assert!(
             text.contains(&format!("typedef struct {} {{", item.name)),

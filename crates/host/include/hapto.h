@@ -28,7 +28,10 @@
 //   `process` returns, for writing too among the outputs. Nothing else
 //   reads or writes them meanwhile. Any two channels, in either list, are
 //   one buffer or share no float: an output may be an input's buffer, as
-//   in place.
+//   in place. `midi_in` is null or valid for reading its count of
+//   packets, `midi_out` null or valid for writing its capacity, and
+//   `midi_out_count` null or valid for writing one count, until `process`
+//   returns.
 // - A `HaptoHost`'s callbacks and context stay valid until `destroy`
 //   returns; `save`'s writer and its context, until `save` returns.
 //
@@ -48,7 +51,12 @@ extern "C" {
 // The interface's version: the adapter refuses a plugin built against
 // another. The header and the plugin are built from one commit, so it
 // moves only when the interface does.
-#define HAPTO_ABI_VERSION 2u
+#define HAPTO_ABI_VERSION 3u
+
+// In `HaptoProcess`'s `flags`: the caller takes MIDI 1.0 out alone, as
+// JUCE's `MidiBuffer` does, so the plugin downgrades what it sends, by
+// the specification's Default Translation.
+#define HAPTO_MIDI_OUT_1 1u
 
 // A parameter whose value is a number in a range, continuous or
 // stepped; a stepped range stays continuous to the host.
@@ -143,8 +151,18 @@ typedef struct HaptoLayout {
     uint32_t outputs;
 } HaptoLayout;
 
-// One block of audio. A host processing in place passes the same
-// buffers in both lists.
+// One packet of a block's MIDI: a Universal MIDI Packet at a frame of
+// the block.
+typedef struct HaptoPacket {
+    // The frame of the block it is at, from 0.
+    uint32_t frame;
+    // The packet's words, the first holding its message type; a
+    // packet shorter than four words leaves the rest 0.
+    uint32_t words[4];
+} HaptoPacket;
+
+// One block of audio and MIDI. A host processing in place passes the
+// same buffers in both lists.
 typedef struct HaptoProcess {
     // `input_count` channels, each `frames` long; any may be null.
     const float* const* inputs;
@@ -158,6 +176,25 @@ typedef struct HaptoProcess {
     // The frames in this block. A block longer than the activation
     // promised plays in pieces.
     uint32_t frames;
+    // How many packets `midi_in` holds.
+    uint32_t midi_in_count;
+    // The block's MIDI in: `midi_in_count` packets in time order, MIDI
+    // 1.0 or MIDI 2.0 as the host sends it, which the plugin upgrades;
+    // null for none. A packet at or past the block's end plays at its
+    // last frame.
+    const HaptoPacket* midi_in;
+    // Room for the block's MIDI out: `midi_out_capacity` packets, which
+    // the plugin writes in time order; null for none.
+    HaptoPacket* midi_out;
+    // Where the plugin answers how many packets it wrote to
+    // `midi_out`, every block; null when `midi_out` is.
+    uint32_t* midi_out_count;
+    // How many packets `midi_out` has room for. Past it, a packet is
+    // dropped.
+    uint32_t midi_out_capacity;
+    // `HAPTO_MIDI_OUT_1` for a caller that takes MIDI 1.0 out alone;
+    // otherwise 0.
+    uint32_t flags;
 } HaptoProcess;
 
 // What the plugin calls back, only inside `idle` or `destroy`, on the
@@ -314,12 +351,21 @@ HAPTO_LAYOUT(offsetof(HaptoParamInfo, default_normalized) == 80);
 HAPTO_LAYOUT(sizeof(HaptoLayout) == 8);
 HAPTO_LAYOUT(offsetof(HaptoLayout, inputs) == 0);
 HAPTO_LAYOUT(offsetof(HaptoLayout, outputs) == 4);
-HAPTO_LAYOUT(sizeof(HaptoProcess) == 32);
+HAPTO_LAYOUT(sizeof(HaptoPacket) == 20);
+HAPTO_LAYOUT(offsetof(HaptoPacket, frame) == 0);
+HAPTO_LAYOUT(offsetof(HaptoPacket, words) == 4);
+HAPTO_LAYOUT(sizeof(HaptoProcess) == 64);
 HAPTO_LAYOUT(offsetof(HaptoProcess, inputs) == 0);
 HAPTO_LAYOUT(offsetof(HaptoProcess, outputs) == 8);
 HAPTO_LAYOUT(offsetof(HaptoProcess, input_count) == 16);
 HAPTO_LAYOUT(offsetof(HaptoProcess, output_count) == 20);
 HAPTO_LAYOUT(offsetof(HaptoProcess, frames) == 24);
+HAPTO_LAYOUT(offsetof(HaptoProcess, midi_in_count) == 28);
+HAPTO_LAYOUT(offsetof(HaptoProcess, midi_in) == 32);
+HAPTO_LAYOUT(offsetof(HaptoProcess, midi_out) == 40);
+HAPTO_LAYOUT(offsetof(HaptoProcess, midi_out_count) == 48);
+HAPTO_LAYOUT(offsetof(HaptoProcess, midi_out_capacity) == 56);
+HAPTO_LAYOUT(offsetof(HaptoProcess, flags) == 60);
 HAPTO_LAYOUT(sizeof(HaptoHost) == 40);
 HAPTO_LAYOUT(offsetof(HaptoHost, context) == 0);
 HAPTO_LAYOUT(offsetof(HaptoHost, begin_edit) == 8);

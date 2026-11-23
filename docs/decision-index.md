@@ -654,6 +654,10 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d62-the-c-interface-for-the-juce-adapter)
 
+- `crates/host/src/cabi/abi.rs`: `HaptoPacket`, `HaptoProcess`, `MIDI_OUT_1`
+- `crates/host/src/cabi/mod.rs`: `packets_in`, `send_out`
+- `adapters/juce/HaptoPluginProcessor.cpp`: `addPackets`, `PluginProcessor::addMessage`
+- test `crates/host/tests/cabi_midi.rs`: module
 - `crates/host/include/hapto.h`: module
 - `crates/host/src/boundary.rs`: `MainThread::bound`, `MainThread::unbound`, `MainThread::lend`, `MainThread::lend_or_wait`, `MainThread::is_owner`, `MainThread::owned`, `here`, `Wait`, `Lent`, `Refused`
 - `crates/host/src/cabi/abi.rs`: `HaptoPlugin`, `HaptoHost`

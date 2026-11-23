@@ -96,6 +96,29 @@ impl Downgrade {
     /// Thread: audio. Allocates nothing.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn event(&mut self, event: &Event, out: &mut EventList) {
+        self.translate(event, |packet| out.push(packet));
+    }
+
+    /// Downgrades one packet, as [`event`](Self::event) does, handing
+    /// `send` each packet it becomes: for a caller with a list of its own,
+    /// such as an exporter's host's.
+    ///
+    /// Thread: audio. Allocates nothing.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hapto_ump::{Downgrade, Event};
+    ///
+    /// // MIDI 2.0's controller 7 at full, as MIDI 1.0's at 127.
+    /// let mut sent = Vec::new();
+    /// Downgrade::new().translate(&Event::new(5, [0x40B0_0700, u32::MAX, 0, 0]), |packet| {
+    ///     sent.push(packet);
+    /// });
+    /// assert_eq!(sent, [Event::new(5, [0x20B0_077F, 0, 0, 0])]);
+    /// ```
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
+    pub fn translate(&mut self, event: &Event, mut send: impl FnMut(Event)) {
         let Some(ChannelVoice {
             group,
             channel,
@@ -105,12 +128,12 @@ impl Downgrade {
             if event.message_type() == MessageType::MIDI2 {
                 self.lost = self.lost.saturating_add(1);
             } else {
-                out.push(*event);
+                send(*event);
             }
             return;
         };
-        let send = |message: Midi1Message, out: &mut EventList| {
-            out.push(
+        let mut send = |message: Midi1Message| {
+            send(
                 Midi1Voice {
                     group,
                     channel,
@@ -120,14 +143,13 @@ impl Downgrade {
             );
         };
         let cc = |controller: u8, value: u8| Midi1Message::ControlChange { controller, value };
-        let parameter =
-            |[msb, lsb]: [u8; 2], bank: u8, index: u8, value: u32, out: &mut EventList| {
-                let value = down_32_to_14(value);
-                send(cc(msb, bank), out);
-                send(cc(lsb, index), out);
-                send(cc(DATA_ENTRY, (value >> 7) as u8), out);
-                send(cc(DATA_ENTRY_LSB, (value & 0x7F) as u8), out);
-            };
+        let mut parameter = |[msb, lsb]: [u8; 2], bank: u8, index: u8, value: u32| {
+            let value = down_32_to_14(value);
+            send(cc(msb, bank));
+            send(cc(lsb, index));
+            send(cc(DATA_ENTRY, (value >> 7) as u8));
+            send(cc(DATA_ENTRY_LSB, (value & 0x7F) as u8));
+        };
         match message {
             ChannelMessage::NoteOn {
                 note,
@@ -136,7 +158,7 @@ impl Downgrade {
             } => {
                 self.count_attribute(attribute);
                 let velocity = down_16_to_7(velocity).max(1);
-                send(Midi1Message::NoteOn { note, velocity }, out);
+                send(Midi1Message::NoteOn { note, velocity });
             }
             ChannelMessage::NoteOff {
                 note,
@@ -145,42 +167,33 @@ impl Downgrade {
             } => {
                 self.count_attribute(attribute);
                 let velocity = down_16_to_7(velocity);
-                send(Midi1Message::NoteOff { note, velocity }, out);
+                send(Midi1Message::NoteOff { note, velocity });
             }
-            ChannelMessage::PolyPressure { note, value } => send(
-                Midi1Message::PolyPressure {
-                    note,
-                    value: down_32_to_7(value),
-                },
-                out,
-            ),
+            ChannelMessage::PolyPressure { note, value } => send(Midi1Message::PolyPressure {
+                note,
+                value: down_32_to_7(value),
+            }),
             ChannelMessage::ControlChange { controller, value } => {
-                send(cc(controller, down_32_to_7(value)), out);
+                send(cc(controller, down_32_to_7(value)));
             }
             ChannelMessage::ProgramChange { program, bank } => {
                 if let Some(Bank { msb, lsb }) = bank {
-                    send(cc(BANK_SELECT, msb), out);
-                    send(cc(BANK_SELECT_LSB, lsb), out);
+                    send(cc(BANK_SELECT, msb));
+                    send(cc(BANK_SELECT_LSB, lsb));
                 }
-                send(Midi1Message::ProgramChange { program }, out);
+                send(Midi1Message::ProgramChange { program });
             }
-            ChannelMessage::ChannelPressure { value } => send(
-                Midi1Message::ChannelPressure {
-                    value: down_32_to_7(value),
-                },
-                out,
-            ),
-            ChannelMessage::PitchBend { value } => send(
-                Midi1Message::PitchBend {
-                    value: down_32_to_14(value),
-                },
-                out,
-            ),
+            ChannelMessage::ChannelPressure { value } => send(Midi1Message::ChannelPressure {
+                value: down_32_to_7(value),
+            }),
+            ChannelMessage::PitchBend { value } => send(Midi1Message::PitchBend {
+                value: down_32_to_14(value),
+            }),
             ChannelMessage::RegisteredController { bank, index, value } => {
-                parameter([RPN_MSB, RPN_LSB], bank, index, value, out);
+                parameter([RPN_MSB, RPN_LSB], bank, index, value);
             }
             ChannelMessage::AssignableController { bank, index, value } => {
-                parameter([NRPN_MSB, NRPN_LSB], bank, index, value, out);
+                parameter([NRPN_MSB, NRPN_LSB], bank, index, value);
             }
             _ => self.lost = self.lost.saturating_add(1),
         }
