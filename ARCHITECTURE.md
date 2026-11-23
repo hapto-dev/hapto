@@ -275,9 +275,6 @@ with `cargo doc -p hapto-host --features vst3,cabi,test-host
   `hapto-webview` offers no editor, and a host shows its own controls ([where
   the WebView pieces live][webview]). So does the standalone app, which says
   so and ends elsewhere ([the standalone exporter and app][standalone]).
-  Absent: the standalone app sends no MIDI to the computer's outputs yet,
-  though it brings it in from its inputs; VST3 and the C interface carry it
-  both ways ([the VST3 exporter's shape][vst3]).
 
 ## Threads
 

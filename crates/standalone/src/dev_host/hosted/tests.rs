@@ -122,7 +122,12 @@ impl Plugin for Knobs {
 fn play(render: &mut dyn Render, frames: usize) {
     let input = vec![0.5_f32; frames];
     let (mut left, mut right) = (vec![0.0_f32; frames], vec![0.0_f32; frames]);
-    render.render(&[&input, &input], &mut [&mut left, &mut right], &[]);
+    render.render(
+        &[&input, &input],
+        &mut [&mut left, &mut right],
+        &[],
+        &mut |_| {},
+    );
 }
 
 #[test]

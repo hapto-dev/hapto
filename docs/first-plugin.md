@@ -580,7 +580,9 @@ fn main() -> std::process::ExitCode {
 through Hapto's standalone exporter, the same engine the VST3 exporter
 drives: it opens the plugin's editor in a window, plays a test signal through
 the plugin to the system's audio output, and ticks it as a host's timer
-would. One command runs it:
+would. A plugin that takes MIDI hears every MIDI input the computer has; to
+choose them, or the outputs a plugin that sends MIDI sends to, the binary
+builds a `hapto_standalone::App` instead. One command runs it:
 
 ```sh
 cargo hapto dev -p hapto-example-gain

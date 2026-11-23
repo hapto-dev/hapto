@@ -351,8 +351,11 @@ exporter.
   system's audio output, which it follows to a new default output, and its
   saved block kept between runs. A plugin that takes MIDI hears every MIDI
   input the computer has, merged as a host merges them, opened and closed as
-  devices come and go, and a line names each. Its title counts the plugin's
-  faults. Its dev
+  devices come and go, and a line names each, and one that sends MIDI sends
+  it to the outputs its binary chooses, each message at its time. `App` says
+  in code which devices open, a filter for each direction, every input and no
+  output by default, and its `MidiDevices` handle changes them while the app
+  runs, from any thread. Its title counts the plugin's faults. Its dev
   host, `cargo hapto dev --host`, runs the plugin through the VST3 exporter or
   the C interface in process, in a window of the plugin's own with a bar that
   names the format, and a settings window of what the host sees, a tab each,

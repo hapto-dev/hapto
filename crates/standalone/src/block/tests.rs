@@ -10,7 +10,7 @@ use hapto_host::layout::Width;
 use super::{Plan, Player, RECENT, Render, preview};
 use crate::settings::Blocks;
 use crate::signal::{Generator, Signal};
-use hapto_midi_devices::{Instant, inputs};
+use hapto_midi_devices::{Instant, inputs, outputs};
 
 /// Writes each input, doubled, to the output of the same number, and keeps
 /// the length of each block it was given.
@@ -20,7 +20,13 @@ struct Doubler {
 }
 
 impl Render for Doubler {
-    fn render(&mut self, inputs: &[&[f32]], outputs: &mut [&mut [f32]], _midi: &[Event]) {
+    fn render(
+        &mut self,
+        inputs: &[&[f32]],
+        outputs: &mut [&mut [f32]],
+        _midi: &[Event],
+        _sent: &mut dyn FnMut(&[Event]),
+    ) {
         let length = outputs.first().map_or(0, |c| c.len());
         self.lengths.lock().expect("not poisoned").push(length);
         for (index, output) in outputs.iter_mut().enumerate() {
@@ -218,7 +224,13 @@ struct Listener {
 }
 
 impl Render for Listener {
-    fn render(&mut self, _inputs: &[&[f32]], outputs: &mut [&mut [f32]], midi: &[Event]) {
+    fn render(
+        &mut self,
+        _inputs: &[&[f32]],
+        outputs: &mut [&mut [f32]],
+        midi: &[Event],
+        _sent: &mut dyn FnMut(&[Event]),
+    ) {
         let length = outputs.first().map_or(0, |c| c.len());
         let packets = midi
             .iter()
@@ -247,4 +259,45 @@ fn the_apps_midi_inputs_reach_the_plugin_in_its_blocks() {
     assert_eq!(blocks.len(), 2);
     assert_eq!(blocks[0], (64, vec![(0, 0x4090_3C00), (0, 0x4090_3E00)]));
     assert_eq!(blocks[1], (64, Vec::new()), "each packet once");
+}
+
+/// Sends a note-on at the first frame of every block it plays.
+struct Sender;
+
+impl Render for Sender {
+    fn render(
+        &mut self,
+        _inputs: &[&[f32]],
+        _outputs: &mut [&mut [f32]],
+        _midi: &[Event],
+        sent: &mut dyn FnMut(&[Event]),
+    ) {
+        sent(&[Event::new(0, [0x4090_3C00, 0xFFFF_0000, 0, 0])]);
+    }
+}
+
+#[test]
+fn each_blocks_midi_is_due_where_its_frames_fall_in_the_devices_buffer() {
+    let plan = Plan::new(Blocks::Fixed, Signal::Silence);
+    let (mut outputs, writer) = outputs(16);
+    outputs.take(0);
+    let mut player =
+        Player::new(Sender, Width::STEREO, 2, 48_000.0, 64, plan).with_midi_out(writer);
+    // One buffer of 256 frames: four blocks of 64, rendered back to back.
+    let before = Instant::now();
+    let mut buffer = vec![0.0_f32; 256 * 2];
+    player.play(&mut buffer);
+    let taken = outputs.take(0).expect("no device there");
+    let dues: Vec<u64> = taken.iter().map(|(at, _)| at.nanos()).collect();
+    assert_eq!(dues.len(), 4);
+    assert!(dues[0] >= before.nanos(), "the first when the device asked");
+    // 64 frames at 48 kHz apart, as their audio is, not as fast as they
+    // were rendered.
+    let gaps: Vec<u64> = dues.windows(2).map(|pair| pair[1] - pair[0]).collect();
+    assert!(
+        gaps.iter().all(|gap| gap.abs_diff(1_333_333) <= 1),
+        "{gaps:?}"
+    );
+    // Downgraded, as a device takes it.
+    assert_eq!(taken[0].1[0], 0x2090_3C7F);
 }

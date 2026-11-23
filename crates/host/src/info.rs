@@ -244,8 +244,8 @@ pub struct PluginInfo {
     /// Whether it sends MIDI (a MIDI effect, or MIDI-CI replies), through
     /// [`Block::midi_out`](crate::Block::midi_out).
     ///
-    /// The C interface and the VST3 exporter send it to their host. Open:
-    /// the standalone app sends it to none of the computer's outputs yet.
+    /// The C interface and the VST3 exporter send it to their host, and the
+    /// standalone app to the outputs its binary chooses.
     pub midi_output: bool,
 }
 

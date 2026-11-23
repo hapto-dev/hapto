@@ -8,7 +8,7 @@ use std::fmt;
 use hapto_host::Plugin;
 use hapto_host::layout::Width;
 use hapto_host::standalone::Standalone;
-use hapto_midi_devices::InputsReader;
+use hapto_midi_devices::{InputsReader, OutputsWriter};
 
 pub use crate::settings::Blocks;
 pub use crate::signal::Signal;
@@ -53,14 +53,18 @@ impl Callback {
 
     /// The shipped app's, as [`app`](Self::app) makes it for a stereo device
     /// at 48 kHz in blocks of up to 1024 frames cut as the device asks, in
-    /// silence, with the MIDI inputs `midi` reads in its blocks.
+    /// silence, with the MIDI inputs `midi` reads in its blocks, and the
+    /// MIDI the plugin sends handed to the outputs `out` writes to.
     pub fn app_with_midi<P: Plugin>(
         plugin: &Standalone<P>,
         layout: Width,
         midi: InputsReader,
+        out: OutputsWriter,
     ) -> Callback {
         let plan = Plan::new(Blocks::Device, Signal::Silence);
-        let mut player = Player::of_app(plugin, layout, 2, 48_000.0, 1024, plan).with_midi(midi);
+        let mut player = Player::of_app(plugin, layout, 2, 48_000.0, 1024, plan)
+            .with_midi(midi)
+            .with_midi_out(out);
         Callback {
             play: Box::new(move |data| player.play(data)),
         }

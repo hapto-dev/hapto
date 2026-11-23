@@ -15,7 +15,7 @@ use std::sync::atomic::{AtomicU8, AtomicU32, AtomicU64, Ordering};
 use hapto_host::layout::Width;
 use hapto_host::standalone::{MAX_CHANNELS, Standalone, StandaloneAudio};
 use hapto_host::{Event, EventList, Plugin};
-use hapto_midi_devices::{InputsReader, Instant};
+use hapto_midi_devices::{InputsReader, Instant, OutputsWriter};
 
 use crate::settings::Blocks;
 use crate::signal::{Generator, Signal};
@@ -36,20 +36,39 @@ const MIDI_ROOM: usize = 2048;
 /// format.
 pub(crate) trait Render: Send + 'static {
     /// Plays one block, each slice a channel, all as long, with `midi`, the
-    /// packets of the app's MIDI inputs at its frames. A block may hold no
-    /// frames.
-    fn render(&mut self, inputs: &[&[f32]], outputs: &mut [&mut [f32]], midi: &[Event]);
+    /// packets of the app's MIDI inputs at its frames, and hands `sent` what
+    /// the plugin sent, at its frames, once it has played. A block may hold
+    /// no frames.
+    fn render(
+        &mut self,
+        inputs: &[&[f32]],
+        outputs: &mut [&mut [f32]],
+        midi: &[Event],
+        sent: &mut dyn FnMut(&[Event]),
+    );
 }
 
 impl Render for Box<dyn Render> {
-    fn render(&mut self, inputs: &[&[f32]], outputs: &mut [&mut [f32]], midi: &[Event]) {
-        (**self).render(inputs, outputs, midi);
+    fn render(
+        &mut self,
+        inputs: &[&[f32]],
+        outputs: &mut [&mut [f32]],
+        midi: &[Event],
+        sent: &mut dyn FnMut(&[Event]),
+    ) {
+        (**self).render(inputs, outputs, midi, sent);
     }
 }
 
 impl<P: hapto_host::Plugin> Render for StandaloneAudio<P> {
-    fn render(&mut self, inputs: &[&[f32]], outputs: &mut [&mut [f32]], midi: &[Event]) {
-        self.process(inputs, outputs, midi, |_| {});
+    fn render(
+        &mut self,
+        inputs: &[&[f32]],
+        outputs: &mut [&mut [f32]],
+        midi: &[Event],
+        sent: &mut dyn FnMut(&[Event]),
+    ) {
+        self.process(inputs, outputs, midi, sent);
     }
 }
 
@@ -254,6 +273,15 @@ pub(crate) struct Player<R> {
     queued: usize,
     /// The app's MIDI inputs, read into each block; `None` for none.
     midi: Option<MidiIn>,
+    /// The app's MIDI outputs, which each block's MIDI goes to; `None` for
+    /// none.
+    midi_out: Option<OutputsWriter>,
+    /// The device's rate, which places a block's MIDI in time.
+    sample_rate: f64,
+    /// When the device asked for the buffer it fills now.
+    asked: Instant,
+    /// How many frames of that buffer the parts before this one fill.
+    ahead: usize,
 }
 
 impl<R: Render> Player<R> {
@@ -286,7 +314,18 @@ impl<R: Render> Player<R> {
             queue: channels(layout.outputs, PART.max(max) + max + 1),
             queued: 0,
             midi: None,
+            midi_out: None,
+            sample_rate,
+            asked: Instant::from_nanos(0),
+            ahead: 0,
         }
+    }
+
+    /// Sends the plugin's MIDI out to the app's outputs `writer` hands it
+    /// to, each block's due where its frames fall in the device's stream.
+    pub(crate) fn with_midi_out(mut self, writer: OutputsWriter) -> Self {
+        self.midi_out = Some(writer);
+        self
     }
 
     /// Plays the app's MIDI inputs `reader` reads into each block.
@@ -302,6 +341,8 @@ impl<R: Render> Player<R> {
     /// output for the next frames.
     pub(crate) fn play(&mut self, data: &mut [f32]) {
         let width = self.device_channels;
+        self.asked = Instant::now();
+        self.ahead = 0;
         for part in data.chunks_mut(self.part * width) {
             let frames = part.len() / width;
             while self.queued < frames {
@@ -312,11 +353,21 @@ impl<R: Render> Player<R> {
             }
             self.interleave(part, frames);
             self.dequeue(frames);
+            self.ahead += frames;
         }
+    }
+
+    /// When a block rendered now begins: as many frames after the device
+    /// asked as the buffer's parts before this one, and the queue, hold.
+    fn block_start(&self) -> Instant {
+        let frames = (self.ahead + self.queued) as f64;
+        let after = frames * 1e9 / self.sample_rate.max(1.0);
+        Instant::from_nanos(self.asked.nanos().saturating_add(after as u64))
     }
 
     /// Renders a block of `length` frames onto the queue.
     fn play_block(&mut self, length: usize) {
+        let start = self.block_start();
         self.signal.set(self.plan.signal());
         if let Some((first, rest)) = self.inputs.split_first_mut() {
             let first = &mut first[..length];
@@ -342,8 +393,15 @@ impl<R: Render> Player<R> {
             }
             None => &[],
         };
+        let rate = self.sample_rate;
+        let midi_out = &mut self.midi_out;
+        let mut sent = |packets: &[Event]| {
+            if let Some(writer) = midi_out {
+                writer.write(start, rate, packets);
+            }
+        };
         self.render
-            .render(&inputs[..ins], &mut outputs[..outs], midi);
+            .render(&inputs[..ins], &mut outputs[..outs], midi, &mut sent);
         let at = self.queued;
         for (queue, output) in self.queue.iter_mut().zip(&self.outputs) {
             queue[at..at + length].copy_from_slice(&output[..length]);

@@ -3343,7 +3343,8 @@ against C++.
   window the app keeps until it closes the editor.
 - **The app**, `hapto-standalone`: `hapto_standalone::main::<P>()`, which a
   plugin crate's binary calls, behind a `standalone` feature of the crate's so
-  the module never links it. It opens the plugin's editor in a winit window,
+  the module never links it, or an `App` the binary builds, which says the MIDI
+  devices the app opens (D115). It opens the plugin's editor in a winit window,
   activates for the system's default output through cpal in its own
   configuration, at 32-bit floats and blocks of up to 1024 frames, and plays
   into every input what `--signal` asks for: silence by default, so nothing
@@ -3755,6 +3756,24 @@ block's MIDI from the audio thread instead, in one burst as the block ends,
 through calls that can block; its scheduler, which the standalone does not
 start, takes a lock and allocates on the audio thread, and drops what is 200
 ms late.
+
+Which devices the app opens is its binary's to say, in code: `App`'s
+`midi_inputs` and `midi_outputs` take a filter each, which the app asks of each
+device the system lists and of each that appears later, and `App::midi` hands
+out a `MidiDevices` handle that changes them while the app runs, from any
+thread, and tells which devices are listed and open. A change applies at the
+app's next tick, on its main thread: the devices that now pass open and the
+ones open that no longer pass close, each with a line. Every input opens by
+default, as before, and no output, for a plugin that takes MIDI or sends it:
+opening every output would loop a plugin's MIDI back to it through a virtual
+port that is both an input and an output, drive gear no one asked it to, and
+hold every port from other apps. JUCE's standalone opens none either way until
+its settings dialog picks them, a single output among them. Hapto adds no
+command-line flags for it, as an app's command line is its author's, and no
+settings of its own. The player stamps each block's MIDI out where its first
+frame falls in the device's stream: when the device asked for the buffer, plus
+the frames the parts of it before this one and the queue hold, so blocks
+rendered back to back keep the spacing of their audio.
 
 Open: keeping a device's place in the app's settings from run to run, and MIDI
 out timed to land with the audio it goes with, which would add the output's

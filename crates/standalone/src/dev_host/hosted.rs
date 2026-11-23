@@ -279,7 +279,13 @@ struct Vst3Audio {
 
 impl Render for Vst3Audio {
     // Open: the dev host hands the formats no MIDI yet.
-    fn render(&mut self, inputs: &[&[f32]], outputs: &mut [&mut [f32]], _midi: &[Event]) {
+    fn render(
+        &mut self,
+        inputs: &[&[f32]],
+        outputs: &mut [&mut [f32]],
+        _midi: &[Event],
+        _sent: &mut dyn FnMut(&[Event]),
+    ) {
         let frames = block_length(inputs, outputs);
         let count = self.pending.take(&mut self.changes);
         let changes = self.changes.get(..count).unwrap_or_default();
@@ -417,7 +423,13 @@ struct CabiAudio {
 }
 
 impl Render for CabiAudio {
-    fn render(&mut self, inputs: &[&[f32]], outputs: &mut [&mut [f32]], _midi: &[Event]) {
+    fn render(
+        &mut self,
+        inputs: &[&[f32]],
+        outputs: &mut [&mut [f32]],
+        _midi: &[Event],
+        _sent: &mut dyn FnMut(&[Event]),
+    ) {
         let frames = block_length(inputs, outputs);
         let _status = self.side.process(inputs, outputs, frames);
     }

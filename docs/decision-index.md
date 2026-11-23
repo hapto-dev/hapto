@@ -1430,8 +1430,10 @@ move its line here; when a decision gains code, add one.
 - `crates/midi-devices/src/winmm/input.rs`: module, `Shared::message`, `Input::shut`, `hand_back`, `callback`
 - `crates/midi-devices/src/outputs.rs`: `Outputs`, `Outputs::open`, `OutputsWriter::write`, `MAX_OUTPUTS`
 - `crates/midi-devices/src/winmm/output.rs`: module, `Sysex::join`, `Sysex::send`, `Output::shut`, `send`
-- `crates/standalone/src/midi.rs`: module, `Midi::reader`, `Midi::tick`
-- `crates/standalone/src/block.rs`: `Render`, `Player::with_midi`
+- `crates/standalone/src/midi.rs`: module, `Midi::streams`, `Midi::tick`, `follow`
+- `crates/standalone/src/routing.rs`: `MidiDevices`, `plan`
+- `crates/standalone/src/lib.rs`: `App`
+- `crates/standalone/src/block.rs`: `Render`, `Player::with_midi`, `Player::with_midi_out`, `Player::block_start`
 - test `crates/midi-devices/src/inputs/tests.rs`: module
 - test `crates/midi-devices/src/winmm/input/tests.rs`: module
 - test `crates/midi-devices/src/outputs/tests.rs`: module
@@ -1442,7 +1444,8 @@ move its line here; when a decision gains code, add one.
 - test `crates/midi-devices/src/devices.rs`: `a_notice_brings_four_looks_each_wait_twice_the_last`, `with_no_notice_the_list_is_read_every_two_seconds`
 - test `crates/midi-devices/src/ring.rs`: `loom_the_audio_thread_takes_what_the_device_pushed_in_order_and_whole`
 - test `crates/midi-devices/tests/alloc_gate.rs`: module
-- test `crates/standalone/src/block/tests.rs`: `the_apps_midi_inputs_reach_the_plugin_in_its_blocks`
+- test `crates/standalone/src/block/tests.rs`: `the_apps_midi_inputs_reach_the_plugin_in_its_blocks`, `each_blocks_midi_is_due_where_its_frames_fall_in_the_devices_buffer`
+- test `crates/standalone/src/routing/tests.rs`: module
 
 ### D116. MIDI in musicians' terms
 

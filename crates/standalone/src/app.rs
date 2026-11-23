@@ -24,6 +24,7 @@ use crate::block::{Plan, Player};
 use crate::device::{self, Answer, LOOK, Look, Output, Playing, answer, say_once};
 use crate::midi::Midi;
 use crate::options::Options;
+use crate::routing::MidiDevices;
 use crate::session::Session;
 use crate::settings::Blocks;
 use crate::signal::Signal;
@@ -57,13 +58,14 @@ pub(crate) enum Wake {
     Tick,
 }
 
-/// Runs `P` standalone until its window closes.
+/// Runs `P` standalone until its window closes, opening the MIDI devices
+/// `routing` says.
 ///
 /// # Errors
 ///
 /// Returns why it could not run: no audio device, an activation refused, no
 /// window.
-pub(crate) fn run<P: Plugin>(options: &Options) -> Result<ExitCode> {
+pub(crate) fn run<P: Plugin>(options: &Options, routing: MidiDevices) -> Result<ExitCode> {
     let event_loop = EventLoop::<Wake>::with_user_event()
         .build()
         .context("the window's event loop")?;
@@ -79,9 +81,11 @@ pub(crate) fn run<P: Plugin>(options: &Options) -> Result<ExitCode> {
     if let Some(line) = silence_note(P::INFO.name, hapto_host::first_width::<P>(), options.signal) {
         eprintln!("{line}");
     }
-    // Only a plugin that takes MIDI opens the computer's inputs, which
-    // WinMM lets one app at a time read.
-    let mut midi = P::INFO.midi_input.then(|| Midi::new(P::INFO.name));
+    // Only a plugin that takes MIDI opens the computer's inputs, and only
+    // one that sends it its outputs: WinMM lets one app at a time hold a
+    // device.
+    let (takes, sends) = (P::INFO.midi_input, P::INFO.midi_output);
+    let mut midi = (takes || sends).then(|| Midi::new(P::INFO.name, takes, sends, routing));
     let audio = start_audio(&plugin, options.signal, midi.as_mut())?;
     let mut app = App {
         audio: Some(audio),
@@ -114,7 +118,8 @@ pub(crate) fn run<P: Plugin>(options: &Options) -> Result<ExitCode> {
 
 /// Opens the system's default output, activates `plugin` at its rate in its
 /// first layout, and starts the output playing it, with `signal` on its
-/// inputs and `midi`'s inputs, opened again for the stream, in its blocks. A
+/// inputs, `midi`'s inputs, opened again for the stream, in its blocks, and
+/// its blocks' MIDI out to `midi`'s outputs, opened again too. A
 /// device that does not start leaves the plugin deactivated again.
 ///
 /// # Errors
@@ -139,8 +144,13 @@ fn start_audio<P: Plugin>(
         BLOCK,
         Plan::new(Blocks::Device, signal),
     );
-    let player = match midi {
-        Some(midi) => player.with_midi(midi.reader()),
+    let (reader, writer) = midi.map_or((None, None), Midi::streams);
+    let player = match reader {
+        Some(reader) => player.with_midi(reader),
+        None => player,
+    };
+    let player = match writer {
+        Some(writer) => player.with_midi_out(writer),
         None => player,
     };
     let stream = output
