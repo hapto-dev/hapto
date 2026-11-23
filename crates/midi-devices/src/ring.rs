@@ -333,4 +333,70 @@ mod loom_models {
             assert_eq!(taken.len() + dropped, 3);
         });
     }
+
+    /// An output clears its ring as a device takes it, while the audio
+    /// thread may push. Whatever the interleaving, what is left afterwards
+    /// is whole packets, in the order they were pushed.
+    #[test]
+    fn loom_a_clear_racing_a_push_leaves_whole_packets_in_order() {
+        loom::model(|| {
+            let (mut producer, mut consumer) = ring(4);
+            let audio = loom::thread::spawn(move || {
+                for tag in 1..=2_u32 {
+                    producer.push(Instant::from_nanos(u64::from(tag)), [tag; 4]);
+                }
+            });
+            consumer.clear();
+            audio.join().expect("the audio thread");
+            let mut left = Vec::new();
+            while let Some((at, words)) = consumer.peek() {
+                assert_eq!(words, [words[0]; 4], "a packet is never torn");
+                assert_eq!(at.nanos(), u64::from(words[0]));
+                left.push(words[0]);
+                consumer.pop();
+            }
+            assert!(left.windows(2).all(|pair| pair[0] < pair[1]), "{left:?}");
+            assert!(left.len() <= 2);
+        });
+    }
+
+    /// The reader looks over a SysEx held in the ring by its place, while
+    /// the device pushes more. Every packet the length counts reads whole,
+    /// in order.
+    #[test]
+    fn loom_every_packet_the_length_counts_reads_whole_by_its_place() {
+        loom::model(|| {
+            let (mut producer, consumer) = ring(4);
+            let device = loom::thread::spawn(move || {
+                for tag in 1..=2_u32 {
+                    producer.push(Instant::from_nanos(u64::from(tag)), [tag; 4]);
+                }
+            });
+            let counted = consumer.len();
+            for index in 0..counted {
+                let (_, words) = consumer.peek_at(index).expect("counted");
+                assert_eq!(words, [u32::try_from(index + 1).expect("small"); 4]);
+            }
+            device.join().expect("the device's thread");
+        });
+    }
+
+    /// A new device takes an input: the main thread renews the ring, and the
+    /// device then pushes. A packet the reader finds came with the new
+    /// generation, which it reads after the packet, so it starts the new
+    /// device's translation over before it.
+    #[test]
+    fn loom_a_packet_a_new_device_pushed_comes_with_its_generation() {
+        loom::model(|| {
+            let (mut producer, consumer) = ring(2);
+            let device = loom::thread::spawn(move || {
+                producer.renew();
+                producer.push(Instant::from_nanos(1), [1; 4]);
+            });
+            if consumer.peek().is_some() {
+                assert_eq!(consumer.generation(), 1);
+            }
+            device.join().expect("the device's thread");
+        });
+    }
 }

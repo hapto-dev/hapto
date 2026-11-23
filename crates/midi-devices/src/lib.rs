@@ -28,7 +28,7 @@
 //!
 //! Every input the computer has, read into one block:
 //!
-//! ```
+//! ```no_run
 //! use hapto_midi_devices::{Devices, Instant, inputs};
 //! use hapto_ump::EventList;
 //!

@@ -1453,7 +1453,7 @@ move its line here; when a decision gains code, add one.
 - `crates/host/src/standalone.rs`: `StandaloneAudio::process`
 - test `crates/host/src/standalone/tests.rs`: `what_the_plugin_sends_comes_back_at_its_frames_of_the_block_once_it_has_played`
 - test `crates/midi-devices/src/devices.rs`: `a_notice_brings_four_looks_each_wait_twice_the_last`, `with_no_notice_the_list_is_read_every_two_seconds`
-- test `crates/midi-devices/src/ring.rs`: `loom_the_audio_thread_takes_what_the_device_pushed_in_order_and_whole`
+- test `crates/midi-devices/src/ring.rs`: `loom_the_audio_thread_takes_what_the_device_pushed_in_order_and_whole`, `loom_a_clear_racing_a_push_leaves_whole_packets_in_order`, `loom_every_packet_the_length_counts_reads_whole_by_its_place`, `loom_a_packet_a_new_device_pushed_comes_with_its_generation`
 - test `crates/midi-devices/tests/alloc_gate.rs`: module
 - test `crates/standalone/src/block/tests.rs`: `the_apps_midi_inputs_reach_the_plugin_in_its_blocks`, `at_frames_each_blocks_midi_is_due_where_its_frames_fall_in_the_devices_buffer`, `each_block_of_a_buffer_reads_its_own_share_of_the_time_since_the_last`
 - test `crates/standalone/src/routing/tests.rs`: module

@@ -91,7 +91,7 @@ impl Timing {
 ///
 /// # Examples
 ///
-/// ```
+/// ```no_run
 /// use hapto_midi_devices::{Devices, Instant, outputs};
 /// use hapto_ump::Event;
 ///

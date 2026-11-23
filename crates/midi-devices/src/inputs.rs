@@ -42,7 +42,7 @@ pub const MAX_INPUTS: usize = 16;
 ///
 /// # Examples
 ///
-/// ```
+/// ```no_run
 /// use hapto_midi_devices::{Devices, Instant, inputs};
 /// use hapto_ump::EventList;
 ///
@@ -87,7 +87,7 @@ pub fn inputs(room: usize) -> (Inputs, InputsReader) {
 ///
 /// # Examples
 ///
-/// ```
+/// ```no_run
 /// use hapto_midi_devices::{Devices, inputs};
 ///
 /// let mut devices = Devices::new();

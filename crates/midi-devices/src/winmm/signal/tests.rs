@@ -2,6 +2,7 @@
 //! once, and the timer ends one no earlier than asked.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use super::*;
@@ -10,15 +11,19 @@ use super::*;
 fn a_signal_from_another_thread_ends_a_wait_for_it() {
     let signal = Arc::new(Signal::new());
     let setter = Arc::clone(&signal);
+    let set = Arc::new(AtomicBool::new(false));
+    let seen = Arc::clone(&set);
     let waiting = thread::spawn(move || {
-        let started = Instant::now();
+        // A wait with no timeout ends only when the signal is set. One set
+        // before the wait began is kept for it, as an auto-reset event
+        // keeps it, so either order ends it, and never before the set.
         Timer::new().wait(&signal, None);
-        started.elapsed()
+        seen.load(Ordering::Acquire)
     });
-    thread::sleep(Duration::from_millis(20));
+    set.store(true, Ordering::Release);
     setter.set();
-    let waited = waiting.join().expect("the waiting thread");
-    assert!(waited >= Duration::from_millis(20), "{waited:?}");
+    let after = waiting.join().expect("the waiting thread");
+    assert!(after, "the wait ended before the signal was set");
 }
 
 #[test]

@@ -225,8 +225,8 @@ and its host event queue. The rest are the exporter core's process path,
 automation walk and channel staging (`crates/host/src/boundary/channels.rs`),
 the VST3 exporter's MIDI in and out, the MIDI crate's decoder, block lists and
 encoder, the devices crate's rings, reader and writer, and the example EQ's
-filters and block. A site that cannot fail says why in an `#[expect(..., reason
-= "...")]`.
+filters and block. A site that cannot fail says why in an
+`#[expect(..., reason = "...")]`.
 
 `examples/eq/tests/matrix.rs` runs the example EQ through both exporters under
 the allocation gate. It runs in debug and release, with the audio-thread mark
@@ -387,42 +387,56 @@ Two tools cover what real threads cannot make happen on demand:
 - **A model checker.** A lock-free protocol gets a `loom` model that explores
   every interleaving its atomics allow. `scripts/run-loom.py` finds the models
   in every Rust file of the repository and counts them, by crate, module and
-  name, and fails unless each one ran. A model outside the `src/` of the lane's
-  crates (params, learn, host and midi-devices) fails it too, since the lane
-  would never run it. This list says what each checks, and a new model adds a
-  line: - learn's staging slot: the newest staged value is the last one taken
-  (`crates/learn/src/target.rs`); - learn's capture staging: a poll racing two
-  blocks, an NRPN high byte and then its low byte, never settles the high byte
-  as coarse, and weakening the block counts' or the staged word's release or
-  acquire fails it (`crates/learn/src/capture/tests.rs`); - the parameters' host
-  event queue: a drain racing a gesture hears one balanced bracket
-  (`crates/params/src/host_events.rs`); - the parameters' count-then-value read:
-  a read never has a count newer than its value
-  (`crates/params/src/set/tests.rs`); - the parameters' store under two writers:
-  a user's write on the UI thread races a host write on the audio thread. The
-  race leaves one writer's value with that writer's origin, since the two are
-  one atomic word. A read during the race returns one writer's value with that
-  writer's origin (`crates/params/src/set/tests.rs`); - the parameters' writes
-  with a step between store and publish: a user's write and a sync race a reader
-  that compares counts, takes the re-read request and drains the host queue. The
-  reader never shows a count or a request newer than the value, and the store
-  always holds at least the value the host heard
-  (`crates/params/src/set/tests.rs`); - the exporters' audio slot: a block
-  racing an activation sees one whole processor. A panicking block racing one
-  marks only its own processor (`crates/host/src/boundary/loom_models.rs`,
-  `crates/host/src/engine/process.rs`); - the exporters' reset request: a reset
-  asked once a block ran on the processor an activation installs is kept, since
-  the activation clears the old request while it holds the slot
-  (`crates/host/src/engine/process.rs`); - the exporters' main-thread state
-  bound to no thread: a tick that tries once and a call that waits by trying
-  again never touch it at once. The call borrows it a second time inside its
-  loan and lets the outer loan go first. The waiting call always gets it, and it
-  is free once both are done (`crates/host/src/boundary/loom_models.rs`); - the
-  same state shared by two threads: it drops on whichever thread lets it go
-  last, after both loans end, and exactly once
-  (`crates/host/src/boundary/loom_models.rs`); - a MIDI device's ring: the audio
-  thread takes what the device's thread pushed, in order and never torn, and
-  what found no room is counted (`crates/midi-devices/src/ring.rs`).
+  name, and fails unless each one ran. A model outside the `src/` of the
+  lane's crates (params, learn, host and midi-devices) fails it too, since the
+  lane would never run it. This list says what each checks, and a new model
+  adds a line:
+  - learn's staging slot: the newest staged value is the last one taken
+    (`crates/learn/src/target.rs`);
+  - learn's capture staging: a poll racing two blocks, an NRPN high byte and
+    then its low byte, never settles the high byte as coarse, and weakening the
+    block counts' or the staged word's release or acquire fails it
+    (`crates/learn/src/capture/tests.rs`);
+  - the parameters' host event queue: a drain racing a gesture hears one
+    balanced bracket (`crates/params/src/host_events.rs`);
+  - the parameters' count-then-value read: a read never has a count newer than
+    its value (`crates/params/src/set/tests.rs`);
+  - the parameters' store under two writers: a user's write on the UI thread
+    races a host write on the audio thread. The race leaves one writer's value
+    with that writer's origin, since the two are one atomic word. A read during
+    the race returns one writer's value with that writer's origin
+    (`crates/params/src/set/tests.rs`);
+  - the parameters' writes with a step between store and publish: a user's
+    write and a sync race a reader that compares counts, takes the re-read
+    request and drains the host queue. The reader never shows a count or a
+    request newer than the value, and the store always holds at least the value
+    the host heard (`crates/params/src/set/tests.rs`);
+  - the exporters' audio slot: a block racing an activation sees one whole
+    processor. A panicking block racing one marks only its own processor
+    (`crates/host/src/boundary/loom_models.rs`,
+    `crates/host/src/engine/process.rs`);
+  - the exporters' reset request: a reset asked once a block ran on the
+    processor an activation installs is kept, since the activation clears the
+    old request while it holds the slot (`crates/host/src/engine/process.rs`);
+  - the exporters' main-thread state bound to no thread: a tick that tries once
+    and a call that waits by trying again never touch it at once. The call
+    borrows it a second time inside its loan and lets the outer loan go first.
+    The waiting call always gets it, and it is free once both are done
+    (`crates/host/src/boundary/loom_models.rs`);
+  - the same state shared by two threads: it drops on whichever thread lets it
+    go last, after both loans end, and exactly once
+    (`crates/host/src/boundary/loom_models.rs`);
+  - a MIDI device's ring: the audio thread takes what the device's thread
+    pushed, in order and never torn, and what found no room is counted
+    (`crates/midi-devices/src/ring.rs`);
+  - the same ring cleared as a device takes it, while the audio thread
+    pushes: what is left is whole packets, in order
+    (`crates/midi-devices/src/ring.rs`);
+  - the same ring read by place, as a held SysEx is looked over: every packet
+    the length counts reads whole, in order
+    (`crates/midi-devices/src/ring.rs`);
+  - the same ring renewed for a new device: a packet it pushed comes with its
+    new generation (`crates/midi-devices/src/ring.rs`).
 
   A model fails when the ordering that publishes its data is weakened, with one
   exception: the queue's `dirty` flag. Its release and acquire are needed under

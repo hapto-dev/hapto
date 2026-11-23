@@ -246,9 +246,9 @@ with `cargo doc -p hapto-host --features vst3,cabi,test-host
   ([`faults.rs`](crates/host/src/faults.rs) says when, and on which thread;
   [a panic in a host's call][panic], [making a fault visible][faults]).
 - The audio path never allocates, locks or makes a system call, except while a
-  panic unwinds (`faults.rs` says why), and but for the standalone app's MIDI
-  out, which sets each output's signal, an event whose setting never blocks,
-  once a block has handed it MIDI (`crates/midi-devices/src/outputs.rs`).
+  panic unwinds (`faults.rs` says why) and where the standalone app's MIDI out
+  sets each output's signal, an event whose setting never blocks, once a block
+  has handed it MIDI (`crates/midi-devices/src/outputs.rs`).
   Allocation gates, and in a debug build the exporters' audio-thread mark, check
   what the tests reach;
   [testing.md](docs/testing.md#2-the-audio-path-does-not-allocate) says what

@@ -41,7 +41,7 @@ fn a_chord_and_a_sysex_play_on_the_systems_synth_each_at_its_time() {
     let on = |frame: u32, key: u32| Event::new(frame, [0x4090_0000 | key << 8, 0xC000_0000, 0, 0]);
     let off = |frame: u32, key: u32| Event::new(frame, [0x4080_0000 | key << 8, 0, 0, 0]);
     let block = [
-        Event::new(0, [0x3006_7E7F, 0x0901_0000, 0, 0]),
+        Event::new(0, [0x3004_7E7F, 0x0901_0000, 0, 0]),
         on(0, 60),
         on(250, 64),
         on(500, 67),
