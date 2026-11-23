@@ -46,7 +46,7 @@ use ::vst3::Steinberg::{
 use hapto_midi::controller;
 use hapto_params::RESERVED_HOST_IDS;
 use hapto_ump::{
-    Attribute, ChannelMessage, ChannelVoice, Midi1Message, Midi1Voice, Origin, SysEx7,
+    Attribute, ChannelMessage, ChannelVoice, Midi1Message, Midi1Voice, Origin, SysEx7, scale,
 };
 
 use super::Component;
@@ -82,11 +82,9 @@ const EXPRESSION: u16 = EventTypes_::kNoteExpressionValueEvent as u16;
 /// A data event's type for SysEx.
 pub(super) const SYSEX: u32 = DataTypes_::kMidiSysEx as uint32;
 
-/// MIDI 2.0's attribute type for a note-on's pitch, 7.9.
-const PITCH_7_9: u8 = 3;
 /// MIDI 2.0's registered per-note controller for a note's absolute pitch,
 /// 7.25.
-pub(super) const PER_NOTE_PITCH: u8 = 3;
+pub(super) const PER_NOTE_PITCH: u8 = ChannelMessage::PER_NOTE_PITCH;
 /// MIDI 1.0's controller for vibrato depth, sound controller 8, which a
 /// note's vibrato becomes.
 const VIBRATO_DEPTH: u8 = 77;
@@ -522,11 +520,7 @@ fn note_on(on: &NoteOnEvent, offset: u32, notes: Option<&mut Notes>, midi: &mut 
     let attribute = if cents == 0.0 {
         Attribute::NONE
     } else {
-        let pitch = f64::from(key) + f64::from(cents) / 100.0;
-        Attribute {
-            kind: PITCH_7_9,
-            data: (pitch.clamp(0.0, 127.998) * 512.0).round() as u16,
-        }
+        Attribute::pitch(f64::from(key) + f64::from(cents) / 100.0)
     };
     let message = ChannelMessage::NoteOn {
         note: key,
@@ -555,7 +549,7 @@ fn expression(value: &NoteExpressionValueEvent, offset: u32, notes: &Notes, midi
     let bits = if expression.controller == PER_NOTE_PITCH {
         let reach = TUNING_REACH * (value.value.clamp(0.0, 1.0) * 2.0 - 1.0);
         let pitch = f64::from(note.key) + f64::from(note.cents) / 100.0 + reach;
-        (pitch.clamp(0.0, 127.999_999) * f64::from(1_u32 << 25)).round() as u32
+        scale::pitch_7_25(pitch)
     } else if expression.controller == controller::number::VOLUME {
         bits(volume_of_expression(value.value))
     } else {
@@ -589,7 +583,7 @@ fn place(channel: int16, pitch: int16) -> Option<(u8, u8)> {
 
 /// A value from 0 to 1 as 16 bits, held to the ends.
 fn sixteen(value: f32) -> u16 {
-    (value.clamp(0.0, 1.0) * f32::from(u16::MAX)).round() as u16
+    scale::unit_to_16(f64::from(value))
 }
 
 /// A volume note expression's value as the per-note volume it stands for.
@@ -609,7 +603,7 @@ pub(super) fn expression_of_volume(volume: f64) -> f64 {
 
 /// A value from 0 to 1 as 32 bits, held to the ends.
 fn bits(value: f64) -> u32 {
-    (value.clamp(0.0, 1.0) * f64::from(u32::MAX)).round() as u32
+    scale::unit_to_32(value)
 }
 
 /// The controllers a host's MIDI 1.0 input reaches the plugin through: a

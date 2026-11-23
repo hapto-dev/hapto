@@ -1,13 +1,10 @@
 //! From messages back to MIDI 2.0 packets: what a block sends.
 
-use hapto_ump::scale::up_14_to_32;
+use hapto_ump::scale::{self, up_14_to_32};
 use hapto_ump::{Attribute, Bank, ChannelMessage, ChannelVoice, SysEx7};
 
 use crate::message::{Message, NoteKey};
 use crate::values::{Centred, Channel, Group, Pitch, held};
-
-/// MIDI 2.0's registered per-note controller for a note's absolute pitch.
-const PER_NOTE_PITCH: u8 = 3;
 
 /// Hands `send` the packets `message` is as MIDI 2.0: one for most, as many
 /// as a SysEx needs, six bytes each.
@@ -51,7 +48,7 @@ fn voice(message: &Message<'_>) -> Option<ChannelVoice> {
             note,
             ChannelMessage::RegisteredPerNoteController {
                 note: note.key.number(),
-                index: PER_NOTE_PITCH,
+                index: ChannelMessage::PER_NOTE_PITCH,
                 value: pitch_7_25(pitch),
             },
         ),
@@ -210,12 +207,12 @@ fn channel_wide(message: &Message<'_>) -> Option<ChannelVoice> {
 
 /// A value from 0 to 1 as 32 bits, held to the ends.
 fn bits(value: f32) -> u32 {
-    (f64::from(value.clamp(0.0, 1.0)) * f64::from(u32::MAX)).round() as u32
+    scale::unit_to_32(f64::from(value))
 }
 
 /// A value from 0 to 1 as 16 bits, held to the ends.
 fn sixteen(value: f32) -> u16 {
-    (value.clamp(0.0, 1.0) * f32::from(u16::MAX)).round() as u16
+    scale::unit_to_16(f64::from(value))
 }
 
 /// A centred value as MIDI 2.0's 32 bits, its centre at `0x8000_0000`.
@@ -232,8 +229,7 @@ fn centred(value: Centred) -> u32 {
 
 /// A pitch as MIDI 2.0's 7.25.
 fn pitch_7_25(pitch: Pitch) -> u32 {
-    let semitones = f64::from(pitch.semitones()).clamp(0.0, 127.999_999);
-    (semitones * f64::from(1_u32 << 25)).round() as u32
+    scale::pitch_7_25(f64::from(pitch.semitones()))
 }
 
 /// A bend range in semitones as registered parameter 0's value: semitones

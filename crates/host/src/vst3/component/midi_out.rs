@@ -38,14 +38,13 @@ use ::vst3::Steinberg::Vst::{
 use ::vst3::Steinberg::{int32, kResultOk, uint8};
 use hapto_ump::{
     ChannelMessage, Downgrade, Event, MessageType, Midi1Message, Midi1Voice, Origin, SysExJoin,
+    scale,
 };
 
 use super::midi::{
     EXPRESSIONS, Named, Notes, PER_NOTE_PITCH, SYSEX, TUNING_REACH, expression_of_volume,
 };
 
-/// MIDI 2.0's attribute type for a note-on's pitch, 7.9.
-const PITCH_7_9: u8 = 3;
 /// VST3's numbers for the MIDI 1.0 messages it carries as controllers.
 const PRESSURE: uint8 = ControllerNumbers_::kAfterTouch as uint8;
 const BEND: uint8 = ControllerNumbers_::kPitchBend as uint8;
@@ -181,11 +180,9 @@ fn native(packet: &Event, out: &mut Out, add: &mut impl FnMut(VstEvent) -> bool)
             velocity,
             attribute,
         } => {
-            let cents = if attribute.kind == PITCH_7_9 {
-                (f32::from(attribute.data) / 512.0 - f32::from(note)) * 100.0
-            } else {
-                0.0
-            };
+            let cents = attribute
+                .semitones()
+                .map_or(0.0, |pitch| ((pitch - f64::from(note)) * 100.0) as f32);
             if id >= 0 {
                 out.notes.start(Named {
                     id,
@@ -202,7 +199,7 @@ fn native(packet: &Event, out: &mut Out, add: &mut impl FnMut(VstEvent) -> bool)
                 // A host that turns it into MIDI 1.0 rounds a velocity
                 // under half a step to 0, a note-off, so it goes out at
                 // the least MIDI 1.0 has, as the Default Translation does.
-                velocity: (f32::from(velocity) / f32::from(u16::MAX)).max(1.0 / 127.0),
+                velocity: (scale::unit_of_16(velocity) as f32).max(1.0 / 127.0),
                 length: 0,
                 noteId: id,
             };
@@ -217,7 +214,7 @@ fn native(packet: &Event, out: &mut Out, add: &mut impl FnMut(VstEvent) -> bool)
             event.__field0.noteOff = NoteOffEvent {
                 channel,
                 pitch: i16::from(note),
-                velocity: f32::from(velocity) / f32::from(u16::MAX),
+                velocity: scale::unit_of_16(velocity) as f32,
                 noteId: id,
                 tuning: cents,
             };
@@ -228,7 +225,7 @@ fn native(packet: &Event, out: &mut Out, add: &mut impl FnMut(VstEvent) -> bool)
             event.__field0.polyPressure = PolyPressureEvent {
                 channel,
                 pitch: i16::from(note),
-                pressure: (f64::from(value) / f64::from(u32::MAX)) as f32,
+                pressure: scale::unit_of_32(value) as f32,
                 noteId: id,
             };
             add(event)
@@ -271,13 +268,13 @@ fn expression(
     let expression = EXPRESSIONS.iter().find(|kind| kind.controller == index)?;
     let normalized = if index == PER_NOTE_PITCH {
         let cents = notes.find(id).map_or(0.0, |named| named.cents);
-        let pitch = f64::from(value) / f64::from(1_u32 << 25);
+        let pitch = scale::semitones_7_25(value);
         let reach = pitch - f64::from(note) - f64::from(cents) / 100.0;
         (reach / TUNING_REACH + 1.0) / 2.0
     } else if index == hapto_midi::controller::number::VOLUME {
-        expression_of_volume(f64::from(value) / f64::from(u32::MAX))
+        expression_of_volume(scale::unit_of_32(value))
     } else {
-        f64::from(value) / f64::from(u32::MAX)
+        scale::unit_of_32(value)
     };
     Some(NoteExpressionValueEvent {
         typeId: expression.id,

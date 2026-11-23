@@ -3,7 +3,7 @@
 
 use hapto_midi::{Centred, Channel, Decoder, Group, Key, Message, NoteId, Program, controller};
 use hapto_ump::SysExForm::{self, Complete, Continue, End, Start};
-use hapto_ump::{Event, Origin, SysEx7, scale};
+use hapto_ump::{Attribute, Event, Origin, SysEx7, scale};
 use hapto_ump::{EventList, Midi1Message, Midi1Voice, Upgrade};
 use proptest::prelude::*;
 use proptest::test_runner::FileFailurePersistence;
@@ -318,7 +318,7 @@ fn a_notes_pitch_comes_with_it_or_on_its_own() {
         panic!("a note-on");
     };
     assert_eq!(note.pitch().semitones(), 69.5);
-    assert_eq!(note.attribute(), Some((3, 69 * 512 + 256)));
+    assert_eq!(note.attribute(), Some(Attribute::pitch(69.5)));
     // Registered per-note controller 3: 7 bits of key, 25 of fraction.
     let quarter = [0x4000_4503, 60 << 25 | 1 << 23];
     let messages = decode(&mut decoder, quarter);

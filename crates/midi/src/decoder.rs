@@ -3,7 +3,7 @@
 
 use std::fmt;
 
-use hapto_ump::scale::down_32_to_14;
+use hapto_ump::scale::{self, down_32_to_14};
 use hapto_ump::{Attribute, ChannelMessage, ChannelVoice, Event, MessageType, Origin, SysExJoin};
 
 use crate::message::{Message, NoteKey, NoteOff, NoteOn};
@@ -350,7 +350,7 @@ impl Decoder {
             },
             ChannelMessage::RegisteredPerNoteController { note, index, value } => {
                 let note = self.key(at, note);
-                if index == PER_NOTE_PITCH {
+                if index == ChannelMessage::PER_NOTE_PITCH {
                     Message::NotePitch {
                         note,
                         pitch: pitch_7_25(value),
@@ -424,7 +424,7 @@ impl Decoder {
             group,
             channel,
             key,
-            velocity: f32::from(velocity) / f32::from(u16::MAX),
+            velocity: scale::unit_of_16(velocity) as f32,
             attribute,
         }
     }
@@ -475,7 +475,7 @@ impl Decoder {
             group,
             channel,
             key,
-            velocity: f32::from(velocity) / f32::from(u16::MAX),
+            velocity: scale::unit_of_16(velocity) as f32,
         })
     }
 
@@ -543,20 +543,17 @@ impl Decoder {
     }
 }
 
-/// MIDI 2.0's registered per-note controller for a note's absolute pitch,
-/// 7.25.
-const PER_NOTE_PITCH: u8 = 3;
 /// The registered parameter for the pitch bend range.
 const BEND_RANGE: u8 = 0;
 
 /// A 32-bit controller value as 0 to 1.
 fn unit(value: u32) -> f32 {
-    (f64::from(value) / f64::from(u32::MAX)) as f32
+    scale::unit_of_32(value) as f32
 }
 
 /// A pitch as MIDI 2.0's 7.25 carries it: 7 bits of key, 25 of fraction.
 fn pitch_7_25(value: u32) -> Pitch {
-    Pitch::new((f64::from(value) / f64::from(1_u32 << 25)) as f32)
+    Pitch::new(scale::semitones_7_25(value) as f32)
 }
 
 /// The bend range registered parameter 0 carries: semitones in its 14

@@ -42,12 +42,12 @@ pub(crate) fn fourteen(value: u16) -> f64 {
 
 /// A MIDI 2.0 16-bit velocity.
 pub(crate) fn sixteen(value: u16) -> f64 {
-    f64::from(value) / f64::from(u16::MAX)
+    hapto_ump::scale::unit_of_16(value)
 }
 
 /// A MIDI 2.0 32-bit controller value.
 pub(crate) fn thirty_two(value: u32) -> f64 {
-    f64::from(value) / f64::from(u32::MAX)
+    hapto_ump::scale::unit_of_32(value)
 }
 
 #[cfg(test)]

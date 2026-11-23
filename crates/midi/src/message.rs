@@ -8,10 +8,6 @@ use hapto_ump::Attribute;
 use crate::controller;
 use crate::values::{Centred, Channel, Group, Key, NoteId, Pitch, Program};
 
-/// MIDI 2.0's note attribute that carries a pitch: 7 bits of key and 9 of
-/// fraction.
-const PITCH_7_9: u8 = 3;
-
 /// A note starting.
 ///
 /// # Examples
@@ -74,13 +70,9 @@ impl NoteOn {
     #[must_use]
     pub fn with_key(self, key: Key) -> Self {
         let mut attribute = self.attribute;
-        if attribute.kind == PITCH_7_9 {
-            // 7.9 fixed point: a key is 512.
-            let keys = i32::from(key.number()).saturating_sub(i32::from(self.key.number()));
-            let moved = i32::from(attribute.data)
-                .saturating_add(keys.saturating_mul(512))
-                .clamp(0, i32::from(u16::MAX));
-            attribute.data = u16::try_from(moved).unwrap_or(u16::MAX);
+        if let Some(semitones) = attribute.semitones() {
+            let keys = f64::from(key.number()) - f64::from(self.key.number());
+            attribute = Attribute::pitch(semitones + keys);
         }
         NoteOn {
             key,
@@ -111,17 +103,36 @@ impl NoteOn {
     /// the note-on carries a pitch of its own, as MIDI 2.0's pitch attribute
     /// does.
     pub fn pitch(&self) -> Pitch {
-        if self.attribute.kind == PITCH_7_9 {
-            Pitch::new(f32::from(self.attribute.data) / 512.0)
-        } else {
-            Pitch::of(self.key)
+        match self.attribute.semitones() {
+            Some(semitones) => Pitch::new(semitones as f32),
+            None => Pitch::of(self.key),
         }
     }
 
-    /// The note's attribute as it came, its type and data, for one Hapto
-    /// does not read itself; `None` for a note-on with none.
-    pub fn attribute(&self) -> Option<(u8, u16)> {
-        (self.attribute != Attribute::NONE).then_some((self.attribute.kind, self.attribute.data))
+    /// The same note asking for `pitch`, through MIDI 2.0's pitch
+    /// attribute, whatever its key.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hapto_midi::{Key, NoteOn, Pitch};
+    ///
+    /// // A4 a quarter tone sharp.
+    /// let note = NoteOn::new(Key::new(69), 1.0).with_pitch(Pitch::new(69.5));
+    /// assert_eq!(note.pitch().semitones(), 69.5);
+    /// ```
+    #[must_use]
+    pub fn with_pitch(self, pitch: Pitch) -> Self {
+        NoteOn {
+            attribute: Attribute::pitch(f64::from(pitch.semitones())),
+            ..self
+        }
+    }
+
+    /// The note's attribute as it came, for one Hapto does not read itself;
+    /// `None` for a note-on with none.
+    pub fn attribute(&self) -> Option<Attribute> {
+        (self.attribute != Attribute::NONE).then_some(self.attribute)
     }
 }
 
