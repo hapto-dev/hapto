@@ -49,7 +49,7 @@ impl Render for Box<dyn Render> {
 
 impl<P: hapto_host::Plugin> Render for StandaloneAudio<P> {
     fn render(&mut self, inputs: &[&[f32]], outputs: &mut [&mut [f32]], midi: &[Event]) {
-        self.process(inputs, outputs, midi);
+        self.process(inputs, outputs, midi, |_| {});
     }
 }
 

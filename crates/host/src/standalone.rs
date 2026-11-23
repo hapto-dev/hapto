@@ -77,7 +77,8 @@ impl HostLink for Link {
 /// let input = [1.0_f32; 4];
 /// let (mut left, mut right) = ([0.0_f32; 4], [0.0_f32; 4]);
 /// let inputs = [&input[..], &input[..]];
-/// audio.process(&inputs, &mut [&mut left[..], &mut right[..]], &[]);
+/// // No MIDI in, and none of what it sends kept.
+/// audio.process(&inputs, &mut [&mut left[..], &mut right[..]], &[], |_| {});
 /// assert_eq!(left, [1.0; 4], "0 dB");
 ///
 /// // The app's tick, about 60 times a second; its saved block, between runs.
@@ -378,7 +379,8 @@ impl<P: Plugin> Drop for Standalone<P> {
 /// let mut out = [[0.5_f32; 8]; 2];
 /// let [left, right] = &mut out;
 /// // Before an activation a block is silence.
-/// let played = audio.process(&[], &mut [&mut left[..], &mut right[..]], &[]);
+/// let block = &mut [&mut left[..], &mut right[..]];
+/// let played = audio.process(&[], block, &[], |_sent| {});
 /// assert_eq!(played, None);
 /// assert_eq!(out, [[0.0; 8]; 2]);
 /// ```
@@ -406,6 +408,11 @@ impl<P: Plugin> StandaloneAudio<P> {
     /// [`ProcessSetup::max_events`](crate::ProcessSetup::max_events) gives is
     /// dropped and counted.
     ///
+    /// `sent` is handed what the plugin sent, MIDI 2.0 as it sent it, each
+    /// packet at a frame of the block and in the order it sent them, once
+    /// the block has played: for an app to send to its devices. It is not
+    /// called for a block that did not play.
+    ///
     /// The block is as long as its shortest channel. Channels past
     /// [`MAX_CHANNELS`] are passed over: an output among them is left as it
     /// was, and an input is not read. The processor sees the activation's
@@ -417,6 +424,7 @@ impl<P: Plugin> StandaloneAudio<P> {
         inputs: &[&[f32]],
         outputs: &mut [&mut [f32]],
         midi: &[Event],
+        sent: impl FnOnce(&[Event]),
     ) -> Option<Status> {
         let ins = &inputs[..inputs.len().min(MAX_CHANNELS)];
         let outs_len = outputs.len().min(MAX_CHANNELS);
@@ -457,8 +465,7 @@ impl<P: Plugin> StandaloneAudio<P> {
                         into.push(event);
                     }
                 },
-                // Open: the app sends the plugin's MIDI to no device yet.
-                |_| {},
+                sent,
             )
         };
         match outcome {

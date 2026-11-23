@@ -3326,8 +3326,10 @@ against C++.
   activation, the block, the tick, the saved block, faults and teardown keep
   their rules. The app is the host: an edit lands in the parameter store with
   no one to tell, and no automation reaches the plugin; the computer's MIDI
-  inputs reach one that takes MIDI (D115). `Standalone`
-  is made on the app's main thread and is not `Send`. Its `StandaloneAudio`
+  inputs reach one that takes MIDI, and what one that sends MIDI sent comes
+  back to the app once its block has played, at its frames, for the devices
+  the app sends to (D115). `Standalone` is made on the app's main thread and
+  is not `Send`. Its `StandaloneAudio`
   side is `Send` for the device's callback and allocates nothing: its channel
   lists live on the stack, up to 32 each way, and a block is as long as its
   shortest channel. Inputs that share part of a buffer are refused, as the

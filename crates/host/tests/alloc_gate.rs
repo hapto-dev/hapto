@@ -353,7 +353,7 @@ fn a_block_through_the_standalone_exporter_does_not_allocate() {
     let midi = [0x00B0_0764, 0x00B0_6302, 0x00B0_622C, 0x00B0_0640]
         .map(|bytes: u32| hapto_host::Event::new(3, [0x2000_0000 | bytes, 0, 0, 0]));
     assert_no_allocations("a block before the activation, which is silence", || {
-        audio.process(&[&input, &input], &mut [&mut left, &mut right], &[]);
+        audio.process(&[&input, &input], &mut [&mut left, &mut right], &[], |_| {});
     });
     assert_eq!(app.activate(48_000.0, 256, Width::STEREO), Ok(()));
     assert_no_allocations(
@@ -365,6 +365,7 @@ fn a_block_through_the_standalone_exporter_does_not_allocate() {
                     &inputs,
                     &mut [&mut left[..frames], &mut right[..frames]],
                     &midi,
+                    |_| {},
                 );
             }
             // An input shorter than the outputs, inputs that share part of
@@ -373,10 +374,16 @@ fn a_block_through_the_standalone_exporter_does_not_allocate() {
                 &[&input[..100], &input[..100]],
                 &mut [&mut left, &mut right],
                 &[],
+                |_| {},
             );
             let shifted = [&input[..256], &input[1..257]];
-            audio.process(&shifted, &mut [&mut left[..256], &mut right[..256]], &[]);
-            audio.process(&[], &mut outputs, &[]);
+            audio.process(
+                &shifted,
+                &mut [&mut left[..256], &mut right[..256]],
+                &[],
+                |_| {},
+            );
+            audio.process(&[], &mut outputs, &[], |_| {});
         },
     );
     assert_eq!(app.faults(), 0);

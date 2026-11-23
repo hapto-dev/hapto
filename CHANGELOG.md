@@ -35,6 +35,9 @@ exporter.
 - **Breaking.** `ProcessSetup` is made with `ProcessSetup::new`, with room for
   no MIDI until a test sets `max_events` or `max_out_events`, so the buses
   beyond the main one can join it later without breaking a caller.
+- **Breaking.** `StandaloneAudio::process` takes `sent`, which it hands what
+  the plugin sent once the block has played, at the block's frames, for an
+  app to send to its devices.
 - The VST3 exporter sends a plugin's MIDI to its host, for a plugin that
   declares MIDI out: notes as VST3's note events, under the host's `noteId`
   where the host named the note and none where the plugin made it up, a

@@ -1437,6 +1437,8 @@ move its line here; when a decision gains code, add one.
 - test `crates/midi-devices/src/outputs/tests.rs`: module
 - test `crates/midi-devices/src/winmm/output/tests.rs`: module
 - test `crates/midi-devices/tests/by_hand.rs`: module
+- `crates/host/src/standalone.rs`: `StandaloneAudio::process`
+- test `crates/host/src/standalone/tests.rs`: `what_the_plugin_sends_comes_back_at_its_frames_of_the_block_once_it_has_played`
 - test `crates/midi-devices/src/devices.rs`: `a_notice_brings_four_looks_each_wait_twice_the_last`, `with_no_notice_the_list_is_read_every_two_seconds`
 - test `crates/midi-devices/src/ring.rs`: `loom_the_audio_thread_takes_what_the_device_pushed_in_order_and_whole`
 - test `crates/midi-devices/tests/alloc_gate.rs`: module
