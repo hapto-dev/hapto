@@ -210,6 +210,9 @@ window anywhere but Windows.
   Per-note controllers belong to the key, as MIDI 2.0 keeps them, but for a
   note its host names. It renders into a `VoiceAudio`, the span's audio in
   the processor's layout, whose frames place a mono voice by its pan.
+  `Poly::with_mpe` turns MPE on: a lower zone of 15 member channels, moved by
+  an MPE Configuration Message, each member's note bent by its own channel
+  and its master's and held by its master's pedals.
   `AddSample::add_scaled` adds a sample at a gain per channel, and
   `Audio::reborrow` lends audio again. `Spans` and `Span` are hapto-midi's,
   and `Status` hapto-audio's, both re-exported where they were.

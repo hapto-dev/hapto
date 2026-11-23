@@ -489,3 +489,129 @@ fn play_starts_a_note_at_the_frame_it_arrives_and_sleeps_once_no_voice_sounds() 
         Status::Sleep
     );
 }
+
+fn on_at(channel: u8, key: u8, id: u32) -> Message<'static> {
+    let mut note = NoteOn::new(Key::new(key), 1.0).with_id(NoteId::own(id));
+    note.channel = Channel::number(channel);
+    Message::NoteOn(note)
+}
+
+fn bend_at(channel: u8, value: f32) -> Message<'static> {
+    Message::Bend {
+        group: Group::FIRST,
+        channel: Channel::number(channel),
+        value: Centred::new(value),
+    }
+}
+
+fn control_at(channel: u8, controller: u8, value: f32) -> Message<'static> {
+    Message::Control {
+        group: Group::FIRST,
+        channel: Channel::number(channel),
+        controller,
+        value,
+    }
+}
+
+/// An MPE Configuration Message on `channel` for `members` member channels,
+/// as a MIDI 1.0 one upgrades.
+fn configuration(channel: u8, members: u8) -> Message<'static> {
+    Message::Registered {
+        group: Group::FIRST,
+        channel: Channel::number(channel),
+        bank: 0,
+        index: 6,
+        value: f32::from(members) / 128.0,
+    }
+}
+
+#[test]
+fn mpe_is_off_until_the_plugin_turns_it_on() {
+    let mut voices = poly(2);
+    send(&mut voices, &[configuration(1, 15), on_at(2, 60, 1)]);
+    send(&mut voices, &[bend_at(2, 0.5), bend_at(1, 1.0)]);
+    assert_eq!(
+        playing(&mut voices, 1).pitch,
+        61.0,
+        "channel 2's own range of 2"
+    );
+}
+
+#[test]
+fn a_member_note_bends_by_its_channel_and_its_master_and_answers_its_master_s_pedal() {
+    let mut voices = poly(4).with_mpe();
+    send(&mut voices, &[on_at(2, 60, 1), on_at(3, 64, 2)]);
+    send(&mut voices, &[bend_at(2, 0.5), bend_at(1, 1.0)]);
+    assert_eq!(playing(&mut voices, 1).pitch, 60.0 + 24.0 + 2.0);
+    assert_eq!(playing(&mut voices, 2).pitch, 64.0 + 2.0);
+    send(
+        &mut voices,
+        &[control_at(1, number::SUSTAIN, 1.0), off(60, 1)],
+    );
+    // The note-off names the note, and the master's pedal holds it.
+    let off_2 = {
+        let mut off = NoteOn::new(Key::new(60), 1.0)
+            .with_id(NoteId::own(1))
+            .off(0.5);
+        off.channel = Channel::number(2);
+        Message::NoteOff(off)
+    };
+    send(&mut voices, &[off_2]);
+    assert!(playing(&mut voices, 1).released.is_none());
+    assert_eq!(playing(&mut voices, 1).damper, 0.0);
+    send(&mut voices, &[control_at(1, number::SUSTAIN, 0.0)]);
+    assert!(playing(&mut voices, 1).released.is_some());
+}
+
+#[test]
+fn a_member_reads_a_controller_its_channel_has_not_set_from_its_master() {
+    let mut voices = poly(2).with_mpe();
+    send(
+        &mut voices,
+        &[on_at(2, 60, 1), control_at(1, number::VOLUME, 0.5)],
+    );
+    assert_eq!(playing(&mut voices, 1).volume, 0.5);
+    send(&mut voices, &[control_at(2, number::VOLUME, 0.25)]);
+    assert_eq!(playing(&mut voices, 1).volume, 0.25);
+}
+
+#[test]
+fn the_master_s_all_notes_off_ends_the_zone_and_a_member_s_its_own_notes() {
+    let mut voices = poly(4).with_mpe();
+    send(
+        &mut voices,
+        &[on_at(2, 60, 1), on_at(3, 62, 2), on_at(4, 64, 3)],
+    );
+    send(&mut voices, &[control_at(3, number::ALL_NOTES_OFF, 0.0)]);
+    assert!(playing(&mut voices, 1).released.is_none());
+    assert!(playing(&mut voices, 2).released.is_some());
+    send(&mut voices, &[control_at(1, number::ALL_SOUND_OFF, 0.0)]);
+    assert!(voices.is_silent());
+}
+
+#[test]
+fn a_configuration_message_moves_the_zones_and_resets_their_bend_ranges() {
+    let mut voices = poly(4).with_mpe();
+    let range = |channel, semitones| Message::BendRange {
+        group: Group::FIRST,
+        channel: Channel::number(channel),
+        semitones,
+    };
+    send(&mut voices, &[range(2, 12.0), range(9, 12.0)]);
+    // A lower zone of 7: channel 9 is no member now, and channel 2 is back
+    // at 48.
+    send(&mut voices, &[configuration(1, 7)]);
+    send(
+        &mut voices,
+        &[on_at(2, 60, 1), on_at(9, 60, 2), bend_at(1, 1.0)],
+    );
+    send(&mut voices, &[bend_at(2, 0.25), bend_at(9, 0.25)]);
+    assert_eq!(playing(&mut voices, 1).pitch, 60.0 + 12.0 + 2.0);
+    assert_eq!(playing(&mut voices, 2).pitch, 60.0 + 3.0);
+    // An upper zone of 3 under channel 16 takes channels 13 to 15.
+    send(
+        &mut voices,
+        &[configuration(16, 3), on_at(14, 60, 3), bend_at(16, 1.0)],
+    );
+    assert_eq!(playing(&mut voices, 3).pitch, 62.0);
+}

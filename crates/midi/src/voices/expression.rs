@@ -13,8 +13,10 @@ use crate::values::{Centred, Key, Pitch};
 /// for each span, so it holds until the next message.
 ///
 /// A note's own controller, MIDI 2.0's per-note one, takes the place of its
-/// channel's once it has arrived. Its fields are public, so a test sets
-/// what it needs on [`Expression::at`].
+/// channel's once it has arrived. With MPE on, a note on a zone's member
+/// channel answers its zone's master too: see
+/// [`Poly::with_mpe`](super::Poly::with_mpe). Its fields are public, so a
+/// test sets what it needs on [`Expression::at`].
 ///
 /// # Examples
 ///
@@ -33,8 +35,9 @@ pub struct Expression<'a> {
     /// The pitch to sound: its key's in [`Poly`](super::Poly)'s
     /// [`Tuning`], or the one its note-on or a message of its own gave it,
     /// moved by its own bend times its channel's per-note bend range, its
-    /// channel's bend times the bend range, and its channel's fine and
-    /// coarse tuning.
+    /// channel's bend times the bend range, its channel's fine and coarse
+    /// tuning, and with MPE on its zone's master's bend times that one's
+    /// range.
     pub pitch: Pitch,
     /// From 0 to 1: the note's own pressure once it has had one, its
     /// channel's until then.
@@ -50,7 +53,28 @@ pub struct Expression<'a> {
     /// once it has had one, its channel's until then. A mono voice is placed
     /// by it already: see [`VoiceAudio`](super::VoiceAudio).
     pub pan: Centred,
-    sources: Option<(&'a NoteControls, &'a ChannelState)>,
+    sources: Option<Sources<'a>>,
+}
+
+/// Where a note's controllers come from: its own, its channel's, and its
+/// MPE zone's master's.
+#[derive(Debug, Clone, Copy)]
+struct Sources<'a> {
+    own: &'a NoteControls,
+    channel: &'a ChannelState,
+    master: Option<&'a ChannelState>,
+}
+
+impl Sources<'_> {
+    /// The value of control change `number`, from the first source that
+    /// has one.
+    fn control(&self, number: u8) -> Option<f32> {
+        let address = Address::Control(number);
+        self.own
+            .control(number)
+            .or_else(|| self.channel.control(address))
+            .or_else(|| self.master?.control(address))
+    }
 }
 
 impl Expression<'static> {
@@ -69,11 +93,12 @@ impl Expression<'static> {
 }
 
 impl<'a> Expression<'a> {
-    /// What `note` plays at, from its own controllers and its channel's.
+    /// What `note` plays at, from its own controllers, its channel's, and
+    /// its zone's master's.
     pub(super) fn of(
         note: &NoteOn,
         own: &'a NoteControls,
-        channel: &'a ChannelState,
+        (channel, master): (&'a ChannelState, Option<&'a ChannelState>),
         tuning: &Tuning,
         damper: f32,
     ) -> Self {
@@ -86,10 +111,16 @@ impl<'a> Expression<'a> {
             + own.bend.get() * channel.note_bend_range
             + channel.bend.get() * channel.bend_range
             + channel.fine
-            + channel.coarse;
+            + channel.coarse
+            + master.map_or(0.0, |master| master.bend.get() * master.bend_range);
+        let sources = Sources {
+            own,
+            channel,
+            master,
+        };
         let centred = |number: u8| {
-            own.control(number)
-                .or_else(|| channel.controls.get(usize::from(number)))
+            sources
+                .control(number)
                 .map_or(Centred::CENTRE, Centred::from_unit)
         };
         Expression {
@@ -98,12 +129,13 @@ impl<'a> Expression<'a> {
             timbre: centred(controller::number::BRIGHTNESS),
             damper,
             pan: centred(controller::number::PAN),
-            sources: Some((own, channel)),
+            sources: Some(sources),
         }
     }
 
     /// The note's value of `controller`: its own where it has one, its
-    /// channel's otherwise, and the controller's default before either.
+    /// channel's otherwise, its MPE zone's master's after that, and the
+    /// controller's default before any.
     ///
     /// Open: only control changes are kept. A registered or assignable
     /// controller reads as its default; the tunings and bend ranges among
@@ -122,15 +154,11 @@ impl<'a> Expression<'a> {
     /// assert!(!expression.get(controller::SUSTAIN).is_down());
     /// ```
     pub fn get<T: ControllerValue>(&self, controller: Controller<T>) -> T {
-        let Some((own, channel)) = self.sources else {
-            return controller.default();
-        };
-        let own = match controller.address() {
-            Address::Control(number) => own.control(number),
+        let value = match (self.sources, controller.address()) {
+            (Some(sources), Address::Control(number)) => sources.control(number),
             _ => None,
         };
-        own.or_else(|| channel.control(controller.address()))
-            .map_or(controller.default(), T::from_unit)
+        value.map_or(controller.default(), T::from_unit)
     }
 
     /// `param`'s value for this note: the parameter's own, plus whatever

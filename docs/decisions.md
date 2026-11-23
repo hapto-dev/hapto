@@ -4034,6 +4034,17 @@ no code of its own, and one that places itself, a stereo sampler say, writes
 `audio_mut`. A voice's own test makes an `Expression::at` a key and a
 `VoiceAudio` of its own, with no `Poly`.
 
+MPE is off until a plugin turns it on with `Poly::with_mpe`, a code hook on
+the `Poly` rather than a setting. With it on, each group starts with MPE's
+default layout, a lower zone of 15 member channels under channel 1, and an MPE
+Configuration Message, registered controller 0/6 on a zone's master, moves the
+zones, shrinking one the other would overlap, and returns the zone's bend
+ranges to MPE's 48 semitones for its members and 2 for its master. A note on a
+member channel reads its bend, pressure and controllers from its own channel,
+adds its master's bend to its pitch, answers its master's pedals and its notes
+off and sound off messages, and reads a controller its own channel has not set
+from its master's. With it off, a configuration message changes nothing.
+
 `Poly::new` allocates the voices and the tables. `play`, `handle` and `render`
 allocate nothing and never panic.
 
@@ -4043,8 +4054,10 @@ each voice, mixed by `Poly`, a copy per voice per span that leaves a stereo
 voice nowhere to write; per-note controllers kept by the note alone, as VST3
 keeps them, which loses those sent before their note and the key's state
 MIDI 2.0 defines; a `render` generic in the layout, which leaves a voice
-written for one layout unable to name its channels; and stealing by level, as
-the probe did, which asks every voice a question only some can answer.
+written for one layout unable to name its channels; stealing by level, as the
+probe did, which asks every voice a question only some can answer; and MPE on
+by default, which reads a plain keyboard's channels as notes of a zone and
+gives a channel's bend 48 semitones where MIDI 1.0 gives it 2.
 
 ## How to read this
 

@@ -4,6 +4,7 @@
 
 mod audio;
 mod expression;
+mod mpe;
 mod poly;
 mod state;
 #[cfg(test)]

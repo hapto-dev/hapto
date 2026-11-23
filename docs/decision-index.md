@@ -1497,6 +1497,9 @@ move its line here; when a decision gains code, add one.
 - `crates/midi/src/voices/expression.rs`: module, `Expression`, `Expression::get`, `Expression::modulated`
 - `crates/midi/src/voices/audio.rs`: module, `VoiceAudio`, `VoiceFrame`
 - `crates/midi/src/voices/tuning.rs`: module, `Tuning`
+- `crates/midi/src/voices/mpe.rs`: module, `Zones`, `Zones::configure`, `master_of`
+- `crates/midi/src/voices/poly.rs`: `Poly::with_mpe`, `reaches`, `sustain`
+- test `crates/midi/src/voices/tests.rs`: `mpe_is_off_until_the_plugin_turns_it_on`, `a_configuration_message_moves_the_zones_and_resets_their_bend_ranges`
 - `crates/audio/src/frame.rs`: `AddSample`
 - `crates/audio/src/audio.rs`: `Audio::reborrow`
 - `crates/host/src/spans.rs`: module

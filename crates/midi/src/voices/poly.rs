@@ -8,11 +8,12 @@ use hapto_audio::{Audio, Status};
 use super::Voice;
 use super::audio::VoiceAudio;
 use super::expression::Expression;
+use super::mpe::{Mpe, Zones, master_of};
 use super::state::{ChannelState, Channels, Keys, NoteControls, Place, note_slot};
 use super::tuning::Tuning;
 use crate::controller::{self, ControllerValue, number};
 use crate::message::{Message, NoteKey, NoteOff, NoteOn};
-use crate::values::{Centred, Channel, Group, NoteId};
+use crate::values::{Centred, Channel, Group, NoteId, Pedal};
 use crate::{Midi, Spans};
 
 /// How many keys' per-note controllers a [`Poly`] keeps at once.
@@ -46,6 +47,8 @@ const KEYS: usize = 256;
 /// - **Groups.** Each group is 16 channels of its own, and `Poly` plays all.
 /// - **Tuning.** Every note's pitch starts from its [`Tuning`], equal
 ///   temperament unless the plugin sets one.
+/// - **MPE** is off unless the plugin turns it on with
+///   [`with_mpe`](Self::with_mpe).
 ///
 /// It works at two levels, as a block does. [`play`](Self::play) takes a
 /// whole block. Inside a loop over [`Spans`], [`handle`](Self::handle)
@@ -101,6 +104,8 @@ pub struct Poly<V, L> {
     channels: Channels,
     keys: Keys,
     tuning: Tuning,
+    /// Each group's MPE zones; `None` while MPE is off.
+    mpe: Option<Mpe>,
     /// Counts note-ons, so the oldest note is the one stolen.
     clock: u64,
     layout: PhantomData<fn() -> L>,
@@ -152,18 +157,52 @@ impl Sounding {
         (hold, self.started)
     }
 
-    fn damper(&self, channel: &ChannelState) -> f32 {
+    fn damper(&self, sustain: Pedal) -> f32 {
         match self.hold {
             Hold::Key => 0.0,
             _ if self.sostenuto => 0.0,
-            _ => 1.0 - channel.read(controller::SUSTAIN).depth(),
+            _ => 1.0 - sustain.depth(),
         }
+    }
+
+    /// Whether a pedal holds the note once its key is up, `sustain` being
+    /// the sustain pedal it answers to.
+    fn pedal_holds(&self, sustain: Pedal) -> bool {
+        self.sostenuto || sustain.is_down()
     }
 }
 
-/// Whether a pedal on `channel` holds `note` once its key is up.
-fn pedal_holds(note: &Sounding, channel: &ChannelState) -> bool {
-    note.sostenuto || channel.read(controller::SUSTAIN).is_down()
+/// The channels a note answers to: its own, and its zone's master's when it
+/// is a member of an MPE zone.
+fn sources<'c>(
+    channels: &'c Channels,
+    mpe: Option<&Mpe>,
+    on: &NoteOn,
+) -> (&'c ChannelState, Option<&'c ChannelState>) {
+    let master = master_of(mpe, on.group, on.channel);
+    (
+        channels.of(on.group, on.channel),
+        master.map(|master| channels.of(on.group, master)),
+    )
+}
+
+/// The sustain pedal a note answers to: its channel's, or its zone's
+/// master's, whichever is further down.
+fn sustain(channels: &Channels, mpe: Option<&Mpe>, on: &NoteOn) -> Pedal {
+    let (own, master) = sources(channels, mpe, on);
+    let own = own.read(controller::SUSTAIN);
+    match master.map(|master| master.read(controller::SUSTAIN)) {
+        Some(zone) if zone.depth() > own.depth() => zone,
+        _ => own,
+    }
+}
+
+/// Whether a message on `channel` of `group` reaches `note`: one on its own
+/// channel does, and with MPE on, so does one on its zone's master.
+fn reaches(mpe: Option<&Mpe>, group: Group, channel: Channel, note: &Sounding) -> bool {
+    note.on.group == group
+        && (note.on.channel == channel
+            || master_of(mpe, note.on.group, note.on.channel) == Some(channel))
 }
 
 impl<V, L> Poly<V, L> {
@@ -181,6 +220,7 @@ impl<V, L> Poly<V, L> {
             channels: Channels::new(),
             keys: Keys::new(KEYS),
             tuning: Tuning::equal(),
+            mpe: None,
             clock: 0,
             layout: PhantomData,
         }
@@ -197,6 +237,69 @@ impl<V, L> Poly<V, L> {
     /// to it at once.
     pub fn set_tuning(&mut self, tuning: Tuning) {
         self.tuning = tuning;
+    }
+
+    /// The same voices, playing MPE: each group starts with MPE's default
+    /// layout, a lower zone of 15 member channels under channel 1, and an
+    /// MPE Configuration Message changes a group's zones.
+    ///
+    /// A member channel's bend range starts at MPE's 48 semitones, and its
+    /// master's at 2; a configuration message returns a zone's to them. A
+    /// note on a member channel takes its bend, pressure and controllers
+    /// from its own channel, as MPE sends them for each note, adds its
+    /// master's bend to its pitch, answers its master's pedals and its
+    /// notes-off and sound-off messages, and reads a controller its own
+    /// channel has not set from its master's.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hapto_audio::AudioBuf;
+    /// use hapto_audio::layout::Mono;
+    /// use hapto_midi::{Centred, Channel, Expression, Group, Key, Message, NoteOff, NoteOn};
+    /// use hapto_midi::{Poly, Voice, VoiceAudio};
+    ///
+    /// #[derive(Default)]
+    /// struct Heard {
+    ///     pitch: f32,
+    /// }
+    ///
+    /// impl Voice<Mono> for Heard {
+    ///     fn start(&mut self, _: &NoteOn) {}
+    ///     fn release(&mut self, _: &NoteOff) {}
+    ///     fn render(&mut self, expression: &Expression<'_>, _: &mut VoiceAudio<'_, Mono>) {
+    ///         self.pitch = expression.pitch.semitones();
+    ///     }
+    ///     fn is_done(&self) -> bool {
+    ///         false
+    ///     }
+    /// }
+    ///
+    /// let mut voices: Poly<Heard, Mono> = Poly::new(15, Heard::default).with_mpe();
+    /// let bend = |channel, value| Message::Bend {
+    ///     group: Group::FIRST,
+    ///     channel: Channel::number(channel),
+    ///     value: Centred::new(value),
+    /// };
+    /// // A note on member channel 2, bent a quarter of its 48 semitones up,
+    /// // and the whole zone half of its master's 2 down.
+    /// let mut note = NoteOn::new(Key::C4, 1.0);
+    /// note.channel = Channel::number(2);
+    /// voices.handle(&Message::NoteOn(note));
+    /// voices.handle(&bend(2, 0.25));
+    /// voices.handle(&bend(1, -0.5));
+    /// voices.render(&mut AudioBuf::<Mono>::new(1).audio());
+    /// let pitch = voices.voices_mut().map(|voice| voice.pitch).fold(0.0, f32::max);
+    /// assert_eq!(pitch, 60.0 + 12.0 - 1.0);
+    /// ```
+    #[must_use]
+    pub fn with_mpe(mut self) -> Self {
+        let mut mpe = [Zones::LOWER_15; 16];
+        for (group, zones) in (0..16).map(Group::from_wire).zip(&mut mpe) {
+            configure(&mut self.channels, group, zones, Channel::FIRST, 15);
+        }
+        self.mpe = Some(mpe);
+        self
     }
 
     /// Every voice, idle or not, in order: to set what a parameter changes
@@ -238,6 +341,23 @@ impl<V, L> Poly<V, L> {
     /// Whether no voice sounds.
     pub fn is_silent(&self) -> bool {
         self.slots.iter().all(|slot| slot.note.is_none())
+    }
+}
+
+/// Sets the zone of `group` whose master is `channel` to `members` member
+/// channels, and returns its channels' bend ranges to MPE's.
+fn configure(
+    channels: &mut Channels,
+    group: Group,
+    zones: &mut Zones,
+    channel: Channel,
+    members: u8,
+) {
+    if let Some(members) = zones.configure(channel, members) {
+        channels.of_mut(group, channel).bend_range = 2.0;
+        for member in members {
+            channels.of_mut(group, member).bend_range = 48.0;
+        }
     }
 }
 
@@ -365,9 +485,11 @@ impl<V: Voice<L>, L: Layout> Poly<V, L> {
             let Some(note) = &slot.note else {
                 continue;
             };
-            let channel = self.channels.of(note.on.group, note.on.channel);
-            let damper = note.damper(channel);
-            let expression = Expression::of(&note.on, &note.own, channel, &self.tuning, damper);
+            let mpe = self.mpe.as_ref();
+            let (channel, master) = sources(&self.channels, mpe, &note.on);
+            let damper = note.damper(sustain(&self.channels, mpe, &note.on));
+            let expression =
+                Expression::of(&note.on, &note.own, (channel, master), &self.tuning, damper);
             let mut audio = VoiceAudio::new(out.reborrow(), expression.pan);
             slot.voice.render(&expression, &mut audio);
             if slot.voice.is_done() {
@@ -413,14 +535,13 @@ impl<V: Voice<L>, L: Layout> Poly<V, L> {
     }
 
     fn end(&mut self, off: NoteOff) {
-        let channel = self.channels.of(off.group, off.channel);
         for slot in self.slots.iter_mut() {
             if let Some(note) = &mut slot.note
                 && note.hold == Hold::Key
                 && note.on.id == off.id
                 && note.is_on(off.group, off.channel)
             {
-                if pedal_holds(note, channel) {
+                if note.pedal_holds(sustain(&self.channels, self.mpe.as_ref(), &note.on)) {
                     note.hold = Hold::Pedal(off);
                 } else {
                     note.hold = Hold::Released;
@@ -464,6 +585,15 @@ impl<V: Voice<L>, L: Layout> Poly<V, L> {
     }
 
     fn registered(&mut self, group: Group, channel: Channel, index: u8, value: f32) {
+        // The MPE Configuration Message: its count of member channels is the
+        // data's top 7 bits.
+        if index == 6
+            && let Some(zones) = self.mpe.as_mut().and_then(|mpe| mpe.get_mut(group.index()))
+        {
+            let members = (value * 128.0).floor().clamp(0.0, 15.0) as u8;
+            configure(&mut self.channels, group, zones, channel, members);
+            return;
+        }
         let state = self.channels.of_mut(group, channel);
         match index {
             // A semitone each way.
@@ -489,8 +619,12 @@ impl<V: Voice<L>, L: Layout> Poly<V, L> {
                 self.pedal_up(group, channel);
             }
             number::ALL_SOUND_OFF => {
+                let mpe = self.mpe.as_ref();
                 for slot in self.slots.iter_mut() {
-                    if slot.note.is_some_and(|note| note.is_on(group, channel)) {
+                    if slot
+                        .note
+                        .is_some_and(|note| reaches(mpe, group, channel, &note))
+                    {
                         slot.note = None;
                     }
                 }
@@ -505,12 +639,12 @@ impl<V: Voice<L>, L: Layout> Poly<V, L> {
     /// Releases the notes on the channel whose keys are up and that no
     /// pedal holds any more.
     fn pedal_up(&mut self, group: Group, channel: Channel) {
-        let state = self.channels.of(group, channel);
+        let mpe = self.mpe.as_ref();
         for slot in self.slots.iter_mut() {
             if let Some(note) = &mut slot.note
                 && let Hold::Pedal(off) = note.hold
-                && note.is_on(group, channel)
-                && !pedal_holds(note, state)
+                && reaches(mpe, group, channel, note)
+                && !note.pedal_holds(sustain(&self.channels, mpe, &note.on))
             {
                 note.hold = Hold::Released;
                 slot.voice.release(&off);
@@ -520,8 +654,9 @@ impl<V: Voice<L>, L: Layout> Poly<V, L> {
 
     /// The sostenuto pedal went down: it holds the notes whose keys are.
     fn catch(&mut self, group: Group, channel: Channel) {
+        let mpe = self.mpe.as_ref();
         for note in self.slots.iter_mut().filter_map(|slot| slot.note.as_mut()) {
-            if note.hold == Hold::Key && note.is_on(group, channel) {
+            if note.hold == Hold::Key && reaches(mpe, group, channel, note) {
                 note.sostenuto = true;
             }
         }
@@ -529,8 +664,9 @@ impl<V: Voice<L>, L: Layout> Poly<V, L> {
 
     /// The sostenuto pedal came up: it holds nothing.
     fn let_go(&mut self, group: Group, channel: Channel) {
+        let mpe = self.mpe.as_ref();
         for note in self.slots.iter_mut().filter_map(|slot| slot.note.as_mut()) {
-            if note.is_on(group, channel) {
+            if reaches(mpe, group, channel, note) {
                 note.sostenuto = false;
             }
         }
@@ -540,14 +676,14 @@ impl<V: Voice<L>, L: Layout> Poly<V, L> {
     /// would, at MIDI's default note-off velocity; a pedal still holds what
     /// it holds.
     fn all_notes_off(&mut self, group: Group, channel: Channel) {
-        let state = self.channels.of(group, channel);
+        let mpe = self.mpe.as_ref();
         for slot in self.slots.iter_mut() {
             if let Some(note) = &mut slot.note
                 && note.hold == Hold::Key
-                && note.is_on(group, channel)
+                && reaches(mpe, group, channel, note)
             {
                 let off = note.on.off(0.5);
-                if pedal_holds(note, state) {
+                if note.pedal_holds(sustain(&self.channels, mpe, &note.on)) {
                     note.hold = Hold::Pedal(off);
                 } else {
                     note.hold = Hold::Released;
