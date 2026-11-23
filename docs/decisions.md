@@ -3746,16 +3746,26 @@ Merging keeps each device whole. The reader upgrades each input with an
 parameter numbers never mix, and a device that takes an input over starts its
 translation afresh; the engine then has MIDI 2.0 to pass on. A SysEx waits in
 its input's ring until its end has come, and then reaches the block whole, at
-the frame its end came, with the real-time messages that fell inside it:
-another device's message never cuts it, and goes on meanwhile. One longer
-than its input's room goes out as it comes instead.
+the frame its end came, with the real-time messages that fell inside it: another
+device's message never cuts it, and goes on meanwhile. One that leaves its
+input's ring less room than a device hands over at once, 172 packets for WinMM's
+buffer of 1,024 bytes, or fills half of it, goes out as it comes instead, so the
+device's next buffer of it still fits. The reader starts an input's translation
+over when a new device takes it, as it reads that device's first packets, and
+finds each input's next message once a block and again only once it read that
+input.
 
 On WinMM the callback only reads and pushes. A thread of the input's own hands
-SysEx buffers back to the system, since the callback may not call WinMM. A
-close stops the device, resets it, takes its buffers back and closes it; a
-message the reset sends does nothing, and if the close fails the buffers are
-leaked rather than freed under the driver. A device that leaves while open is
-closed at the next tick.
+SysEx buffers back to the system, since the callback may not call WinMM. A close
+stops the device, resets it, takes its buffers back and closes it, waits out a
+callback already running, and ends a SysEx it cut short, as a driver's error
+does too, so the reader never holds a start whose end will not come; a message
+the reset sends does nothing, and if the close fails the buffers are leaked
+rather than freed under the driver. A device that leaves while open is closed at
+the next tick: WinMM closed it as it left and said so, so its buffers and ring
+are freed whatever the close answers, and its input is free for the next device.
+A driver that answers that a buffer is still in use holds the close for at most
+ten waits of 20 ms, across all its buffers.
 
 `Outputs` opens a device on the main thread and closes it there, up to 16 at
 once, and `OutputsWriter` hands each block's MIDI to every open one on the

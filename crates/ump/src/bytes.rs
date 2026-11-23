@@ -106,6 +106,34 @@ impl ByteStream {
         *self = ByteStream::new(self.group);
     }
 
+    /// Ends a SysEx under way, then starts over, as after a device's error
+    /// or its close: a SysEx that sent packets already ends with what the
+    /// stream holds of it, so a reader holding it for its end is not left
+    /// waiting, and one that sent none is dropped.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hapto_ump::ByteStream;
+    ///
+    /// let mut stream = ByteStream::new(0);
+    /// let mut packets = Vec::new();
+    /// // Seven bytes of a SysEx: six went out as its start.
+    /// stream.read(&[0xF0, 1, 2, 3, 4, 5, 6, 7], |words| packets.push(words));
+    /// assert_eq!(packets.len(), 1);
+    /// stream.cut(|words| packets.push(words));
+    /// // Its end, status 3, with the byte held.
+    /// assert_eq!((packets[1][0] >> 20) & 0xF, 0x3);
+    /// ```
+    pub fn cut(&mut self, mut send: impl FnMut([u32; 4])) {
+        if let Some(sysex) = self.sysex.take()
+            && sysex.begun
+        {
+            self.finish(sysex, &mut send);
+        }
+        self.reset();
+    }
+
     fn byte(&mut self, byte: u8, send: &mut impl FnMut([u32; 4])) {
         match byte {
             // A real-time byte is sent at once. 0xF9 and 0xFD are undefined

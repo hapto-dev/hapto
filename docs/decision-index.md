@@ -1427,12 +1427,14 @@ move its line here; when a decision gains code, add one.
 - `crates/midi-devices/src/lib.rs`: module
 - `crates/midi-devices/src/id.rs`: `DeviceId`, `named`
 - `crates/midi-devices/src/devices.rs`: `Devices`, `Devices::tick`, `Looks`
-- `crates/midi-devices/src/inputs.rs`: `Inputs`, `Inputs::open`, `InputsReader::read`, `InputsReader::start_over_where_renewed`, `ready`, `frame`, `MAX_INPUTS`
+- `crates/midi-devices/src/inputs.rs`: `Inputs`, `Inputs::open`, `InputsReader::read`, `InputsReader::start_over_where_renewed`, `ready`, `frame`, `MAX_INPUTS`, `BURST`
 - `crates/ump/src/upgrade.rs`: `Upgrade::reset`
 - `crates/midi-devices/src/ring.rs`: module, `Producer::push`, `Producer::renew`, `Consumer::peek_at`, `Consumer::generation`
-- `crates/midi-devices/src/winmm/mod.rs`: module, `interface`, `index_of`
+- `crates/midi-devices/src/winmm/mod.rs`: module, `interface`, `index_of`, `retry`
 - `crates/midi-devices/src/winmm/watch.rs`: `Watch`, `changed`
-- `crates/midi-devices/src/winmm/input.rs`: module, `Shared::message`, `Input::shut`, `hand_back`, `callback`
+- `crates/midi-devices/src/winmm/input.rs`: module, `Shared::message`, `Shared::cut`, `Shared::into_producer`, `Input::shut`, `hand_back`, `callback`
+- `crates/ump/src/bytes.rs`: `ByteStream::cut`
+- test `crates/ump/tests/bytes.rs`: `a_cut_ends_a_sysex_that_began_and_drops_one_that_did_not`
 - `crates/midi-devices/src/outputs.rs`: `Timing`, `Outputs`, `Outputs::open`, `OutputsWriter::write`, `MAX_OUTPUTS`
 - `crates/midi-devices/src/winmm/output.rs`: module, `Sysex::join`, `Sysex::send`, `Output::shut`, `send`
 - `crates/midi-devices/src/winmm/signal.rs`: module, `Signal`, `Timer::wait`

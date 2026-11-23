@@ -156,15 +156,17 @@ fn text(units: &[u16]) -> String {
 
 /// Runs `call` until it answers anything but "still busy", at most `tries`
 /// times, and says whether it succeeded.
-fn retry(tries: u32, mut call: impl FnMut() -> u32) -> bool {
-    for _ in 0..tries {
+fn retry(tries: &mut u32, mut call: impl FnMut() -> u32) -> bool {
+    loop {
         match call() {
             MMSYSERR_NOERROR => return true,
-            windows::Win32::Media::Audio::MIDIERR_STILLPLAYING => std::thread::sleep(RETRY_WAIT),
+            windows::Win32::Media::Audio::MIDIERR_STILLPLAYING if *tries > 0 => {
+                *tries = tries.saturating_sub(1);
+                std::thread::sleep(RETRY_WAIT);
+            }
             _ => return false,
         }
     }
-    false
 }
 
 /// The refusal a WinMM error code means.

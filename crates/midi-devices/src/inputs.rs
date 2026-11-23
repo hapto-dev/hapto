@@ -66,6 +66,7 @@ pub fn inputs(room: usize) -> (Inputs, InputsReader) {
     let reader = InputsReader {
         upgrades: (0..MAX_INPUTS).map(|_| Upgrade::new()).collect(),
         generations: consumers.iter().map(Consumer::generation).collect(),
+        heads: vec![None; MAX_INPUTS].into_boxed_slice(),
         rings: consumers.into_boxed_slice(),
         last: None,
     };
@@ -308,6 +309,11 @@ pub struct InputsReader {
     /// The generation of each ring the reader last read: a change means a
     /// new device took it.
     generations: Box<[u32]>,
+    /// Each ring's next message, when it came and how many packets it is,
+    /// for the block being read: found once, and again for a ring only
+    /// once it was read, so a SysEx held for its end is not looked over for
+    /// every message another ring sends.
+    heads: Box<[Option<(Instant, usize)>]>,
     /// When the last block was read.
     last: Option<Instant>,
 }
@@ -336,10 +342,13 @@ impl InputsReader {
         }
         let last = self.last.replace(now).unwrap_or(now).min(now);
         self.start_over_where_renewed();
+        for (head, ring) in self.heads.iter_mut().zip(&self.rings) {
+            *head = ready(ring, now);
+        }
         loop {
             let mut earliest: Option<(usize, Instant, usize)> = None;
-            for (index, ring) in self.rings.iter().enumerate() {
-                if let Some((at, count)) = ready(ring, now)
+            for (index, head) in self.heads.iter().enumerate() {
+                if let Some((at, count)) = *head
                     && earliest.is_none_or(|(_, first, _)| at < first)
                 {
                     earliest = Some((index, at, count));
@@ -348,11 +357,22 @@ impl InputsReader {
             let Some((index, at, count)) = earliest else {
                 break;
             };
-            let (Some(ring), Some(upgrade)) =
-                (self.rings.get_mut(index), self.upgrades.get_mut(index))
-            else {
+            let (Some(ring), Some(upgrade), Some(seen), Some(head)) = (
+                self.rings.get_mut(index),
+                self.upgrades.get_mut(index),
+                self.generations.get_mut(index),
+                self.heads.get_mut(index),
+            ) else {
                 break;
             };
+            // Read after the ring's head, so a packet a new device pushed
+            // comes with the new device's generation, and its translation
+            // starts over before it.
+            let generation = ring.generation();
+            if generation != *seen {
+                upgrade.reset();
+                *seen = generation;
+            }
             let frame = frame(at, last, now, frames);
             for _ in 0..count {
                 if let Some((_, words)) = ring.peek() {
@@ -360,6 +380,7 @@ impl InputsReader {
                 }
                 ring.pop();
             }
+            *head = ready(ring, now);
         }
         let last_frame = u32::try_from(frames.saturating_sub(1)).unwrap_or(u32::MAX);
         for upgrade in &mut self.upgrades {
@@ -387,6 +408,10 @@ impl InputsReader {
     }
 }
 
+/// The most packets a device hands over at once: a SysEx buffer of 1024
+/// bytes, six bytes a packet, and one more for what the stream held.
+pub(crate) const BURST: usize = 172;
+
 /// The SysEx7 statuses a run of packets turns on.
 const SYSEX_START: u32 = 0x1;
 const SYSEX_CONTINUE: u32 = 0x2;
@@ -408,8 +433,10 @@ fn real_time(words: [u32; 4]) -> bool {
 ///
 /// A SysEx is ready once its end has come, and is every packet to its end,
 /// the real-time messages among them included, at the time its end came.
-/// Until then it waits, unless it fills the ring, when it goes out a packet
-/// at a time as it came.
+/// Until then it waits, unless the ring has less room left than a device
+/// hands over at once, [`BURST`], or is half full, when it goes out a
+/// packet at a time as it came: so a device's next buffer of it still
+/// fits.
 fn ready(ring: &Consumer, now: Instant) -> Option<(Instant, usize)> {
     let (at, words) = ring.peek()?;
     if at >= now {
@@ -433,7 +460,11 @@ fn ready(ring: &Consumer, now: Instant) -> Option<(Instant, usize)> {
             _ => return Some((latest, index)),
         }
     }
-    (ring.len() >= ring.capacity()).then_some((at, 1))
+    let full = ring
+        .capacity()
+        .saturating_sub(BURST)
+        .max(ring.capacity().div_euclid(2));
+    (ring.len() >= full).then_some((at, 1))
 }
 
 /// The frame of a block of `frames` frames, at least one, that `at` takes,

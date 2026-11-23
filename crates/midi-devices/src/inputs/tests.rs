@@ -23,6 +23,7 @@ fn rig(room: usize) -> (Vec<Producer>, InputsReader) {
     let reader = InputsReader {
         upgrades: (0..MAX_INPUTS).map(|_| Upgrade::new()).collect(),
         generations: consumers.iter().map(Consumer::generation).collect(),
+        heads: vec![None; MAX_INPUTS].into_boxed_slice(),
         rings: consumers.into_boxed_slice(),
         last: None,
     };
@@ -220,6 +221,28 @@ fn a_sysex_longer_than_the_room_goes_out_as_it_comes() {
         producers[0].push(at(u64::from(tag)), sysex(SYSEX_CONTINUE, 6, tag));
     }
     assert_eq!(read(&mut reader, at(10), 10).len(), 4);
+}
+
+#[test]
+fn a_held_sysex_goes_out_while_a_devices_next_buffer_still_fits() {
+    // Room for 512 packets: a SysEx held for its end goes out as it comes
+    // once fewer than a burst's packets of room are left, past 340 held.
+    let held = |count: u32| {
+        let (mut producers, mut reader) = rig(512);
+        producers[0].push(at(1), sysex(SYSEX_START, 6, 1));
+        for tag in 2..=count {
+            producers[0].push(at(2), sysex(SYSEX_CONTINUE, 6, tag));
+        }
+        let mut out = EventList::with_capacity(512);
+        reader.read(at(10), 10, &mut out);
+        out.as_slice().len()
+    };
+    assert_eq!(held(300), 0, "room for a burst: it waits for its end");
+    assert_eq!(
+        held(360),
+        360,
+        "a burst might not fit: it goes out as it came"
+    );
 }
 
 #[test]

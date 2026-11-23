@@ -174,7 +174,7 @@ impl Sysex {
             note_gone(shared, sent);
         }
         // SAFETY: the open handle and the header, done with.
-        retry(UNPREPARE_TRIES, || unsafe {
+        retry(&mut UNPREPARE_TRIES.clone(), || unsafe {
             midiOutUnprepareHeader(handle.0, header, size)
         });
         self.bytes.clear();
@@ -307,7 +307,7 @@ impl Output {
         // The reset turns off any note the device was told to play.
         unsafe { midiOutReset(handle) };
         // SAFETY: the open handle, closed once.
-        if !retry(CLOSE_TRIES, || unsafe { midiOutClose(handle) }) {
+        if !retry(&mut CLOSE_TRIES.clone(), || unsafe { midiOutClose(handle) }) {
             std::mem::forget(shared);
         }
         consumer

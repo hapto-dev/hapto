@@ -9,7 +9,7 @@
 use std::fmt;
 use std::panic::{self, AssertUnwindSafe};
 use std::ptr;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::{self, JoinHandle};
 
@@ -36,6 +36,8 @@ use crate::ring::Producer;
 /// is: a long SysEx fills them in turn, and each comes back to be read.
 const BUFFERS: usize = 16;
 const BUFFER_BYTES: usize = 1024;
+// A buffer's packets fit in the room the reader keeps for a burst.
+const _: () = assert!(BUFFER_BYTES.div_ceil(6) < crate::inputs::BURST);
 
 /// One SysEx buffer: its header, which WinMM reads and writes, and its
 /// bytes. Aligned for the header's pointers; WinMM packs its structs.
@@ -153,6 +155,9 @@ struct Shared {
     wake: Wake,
     /// Tells the input's thread to end.
     stop: AtomicBool,
+    /// How many callbacks are running, which the close waits out before it
+    /// frees what they read.
+    in_callback: AtomicU32,
 }
 
 impl Shared {
@@ -169,13 +174,17 @@ impl Shared {
             returned: std::array::from_fn(|_| AtomicBool::new(false)),
             wake,
             stop: AtomicBool::new(false),
+            in_callback: AtomicU32::new(0),
         }
     }
 
     /// One message from WinMM: `first` and `second` are its two
     /// parameters.
     fn message(&self, message: u32, first: usize, second: usize) {
-        if self.closing.load(Ordering::Acquire) {
+        // Sequentially consistent with the close's store and its wait on
+        // `in_callback`: a callback either sees the close, or is counted
+        // before the close waits.
+        if self.closing.load(Ordering::SeqCst) {
             return;
         }
         let at = self.stamp(second);
@@ -205,13 +214,13 @@ impl Shared {
                     let bytes = unsafe { std::slice::from_raw_parts(header.lpData.0, recorded) };
                     self.read(at, bytes);
                 } else {
-                    // A SysEx the driver could not read whole: what came of
-                    // it is dropped with it.
-                    self.lock().bytes.reset();
+                    // A SysEx the driver could not read whole ends where it
+                    // broke off, so the reader is not left holding it.
+                    self.cut(at);
                 }
                 self.hand_back(header.dwUser);
             }
-            MM_MIM_ERROR => self.lock().bytes.reset(),
+            MM_MIM_ERROR => self.cut(at),
             MM_MIM_CLOSE => self.left.store(true, Ordering::Release),
             _ => {}
         }
@@ -232,6 +241,16 @@ impl Shared {
         stream.read(bytes, |words| producer.push(at, words));
     }
 
+    /// Ends a SysEx under way at `at`, as the stream cuts it.
+    fn cut(&self, at: Instant) {
+        let mut reading = self.lock();
+        let Reading {
+            bytes: stream,
+            producer,
+        } = &mut *reading;
+        stream.cut(|words| producer.push(at, words));
+    }
+
     fn lock(&self) -> std::sync::MutexGuard<'_, Reading> {
         self.reading.lock().unwrap_or_else(PoisonError::into_inner)
     }
@@ -250,11 +269,18 @@ impl Shared {
     /// The ring's producer, once nothing else holds the shared state.
     fn into_producer(this: Arc<Shared>) -> Option<Producer> {
         let shared = Arc::try_unwrap(this).ok()?;
-        let reading = shared
+        let Reading {
+            bytes: mut stream,
+            mut producer,
+        } = shared
             .reading
             .into_inner()
             .unwrap_or_else(PoisonError::into_inner);
-        Some(reading.producer)
+        // A SysEx the close cut short ends there, so the reader does not
+        // hold it, and the real-time messages behind it, for good.
+        let now = Instant::now();
+        stream.cut(|words| producer.push(now, words));
+        Some(producer)
     }
 }
 
@@ -270,7 +296,9 @@ unsafe extern "system" fn callback(
     // SAFETY: `instance` is the input's shared state, which outlives every
     // callback of its device, as `Shared` says.
     let shared = unsafe { &*(instance as *const Shared) };
+    shared.in_callback.fetch_add(1, Ordering::SeqCst);
     let _ = panic::catch_unwind(AssertUnwindSafe(|| shared.message(message, first, second)));
+    shared.in_callback.fetch_sub(1, Ordering::SeqCst);
 }
 
 /// An input, reading into its ring while open. It closes as it drops.
@@ -394,7 +422,8 @@ impl Input {
     /// shared state are leaked rather than freed under the driver.
     fn shut(&mut self) -> Option<Producer> {
         let shared = self.shared.take()?;
-        shared.closing.store(true, Ordering::Release);
+        shared.closing.store(true, Ordering::SeqCst);
+        let left = shared.left.load(Ordering::Acquire);
         shared.stop.store(true, Ordering::Release);
         // SAFETY: the shared event, alive with it.
         let _ = unsafe { SetEvent(shared.wake.0) };
@@ -410,24 +439,40 @@ impl Input {
         }
         if let Some(buffers) = self.buffers {
             let size = size_of::<MIDIHDR>() as u32;
+            // One budget of waits for every buffer, so a driver that keeps
+            // answering that one is still playing holds the close no longer
+            // than a buffer's worth.
+            let mut waits = UNPREPARE_TRIES;
             for index in 0..BUFFERS {
                 // SAFETY: the open handle and one of its buffers' headers,
                 // back from the reset.
-                retry(UNPREPARE_TRIES, || unsafe {
+                retry(&mut waits, || unsafe {
                     midiInUnprepareHeader(handle, buffers.header(index), size)
                 });
             }
         }
-        // SAFETY: the open handle, closed once.
-        if !retry(CLOSE_TRIES, || unsafe { midiInClose(handle) }) {
+        // A device that left closed as it went, and said so: WinMM's
+        // handle is no longer valid after `MIM_CLOSE`, and no callback
+        // follows, so its buffers and ring are free whatever the close
+        // below answers.
+        // SAFETY: the open handle, closed once; or one the system closed,
+        // which WinMM refuses as invalid.
+        let closed = retry(&mut CLOSE_TRIES.clone(), || unsafe { midiInClose(handle) }) || left;
+        if !closed {
             // The driver may still write into the buffers or call back with
             // the shared state.
             self.buffers = None;
             std::mem::forget(shared);
             return None;
         }
+        // A callback that began before the close was seen may still be
+        // reading; it ends without calling WinMM.
+        while shared.in_callback.load(Ordering::SeqCst) != 0 {
+            std::thread::yield_now();
+        }
         if let Some(buffers) = self.buffers.take() {
-            // SAFETY: the device is closed, so WinMM has let go of them.
+            // SAFETY: the device is closed, so WinMM has let go of them, and
+            // no callback is reading them.
             unsafe { buffers.free() };
         }
         Shared::into_producer(shared)

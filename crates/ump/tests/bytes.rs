@@ -17,6 +17,28 @@ fn note_on(note: u32, velocity: u32) -> [u32; 4] {
 const CLOCK: [u32; 4] = [0x10F8_0000, 0, 0, 0];
 
 #[test]
+fn a_cut_ends_a_sysex_that_began_and_drops_one_that_did_not() {
+    let status = |packets: &[[u32; 4]]| -> Vec<u32> {
+        packets.iter().map(|words| (words[0] >> 20) & 0xF).collect()
+    };
+    let mut stream = ByteStream::new(0);
+    let mut packets = Vec::new();
+    stream.read(&[0xF0, 1, 2, 3, 4, 5, 6, 7], |words| packets.push(words));
+    stream.cut(|words| packets.push(words));
+    assert_eq!(status(&packets), [0x1, 0x3], "its start, then an end");
+    let mut short = Vec::new();
+    stream.read(&[0xF0, 1, 2], |words| short.push(words));
+    stream.cut(|words| short.push(words));
+    assert!(
+        short.is_empty(),
+        "nothing of it went out, so none of it does"
+    );
+    // It starts over: a data byte with no status reads as nothing.
+    stream.read(&[0x40], |words| short.push(words));
+    assert!(short.is_empty());
+}
+
+#[test]
 fn running_status_carries_a_channel_status_to_the_data_after_it() {
     let sent = [0x90, 0x3C, 0x7F, 0x3E, 0x7F, 0x3C, 0x00];
     assert_eq!(
