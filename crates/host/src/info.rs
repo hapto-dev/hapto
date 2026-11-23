@@ -2,6 +2,8 @@
 
 #[cfg(all(doctest, feature = "manifest"))]
 mod manifest_refusals;
+#[cfg(test)]
+mod offered;
 
 use crate::layout::{Layout, MAX_CHANNELS, Width};
 use crate::{Plugin, Processor};

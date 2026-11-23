@@ -1332,6 +1332,8 @@ move its line here; when a decision gains code, add one.
 - test `crates/audio/benches/iai.rs`: module, `gain_by_frame`, `gain_by_channel`, `gain_in_one_call`, `a_mono_source_into_every_channel`
 - test `crates/macros/src/manifest.rs`: `layouts_left_out_are_empty`
 - test `crates/host/src/info/manifest_refusals.rs`: `FieldInNeither`
+- test `crates/host/src/info/offered.rs`: module, `a_typed_layout_offers_its_own_width`, `any_layout_offers_the_widths_its_plugin_lists_the_first_by_default`, `widths_listed_beside_a_typed_layout_are_refused`, `any_layout_with_no_width_listed_is_refused`, `a_width_of_more_channels_than_audio_holds_is_refused`
+- test `crates/host/src/cabi/tests.rs`: `a_typed_bus_wider_out_than_in_plays_at_its_own_width`, `a_typed_bus_with_no_input_plays_from_silence`
 
 ### D113. The audio types' crate
 

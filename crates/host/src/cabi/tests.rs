@@ -3,6 +3,7 @@
 use std::cell::{Cell, RefCell};
 use std::error::Error;
 use std::ffi::c_void;
+use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, LazyLock};
@@ -22,7 +23,7 @@ use super::{
 };
 use crate::boundary::tests::Watched;
 use crate::faults::{thread_faults, written};
-use crate::layout::{AnyLayout, Width};
+use crate::layout::{AnyLayout, MonoToStereo, StereoOut, Width};
 use crate::{
     AuCodes, Block, Category, Feature, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
     Tail,
@@ -1187,6 +1188,90 @@ fn an_instrument_plays_with_no_input_or_a_narrower_one() {
     ] {
         assert!(settings.contains(line), "{line}\n{settings}");
     }
+}
+
+/// A processor in a typed layout of one channel in and two out: it sends
+/// its input out on both.
+#[derive(Default)]
+struct Spreads;
+
+impl Processor for Spreads {
+    type Layout = MonoToStereo;
+
+    fn process(&mut self, mut block: Block<'_, MonoToStereo>) -> Status {
+        for [left, right] in block.audio.frames_mut() {
+            *right += *left;
+        }
+        Status::Continue
+    }
+}
+
+/// A processor in a typed layout of no input and two channels out: it adds
+/// a level to each.
+#[derive(Default)]
+struct Sounds;
+
+impl Processor for Sounds {
+    type Layout = StereoOut;
+
+    fn process(&mut self, mut block: Block<'_, StereoOut>) -> Status {
+        for [left, right] in block.audio.frames_mut() {
+            *left += 0.25;
+            *right -= 0.25;
+        }
+        Status::Continue
+    }
+}
+
+/// A plugin around processor `R`, whose typed layout says its width: its
+/// info lists none.
+struct Typed<R>(PhantomData<R>);
+
+impl<R: Processor + Default> Plugin for Typed<R> {
+    const INFO: PluginInfo = PluginInfo {
+        layouts: &[],
+        ..Probe::INFO
+    };
+    type Params = Table;
+    type Processor = R;
+
+    fn new(_: Table, _: Parts) -> Self {
+        Typed(PhantomData)
+    }
+
+    fn activate(&mut self, _: &ProcessSetup) -> R {
+        R::default()
+    }
+}
+
+#[test]
+fn a_typed_bus_wider_out_than_in_plays_at_its_own_width() {
+    let host = TestHost::<Typed<Spreads>>::new();
+    assert_eq!(host.layouts(), [Width::new(1, 2)], "none listed");
+    assert_eq!(
+        host.activate(48_000.0, 8, Width::STEREO),
+        Err(Refused),
+        "not the bus's width"
+    );
+    assert_eq!(host.activate(48_000.0, 8, Width::new(1, 2)), Ok(()));
+    let input = [0.5f32; 8];
+    let (mut left, mut right) = ([9.0f32; 8], [9.0f32; 8]);
+    host.process(&[&input], &mut [&mut left, &mut right], 8);
+    assert_eq!(
+        (left, right),
+        ([0.5; 8], [0.5; 8]),
+        "its audio holds two channels, the second silent on entry"
+    );
+}
+
+#[test]
+fn a_typed_bus_with_no_input_plays_from_silence() {
+    let host = TestHost::<Typed<Sounds>>::new();
+    assert_eq!(host.layouts(), [Width::new(0, 2)], "none listed");
+    assert_eq!(host.activate(48_000.0, 8, Width::new(0, 2)), Ok(()));
+    let (mut left, mut right) = ([9.0f32; 8], [9.0f32; 8]);
+    host.process(&[], &mut [&mut left, &mut right], 8);
+    assert_eq!((left, right), ([0.25; 8], [-0.25; 8]));
 }
 
 /// A host whose callbacks record their names and can re-enter the instance:
