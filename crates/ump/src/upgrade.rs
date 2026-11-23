@@ -18,8 +18,9 @@ const NULL: u8 = 127;
 ///
 /// It follows the specification's Default Translation. Values upscale by
 /// Min-Center-Max, so each narrows back to what was sent, and every packet
-/// it makes is marked [`Origin::Midi1`]. A note-on at velocity 0 becomes a
-/// note-off at `0x8000`. The pair of a 14-bit controller stays two
+/// it makes is marked [`Origin::Midi1`], or [`Origin::Midi1HighByte`] for
+/// a data entry high byte sent with no low byte. A note-on at velocity 0
+/// becomes a note-off at `0x8000`. The pair of a 14-bit controller stays two
 /// controllers. Bank select is held for the next program change, which
 /// carries it, and is not translated on its own; a bank byte never sent
 /// reads as 0.
@@ -122,11 +123,13 @@ struct Number {
     index: u8,
 }
 
-/// A data entry ready to go out: its number and its 14-bit value.
+/// A data entry ready to go out: its number, its high byte, and its low
+/// byte unless none came.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Entry {
     number: Number,
-    value: u16,
+    high: u8,
+    low: Option<u8>,
 }
 
 impl Numbers {
@@ -154,7 +157,11 @@ impl Numbers {
             return None;
         }
         let (number, high) = self.high?;
-        Some(Entry::new(number, high, 0))
+        Some(Entry {
+            number,
+            high,
+            low: None,
+        })
     }
 
     /// An address byte, 99 or 98 for an NRPN, 101 or 100 for an RPN.
@@ -214,7 +221,11 @@ impl Numbers {
                 };
                 self.high = Some((number, value));
                 let own = match early {
-                    Some((under, low)) if under == number => Some(Entry::new(number, value, low)),
+                    Some((under, low)) if under == number => Some(Entry {
+                        number,
+                        high: value,
+                        low: Some(low),
+                    }),
                     _ => {
                         self.pending = true;
                         None
@@ -230,7 +241,14 @@ impl Numbers {
                 match self.high {
                     Some((under, high)) if under == number => {
                         self.pending = false;
-                        [Some(Entry::new(number, high, value)), None]
+                        [
+                            Some(Entry {
+                                number,
+                                high,
+                                low: Some(value),
+                            }),
+                            None,
+                        ]
                     }
                     _ => {
                         self.early_low = Some((number, value));
@@ -251,34 +269,34 @@ impl Numbers {
 
 impl Channel {
     /// Translates one MIDI 1.0 message on this channel, sending each MIDI
-    /// 2.0 message it completes.
-    fn translate(&mut self, message: Midi1Message, mut send: impl FnMut(ChannelMessage)) {
-        match message {
-            Midi1Message::NoteOn { note, velocity: 0 } => send(ChannelMessage::NoteOff {
+    /// 2.0 message it completes with its origin.
+    fn translate(&mut self, message: Midi1Message, mut send: impl FnMut(ChannelMessage, Origin)) {
+        let translated = match message {
+            Midi1Message::NoteOn { note, velocity: 0 } => ChannelMessage::NoteOff {
                 note,
                 velocity: 0x8000,
                 attribute: Attribute::NONE,
-            }),
-            Midi1Message::NoteOn { note, velocity } => send(ChannelMessage::NoteOn {
+            },
+            Midi1Message::NoteOn { note, velocity } => ChannelMessage::NoteOn {
                 note,
                 velocity: up_7_to_16(velocity),
                 attribute: Attribute::NONE,
-            }),
-            Midi1Message::NoteOff { note, velocity } => send(ChannelMessage::NoteOff {
+            },
+            Midi1Message::NoteOff { note, velocity } => ChannelMessage::NoteOff {
                 note,
                 velocity: up_7_to_16(velocity),
                 attribute: Attribute::NONE,
-            }),
-            Midi1Message::PolyPressure { note, value } => send(ChannelMessage::PolyPressure {
+            },
+            Midi1Message::PolyPressure { note, value } => ChannelMessage::PolyPressure {
                 note,
                 value: up_7_to_32(value),
-            }),
-            Midi1Message::ChannelPressure { value } => send(ChannelMessage::ChannelPressure {
+            },
+            Midi1Message::ChannelPressure { value } => ChannelMessage::ChannelPressure {
                 value: up_7_to_32(value),
-            }),
-            Midi1Message::PitchBend { value } => send(ChannelMessage::PitchBend {
+            },
+            Midi1Message::PitchBend { value } => ChannelMessage::PitchBend {
                 value: up_14_to_32(value),
-            }),
+            },
             Midi1Message::ProgramChange { program } => {
                 // Either byte alone selects a bank, its partner at 0.
                 let bank = match self.bank {
@@ -288,18 +306,25 @@ impl Channel {
                         lsb: lsb.unwrap_or(0),
                     }),
                 };
-                send(ChannelMessage::ProgramChange { program, bank });
+                ChannelMessage::ProgramChange { program, bank }
             }
             Midi1Message::ControlChange { controller, value } => {
                 self.control_change(controller, value, send);
+                return;
             }
-        }
+        };
+        send(translated, Origin::Midi1);
     }
 
     /// Translates a MIDI 1.0 control change: bank select is held, the
     /// parameter-number controllers feed their state, and the rest become
     /// MIDI 2.0 control changes.
-    fn control_change(&mut self, controller: u8, value: u8, mut send: impl FnMut(ChannelMessage)) {
+    fn control_change(
+        &mut self,
+        controller: u8,
+        value: u8,
+        mut send: impl FnMut(ChannelMessage, Origin),
+    ) {
         let as_is = ChannelMessage::ControlChange {
             controller,
             value: up_7_to_32(value),
@@ -314,22 +339,22 @@ impl Channel {
                     .into_iter()
                     .flatten()
                 {
-                    send(entry.message());
+                    send(entry.message(), entry.origin());
                 }
                 // Increment and decrement are controllers of their own in
                 // MIDI 2.0, with no parameter number to step.
                 if matches!(controller, 96 | 97) {
-                    send(as_is);
+                    send(as_is, Origin::Midi1);
                 }
             }
             _ => {
                 if controller == RESET_ALL_CONTROLLERS {
                     if let Some(entry) = self.numbers.flush() {
-                        send(entry.message());
+                        send(entry.message(), entry.origin());
                     }
                     self.numbers = Numbers::default();
                 }
-                send(as_is);
+                send(as_is, Origin::Midi1);
             }
         }
     }
@@ -388,14 +413,14 @@ impl Upgrade {
         else {
             return;
         };
-        state.translate(message, |message| {
+        state.translate(message, |message, origin| {
             let voice = ChannelVoice {
                 group,
                 channel,
                 message,
             };
             out.push(Event {
-                origin: Origin::Midi1,
+                origin,
                 ..voice.event(event.offset)
             });
         });
@@ -417,7 +442,7 @@ impl Upgrade {
                         message: entry.message(),
                     };
                     out.push(Event {
-                        origin: Origin::Midi1,
+                        origin: entry.origin(),
                         ..voice.event(last_frame)
                     });
                 }
@@ -427,14 +452,6 @@ impl Upgrade {
 }
 
 impl Entry {
-    /// `number` at `high` and `low`.
-    fn new(number: Number, high: u8, low: u8) -> Self {
-        Entry {
-            number,
-            value: u16::from(high & 0x7F) << 7 | u16::from(low & 0x7F),
-        }
-    }
-
     /// The MIDI 2.0 controller it becomes.
     fn message(self) -> ChannelMessage {
         let Number {
@@ -442,11 +459,22 @@ impl Entry {
             bank,
             index,
         } = self.number;
-        let value = up_14_to_32(self.value);
+        let low = self.low.unwrap_or(0);
+        let value = up_14_to_32(u16::from(self.high & 0x7F) << 7 | u16::from(low & 0x7F));
         if registered {
             ChannelMessage::RegisteredController { bank, index, value }
         } else {
             ChannelMessage::AssignableController { bank, index, value }
+        }
+    }
+
+    /// How it was sent: with its low byte, or as a high byte alone, which
+    /// goes out as if its low byte were 0.
+    fn origin(self) -> Origin {
+        if self.low.is_some() {
+            Origin::Midi1
+        } else {
+            Origin::Midi1HighByte
         }
     }
 }

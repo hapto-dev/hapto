@@ -3562,13 +3562,12 @@ bytes, each message in full.
 Each `Event` keeps its `Origin`. The translation gives back what MIDI 1.0 sent,
 so learn narrows a value upgraded from MIDI 1.0 to the 7 or 14 bits it was sent
 at and scales it as D10 says, and a MIDI 1.0 controller learns and plays as it
-did when learn read MIDI 1.0 itself, with two differences. Controllers 0 and 32
-select a bank and are never learned. A low byte of 0 reads as no low byte, since
-the upgrade sends a high byte alone as if its low byte were 0, so capture takes
-a 14-bit sender whose first two moves both end in a low byte of 0 for a coarse
-one (D47). A coarse binding reads the high byte of every data entry, so its
-target lands where it did when a pair's high byte arrived as a message of its
-own.
+did when learn read MIDI 1.0 itself, but for controllers 0 and 32, which select
+a bank and are never learned. The upgrade sends a high byte with no low byte as
+if its low byte were 0, and marks it `Origin::Midi1HighByte`, so learn tells a
+low byte that never came from one of 0 (D47). A coarse binding reads the high
+byte of every data entry, so its target lands where it did when a pair's high
+byte arrived as a message of its own.
 
 **Alternatives.** The alternatives were both protocols inside, each in messages
 of its own, which leaves every reader two protocols to handle; MIDI 1.0 inside,

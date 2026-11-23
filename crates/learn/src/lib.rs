@@ -8,9 +8,10 @@
 //!   new [snapshot][glossary-snapshot] for the audio thread on every mapping
 //!   change. [`Learn::save`] and [`Learn::restore`] read and write the
 //!   session's `midiLearn` section.
-//! - [`LearnAudio`], on the audio thread, parses each block's Universal MIDI
-//!   Packets (MIDI 1.0 and 2.0), looks them up in the snapshot, and writes
-//!   each mapped parameter as a [learned write][glossary-learned-write].
+//! - [`LearnAudio`], on the audio thread, parses each block's MIDI 2.0
+//!   packets, MIDI 1.0 upgraded on the way in, looks them up in the
+//!   snapshot, and writes each mapped parameter as a
+//!   [learned write][glossary-learned-write].
 //! - [`Learn::poll`], once per UI [tick][glossary-tick], commits a captured
 //!   controller and writes every other [`Target`] the plugin registers, one
 //!   gesture per [burst][glossary-burst].

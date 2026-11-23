@@ -200,7 +200,7 @@ pub enum ChannelMessage {
 /// use hapto_ump::Attribute;
 ///
 /// // Type 3 is pitch 7.9: here a quarter tone above A4.
-/// let pitch = Attribute { kind: 3, data: 69 << 9 | 0x80 };
+/// let pitch = Attribute { kind: 3, data: 69 << 9 | 0x100 };
 /// assert_ne!(pitch, Attribute::NONE);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]

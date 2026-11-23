@@ -374,6 +374,23 @@ fn an_nrpn_high_byte_waits_for_its_low_byte_through_polls_with_no_block_between(
     }
 }
 
+#[test]
+fn a_low_byte_of_0_a_block_after_its_high_byte_learns_14_bit() {
+    // A value whose low byte is 0, such as 8192, over DIN at a small buffer:
+    // the high byte's block ends, and the upgrade sends it alone, before the
+    // low byte comes.
+    let mut rig = rig();
+    let target = rig.ids[0];
+    rig.learn.arm(target, Takes::CONTROLLER).expect("known");
+    let [high, low] = nrpn_address(300);
+    rig.block(&[high, low, cc(6, 64)]);
+    rig.block(&[cc(38, 0)]);
+    assert_eq!(
+        rig.learn.poll(),
+        learned(target, exact(Control::Nrpn(300), 0, 0), false)
+    );
+}
+
 /// Polls until `polls` polls in all have run since the last block, each
 /// finding nothing settled, since no block ran between them.
 fn after_more_polls(rig: &mut Rig, polls: usize) {

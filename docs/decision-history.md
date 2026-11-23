@@ -1297,6 +1297,12 @@ carries the bank select values current. Both were fixed that day, and the
 record named the upgrade's departures from the Default Translation, the
 owner's decision.
 
+Until 2026-11-23 learn read a low byte of 0 as no low byte, since the upgrade
+sent a high byte alone as if its low byte were 0. A 14-bit sender whose high
+byte's block ended before its low byte of 0 came learned as coarse, which the
+same audit found; the owner chose to mark the high byte sent alone by its
+origin.
+
 ## Rules
 
 ### P7. The host write: sanitise, clamp, convert, snap, store, publish

@@ -34,7 +34,10 @@ fn upgrade(upgrade: &mut Upgrade, sent: &[(u32, Midi1Voice)]) -> Vec<(u32, Chann
     out.as_slice()
         .iter()
         .map(|event| {
-            assert_eq!(event.origin, Origin::Midi1, "every packet it makes says so");
+            assert!(
+                matches!(event.origin, Origin::Midi1 | Origin::Midi1HighByte),
+                "every packet it makes says so"
+            );
             let voice = event.channel_voice().expect("a MIDI 2.0 message");
             (event.offset, voice.message)
         })
@@ -143,6 +146,28 @@ fn a_high_byte_alone_goes_out_at_the_end_of_its_block() {
         upgrade(&mut up, &[(2, cc(38, 3))]),
         [(2, assignable(2, 5, 100 << 7 | 3))]
     );
+}
+
+#[test]
+fn a_high_byte_sent_alone_is_marked_apart_from_a_low_byte_of_0() {
+    // The same value either way, but a reader of the width it was sent at
+    // must tell a low byte that never came from one of 0.
+    let mut up = Upgrade::new();
+    let mut out = EventList::with_capacity(4);
+    let high = [cc(99, 2).event(0), cc(98, 5).event(0), cc(6, 64).event(1)];
+    up.block(&high, LAST_FRAME, &mut out);
+    up.block(&[cc(38, 0).event(0)], LAST_FRAME, &mut out);
+    let [alone, refined] = out.as_slice() else {
+        panic!("two messages: {:?}", out.as_slice());
+    };
+    assert_eq!(
+        [
+            (alone.offset, alone.origin),
+            (refined.offset, refined.origin)
+        ],
+        [(LAST_FRAME, Origin::Midi1HighByte), (0, Origin::Midi1)]
+    );
+    assert_eq!(alone.words, refined.words);
 }
 
 #[test]

@@ -42,11 +42,7 @@ pub(crate) enum Value {
     /// A MIDI 1.0 controller value or velocity.
     Seven(u8),
     /// A MIDI 1.0 NRPN's data entry: the high byte, and the low byte unless
-    /// it is 0.
-    ///
-    /// The upgrade sends a high byte that no low byte followed as if the low
-    /// byte were 0, as the specification says, so a low byte of 0 reads as
-    /// none. The value is the same either way.
+    /// none came.
     Nrpn { high: u8, low: Option<u8> },
     /// A MIDI 2.0 velocity.
     Sixteen(u16),
@@ -70,13 +66,13 @@ impl Value {
     }
 
     /// An assignable controller's value upgraded from an NRPN, back at the
-    /// 14 bits it was sent at.
-    fn nrpn(value: u32) -> Value {
+    /// 14 bits it was sent at, its low byte none when the upgrade sent the
+    /// high byte alone.
+    fn nrpn(value: u32, origin: Origin) -> Value {
         let entry = down_32_to_14(value);
-        let low = (entry & 0x7F) as u8;
         Value::Nrpn {
             high: (entry >> 7) as u8,
-            low: (low != 0).then_some(low),
+            low: (origin != Origin::Midi1HighByte).then_some((entry & 0x7F) as u8),
         }
     }
 }
@@ -88,7 +84,7 @@ pub(crate) fn parse(event: &Event) -> Option<Message> {
         channel,
         message,
     } = event.channel_voice()?;
-    let midi1 = event.origin == Origin::Midi1;
+    let midi1 = matches!(event.origin, Origin::Midi1 | Origin::Midi1HighByte);
     let (control, value) = match message {
         // MIDI 2.0 carries parameter numbers and their relative changes as
         // messages of their own, so the controllers MIDI 1.0 selects, enters
@@ -117,7 +113,7 @@ pub(crate) fn parse(event: &Event) -> Option<Message> {
         }
         ChannelMessage::AssignableController { bank, index, value } => {
             let value = if midi1 {
-                Value::nrpn(value)
+                Value::nrpn(value, event.origin)
             } else {
                 Value::ThirtyTwo(value)
             };
@@ -175,8 +171,6 @@ mod tests {
     /// 4. Reset All Controllers also forgets both latched bytes, so data entry
     ///    after it waits for a whole address. RP-015's null leaves both bytes
     ///    at 127, so a lone 98 after it would select a number.
-    /// 5. A low byte of 0 reads as none, since the upgrade sends a high byte
-    ///    alone as if its low byte were 0.
     fn model(history: &[(u8, u8)]) -> Option<(Control, Value)> {
         let (&(controller, value), earlier) = history.split_last()?;
         if !matches!(controller, 6 | 38 | 96 | 97 | 98 | 99 | 100 | 101) {
@@ -191,7 +185,6 @@ mod tests {
         let Some(Number::Nrpn(nrpn)) = number(earlier) else {
             return None;
         };
-        let nonzero = |low: u8| (low != 0).then_some(low);
         let newest_high = earlier.iter().rposition(|&(c, _)| c == 6);
         // The number each 6 or 38 in `earlier` was sent under.
         let under = |at: usize| number(&earlier[..at]);
@@ -206,7 +199,7 @@ mod tests {
                 Control::Nrpn(nrpn),
                 Value::Nrpn {
                     high,
-                    low: nonzero(value),
+                    low: Some(value),
                 },
             ));
         }
@@ -222,7 +215,7 @@ mod tests {
             .find(|&(sent, _)| sent.is_some() && sent != held);
         let low = early
             .filter(|&(sent, _)| sent == Some(Number::Nrpn(nrpn)))
-            .and_then(|(_, low)| nonzero(low));
+            .map(|(_, low)| low);
         Some((Control::Nrpn(nrpn), Value::Nrpn { high: value, low }))
     }
 

@@ -1366,16 +1366,17 @@ move its line here; when a decision gains code, add one.
 - `crates/ump/src/lib.rs`: module, `Origin`
 - `crates/ump/src/voice.rs`: `ChannelVoice`, `ChannelMessage`
 - `crates/ump/src/midi1.rs`: module, `Midi1Voice`, `Midi1Message`
-- `crates/ump/src/upgrade.rs`: module, `Upgrade`, `Numbers::control`, `Channel::translate`
+- `crates/ump/src/upgrade.rs`: module, `Upgrade`, `Numbers::control`, `Channel::translate`, `Entry::origin`
 - `crates/ump/src/downgrade.rs`: module, `Downgrade`
 - `crates/ump/src/scale.rs`: module
 - `crates/ump/src/bytes.rs`: module, `ByteStream`, `Bytes`
 - `crates/learn/src/parse.rs`: module, `parse`, `Value::nrpn`, `Value::normalized`
 - `crates/learn/src/source.rs`: `Control::Cc`
-- test `crates/ump/tests/translation.rs`: module, `midi_1_comes_back_from_midi_2_as_it_was_sent`, `a_high_byte_alone_goes_out_at_the_end_of_its_block`, `bank_select_is_held_for_the_program_change_that_carries_it`, `a_bank_byte_sent_alone_selects_a_bank_with_its_partner_at_0`, `increment_and_decrement_are_controllers_of_their_own`, `what_midi_1_cannot_carry_is_dropped_and_counted`
+- test `crates/ump/tests/translation.rs`: module, `midi_1_comes_back_from_midi_2_as_it_was_sent`, `a_high_byte_alone_goes_out_at_the_end_of_its_block`, `a_high_byte_sent_alone_is_marked_apart_from_a_low_byte_of_0`, `bank_select_is_held_for_the_program_change_that_carries_it`, `a_bank_byte_sent_alone_selects_a_bank_with_its_partner_at_0`, `increment_and_decrement_are_controllers_of_their_own`, `what_midi_1_cannot_carry_is_dropped_and_counted`
 - test `crates/ump/tests/bytes.rs`: module, `a_stream_reads_as_its_messages_however_it_is_cut`, `real_time_bytes_anywhere_leave_the_rest_alone`, `a_sysex_of_every_length_goes_out_six_bytes_at_a_time_and_writes_back`
 - test `crates/learn/src/parse.rs`: `upgraded_midi_1_parses_as_a_model_of_midi_1_0_reads_it`
 - test `crates/learn/tests/dispatch.rs`: `a_coarse_binding_reads_a_high_byte_as_seven_bit_and_ignores_low_bytes`, `every_fourteen_bit_nrpn_value_reads_centre_anchored_fine_or_coarse`
+- test `crates/learn/tests/capture.rs`: `a_low_byte_of_0_a_block_after_its_high_byte_learns_14_bit`
 
 ## Parameters
 

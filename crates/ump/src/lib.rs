@@ -128,6 +128,12 @@ pub enum Origin {
     Midi2,
     /// Sent as MIDI 1.0 and upgraded on the way in.
     Midi1,
+    /// Sent as an RPN or NRPN whose data entry high byte came with no low
+    /// byte, and upgraded on the way in as if its low byte were 0. A low
+    /// byte that follows comes as a controller of its own, marked
+    /// [`Midi1`](Self::Midi1), so a low byte of 0 that was sent reads apart
+    /// from one that never came.
+    Midi1HighByte,
 }
 
 impl Event {
