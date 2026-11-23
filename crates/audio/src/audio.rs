@@ -156,7 +156,9 @@ impl<'a, L: Layout> Audio<'a, L> {
     /// Each frame in turn, one moment across every channel. In a
     /// [`Bus`](crate::layout::Bus) a frame is an array of the channels'
     /// samples, so `for [left, right] in audio.frames_mut()` destructures it;
-    /// in [`AnyLayout`] it is a [`Frame`](crate::Frame).
+    /// in [`AnyLayout`] it is a [`Frame`](crate::Frame). Either takes a mono
+    /// voice's sample into every channel with
+    /// [`AddSample::add`](crate::AddSample::add).
     ///
     /// # Examples
     ///

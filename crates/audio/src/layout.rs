@@ -94,8 +94,9 @@ pub trait Layout: sealed::Sealed + 'static {
 
     /// One frame of audio in this layout, as
     /// [`Audio::frames_mut`](crate::Audio::frames_mut) hands it out: one
-    /// sample of each channel, at one moment.
-    type Frame<'a>;
+    /// sample of each channel, at one moment, to which
+    /// [`AddSample`](crate::AddSample) adds a mono voice's sample.
+    type Frame<'a>: crate::AddSample;
 
     /// The channels, as [`Audio::channels`](crate::Audio::channels) hands
     /// them out: an array in a `Bus`, an iterator in `AnyLayout`.

@@ -176,7 +176,7 @@ pub use faults::report_line;
 pub use spans::{Span, Spans};
 // Inlined: a block's audio is `hapto_audio`'s, shown here as this crate's.
 #[doc(inline)]
-pub use hapto_audio::{Audio, AudioBuf, Frame, layout};
+pub use hapto_audio::{AddSample, Audio, AudioBuf, Frame, layout};
 /// Writes a plugin's [`PluginInfo`]: who the plugin is from its manifest, and
 /// what its code relies on from the fields the macro is given.
 ///
