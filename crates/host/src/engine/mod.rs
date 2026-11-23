@@ -673,7 +673,9 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
     /// A participant of the session that is busy here, held by an editor's
     /// code that reached the host say, keeps its section of a load owed, as
     /// at any tick. The processor is then built from what the participant
-    /// held, and the next tick applies the load.
+    /// held, and the next tick applies the load. A panic in the parts' tick,
+    /// in a saved value's serialisation say, counts as a fault and the
+    /// activation goes on, building from what the tick reached.
     pub(crate) fn activate(&self, main: &Main<P, H>, setup: Setup, layout: Width) -> bool {
         if !widths::<P>().contains(&layout) {
             return false;
@@ -686,7 +688,7 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
         // session the host loaded since the last tick. Inside the plugin's
         // borrow, as every tick of the parts is.
         if let Some(on_thread) = &main.on_thread {
-            on_thread.driver.tick();
+            self.guard((), || on_thread.driver.tick());
         }
         let mut audio = Active::new(&mut *plugin, setup, layout, |midi| {
             if midi { MAX_EVENTS } else { 0 }

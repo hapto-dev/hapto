@@ -1,14 +1,15 @@
-//! What every shell does with a load its host made before an activation:
-//! the activation applies it, so the processor it builds plays the loaded
-//! session from its first block, with no tick between.
+//! The tick of the parts every shell's activation runs: how a load the host
+//! made before it reaches the first block, what the host is told, and what a
+//! panic in it costs.
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use hapto_params::{Float, FloatDecl, Value};
 use hapto_session::{ApplyError, Participant, Registration, Section};
+use serde::{Deserialize, Serialize, Serializer};
 
-use super::{Gain, Heard, Probe, Shell};
+use super::{Adder, Gain, Heard, Probe, Shell};
 use crate::layout::Stereo;
 use crate::{Block, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status};
 
@@ -247,7 +248,8 @@ fn a_change_an_activation_captures_is_told_at_the_next_tick_and_not_inside_it<S:
     let mut host = S::create();
     host.tick();
     assert_eq!(host.heard(), Heard::default(), "a new instance");
-    kit(|kit| assert!(kit.parts.borrow().ui().write(&kit.drive, 500.0)));
+    // A saved value, which only a tick captures: here the activation's.
+    kit(|kit| kit.bias.set(50.0));
     assert_eq!(host.activate(), Ok(()));
     assert_eq!(
         host.heard(),
@@ -257,4 +259,62 @@ fn a_change_an_activation_captures_is_told_at_the_next_tick_and_not_inside_it<S:
     host.tick();
     assert_eq!(host.heard(), Heard { state: 1, other: 0 });
     host.expect_faults(0);
+}
+
+/// A saved value whose capture panics once it holds `true`: a plugin's bug
+/// in code the parts' tick runs.
+#[derive(Clone, Deserialize)]
+struct Fragile(bool);
+
+impl Serialize for Fragile {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        assert!(!self.0, "a saved value's bug");
+        serializer.serialize_bool(self.0)
+    }
+}
+
+thread_local! {
+    /// The value the last [`Brittle`] saves under `fragile`.
+    static FRAGILE: RefCell<Option<Value<Fragile>>> = const { RefCell::new(None) };
+}
+
+/// Keeps its parts and a [`Fragile`] value, and plays the listed gain.
+struct Brittle {
+    _parts: Parts,
+    gain: Gain,
+}
+
+impl Plugin for Brittle {
+    const INFO: PluginInfo = Probe::INFO;
+    type Params = Gain;
+    type Processor = Adder;
+
+    fn new(gain: Gain, mut parts: Parts) -> Self {
+        let fragile = parts
+            .saved_value("fragile", Fragile(false))
+            .expect("a free key");
+        FRAGILE.set(Some(fragile));
+        Brittle {
+            _parts: parts,
+            gain,
+        }
+    }
+
+    fn activate(&mut self, _: &ProcessSetup) -> Adder {
+        Adder(self.gain.clone())
+    }
+}
+
+through_every_shell!(
+    Brittle:
+    a_panic_in_an_activation_s_tick_is_a_fault_and_the_activation_goes_on,
+);
+
+fn a_panic_in_an_activation_s_tick_is_a_fault_and_the_activation_goes_on<S: Shell>() {
+    let mut host = S::create();
+    host.write(0.5);
+    FRAGILE.with_borrow(|fragile| fragile.as_ref().expect("made").set(Fragile(true)));
+    host.expect_faults(1);
+    assert_eq!(host.activate(), Ok(()), "not refused");
+    assert_eq!(host.play(1.0), [6.0; 8], "the processor it built plays");
 }

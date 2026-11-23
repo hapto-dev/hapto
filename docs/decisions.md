@@ -2215,27 +2215,32 @@ The driver is not `Send`, so the engine keeps one, beside the timer, only for
 a plugin bound to its thread; a plugin that is `Send` holds no parts. A test
 with no host makes a `Driver` from the parts and ticks through it.
 
-An activation ticks the parts too, before `Plugin::activate` and inside the
-same borrow of the plugin. A host may load a project and activate with no tick
+An activation ticks the parts too, before `Plugin::activate` and inside the same
+borrow of the plugin. A host may load a project and activate with no tick
 between, and render at once; the standalone app does so at every start. A load
 writes the listed parameters itself and only stores the rest (D13, D96), so
-without this tick the processor would be built from the session before the
-load and play it until the first tick: a participant's section, a saved value,
-a parameter made at run time, learn's mappings. It is the parts' tick alone,
-in `Driver::tick`'s one order. `Plugin::idle` does not run, and the host,
-which is inside its own call, is told nothing: what the tick captured is told
-at the next one, and a load is no change to tell there either (D108). It runs
-at every activation, a rebuild while active included, and costs what any tick
-costs when nothing changed. A participant that is busy then, held by an
-editor's code that reached the host, keeps its section owed as at any tick:
-the processor is built from what it held, the load's parameters made at run
-time wait with it, and the next tick applies the load. An engine bound to no
-thread holds no driver, so nothing is ticked there.
+without this tick the processor would be built from the session before the load.
+What it reads each block, a parameter made at run time or learn's mappings,
+would catch up at the first tick; what the plugin read as it activated, a
+participant's section or a saved value, only at the next activation. It is the
+parts' tick alone, in `Driver::tick`'s one order. `Plugin::idle` does not run,
+and the host, which is inside its own call, is told nothing: what the tick
+captured is told at the next one, and a load is no change to tell there either
+(D108). It runs at every activation, a rebuild while active included, and costs
+what any tick costs when nothing changed. A panic in it, from plugin code it
+runs such as a saved value's serialisation, counts as a fault and the activation
+goes on from what the tick reached, so a bug there costs the rest of one tick,
+as at an idle, and not the activation. A participant that is busy then, held by
+an editor's code that reached the host, keeps its section owed as at any tick:
+the processor is built from what it held, the load's parameters made at run time
+wait with it, and the next tick applies the load. An engine bound to no thread
+holds no driver, so nothing is ticked there.
 
-Open: a load made while the plugin is active, followed by blocks with no tick,
-still plays the session from before it until the next tick. The listed
-parameters land at once; the rest would have to cross to a processor that is
-running, which is not built (D96).
+Open: a load made while the plugin is active reaches a running processor only
+through what it reads each block: the listed parameters at once, a parameter
+made at run time and learn's mappings at the next tick. What the plugin read as
+it activated keeps the session from before the load until the next activation,
+since nothing yet crosses to a processor that is running (D96).
 
 To confirm, the choices made beyond the owner's for the tick at an activation:
 that it is the parts' tick alone, that it runs at every activation and not
@@ -2538,22 +2543,21 @@ the room it leaves `extra` with each value at its longest, and a declare under
 a held path is born holding the value. Learn's restore clears every mapping,
 those of parameters made at run time included. Once a pass of the session that
 began after the load stored its sections has finished, the parts' tick, at an
-idle or at an activation (D91), assigns the load in one step. Each one
-declared before the load and still held takes the value held for its path, or
-its default, as a restore: a parameter made once in `new`, or an owner a
-participant kept. Every one still held takes the mapping held for its path,
-and one declared before the load with none held is left unmapped. So the
-result does not depend on whether the plugin's tree or
-learn applied first, or on where in a tick the load landed, and no mapping is
-refused as full for one of the tree the load replaced. Then the entries go; a
-save meanwhile writes them as loaded, and a parameter declared since the load
-with the mapping held for its path. The restore clock's stored count orders
-the pass against the load: the entries record it after the load's parameter
-writes, and the session's store moves it under the session's lock, where a
-pass reads it. Which parameters were declared before the load is decided by a
-count of loads the saved state keeps under its own lock, which each declare
-reads before the plugin's code runs, so a declare a load lands inside counts
-as declared before it.
+idle or at an activation (D91), assigns the load in one step. Each one declared
+before the load and still held takes the value held for its path, or its
+default, as a restore: a parameter made once in `new`, or an owner a participant
+kept. Every one still held takes the mapping held for its path, and one declared
+before the load with none held is left unmapped. So the result does not depend
+on whether the plugin's tree or learn applied first, or on where in a tick the
+load landed, and no mapping is refused as full for one of the tree the load
+replaced. Then the entries go; a save meanwhile writes them as loaded, and a
+parameter declared since the load with the mapping held for its path. The
+restore clock's stored count orders the pass against the load: the entries
+record it after the load's parameter writes, and the session's store moves it
+under the session's lock, where a pass reads it. Which parameters were declared
+before the load is decided by a count of loads the saved state keeps under its
+own lock, which each declare reads before the plugin's code runs, so a declare a
+load lands inside counts as declared before it.
 
 Handing an owner's audio half to the processor and back, and a page naming one
 by its path, are not built.
