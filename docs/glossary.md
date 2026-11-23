@@ -171,8 +171,9 @@ Several senses:
   [`Learn::detach`](../crates/learn/src/mappings.rs). It is saved back unchanged
   and applied when such a target registers
   ([mappings/session.rs](../crates/learn/src/mappings/session.rs)).
-- **Held address bytes**: the NRPN address bytes learn's parser keeps, per group
-  and channel, until an address change or a reset forgets them ([the
+- **Held address bytes**: the RPN and NRPN address bytes the upgrade to MIDI
+  2.0 keeps, per group and channel, until an address change or a reset forgets
+  them ([upgrade.rs](../crates/ump/src/upgrade.rs), [the
   decision](decisions.md#d70-learns-reading-of-midi-10-pairs)).
 - **Held by the page**: a page holds its writes and calls until the native
   side's snapshot arrives, then sends them in the order it made them

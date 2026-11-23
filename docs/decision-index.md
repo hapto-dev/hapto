@@ -746,14 +746,14 @@ move its line here; when a decision gains code, add one.
 - `crates/learn/src/capture.rs`: module, `Stager::pair_low_byte`, `Stager::newest`, `Stager::offer`, `Resolution::Waiting`, `Arm::capture`, `is_low_byte`
 - `crates/learn/src/lib.rs`: module
 - `crates/learn/src/mappings.rs`: `Learn::poll`
-- `crates/learn/src/source.rs`: `Control::Cc`, `Control::PARSER_OWNED`
+- `crates/learn/src/source.rs`: `Control::Cc`, `Control::selects_a_number`
 - `crates/learn/src/parse.rs`: module, `parse`
 - `crates/ump/src/upgrade.rs`: module, `Numbers::address_byte`, `Numbers::control`, `Numbers::unpaired`, `Numbers::high`, `Number`, `Kind`, `Channel::control_change`, `NULL`
 - `crates/ump/src/controller.rs`: module, `RESET_ALL_CONTROLLERS`, `is_parameter_number`
 - test `crates/learn/src/parse.rs`: `upgraded_midi_1_parses_as_a_model_of_midi_1_0_reads_it`, `model`, `begins_an_address`
 - test `crates/ump/tests/translation.rs`: `an_address_reads_in_either_byte_order`, `the_null_number_and_a_lone_data_entry_send_nothing`, `reset_all_controllers_sends_what_is_held_then_forgets_the_address`, `a_low_byte_sent_first_waits_for_its_high_byte`, `an_address_sent_again_keeps_its_high_byte_for_the_low_byte`, `a_low_byte_never_takes_another_numbers_high_byte`
 - test `crates/learn/tests/capture.rs`: `a_14_bit_controller_pair_learns_its_high_byte`, `a_controller_32_to_63_learns_itself_a_tick_later_unless_its_high_byte_came_just_before`, `an_arm_between_a_pairs_halves_waits_through_polls_and_learns_the_high_byte_that_follows`, `a_capture_held_back_between_a_high_byte_and_its_low_byte_stops_the_pairing`, `data_increment_and_decrement_are_never_learned`
-- test `crates/learn/tests/dispatch.rs`: `the_null_parameter_number_selects_nothing`, `a_data_entry_low_byte_sent_first_waits_for_its_high_byte`, `a_waiting_low_byte_waits_for_its_own_numbers_high_byte`, `an_address_sent_again_keeps_what_its_data_entry_holds`, `a_new_address_high_byte_forgets_the_old_low_byte`, `reset_all_controllers_forgets_the_address`, `an_nrpn_address_selects_its_number_whichever_byte_comes_first`, `juces_rpn_generator_reaches_its_nrpn_with_or_without_the_low_byte`, `a_lone_high_byte_never_pairs_with_a_low_byte_from_before_a_data_entry`, `data_increment_and_decrement_use_the_address_and_drive_nothing`, `the_parser_owned_controllers_never_bind`
+- test `crates/learn/tests/dispatch.rs`: `the_null_parameter_number_selects_nothing`, `a_data_entry_low_byte_sent_first_waits_for_its_high_byte`, `a_waiting_low_byte_waits_for_its_own_numbers_high_byte`, `an_address_sent_again_keeps_what_its_data_entry_holds`, `a_new_address_high_byte_forgets_the_old_low_byte`, `reset_all_controllers_forgets_the_address`, `an_nrpn_address_selects_its_number_whichever_byte_comes_first`, `juces_rpn_generator_reaches_its_nrpn_with_or_without_the_low_byte`, `a_lone_high_byte_never_pairs_with_a_low_byte_from_before_a_data_entry`, `data_increment_and_decrement_use_the_address_and_drive_nothing`, `the_parameter_number_controllers_never_bind`
 
 ### D71. Learn after an unreadable midiLearn section
 
@@ -1882,7 +1882,7 @@ move its line here; when a decision gains code, add one.
 - `crates/learn/src/reservation.rs`: module, `CcReservation`, `NrpnReservation`, `ReservationError`
 - `crates/learn/src/source.rs`: module, `Control::Cc`
 - test `crates/learn/tests/capture.rs`: module, `a_refused_message_leaves_the_target_armed`, `a_reserved_controller_can_still_be_mapped_by_hand_and_dispatches`, `a_midi_2_assignable_controller_learns_as_an_nrpn`, `a_controller_reservation_on_one_group_leaves_the_others_free`
-- test `crates/learn/tests/dispatch.rs`: module, `an_nrpn_assembles_and_a_high_byte_alone_reads_as_midi_1_says`, `a_partial_nrpn_sequence_is_dropped`, `rpn_data_entry_never_dispatches_as_the_last_nrpn`, `the_parser_runs_while_nothing_is_mapped`, `the_parser_owned_controllers_never_bind`, `each_group_and_channel_keeps_its_own_nrpn_state`, `reset_all_controllers_deselects_the_nrpn`, `a_reserved_nrpn_is_never_bound`, `the_null_parameter_number_selects_nothing`, `a_data_entry_low_byte_sent_first_waits_for_its_high_byte`, `a_waiting_low_byte_waits_for_its_own_numbers_high_byte`, `a_new_address_high_byte_forgets_the_old_low_byte`, `reset_all_controllers_forgets_the_address`
+- test `crates/learn/tests/dispatch.rs`: module, `an_nrpn_assembles_and_a_high_byte_alone_reads_as_midi_1_says`, `a_partial_nrpn_sequence_is_dropped`, `rpn_data_entry_never_dispatches_as_the_last_nrpn`, `the_parser_runs_while_nothing_is_mapped`, `the_parameter_number_controllers_never_bind`, `each_group_and_channel_keeps_its_own_nrpn_state`, `reset_all_controllers_deselects_the_nrpn`, `a_reserved_nrpn_is_never_bound`, `the_null_parameter_number_selects_nothing`, `a_data_entry_low_byte_sent_first_waits_for_its_high_byte`, `a_waiting_low_byte_waits_for_its_own_numbers_high_byte`, `a_new_address_high_byte_forgets_the_old_low_byte`, `reset_all_controllers_forgets_the_address`
 - test `crates/learn/src/parse.rs`: `upgraded_midi_1_parses_as_a_model_of_midi_1_0_reads_it`
 
 ### L3. The learn flow

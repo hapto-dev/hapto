@@ -151,9 +151,10 @@ impl Default for Config {
 #[doc = include_str!("../doc/setup.rs")]
 /// let (mut learn, _audio) = Learn::new(&set, Config::default());
 ///
-/// // Controller 6 belongs to the NRPN parser; 200 is no controller at all.
-/// let parser_owned = Mapping::new(Source::any(Control::Cc(6)));
-/// let blocked = learn.map(gain, parser_owned);
+/// // Controller 6 is data entry, which the upgrade consumes; 200 is no
+/// // controller at all.
+/// let data_entry = Mapping::new(Source::any(Control::Cc(6)));
+/// let blocked = learn.map(gain, data_entry);
 /// assert!(matches!(blocked, Err(LearnError::Blocked(_))));
 /// let out_of_range = Mapping::new(Source::any(Control::Cc(200)));
 /// let bad = learn.map(gain, out_of_range);
@@ -174,7 +175,7 @@ pub enum LearnError {
     UnknownTarget(TargetId),
     /// A number in the source is out of range for its kind.
     BadSource(Source),
-    /// The source can never be bound: a controller the parser owns, as
+    /// The source can never be bound: a controller the upgrade consumes, as
     /// [`Control::Cc`](crate::Control::Cc) lists them, or an NRPN the plugin
     /// reserved.
     Blocked(Source),
@@ -859,7 +860,7 @@ impl Learn {
             .reserved_nrpns
             .iter()
             .any(|r| r.overlaps(&source));
-        if source.control.parser_owned() || reserved {
+        if source.control.selects_a_number() || reserved {
             return Err(LearnError::Blocked(source));
         }
         let full = self.mappings.len() >= self.config.max_mappings;

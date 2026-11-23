@@ -14,6 +14,8 @@
     )
 )]
 
+use hapto_ump::controller::is_parameter_number;
+
 use crate::field::Field;
 
 /// The kind of message a binding listens to, and its number.
@@ -36,11 +38,13 @@ use crate::field::Field;
 pub enum Control {
     /// A control change, 0 to 127, from MIDI 1.0 or MIDI 2.0.
     ///
-    /// Controllers 6, 38, 96, 97, 98, 99, 100 and 101 belong to the NRPN and
-    /// RPN parser and are never bound. They select a parameter number, enter
-    /// its value, or step it. MIDI 1.0's controllers 0 and 32 never arrive
-    /// either: they select the bank the next program change carries, as the
-    /// upgrade to MIDI 2.0 reads them.
+    /// Controllers 6, 38, 96, 97, 98, 99, 100 and 101 are never bound: the
+    /// upgrade to MIDI 2.0 consumes them to assemble an RPN or NRPN, as
+    /// [`is_parameter_number`](hapto_ump::controller::is_parameter_number)
+    /// says. They select a parameter number, enter its value, or step it.
+    /// MIDI 1.0's controllers 0 and 32 never arrive either: they select the
+    /// bank the next program change carries, as the upgrade to MIDI 2.0 reads
+    /// them.
     ///
     /// A binding reads that controller alone, so a MIDI 1.0 14-bit pair plays
     /// at 7 bits through the byte learn bound: the high byte (below 32) in the
@@ -60,11 +64,6 @@ pub enum Control {
 }
 
 impl Control {
-    /// The controllers the parser owns, which never act as plain controllers:
-    /// an increment's value is a step for the selected number, not a
-    /// position, so a binding would jump its target.
-    pub(crate) const PARSER_OWNED: [u8; 8] = [6, 38, 96, 97, 98, 99, 100, 101];
-
     /// The kind's number in a packed word, a dispatch key or a staged
     /// capture.
     pub(crate) fn kind(self) -> u64 {
@@ -100,8 +99,12 @@ impl Control {
         }
     }
 
-    pub(crate) fn parser_owned(self) -> bool {
-        matches!(self, Control::Cc(number) if Self::PARSER_OWNED.contains(&number))
+    /// Whether it is a controller the upgrade consumes to assemble a
+    /// parameter number, which never acts as a plain controller: an
+    /// increment's value is a step for the selected number, not a position,
+    /// so a binding would jump its target.
+    pub(crate) fn selects_a_number(self) -> bool {
+        matches!(self, Control::Cc(number) if is_parameter_number(number))
     }
 }
 

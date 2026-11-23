@@ -3,6 +3,8 @@
 
 hapto_testkit::install_alloc_gate!();
 
+mod common;
+
 use std::sync::Arc;
 
 use hapto_learn::{
@@ -98,14 +100,7 @@ fn events() -> EventList {
         attribute: Attribute::NONE,
     }));
     sent.push(Event::new(0, [0x3016_7E7F, 0x0D70_0201, 0, 0]));
-    let sent: Vec<Event> = sent
-        .iter()
-        .zip(0..)
-        .map(|(event, offset)| Event { offset, ..*event })
-        .collect();
-    let mut events = EventList::with_capacity(sent.len() + 256);
-    Upgrade::new().block(&sent, sent.len() as u32, &mut events);
-    events
+    common::upgraded(&mut Upgrade::new(), &sent)
 }
 
 #[test]

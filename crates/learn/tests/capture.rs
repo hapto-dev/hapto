@@ -1,96 +1,27 @@
 //! The learn flow: arming, capture reservations, and when a capture commits.
 
-use std::sync::Arc;
+mod common;
 
 use hapto_learn::{
-    CcReservation, Config, Control, Learn, LearnAudio, LearnError, Learned, Mapping,
-    NrpnReservation, Source, Takes,
+    CcReservation, Config, Control, Learn, LearnError, Learned, Mapping, NrpnReservation, Source,
+    Takes,
 };
-use hapto_params::{Kind, ParamDecl, ParamId, ParamSet, ParamSetBuilder};
-use hapto_ump::{
-    ChannelMessage, ChannelVoice, Event, EventList, Midi1Message, Midi1Voice, Upgrade,
-};
+use hapto_params::ParamId;
+use hapto_ump::{ChannelMessage, Event, Midi1Message, Upgrade};
 
-fn set_of(count: usize) -> Arc<ParamSet> {
-    let mut builder = ParamSetBuilder::new();
-    for index in 0..count {
-        let key: &'static str = Box::leak(format!("p{index}").into_boxed_str());
-        builder
-            .add(ParamDecl::new(
-                key,
-                key,
-                Kind::continuous(0.0, 1.0, 0.0, None),
-                0.5,
-            ))
-            .expect("valid");
-    }
-    builder.build()
+use common::{Rig, cc, midi2, on, upgraded};
+
+fn set_of(count: usize) -> std::sync::Arc<hapto_params::ParamSet> {
+    common::set_of(count, 0.5)
 }
 
-struct Rig {
-    learn: Learn,
-    audio: LearnAudio,
-    upgrade: Upgrade,
-    ids: Vec<ParamId>,
-}
-
+/// Learn over three parameters at 0.5, as `config` sets it up.
 fn rig_with(config: Config) -> Rig {
-    let set = set_of(3);
-    let (learn, audio) = Learn::new(&set, config);
-    Rig {
-        learn,
-        audio,
-        upgrade: Upgrade::new(),
-        ids: set.ids().collect(),
-    }
+    Rig::new(3, 0.5, config)
 }
 
 fn rig() -> Rig {
     rig_with(Config::default())
-}
-
-impl Rig {
-    fn block(&mut self, sent: &[Event]) {
-        let events = upgraded(&mut self.upgrade, sent);
-        self.audio.process(&events);
-    }
-}
-
-/// One block of `sent`, each at the next frame, upgraded to the MIDI 2.0
-/// learn reads, as an exporter does.
-fn upgraded(upgrade: &mut Upgrade, sent: &[Event]) -> EventList {
-    let sent: Vec<Event> = sent
-        .iter()
-        .zip(0..)
-        .map(|(event, offset)| Event { offset, ..*event })
-        .collect();
-    let mut events = EventList::with_capacity(sent.len() + 256);
-    upgrade.block(&sent, sent.len() as u32, &mut events);
-    events
-}
-
-/// A MIDI 1.0 message, as a MIDI 1.0 sender sends it.
-fn on(group: u8, channel: u8, message: Midi1Message) -> Event {
-    Midi1Voice {
-        group,
-        channel,
-        message,
-    }
-    .event(0)
-}
-
-/// A MIDI 2.0 message, which the upgrade passes as it is.
-fn midi2(group: u8, channel: u8, message: ChannelMessage) -> Event {
-    ChannelVoice {
-        group,
-        channel,
-        message,
-    }
-    .event(0)
-}
-
-fn cc(controller: u8, value: u8) -> Event {
-    on(0, 0, Midi1Message::ControlChange { controller, value })
 }
 
 fn exact(control: Control, group: u8, channel: u8) -> Source {

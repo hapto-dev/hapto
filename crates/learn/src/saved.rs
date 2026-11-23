@@ -83,8 +83,8 @@ fn decode_curve(object: &Map<String, Json>) -> Option<Curve> {
 ///
 /// An entry is unreadable with the wrong shape, an unknown kind, or a number,
 /// group, channel or curve out of range. Whether the mapping may exist (a
-/// parser-owned controller, a reserved NRPN, the ceiling) is the restore's
-/// check, as for any mapping.
+/// controller the upgrade consumes, a reserved NRPN, the ceiling) is the
+/// restore's check, as for any mapping.
 pub(crate) fn decode(entry: &Section) -> Option<(String, Mapping)> {
     let object = entry.as_object()?;
     let key = object.get("target")?.as_str()?;

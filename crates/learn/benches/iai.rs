@@ -4,6 +4,9 @@
 
 #![allow(missing_docs, reason = "the benchmark macros generate public items")]
 
+#[path = "../tests/common/mod.rs"]
+mod common;
+
 use std::hint::black_box;
 
 use hapto_learn::{Config, Control, Learn, LearnAudio, Mapping, Source};
@@ -74,14 +77,7 @@ fn block() -> EventList {
         }));
     }
     sent.push(Event::new(0, [0x3016_7E7F, 0x0D70_0201, 0, 0]));
-    let sent: Vec<Event> = sent
-        .iter()
-        .zip(0..)
-        .map(|(event, offset)| Event { offset, ..*event })
-        .collect();
-    let mut events = EventList::with_capacity(sent.len() + 256);
-    Upgrade::new().block(&sent, sent.len() as u32, &mut events);
-    events
+    common::upgraded(&mut Upgrade::new(), &sent)
 }
 
 #[library_benchmark]

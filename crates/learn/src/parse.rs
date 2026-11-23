@@ -21,6 +21,7 @@
     )
 )]
 
+use hapto_ump::controller::is_parameter_number;
 use hapto_ump::scale::{down_16_to_7, down_32_to_7, down_32_to_14};
 use hapto_ump::{ChannelMessage, ChannelVoice, Event, Origin};
 
@@ -90,9 +91,7 @@ pub(crate) fn parse(event: &Event) -> Option<Message> {
         // messages of their own, so the controllers MIDI 1.0 selects, enters
         // and steps them with mean nothing here. The upgrade sends MIDI 1.0's
         // increment and decrement on as controllers, which learn ignores too.
-        ChannelMessage::ControlChange { controller, value }
-            if !Control::PARSER_OWNED.contains(&controller) =>
-        {
+        ChannelMessage::ControlChange { controller, value } if !is_parameter_number(controller) => {
             let value = if midi1 {
                 Value::Seven(down_32_to_7(value))
             } else {

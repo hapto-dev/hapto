@@ -1,120 +1,35 @@
 //! The audio path of learn: parsing, lookup, scaling and curves.
 
-use std::sync::Arc;
+mod common;
 
 use hapto_learn::{
-    Config, Control, Curve, CurveError, Learn, LearnAudio, LearnError, Mapping, NrpnReservation,
-    ReservationError, Source,
+    Config, Control, Curve, CurveError, LearnError, Mapping, NrpnReservation, ReservationError,
+    Source,
 };
-use hapto_params::{Kind, ParamDecl, ParamId, ParamSet, ParamSetBuilder};
-use hapto_ump::{
-    Attribute, ChannelMessage, ChannelVoice, Event, EventList, Midi1Message, Midi1Voice, Upgrade,
-};
+use hapto_ump::{Attribute, ChannelMessage, Event, Midi1Message};
 
 /// A value no message in these tests writes.
 const UNTOUCHED: f32 = 0.37;
 
-fn set_of(count: usize) -> Arc<ParamSet> {
-    let mut builder = ParamSetBuilder::new();
-    for index in 0..count {
-        let key: &'static str = Box::leak(format!("p{index}").into_boxed_str());
-        builder
-            .add(ParamDecl::new(
-                key,
-                key,
-                Kind::continuous(0.0, 1.0, 0.0, None),
-                UNTOUCHED,
-            ))
-            .expect("valid");
-    }
-    builder.build()
-}
+use common::{Rig, cc, midi2, on, upgraded};
 
-struct Rig {
-    set: Arc<ParamSet>,
-    learn: Learn,
-    audio: LearnAudio,
-    upgrade: Upgrade,
-    ids: Vec<ParamId>,
+fn set_of(count: usize) -> std::sync::Arc<hapto_params::ParamSet> {
+    common::set_of(count, UNTOUCHED)
 }
 
 fn rig(count: usize) -> Rig {
     rig_with(count, Config::default())
 }
 
+/// Learn over `count` parameters at a value no message writes.
 fn rig_with(count: usize, config: Config) -> Rig {
-    let set = set_of(count);
-    let (learn, audio) = Learn::new(&set, config);
-    let ids = set.ids().collect();
-    Rig {
-        set,
-        learn,
-        audio,
-        upgrade: Upgrade::new(),
-        ids,
-    }
-}
-
-impl Rig {
-    /// Runs one block of `voices` on group 0, channel 0 unless they say
-    /// otherwise.
-    fn block(&mut self, sent: &[Event]) {
-        let events = upgraded(&mut self.upgrade, sent);
-        self.audio.process(&events);
-    }
-
-    fn value(&self, index: usize) -> f32 {
-        self.set.value(self.ids[index])
-    }
-
-    fn map(&mut self, index: usize, source: Source) {
-        self.learn
-            .map(self.ids[index], Mapping::new(source))
-            .expect("a legal mapping");
-    }
+    Rig::new(count, UNTOUCHED, config)
 }
 
 /// What a learned write of `normalized` leaves in a parameter that runs 0 to
 /// 1 with no step: the same number, as the `f32` the store holds.
 fn stored(normalized: f64) -> f32 {
     normalized.clamp(0.0, 1.0) as f32
-}
-
-/// One block of `sent`, each at the next frame, upgraded to the MIDI 2.0
-/// learn reads, as an exporter does.
-fn upgraded(upgrade: &mut Upgrade, sent: &[Event]) -> EventList {
-    let sent: Vec<Event> = sent
-        .iter()
-        .zip(0..)
-        .map(|(event, offset)| Event { offset, ..*event })
-        .collect();
-    let mut events = EventList::with_capacity(sent.len() + 256);
-    upgrade.block(&sent, sent.len() as u32, &mut events);
-    events
-}
-
-/// A MIDI 1.0 message, as a MIDI 1.0 sender sends it.
-fn on(group: u8, channel: u8, message: Midi1Message) -> Event {
-    Midi1Voice {
-        group,
-        channel,
-        message,
-    }
-    .event(0)
-}
-
-/// A MIDI 2.0 message, which the upgrade passes as it is.
-fn midi2(group: u8, channel: u8, message: ChannelMessage) -> Event {
-    ChannelVoice {
-        group,
-        channel,
-        message,
-    }
-    .event(0)
-}
-
-fn cc(controller: u8, value: u8) -> Event {
-    on(0, 0, Midi1Message::ControlChange { controller, value })
 }
 
 /// MIDI 1.0 values scale centre-anchored.
@@ -376,7 +291,7 @@ fn the_parser_runs_while_nothing_is_mapped() {
 }
 
 #[test]
-fn the_parser_owned_controllers_never_bind() {
+fn the_parameter_number_controllers_never_bind() {
     // The parser owns the NRPN and RPN address, data entry, and data
     // increment and decrement controllers.
     let mut rig = rig(1);
