@@ -232,7 +232,8 @@ fn upgrading_and_downgrading_a_block_does_not_allocate() {
         .collect();
     // `Upgrade::new` allocates the channels' state, but using it does not.
     let mut upgrade = Upgrade::new();
-    let mut downgrade = Downgrade::new();
+    let downgrade = Downgrade::new();
+    let mut lost = 0;
     let mut upgraded = EventList::with_capacity(CAPACITY);
     let mut back = EventList::with_capacity(CAPACITY);
 
@@ -241,12 +242,12 @@ fn upgrading_and_downgrading_a_block_does_not_allocate() {
         for _ in 0..4 {
             upgraded.clear();
             back.clear();
-            upgrade.block(&sent, &mut upgraded);
-            downgrade.block(upgraded.as_slice(), &mut back);
+            upgrade.block(&sent, 255, &mut upgraded);
+            lost += downgrade.block(upgraded.as_slice(), &mut back);
             let up = upgraded.as_slice().len();
             let down = back.as_slice().len();
             back.clear();
-            downgrade.block(&midi2, &mut back);
+            lost += downgrade.block(&midi2, &mut back);
             seen = (up, down, back.as_slice().len());
         }
         seen
@@ -263,7 +264,7 @@ fn upgrading_and_downgrading_a_block_does_not_allocate() {
     //   each take several messages.
     // - The note-on's attribute is lost too, in each of the four rounds.
     assert_eq!(seen.2, PLACES.len() * 17);
-    assert_eq!(downgrade.lost(), 4 * 7 * PLACES.len() as u64);
+    assert_eq!(lost, 4 * 7 * PLACES.len() as u32);
 }
 
 #[test]
@@ -278,7 +279,7 @@ fn reading_a_byte_stream_and_writing_it_back_does_not_allocate() {
     let (packets, written) = assert_no_allocations("a byte stream read and written", || {
         let mut seen = (0, 0);
         for _ in 0..4 {
-            bytes.reset();
+            bytes = ByteStream::new(3);
             let (mut packets, mut written) = (0, 0);
             for chunk in stream.chunks(4) {
                 bytes.read(chunk, |words| {

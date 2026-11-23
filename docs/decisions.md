@@ -3658,9 +3658,9 @@ would cut to velocity 0 goes out at 1, a registered or assignable controller
 becomes its four controllers, and a program change with a bank goes out after
 bank select. What MIDI 1.0 cannot carry is dropped and counted: relative and
 per-note controllers, per-note pitch bend and management, a note's attribute,
-whose note still goes out, and a MIDI 2.0 packet of a status the specification
-reserves. Packets of the other types pass, since a destination that takes
-MIDI 1.0 in UMP may take each of them.
+whose note still goes out, and any packet MIDI 1.0 has no bytes for: a utility,
+flex data or stream message, 8-bit SysEx, or a status left undefined. What
+passes is exactly what `Bytes::of` writes.
 
 A device or port that carries MIDI 1.0's byte stream meets UMP at the same
 edge. `ByteStream` reads its bytes into MIDI 1.0 packets as MIDI 1.0 says:

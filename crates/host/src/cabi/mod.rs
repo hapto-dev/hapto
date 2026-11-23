@@ -38,7 +38,7 @@ use std::marker::PhantomData;
 
 use hapto_params::{Kind, ParamDecl, ParamId, audio_thread};
 
-use hapto_ump::{Downgrade, MessageType};
+use hapto_ump::Downgrade;
 
 pub use abi::{
     ABI_VERSION, CChar, HaptoHost, HaptoInstance, HaptoLayout, HaptoPacket, HaptoParamInfo,
@@ -640,19 +640,11 @@ unsafe fn send_out(block: &HaptoProcess, sent: &[Event]) {
         }
     };
     if block.flags & MIDI_OUT_1 != 0 {
-        let mut downgrade = Downgrade::new();
+        let downgrade = Downgrade::new();
         for event in sent {
-            // The downgrade passes on what is no channel voice message, and
-            // MIDI 1.0 has a place for its system messages and SysEx alone.
-            downgrade.translate(event, |packet: Event| {
-                let kind = packet.message_type();
-                if matches!(
-                    kind,
-                    MessageType::SYSTEM | MessageType::MIDI1 | MessageType::SYSEX7
-                ) {
-                    put(packet);
-                }
-            });
+            // What MIDI 1.0 cannot carry is dropped, and the C interface
+            // reports no count of it.
+            downgrade.translate(event, &mut put);
         }
     } else {
         for &event in sent {

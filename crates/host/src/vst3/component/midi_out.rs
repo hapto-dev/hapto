@@ -125,16 +125,18 @@ pub(super) unsafe fn write_events(
         // SysEx's bytes stay in `out.block` until the next block.
         unsafe { events.addEvent(&mut event) == kResultOk }
     };
-    let mut downgrade = Downgrade::new();
+    let downgrade = Downgrade::new();
+    let mut lost = 0_u64;
     for packet in sent {
         let offset = packet.offset.min(last);
         let at = Event { offset, ..*packet };
         if native(&at, out, &mut add) {
             continue;
         }
-        downgrade.translate(&at, |midi1| midi_1(&midi1, out, &mut add));
+        let dropped = downgrade.translate(&at, |midi1| midi_1(&midi1, out, &mut add));
+        lost = lost.saturating_add(u64::from(dropped));
     }
-    out.lost = out.lost.saturating_add(downgrade.lost());
+    out.lost = out.lost.saturating_add(lost);
 }
 
 /// An event of `kind` at `offset` on the event bus, its body set after.

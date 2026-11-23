@@ -100,9 +100,9 @@ impl ByteStream {
         }
     }
 
-    /// Discards any partial message or SysEx and the running status, for
-    /// example when the sending device closes.
-    pub fn reset(&mut self) {
+    /// Forgets a message under way, a SysEx included, and any running
+    /// status.
+    fn reset(&mut self) {
         *self = ByteStream::new(self.group);
     }
 

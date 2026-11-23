@@ -21,7 +21,7 @@ use std::fmt;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 
-use hapto_ump::{Bytes, Downgrade, Event};
+use hapto_ump::{Downgrade, Event};
 
 use crate::Instant;
 use crate::backend;
@@ -350,7 +350,7 @@ impl OutputsWriter {
         }
         let at_frames = Timing::from_index(self.timing.load(Ordering::Relaxed)) == Timing::AtFrames;
         let nanos_per_frame = if rate > 0.0 { 1e9 / rate } else { 0.0 };
-        let mut downgrade = Downgrade::new();
+        let downgrade = Downgrade::new();
         let (mut lost, mut pushed) = (0_u64, false);
         let rings = &mut self.rings;
         for event in sent {
@@ -361,28 +361,20 @@ impl OutputsWriter {
             } else {
                 Instant::from_nanos(0)
             };
-            downgrade.translate(event, |packet| {
-                // A packet MIDI 1.0's bytes cannot carry: a utility or
-                // stream message, or 8-bit SysEx.
-                if Bytes::of(packet.words).is_none() {
-                    lost = lost.saturating_add(1);
-                    return;
-                }
+            let dropped = downgrade.translate(event, |packet| {
                 for (ring, _) in rings.iter_mut().filter(|(ring, _)| ring.is_read()) {
                     ring.push(due, packet.words);
                     pushed = true;
                 }
             });
+            lost = lost.saturating_add(u64::from(dropped));
         }
         if pushed {
             for (_, signal) in rings.iter().filter(|(ring, _)| ring.is_read()) {
                 signal.set();
             }
         }
-        self.lost = self
-            .lost
-            .saturating_add(lost)
-            .saturating_add(downgrade.lost());
+        self.lost = self.lost.saturating_add(lost);
     }
 
     /// How many packets found no room in an open output's ring, or were a

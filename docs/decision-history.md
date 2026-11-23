@@ -1330,24 +1330,10 @@ passed a MIDI 2.0 packet of a reserved status on to a MIDI 1.0 destination,
 uncounted, though section 3.2.1.2 of the specification keeps message type 4
 from a MIDI 1.0 device. It is dropped and counted since.
 
-Until 2026-11-24 the upgrade held a high byte sent alone until its low byte,
-another parameter-number message or the end of the block. A review of the MIDI
-branches that day found that the channel's later notes and bends overtook it,
-an MPE zone's configuration among them, and that the host's block size moved
-it. Its audit recommended sending the high byte at once, the alternative the
-record had turned down, and the owner took it; the record holds it "to
-confirm".
-
-Until 2026-11-24 the upgrade held MIDI 1.0's controllers 0 and 32 for the
-next program change alone, as the Default Translation does, so a binding on
-them could be made and never fired, and a fader on controller 0 could not be
-learned. The review recommended refusing such bindings; its audit recommended
-passing the two on as well, since common controllers send a fader or a button
-on them, and the owner took the audit's. The implementer first had the
-downgrade send a program change upgraded from MIDI 1.0 without its bank,
-which kept the round trip exact; the owner turned that down the same day,
-since a processor that drops controllers 0 and 32 would then lose the bank,
-and a receiver sent the bank select twice ends on the same bank.
+When the exporters came to send MIDI out, the downgrade came to pass only what
+MIDI 1.0's bytes carry, which drops utility, flex data, stream and 8-bit SysEx
+packets too: each place it serves writes MIDI 1.0 as bytes or as a host's MIDI
+1.0 events, and each had filtered what came out by a rule of its own.
 
 ## Rules
 

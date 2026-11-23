@@ -690,8 +690,14 @@ fn other_packets_pass_as_they_are() {
     assert_eq!(out.as_slice(), [midi2, sysex]);
 }
 
-/// Downgrades `messages`, each at frame 0, and returns the output.
-fn downgrade(downgrade: &mut Downgrade, messages: &[ChannelMessage]) -> Vec<Midi1Message> {
+/// Downgrades `messages`, each a MIDI 2.0 message at frame 0, and returns
+/// what came out.
+fn downgrade(messages: &[ChannelMessage]) -> Vec<Midi1Message> {
+    downgraded(messages).0
+}
+
+/// `messages` downgraded, and how many packets MIDI 1.0 could not carry.
+fn downgraded(messages: &[ChannelMessage]) -> (Vec<Midi1Message>, u32) {
     let input: Vec<Event> = messages
         .iter()
         .map(|&message| {
@@ -704,24 +710,23 @@ fn downgrade(downgrade: &mut Downgrade, messages: &[ChannelMessage]) -> Vec<Midi
         })
         .collect();
     let mut out = EventList::with_capacity(64);
-    downgrade.block(&input, &mut out);
-    out.as_slice()
+    let lost = Downgrade::new().block(&input, &mut out);
+    let sent = out
+        .as_slice()
         .iter()
         .map(|event| event.midi1_voice().expect("a MIDI 1.0 message").message)
-        .collect()
+        .collect();
+    (sent, lost)
 }
 
 #[test]
 fn a_note_on_that_would_cut_to_0_goes_out_at_velocity_1() {
     let none = Attribute::NONE;
-    let sent = downgrade(
-        &mut Downgrade::new(),
-        &[ChannelMessage::NoteOn {
-            note: 60,
-            velocity: 0x01FF,
-            attribute: none,
-        }],
-    );
+    let sent = downgrade(&[ChannelMessage::NoteOn {
+        note: 60,
+        velocity: 0x01FF,
+        attribute: none,
+    }]);
     assert_eq!(
         sent,
         [Midi1Message::NoteOn {
@@ -733,7 +738,6 @@ fn a_note_on_that_would_cut_to_0_goes_out_at_velocity_1() {
 
 #[test]
 fn a_controller_becomes_its_four_and_a_program_its_bank_first() {
-    let mut down = Downgrade::new();
     let cc = |controller, value| Midi1Message::ControlChange { controller, value };
     let rpn = ChannelMessage::RegisteredController {
         bank: 0,
@@ -741,7 +745,7 @@ fn a_controller_becomes_its_four_and_a_program_its_bank_first() {
         value: scale::up_14_to_32(12 << 7 | 5),
     };
     assert_eq!(
-        downgrade(&mut down, &[rpn]),
+        downgrade(&[rpn]),
         [cc(101, 0), cc(100, 0), cc(6, 12), cc(38, 5)]
     );
     let nrpn = ChannelMessage::AssignableController {
@@ -750,7 +754,7 @@ fn a_controller_becomes_its_four_and_a_program_its_bank_first() {
         value: 0,
     };
     assert_eq!(
-        downgrade(&mut down, &[nrpn]),
+        downgrade(&[nrpn]),
         [cc(99, 2), cc(98, 5), cc(6, 0), cc(38, 0)]
     );
     let program = ChannelMessage::ProgramChange {
@@ -758,7 +762,7 @@ fn a_controller_becomes_its_four_and_a_program_its_bank_first() {
         bank: Some(Bank { msb: 1, lsb: 2 }),
     };
     assert_eq!(
-        downgrade(&mut down, &[program]),
+        downgrade(&[program]),
         [
             cc(0, 1),
             cc(32, 2),
@@ -811,7 +815,6 @@ fn a_program_change_from_midi_1_keeps_its_bank_when_its_controllers_are_dropped(
 
 #[test]
 fn what_midi_1_cannot_carry_is_dropped_and_counted() {
-    let mut down = Downgrade::new();
     let lost = [
         ChannelMessage::RelativeRegisteredController {
             bank: 0,
@@ -840,54 +843,48 @@ fn what_midi_1_cannot_carry_is_dropped_and_counted() {
             reset: true,
         },
     ];
-    assert_eq!(downgrade(&mut down, &lost), []);
-    assert_eq!(down.lost(), 6);
-    // A note's attribute is lost, but the note still goes out.
+    assert_eq!(downgraded(&lost), (vec![], 6));
+    // A note's attribute is lost, and the note still goes out.
     let pitched = ChannelMessage::NoteOn {
         note: 60,
         velocity: 0xFFFF,
         attribute: Attribute { kind: 3, data: 1 },
     };
-    assert_eq!(
-        downgrade(&mut down, &[pitched]),
-        [Midi1Message::NoteOn {
-            note: 60,
-            velocity: 127
-        }]
-    );
-    assert_eq!(down.lost(), 7);
+    let note = Midi1Message::NoteOn {
+        note: 60,
+        velocity: 127,
+    };
+    assert_eq!(downgraded(&[pitched]), (vec![note], 1));
 }
 
 #[test]
-fn a_midi_2_packet_of_a_reserved_status_is_dropped_and_counted() {
-    // No MIDI 2.0 channel voice message has status 0x7, and a MIDI 1.0
-    // destination must not be sent one.
-    let reserved = Event::new(0, [0x4070_3C00, 0xFFFF_0000, 0, 0]);
-    let mut down = Downgrade::new();
-    let mut out = EventList::with_capacity(4);
-    down.block(&[reserved], &mut out);
-    assert_eq!(out.as_slice(), []);
-    assert_eq!(down.lost(), 1);
-}
-
-#[test]
-fn the_types_a_midi_1_destination_takes_in_ump_pass_as_they_are() {
-    // A UMP MIDI 1.0 device may use utility, system, MIDI 1.0 channel
-    // voice, SysEx, SysEx 8, flex data and stream packets.
-    let others = [
-        Event::new(0, [0x0020_0400, 0, 0, 0]),
-        Event::new(0, [0x10F8_0000, 0, 0, 0]),
-        Event::new(0, [0x20B0_0740, 0, 0, 0]),
-        Event::new(0, [0x3016_7E7F, 0x0D70_0201, 0, 0]),
-        Event::new(0, [0x5002_0001, 0x0200_0000, 0, 0]),
-        Event::new(0, [0xD010_0000, 0x0098_9680, 0, 0]),
-        Event::new(0, [0xF000_0101, 0x0000_001F, 0, 0]),
-    ];
-    let mut down = Downgrade::new();
+fn a_packet_midi_1_has_no_bytes_for_is_dropped_and_counted() {
+    let down = Downgrade::new();
     let mut out = EventList::with_capacity(8);
-    down.block(&others, &mut out);
-    assert_eq!(out.as_slice(), others);
-    assert_eq!(down.lost(), 0);
+    let packets = [
+        // A utility message: a no-op.
+        Event::new(0, [0x0000_0000, 0, 0, 0]),
+        // A system message with an undefined status, 0xF4.
+        Event::new(0, [0x10F4_0000, 0, 0, 0]),
+        // A MIDI 1.0 packet whose status is a data byte.
+        Event::new(0, [0x2070_3C00, 0, 0, 0]),
+        // A SysEx with a reserved status, 4.
+        Event::new(0, [0x3041_0100, 0, 0, 0]),
+        // A stream message.
+        Event::new(0, [0xF000_0000, 0, 0, 0]),
+        // A MIDI 2.0 packet with a reserved status, 0x7.
+        Event::new(0, [0x4070_3C00, 0xFFFF_0000, 0, 0]),
+    ];
+    assert_eq!(down.block(&packets, &mut out), 6);
+    assert!(out.as_slice().is_empty());
+    // What MIDI 1.0 carries passes as it is.
+    let carried = [
+        Event::new(1, [0x10F8_0000, 0, 0, 0]),
+        Event::new(2, [0x2090_3C7F, 0, 0, 0]),
+        Event::new(3, [0x3002_7E7F, 0, 0, 0]),
+    ];
+    assert_eq!(down.block(&carried, &mut out), 0);
+    assert_eq!(out.as_slice(), carried);
 }
 
 /// Returns every MIDI 1.0 message as one sequence each, with each data entry
@@ -957,13 +954,14 @@ fn with_bank_select_again(sent: &[Midi1Message]) -> Vec<Midi1Message> {
 fn midi_1_comes_back_from_midi_2_as_it_was_sent() {
     // MIDI 1.0 comes back unchanged from MIDI 2.0 (appendix D.1.2).
     let mut up = Upgrade::new();
-    let mut down = Downgrade::new();
+    let down = Downgrade::new();
+    let mut lost = 0;
     for sent in every_midi_1_message() {
         let input: Vec<Event> = sent.iter().map(|&message| one(message).event(0)).collect();
         let mut upgraded = EventList::with_capacity(8);
         up.block(&input, &mut upgraded);
         let mut back = EventList::with_capacity(8);
-        down.block(upgraded.as_slice(), &mut back);
+        lost += down.block(upgraded.as_slice(), &mut back);
         let back: Vec<Midi1Message> = back
             .as_slice()
             .iter()
@@ -971,7 +969,7 @@ fn midi_1_comes_back_from_midi_2_as_it_was_sent() {
             .collect();
         assert_eq!(back, with_bank_select_again(&sent));
     }
-    assert_eq!(down.lost(), 0);
+    assert_eq!(lost, 0);
 }
 
 #[test]
