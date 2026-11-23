@@ -23,10 +23,7 @@ fn filling_and_reading_a_block_of_events_does_not_allocate() {
         for block in 0..64u32 {
             events.clear();
             for offset in 0..600u32 {
-                events.push(Event {
-                    offset,
-                    words: [0x2090_3C00 | (block & 0x7F), 0, 0, 0],
-                });
+                events.push(Event::new(offset, [0x2090_3C00 | (block & 0x7F), 0, 0, 0]));
             }
             let sum: u32 = events.as_slice().iter().map(|event| event.offset).sum();
             std::hint::black_box((sum, events.dropped()));

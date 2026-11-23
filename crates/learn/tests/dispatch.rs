@@ -187,10 +187,7 @@ fn every_packet_reaches_the_processor_untouched_and_in_order() {
     let mut events = EventList::with_capacity(8);
     let packets = [
         cc(7, 100).event(0),
-        Event {
-            offset: 1,
-            words: [0x3016_7E7F, 0x0D70_0201, 0, 0],
-        },
+        Event::new(1, [0x3016_7E7F, 0x0D70_0201, 0, 0]),
         nrpn_address(300)[0].event(2),
         nrpn_address(300)[1].event(2),
         cc(6, 9).event(3),
@@ -203,10 +200,7 @@ fn every_packet_reaches_the_processor_untouched_and_in_order() {
             },
         )
         .event(4),
-        Event {
-            offset: 5,
-            words: [0x3036_0102, 0x0304_0506, 0, 0],
-        },
+        Event::new(5, [0x3036_0102, 0x0304_0506, 0, 0]),
     ];
     for packet in packets {
         events.push(packet);

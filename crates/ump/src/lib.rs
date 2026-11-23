@@ -70,7 +70,7 @@ pub use voice::{ChannelVoice, Voice};
 /// use hapto_ump::{ChannelVoice, Event, Voice};
 ///
 /// // A MIDI 1.0 note-on at frame 16: note 60, velocity 127.
-/// let event = Event { offset: 16, words: [0x2090_3C7F, 0, 0, 0] };
+/// let event = Event::new(16, [0x2090_3C7F, 0, 0, 0]);
 /// let voice = Voice::Midi1NoteOn { note: 60, velocity: 127 };
 /// assert_eq!(event.channel_voice(), Some(ChannelVoice { group: 0, channel: 0, voice }));
 /// ```
@@ -80,9 +80,49 @@ pub struct Event {
     pub offset: u32,
     /// The packet: one to four words, unused words zero.
     pub words: [u32; 4],
+    /// Where the packet came from before it reached the block.
+    pub origin: Origin,
+}
+
+/// Where a packet came from before it reached a block.
+///
+/// Everything above the exporters reads MIDI 2.0, so a packet's protocol is
+/// no longer in its words. Its origin keeps what the words lost: a value
+/// upgraded from MIDI 1.0 narrows back to its 7 or 14 bits exactly, as the
+/// specification's round trip guarantees, for a reader that needs the
+/// value as it was sent.
+///
+/// # Examples
+///
+/// ```
+/// use hapto_ump::{Event, Origin};
+///
+/// // A MIDI 2.0 note-on, as a MIDI 2.0 source sent it.
+/// let event = Event::new(0, [0x4090_3C00, 0xFFFF_0000, 0, 0]);
+/// assert_eq!(event.origin, Origin::Midi2);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[non_exhaustive]
+pub enum Origin {
+    /// Sent as it is: a MIDI 2.0 packet, or one both protocols share, such
+    /// as SysEx7 or a system message.
+    #[default]
+    Midi2,
+    /// Sent as MIDI 1.0 and upgraded on the way in.
+    Midi1,
 }
 
 impl Event {
+    /// The packet `words` at frame `offset`, sent as it is.
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
+    pub const fn new(offset: u32, words: [u32; 4]) -> Self {
+        Event {
+            offset,
+            words,
+            origin: Origin::Midi2,
+        }
+    }
+
     /// The packet's message type, 0 to 15: 2 for a MIDI 1.0 channel voice
     /// message, 3 for SysEx7, 4 for a MIDI 2.0 channel voice message.
     ///
@@ -91,8 +131,8 @@ impl Event {
     /// ```
     /// use hapto_ump::Event;
     ///
-    /// let note_on = Event { offset: 0, words: [0x2090_3C7F, 0, 0, 0] };
-    /// let sysex = Event { offset: 0, words: [0x3516_7E7F, 0x0D70_0201, 0, 0] };
+    /// let note_on = Event::new(0, [0x2090_3C7F, 0, 0, 0]);
+    /// let sysex = Event::new(0, [0x3516_7E7F, 0x0D70_0201, 0, 0]);
     /// assert_eq!(note_on.message_type(), 2);
     /// assert_eq!(sysex.message_type(), 3);
     /// ```
@@ -110,7 +150,7 @@ impl Event {
     /// use hapto_ump::Event;
     ///
     /// // A MIDI 1.0 note-on on group 5.
-    /// let event = Event { offset: 0, words: [0x2590_3C7F, 0, 0, 0] };
+    /// let event = Event::new(0, [0x2590_3C7F, 0, 0, 0]);
     /// assert_eq!(event.group(), 5);
     /// ```
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
@@ -140,7 +180,7 @@ impl Event {
 ///
 /// let mut list = EventList::with_capacity(8);
 /// // A MIDI 1.0 note-on at frame 16.
-/// list.push(Event { offset: 16, words: [0x2090_3C7F, 0, 0, 0] });
+/// list.push(Event::new(16, [0x2090_3C7F, 0, 0, 0]));
 ///
 /// for event in list.as_slice() {
 ///     assert_eq!((event.offset, event.message_type()), (16, 2));
@@ -176,7 +216,7 @@ impl EventList {
     /// use hapto_ump::{Event, EventList};
     ///
     /// let mut list = EventList::with_capacity(1);
-    /// let event = Event { offset: 0, words: [0x2090_3C7F, 0, 0, 0] };
+    /// let event = Event::new(0, [0x2090_3C7F, 0, 0, 0]);
     /// list.push(event);
     /// list.push(event); // full: dropped and counted
     /// assert_eq!(list.dropped(), 1);
@@ -200,8 +240,8 @@ impl EventList {
     /// use hapto_ump::{Event, EventList};
     ///
     /// let mut list = EventList::with_capacity(1);
-    /// list.push(Event { offset: 0, words: [0x2090_3C7F, 0, 0, 0] });
-    /// list.push(Event { offset: 8, words: [0x2080_3C00, 0, 0, 0] });
+    /// list.push(Event::new(0, [0x2090_3C7F, 0, 0, 0]));
+    /// list.push(Event::new(8, [0x2080_3C00, 0, 0, 0]));
     /// assert_eq!(list.as_slice().len(), 1);
     /// assert_eq!(list.dropped(), 1);
     /// ```
@@ -237,7 +277,7 @@ impl EventList {
     ///
     /// let mut out = EventList::with_capacity(4);
     /// // The second piece starts at frame 64 and sends a note-on at its 3rd.
-    /// out.push(Event { offset: 3, words: [0x2090_3C7F, 0, 0, 0] });
+    /// out.push(Event::new(3, [0x2090_3C7F, 0, 0, 0]));
     /// for event in out.as_mut_slice() {
     ///     event.offset += 64;
     /// }
@@ -266,8 +306,8 @@ impl EventList {
     ///
     /// // The host's block had room for one event and was sent two.
     /// let mut block = EventList::with_capacity(1);
-    /// block.push(Event { offset: 0, words: [0x2090_3C7F, 0, 0, 0] });
-    /// block.push(Event { offset: 8, words: [0x2080_3C00, 0, 0, 0] });
+    /// block.push(Event::new(0, [0x2090_3C7F, 0, 0, 0]));
+    /// block.push(Event::new(8, [0x2080_3C00, 0, 0, 0]));
     ///
     /// // A copy of it reports the note-off the block lost.
     /// let mut copy = EventList::with_capacity(1);
@@ -296,10 +336,7 @@ mod tests {
     fn a_full_list_drops_and_counts_instead_of_growing() {
         let mut list = EventList::with_capacity(2);
         for offset in 0..3 {
-            list.push(Event {
-                offset,
-                words: [0x2090_3C7F, 0, 0, 0],
-            });
+            list.push(Event::new(offset, [0x2090_3C7F, 0, 0, 0]));
         }
         assert_eq!(list.as_slice().len(), 2);
         assert_eq!(list.dropped(), 1);
@@ -313,10 +350,7 @@ mod tests {
     fn events_changed_in_place_keep_the_list_s_length_and_drops() {
         let mut list = EventList::with_capacity(2);
         for offset in [1, 2, 3] {
-            list.push(Event {
-                offset,
-                words: [0x2090_3C7F, 0, 0, 0],
-            });
+            list.push(Event::new(offset, [0x2090_3C7F, 0, 0, 0]));
         }
         for event in list.as_mut_slice() {
             event.offset += 10;
@@ -341,10 +375,7 @@ mod tests {
 
     #[test]
     fn the_header_names_the_type_and_group() {
-        let sysex = Event {
-            offset: 0,
-            words: [0x3516_7E7F, 0x0D70_0201, 0, 0],
-        };
+        let sysex = Event::new(0, [0x3516_7E7F, 0x0D70_0201, 0, 0]);
         assert_eq!(sysex.message_type(), 3);
         assert_eq!(sysex.group(), 5);
         assert_eq!(sysex.channel_voice(), None);

@@ -269,9 +269,6 @@ impl ChannelVoice {
     /// shows one pushed and read back.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn event(&self, offset: u32) -> Event {
-        Event {
-            offset,
-            words: self.words(),
-        }
+        Event::new(offset, self.words())
     }
 }

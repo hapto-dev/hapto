@@ -124,10 +124,7 @@ impl Iterator for Packets<'_> {
             *slot = *word;
         }
         self.words = rest;
-        Some(Ok(Event {
-            offset: self.offset,
-            words,
-        }))
+        Some(Ok(Event::new(self.offset, words)))
     }
 }
 

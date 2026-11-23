@@ -88,7 +88,7 @@ fn known_packets_read_as_their_messages() {
             channel,
             voice,
         };
-        let event = Event { offset: 9, words };
+        let event = Event::new(9, words);
         assert_eq!(event.channel_voice(), Some(expected), "{words:08X?}");
         assert_eq!(event.group(), group);
     }

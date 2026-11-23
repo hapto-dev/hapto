@@ -106,10 +106,7 @@ fn events() -> EventList {
     for (offset, voice) in voices.iter().enumerate() {
         events.push(voice.event(offset as u32));
     }
-    events.push(Event {
-        offset: 0,
-        words: [0x3016_7E7F, 0x0D70_0201, 0, 0],
-    });
+    events.push(Event::new(0, [0x3016_7E7F, 0x0D70_0201, 0, 0]));
     events
 }
 

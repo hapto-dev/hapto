@@ -44,10 +44,7 @@ impl Processor for Echo {
 
 /// A note-on at `offset` whose velocity is `tag`, so a test can follow it.
 fn note(offset: u32, tag: u32) -> Event {
-    Event {
-        offset,
-        words: [0x2090_3C00 | tag, 0, 0, 0],
-    }
+    Event::new(offset, [0x2090_3C00 | tag, 0, 0, 0])
 }
 
 fn tagged(event: &Event) -> (u32, u32) {
