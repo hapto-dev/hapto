@@ -1,0 +1,56 @@
+[package]
+name = "hapto-example-midi-probe"
+description = "A host's MIDI, heard and sent back out, for checks by hand"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords = ["audio", "plugin", "midi", "example"]
+categories = ["multimedia::audio"]
+publish.workspace = true
+
+# Who the plugin is, to every host: `hapto_host::manifest_info!` reads it,
+# with the version and description above.
+[package.metadata.hapto]
+name = "Hapto MIDI Probe"
+vendor = "Hapto"
+id = "dev.hapto.midi-probe"
+vst3-class-id = "b8d2180f-d1b4-41e3-95fa-ff761806c582"
+au-codes = { subtype = "SmPr", manufacturer = "Hapt" }
+category = "instrument"
+
+[lib]
+# The cdylib is the VST3 module; the rlib lets tests drive it in-process. The
+# JUCE adapter builds the static library itself, with only `cabi` on.
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["vst3"]
+# The VST3 module's entry points, through Hapto's exporter.
+vst3 = ["hapto-host/vst3"]
+# The C interface's one symbol, for the JUCE adapter, which defines the VST3
+# entry points itself: built without `vst3`.
+cabi = ["hapto-host/cabi"]
+# The probe as an app of its own, on the computer's MIDI devices; the module
+# never links it.
+standalone = ["dep:hapto-standalone"]
+
+[dependencies]
+hapto-host = { workspace = true, features = ["manifest"] }
+hapto-standalone = { workspace = true, optional = true }
+
+[dev-dependencies]
+hapto-host = { workspace = true, features = ["cabi", "test-host"] }
+# The JUCE settings' drift gate (`tests/juce_settings.rs`).
+hapto-testkit.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "hapto-example-midi-probe-standalone"
+path = "src/bin/standalone.rs"
+required-features = ["standalone"]

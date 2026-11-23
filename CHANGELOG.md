@@ -331,6 +331,11 @@ exporter.
   [docs/first-plugin.md](docs/first-plugin.md) walks through it.
 - `examples/eq`: an EQ of six biquad bands and an output gain, as a VST3 module
   or a static library for the adapter.
+- `examples/midi-probe`: a plugin that makes a host's MIDI heard, for checks by
+  hand: a sine for each note, which its own pitch, bend, pressure and volume
+  move, the channel's bend and volume, and every message sent back out as it
+  came. It builds as a VST3 module, through the JUCE adapter, and as an app of
+  its own on the computer's MIDI devices.
 - `xtask`: `cargo xtask gen` writes every generated file, and CI fails when one
   drifts. `cargo xtask wrap` holds comments and docs to 80 columns.
 - `cargo-hapto`: the plugin author's command, for a plugin crate in any

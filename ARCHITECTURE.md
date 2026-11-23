@@ -103,6 +103,8 @@ reading how Hapto works inside, start with
   walks through it.
 - `examples/eq`: the example EQ, the reference for performance and parity, as a
   VST3 module or a static library for the adapter.
+- `examples/midi-probe`: a plugin that makes a host's MIDI heard and sends it
+  back out, for checking MIDI through a real host by hand, in each format.
 - `page`: React hooks for the page, over a pluggable transport: a memory
   one for tests, and `webviewTransport` for a page in a plugin's window. Its
   client holds writes made before the native side answers in `src/held.ts`,

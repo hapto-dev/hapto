@@ -34,6 +34,9 @@ cd examples/gain/page && npm ci && npm run typecheck && npm run build   # pull r
 cargo test -p hapto-webview --test hidden_window -- --ignored          # by hand, Windows: the page in a real WebView2, in windows never shown (one test leaves a dialog open, as its doc says)
 cargo test -p hapto-example-gain --test page -- --ignored              # by hand, Windows, with the gain's page built: the same, for its page
 cargo test -p hapto-midi-devices --test by_hand -- --ignored --nocapture --test-threads 1   # by hand, Windows: the computer's MIDI devices: their list, a chord on the system's synth at its times, every output, what a keyboard plays, a device replugged past every slot, a SysEx longer than an input's room through a loopback port, and a device unplugged during a long SysEx out
+cargo hapto build -p hapto-example-midi-probe --install   # by hand, Windows: the MIDI probe in a real host, its notes, expressions and controllers heard and every message echoed back out
+cmake -S .github/juce-adapter -B <folder> -DHAPTO_CHECK_PLUGIN=midi-probe -DHAPTO_CHECK_JUCE_COMMIT=<the commit bench/ pins>   # by hand, Windows: the same probe through the JUCE adapter, built with `cmake --build <folder> --config Release`
+cargo run -p hapto-example-midi-probe --features standalone   # by hand, Windows: the probe as an app on the computer's MIDI devices, its echo sent to the system's synth
 cargo hapto dev -p hapto-example-gain   # by hand, Windows: the gain standalone with its page from Vite, restarted with its saved block after a change to Rust
 cargo hapto dev -p hapto-example-gain --host   # by hand, Windows: the same through the dev host, in VST3 and, after its switch, the C interface
 cargo test -p cargo-hapto -- --ignored   # full run, Windows: `cargo hapto init` writes a crate with this checkout's crates, which builds and passes its tests
@@ -100,7 +103,7 @@ real-time sanitizer, which needs Linux.
 | `page`: Typecheck, Test | The page compiles against the committed generated types, and its tests pass. |
 | `page`: the gain's page | The example gain's page installs, type-checks against the package and the gain's generated parameter map, and builds the files the gain embeds, under the names it embeds them by. No lane compiles the gain with them built in. |
 | `JUCE adapter` (macOS, started by hand) | The example EQ builds through the adapter as VST3 and AU, at the JUCE commit `bench/` pins, and both the Rust library and the plugin binaries hold arm64 and x86_64. It does not load the plugin. |
-| `JUCE adapter` (Windows, started by hand) | The example EQ's VST3 build through the adapter passes the Steinberg validator, built from the VST3 SDK at the pinned commit, as the native `plugin validators (windows)` lane passes Hapto's own. Open: no lane runs MIDI through the adapter's own code, its SysEx split and join among it; the C interface's tests stand in for the plugin's side. |
+| `JUCE adapter` (Windows, started by hand) | The example EQ's VST3 build through the adapter passes the Steinberg validator, built from the VST3 SDK at the pinned commit, as the native `plugin validators (windows)` lane passes Hapto's own. Open: no lane runs MIDI through the adapter's own code, its SysEx split and join among it; the C interface's tests stand in for the plugin's side, and the MIDI probe built through the adapter checks it in a real host by hand. |
 | Nightly: `miri` | `hapto-host`'s tests, on Linux and on Windows, the core crates' unit tests and some integration tests find no undefined behaviour under Stacked Borrows and Tree Borrows (see [Miri](#miri)). |
 | Nightly: `rtsan` (Linux) | A canary that allocates inside a marked call aborts, and the allocation gates and the gate matrix pass under RealtimeSanitizer. See [Real-time sanitizer](#real-time-sanitizer). |
 | Nightly: `fuzz` | Each of six `cargo-fuzz` targets ran ten minutes with no crash, no panic and no broken fixpoint (see [Fuzzing](#fuzzing)). |
@@ -534,7 +537,9 @@ The generated files are:
   second plugin would bring two sets of VST3 entry points into one binary;
 - the C header the `cabi` feature generates for the JUCE adapter
   (`crates/host/include/hapto.h`);
-- the example EQ's JUCE settings (`examples/eq/hapto-juce.cmake`).
+- the example EQ's JUCE settings (`examples/eq/hapto-juce.cmake`);
+- the MIDI probe's JUCE settings (`examples/midi-probe/hapto-juce.cmake`),
+  whose drift gate is its own `tests/juce_settings.rs`, as the gain's is.
 
 ## 5. A check that finds nothing fails
 

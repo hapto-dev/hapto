@@ -1,6 +1,8 @@
 # What the JUCE adapter workflow builds: the example EQ through
 # adapters/juce, as the formats the adapter ships on macOS, for both Apple
-# architectures, and as a VST3 on Windows.
+# architectures, and as a VST3 on Windows. With HAPTO_CHECK_PLUGIN set to
+# midi-probe, it builds the MIDI probe the same way instead, for a check of
+# MIDI through the adapter in a real host by hand.
 cmake_minimum_required(VERSION 3.25)
 
 # The same C runtime as Rust's MSVC builds: the dynamic one.
@@ -29,7 +31,8 @@ if(APPLE)
 else()
     set(formats VST3)
 endif()
+set(HAPTO_CHECK_PLUGIN "eq" CACHE STRING "The example to build: eq or midi-probe")
 hapto_add_juce_plugin(HaptoAdapterCheck
-    PACKAGE hapto-example-eq
-    SETTINGS "${CMAKE_CURRENT_LIST_DIR}/../../examples/eq/hapto-juce.cmake"
+    PACKAGE hapto-example-${HAPTO_CHECK_PLUGIN}
+    SETTINGS "${CMAKE_CURRENT_LIST_DIR}/../../examples/${HAPTO_CHECK_PLUGIN}/hapto-juce.cmake"
     FORMATS ${formats})

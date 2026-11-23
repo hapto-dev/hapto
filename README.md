@@ -54,7 +54,8 @@ protocol (`bridge`), the page in a plugin's window (`webview`), a plugin as an
 app of its own (`standalone`) and the computer's MIDI devices it reads
 (`midi-devices`), the plugin author's command, `cargo hapto` (`cli`), and test
 tools (`testkit`). Beside them are the example gain (`examples/gain`), the
-example EQ (`examples/eq`), the page's React hooks (`page`), the generic JUCE
+example EQ (`examples/eq`), the MIDI probe for checks by hand
+(`examples/midi-probe`), the page's React hooks (`page`), the generic JUCE
 adapter (`adapters/juce`), the repository's tasks (`xtask`), the fuzz targets
 (`fuzz`) and the comparison against plain JUCE (`bench`). The codemap in
 [ARCHITECTURE.md](ARCHITECTURE.md#codemap) says what each one is.
