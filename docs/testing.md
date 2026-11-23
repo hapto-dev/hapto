@@ -33,7 +33,7 @@ cd page && npm ci && npm run typecheck && npm test                   # pull requ
 cd examples/gain/page && npm ci && npm run typecheck && npm run build   # pull request: the gain's page
 cargo test -p hapto-webview --test hidden_window -- --ignored          # by hand, Windows: the page in a real WebView2, in windows never shown (one test leaves a dialog open, as its doc says)
 cargo test -p hapto-example-gain --test page -- --ignored              # by hand, Windows, with the gain's page built: the same, for its page
-cargo test -p hapto-midi-devices --test by_hand -- --ignored --nocapture --test-threads 1   # by hand, Windows: the computer's MIDI devices: their list, a chord on the system's synth at its times, every output, and what a keyboard plays
+cargo test -p hapto-midi-devices --test by_hand -- --ignored --nocapture --test-threads 1   # by hand, Windows: the computer's MIDI devices: their list, a chord on the system's synth at its times, every output, what a keyboard plays, a device replugged past every slot, a SysEx longer than an input's room through a loopback port, and a device unplugged during a long SysEx out
 cargo hapto dev -p hapto-example-gain   # by hand, Windows: the gain standalone with its page from Vite, restarted with its saved block after a change to Rust
 cargo hapto dev -p hapto-example-gain --host   # by hand, Windows: the same through the dev host, in VST3 and, after its switch, the C interface
 cargo test -p cargo-hapto -- --ignored   # full run, Windows: `cargo hapto init` writes a crate with this checkout's crates, which builds and passes its tests
