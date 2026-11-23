@@ -232,3 +232,42 @@ fn a_learned_controller_drives_the_gain() {
     assert!(reopened.gain_is_learned());
     plugin.deactivate(processor);
 }
+
+#[test]
+fn the_page_s_learn_button_arms_learn_at_the_next_idle() {
+    let (mut plugin, driver, _saved) = built();
+    let mut setup = ProcessSetup::new(48_000.0, 8, Width::STEREO);
+    setup.max_events = 4;
+    let processor = plugin.activate(&setup);
+    let mut learn = driver.learn_audio().expect("learn is on");
+    let tick = |plugin: &mut Gain| {
+        driver.tick();
+        plugin.idle();
+    };
+    tick(&mut plugin);
+    assert_eq!(plugin.learn_state(), "off");
+
+    // The page's button asks; the next idle arms learn.
+    plugin.ask_to_learn();
+    tick(&mut plugin);
+    assert_eq!(plugin.learn_state(), "armed");
+
+    // A controller in a block, then the tick that commits it.
+    let mut events = EventList::with_capacity(1);
+    let message = Midi1Message::ControlChange {
+        controller: 7,
+        value: 64,
+    };
+    let sent = Midi1Voice {
+        group: 0,
+        channel: 0,
+        message,
+    }
+    .event(0);
+    Upgrade::new().block(&[sent], 0, &mut events);
+    learn.process(&events);
+    tick(&mut plugin);
+    assert_eq!(plugin.learn_state(), "learned");
+    assert!(plugin.gain_is_learned());
+    plugin.deactivate(processor);
+}

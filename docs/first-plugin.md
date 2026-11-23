@@ -355,19 +355,40 @@ controller a block brings is captured on the audio thread, and the next tick
 commits it.
 
 The plugin declares `midi_input: true` in its `INFO`; learn refuses a plugin
-that does not. Open: no exporter delivers MIDI events yet, so learn is
-exercised by a test that runs learn's audio side itself, as the tests below
-do.
+that does not. The page's Learn button sends the `learn` command, which sets a
+flag the plugin reads at its next idle (section 7): there it arms learn on the
+gain. A controller then moved in the host, or on one of the app's MIDI inputs,
+drives the gain from then on, and the page says so through the `learn` value.
 
 ## 7. The idle tick
 
 About 60 times a second on the main thread, Hapto ticks the parts the plugin
 keeps: [`Driver::tick`](../crates/host/src/parts.rs) runs learn, the session,
 the history and the saved values in the one order that works, and owns the
-reasons for it. The plugin writes nothing for it, and the gain writes no
-`idle`. `Plugin::idle` is for a plugin's own main-thread work, and runs right
-after Hapto's tick, so it sees a restore applied and a learned mapping
-committed.
+reasons for it. The plugin writes nothing for it. `Plugin::idle` is for a
+plugin's own main-thread work, and runs right after Hapto's tick, so it sees a
+restore applied and a learned mapping committed. The gain's arms learn when
+its page asked, and tells the page where learn is:
+
+```rust
+fn idle(&mut self) {
+    if self.learn_asked.take() {
+        // Learn is on from `new`, and the gain is a parameter, so arming
+        // it is never refused.
+        let _ = self.learn_gain();
+    }
+    let state = if self.parts.learn().armed().is_some() {
+        LEARN_ARMED
+    } else if self.gain_is_learned() {
+        LEARN_LEARNED
+    } else {
+        LEARN_OFF
+    };
+    if self.learn_state.get() != state {
+        self.learn_state.set(state.to_owned());
+    }
+}
+```
 
 ## 8. Test it through a host
 
@@ -381,7 +402,7 @@ reads the modes' names through `parameter` and `text`, and carries the saved
 block through `save` and `load`.
 
 Learn and undo are driven on the plugin itself, since a host cannot reach
-them, nor yet send MIDI. The test builds the plugin as an exporter does,
+them. The test builds the plugin as an exporter does,
 keeping a [`Driver`](../crates/host/src/parts.rs) to do what the exporter's
 engine would: tick the parts, and run learn's audio side before each block,
 on MIDI 1.0 upgraded to MIDI 2.0 through
@@ -430,17 +451,25 @@ fn editor(&mut self) -> Option<Box<dyn Editor>> {
 ```
 
 [`Page`](../crates/webview/src/lib.rs), from `hapto-webview`, makes it from the
-built files, a size, the label and one command:
+built files, a size, two values and two commands:
 
 ```rust
 pub(crate) fn editor(gain: &Gain) -> Option<Box<dyn Editor>> {
     Page::new(&Gain::INFO, gain.ui().clone(), PAGE.unwrap_or_default())
         .with_size(Size {
             width: 420,
-            height: 220,
+            height: 260,
         })
         .value("label", &gain.label)
+        .value("learn", &gain.learn_state)
         .command("version", |()| Ok(Gain::INFO.version))
+        .command("learn", {
+            let asked = Rc::clone(&gain.learn_asked);
+            move |()| {
+                asked.set(true);
+                Ok(())
+            }
+        })
         .into_editor()
 }
 ```
@@ -457,7 +486,8 @@ the label, so a load while the field is idle shows at once and a click into
 the field and out stores nothing. Escape drops the text typed and shows the
 label again. A command is for what is not state, such
 as the version the page asks for once and shows beside its title, or a write
-the plugin must check or refuse.
+the plugin must check or refuse. The `learn` command is the Learn button's
+(section 6), and the `learn` value tells the page where learn is.
 
 The page writes the gain through a clone of the parts' handle, as a user
 would: one host gesture and one undo step per drag. The VST3 exporter opens

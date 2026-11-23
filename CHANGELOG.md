@@ -335,7 +335,8 @@ exporter.
   undoable label saved with the plugin, and a gain MIDI learn can drive, as a
   VST3 module. Its page, a Vite and React app, shows a slider on the gain, a
   field for the label, which shows a load or an undo at once and drops an
-  edit on Escape, and the version, in the host's window on Windows, when it
+  edit on Escape, a Learn button that arms MIDI learn on the gain and says
+  where learn is, and the version, in the host's window on Windows, when it
   was built in. It runs standalone too, under `cargo hapto dev`.
   [docs/first-plugin.md](docs/first-plugin.md) walks through it.
 - `examples/eq`: an EQ of six biquad bands and an output gain, as a VST3 module
