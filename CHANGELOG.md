@@ -44,8 +44,9 @@ exporter.
   where the host named the note and none where the plugin made it up, a
   note's pressure, the note expressions of a note its host named, and a whole
   SysEx. A controller, channel pressure, the bend and a program change go out
-  as MIDI 1.0 controllers, downgraded. `MidiOut::forward` keeps a host's note
-  id in the packet's origin. The VST3 test host gains `sent` and
+  as MIDI 1.0 controllers, downgraded, and so do the system messages VST3
+  numbers, from start and stop to song position. `MidiOut::forward` keeps a
+  host's note id in the packet's origin. The VST3 test host gains `sent` and
   `BusEvent::Controller`.
 - The VST3 exporter brings a host's MIDI in, for a plugin that takes MIDI:
   notes, a note's pressure and VST3's note expressions as MIDI 2.0, each note

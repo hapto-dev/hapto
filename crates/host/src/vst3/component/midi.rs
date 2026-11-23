@@ -556,6 +556,8 @@ fn expression(value: &NoteExpressionValueEvent, offset: u32, notes: &Notes, midi
         let reach = TUNING_REACH * (value.value.clamp(0.0, 1.0) * 2.0 - 1.0);
         let pitch = f64::from(note.key) + f64::from(note.cents) / 100.0 + reach;
         (pitch.clamp(0.0, 127.999_999) * f64::from(1_u32 << 25)).round() as u32
+    } else if expression.controller == controller::number::VOLUME {
+        bits(volume_of_expression(value.value))
     } else {
         bits(value.value)
     };
@@ -591,6 +593,21 @@ fn place(channel: int16, pitch: int16) -> Option<(u8, u8)> {
 /// A value from 0 to 1 as 16 bits, held to the ends.
 fn sixteen(value: f32) -> u16 {
     (value.clamp(0.0, 1.0) * f32::from(u16::MAX)).round() as u16
+}
+
+/// A volume note expression's value as the per-note volume it stands for.
+/// VST3's value is a gain four times itself, 0 dB at 0.25; the volume
+/// follows controller 7's curve, whose gain is its value squared, so 0 dB
+/// reads as 1 and −12 dB about as controller 7's 64. VST3's boost past 0 dB
+/// is held at 1.
+pub(super) fn volume_of_expression(value: f64) -> f64 {
+    (4.0 * value.clamp(0.0, 1.0)).sqrt().min(1.0)
+}
+
+/// A per-note volume as the volume note expression's value: the inverse of
+/// [`volume_of_expression`].
+pub(super) fn expression_of_volume(volume: f64) -> f64 {
+    volume.clamp(0.0, 1.0).powi(2) / 4.0
 }
 
 /// A value from 0 to 1 as 32 bits, held to the ends.

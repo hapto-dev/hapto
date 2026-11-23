@@ -199,6 +199,40 @@ fn a_note_on_s_tuning_is_its_pitch_and_its_expressions_name_it() {
 }
 
 #[test]
+fn a_volume_expression_reads_on_controller_7_s_curve() {
+    let mut host = running();
+    let on = note_on(0, 60, 1.0, 3);
+    // 0 dB, then -12 dB, then VST3's boost past 0 dB.
+    let volume = |offset, value| BusEvent::Expression {
+        offset,
+        id: 3,
+        kind: 0,
+        value,
+    };
+    play(
+        &mut host,
+        &[on, volume(1, 0.25), volume(2, 0.0625), volume(3, 1.0)],
+        &[],
+    );
+    let volumes = host.component().heard(|midi| {
+        midi.iter()
+            .filter_map(|(_, message)| match message {
+                Message::NoteControl {
+                    controller, value, ..
+                } if controller == controller::number::VOLUME => Some(value),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    });
+    let volumes = volumes.expect("active");
+    assert_eq!(volumes.len(), 3);
+    let expected = [1.0, 0.5, 1.0];
+    for (volume, expected) in volumes.iter().zip(expected) {
+        assert!((volume - expected).abs() < 1e-6, "{volumes:?}");
+    }
+}
+
+#[test]
 fn a_sysex_reaches_the_plugin_whole() {
     let mut host = running();
     let long: Vec<u8> = [0xF0].into_iter().chain(0..20).chain([0xF7]).collect();

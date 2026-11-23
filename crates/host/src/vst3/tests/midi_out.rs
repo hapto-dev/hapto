@@ -30,7 +30,8 @@ impl Processor for Thru {
 
 /// Sends packets it builds itself: a MIDI 1.0 note-on and a controller
 /// past the block's end, then a note's pitch bend and a timing clock, which
-/// VST3 has no event for.
+/// VST3 has no event for, then a start, a song position and a MIDI 2.0
+/// note-on at the least velocity.
 #[derive(Default)]
 struct Raw;
 
@@ -43,6 +44,9 @@ impl Processor for Raw {
             (100, [0x20B0_0740, 0]),
             (1, [0x4060_3C00, 0x8000_0000]),
             (2, [0x10F8_0000, 0]),
+            (3, [0x10FA_0000, 0]),
+            (4, [0x10F2_1020, 0]),
+            (5, [0x4090_4000, 0x0001_0000]),
         ] {
             block
                 .midi_out
@@ -224,6 +228,12 @@ fn a_note_s_expressions_go_back_out_for_a_note_its_host_named() {
         kind,
         value,
     };
+    let volume = BusEvent::Expression {
+        offset: 4,
+        id: 3,
+        kind: 0,
+        value: 0.0625,
+    };
     let pressure = |offset, pitch, id| BusEvent::Pressure {
         offset,
         channel: 0,
@@ -240,6 +250,7 @@ fn a_note_s_expressions_go_back_out_for_a_note_its_host_named() {
             note_on(0, 69, 1.0, 50.0, 3),
             expression(2, tuned),
             expression(5, 0.75),
+            volume,
             pressure(6, 69, 3),
             note_on(7, 72, 1.0, 0.0, -1),
             pressure(8, 72, -1),
@@ -247,7 +258,7 @@ fn a_note_s_expressions_go_back_out_for_a_note_its_host_named() {
         &[],
     );
     let sent = host.sent();
-    assert_eq!(sent.len(), 6, "{sent:?}");
+    assert_eq!(sent.len(), 7, "{sent:?}");
     assert!(matches!(
         sent[1],
         BusEvent::Expression { offset: 4, id: 3, kind: 2, value } if near(value, tuned)
@@ -256,8 +267,15 @@ fn a_note_s_expressions_go_back_out_for_a_note_its_host_named() {
         sent[2],
         BusEvent::Expression { offset: 4, id: 3, kind: 5, value } if near(value, 0.75)
     ));
+    assert!(
+        matches!(
+            sent[3],
+            BusEvent::Expression { offset: 4, id: 3, kind: 0, value } if near(value, 0.0625)
+        ),
+        "the volume back on VST3's scale"
+    );
     assert!(matches!(
-        sent[3],
+        sent[4],
         BusEvent::Pressure {
             offset: 6,
             pitch: 69,
@@ -266,7 +284,7 @@ fn a_note_s_expressions_go_back_out_for_a_note_its_host_named() {
         }
     ));
     assert!(matches!(
-        sent[5],
+        sent[6],
         BusEvent::Pressure { offset: 8, pitch: 72, pressure, id: -1, .. }
             if near(f64::from(pressure), 0.5)
     ));
@@ -298,12 +316,32 @@ fn midi_1_a_plugin_builds_goes_out_as_note_events_and_controllers_and_the_rest_i
     let mut host = running::<Raw, true>();
     play(&mut host, &[], &[]);
     let sent = host.sent();
-    assert_eq!(sent.len(), 2, "{sent:?}");
+    assert_eq!(sent.len(), 5, "{sent:?}");
     assert!(matches!(
         sent[0],
         BusEvent::NoteOn { offset: 0, pitch: 60, velocity, id: -1, .. }
             if near(f64::from(velocity), 100.0 / 127.0)
     ));
+    let system = |offset, controller, value, value2| BusEvent::Controller {
+        offset,
+        channel: 0,
+        controller,
+        value,
+        value2,
+    };
+    assert_eq!(
+        sent[2..4],
+        [system(3, 137, 0, 0), system(4, 134, 0x10, 0x20)],
+        "a start, and a song position low 7 bits first"
+    );
+    assert!(
+        matches!(
+            sent[4],
+            BusEvent::NoteOn { offset: 5, pitch: 64, velocity, .. }
+                if near(f64::from(velocity), 1.0 / 127.0)
+        ),
+        "the least velocity a host's MIDI 1.0 keeps as a note-on"
+    );
     assert_eq!(
         sent[1],
         BusEvent::Controller {

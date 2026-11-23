@@ -8,10 +8,12 @@
 //! expressions, for a note its host named: the absolute pitch as the tuning,
 //! from the note-on's pitch. VST3 carries everything else only as MIDI 1.0
 //! controllers, so it is downgraded by the specification's Default
-//! Translation. A SysEx goes out whole, from room the component makes when
-//! it is built. What VST3 has no event for is dropped and counted: a note's
-//! assignable controllers, its pitch bend and its management, a note's own
-//! message for a note no host named, and system messages.
+//! Translation, and a system message as the legacy controller event VST3
+//! numbers it by. A SysEx goes out whole, from room the component makes
+//! when it is built. What VST3 has no event for is dropped and counted: a
+//! note's assignable controllers, its pitch bend and its management, a
+//! note's own message for a note no host named, the timing clock and a
+//! reset.
 
 // Audio-path code: a panic here ends a host, so indexing, unwrap, expect,
 // panic and unchecked arithmetic are refused, and a site that is provably
@@ -36,7 +38,9 @@ use ::vst3::Steinberg::Vst::{
 use ::vst3::Steinberg::{int32, kResultOk, uint8};
 use hapto_ump::{ChannelMessage, Downgrade, Event, Midi1Message, Midi1Voice, Origin};
 
-use super::midi::{EXPRESSIONS, Named, Notes, PER_NOTE_PITCH, SYSEX, TUNING_REACH};
+use super::midi::{
+    EXPRESSIONS, Named, Notes, PER_NOTE_PITCH, SYSEX, TUNING_REACH, expression_of_volume,
+};
 
 /// MIDI 2.0's attribute type for a note-on's pitch, 7.9.
 const PITCH_7_9: u8 = 3;
@@ -183,7 +187,10 @@ fn native(packet: &Event, out: &mut Out, add: &mut impl FnMut(VstEvent) -> bool)
                 channel,
                 pitch: i16::from(note),
                 tuning: cents,
-                velocity: f32::from(velocity) / f32::from(u16::MAX),
+                // A host that turns it into MIDI 1.0 rounds a velocity
+                // under half a step to 0, a note-off, so it goes out at
+                // the least MIDI 1.0 has, as the Default Translation does.
+                velocity: (f32::from(velocity) / f32::from(u16::MAX)).max(1.0 / 127.0),
                 length: 0,
                 noteId: id,
             };
@@ -255,6 +262,8 @@ fn expression(
         let pitch = f64::from(value) / f64::from(1_u32 << 25);
         let reach = pitch - f64::from(note) - f64::from(cents) / 100.0;
         (reach / TUNING_REACH + 1.0) / 2.0
+    } else if index == hapto_midi::controller::number::VOLUME {
+        expression_of_volume(f64::from(value) / f64::from(u32::MAX))
     } else {
         f64::from(value) / f64::from(u32::MAX)
     };
@@ -278,11 +287,40 @@ fn midi_1(packet: &Event, out: &mut Out, add: &mut impl FnMut(VstEvent) -> bool)
             sysex(packet, out, add);
             return;
         }
+        0x1 => system_event(packet.offset, packet.words[0]).is_some_and(&mut *add),
         _ => false,
     };
     if !sent {
         out.lose();
     }
+}
+
+/// A system message, from its packet's first word, as the legacy
+/// controller event VST3 numbers it by; `None` for the timing clock and a
+/// reset, which VST3 has no number for, and for anything undefined.
+fn system_event(offset: u32, word: u32) -> Option<VstEvent> {
+    let [_, status, first, second] = word.to_be_bytes();
+    let (first, second) = (first & 0x7F, second & 0x7F);
+    let (number, value, value2) = match status {
+        0xF1 => (ControllerNumbers_::kCtrlQuarterFrame, first, 0),
+        // The song position's low 7 bits first, as the bend's.
+        0xF2 => (ControllerNumbers_::kSystemSongPointer, first, second),
+        0xF3 => (ControllerNumbers_::kSystemSongSelect, first, 0),
+        0xF6 => (ControllerNumbers_::kSystemTuneRequest, 0, 0),
+        0xFA => (ControllerNumbers_::kSystemMidiClockStart, 0, 0),
+        0xFB => (ControllerNumbers_::kSystemMidiClockContinue, 0, 0),
+        0xFC => (ControllerNumbers_::kSystemMidiClockStop, 0, 0),
+        0xFE => (ControllerNumbers_::kSystemActiveSensing, 0, 0),
+        _ => return None,
+    };
+    let mut event = event(offset, EventTypes_::kLegacyMIDICCOutEvent as u16);
+    event.__field0.midiCCOut = LegacyMIDICCOutEvent {
+        controlNumber: number as uint8,
+        channel: 0,
+        value: i8::try_from(value).unwrap_or(0),
+        value2: i8::try_from(value2).unwrap_or(0),
+    };
+    Some(event)
 }
 
 /// A MIDI 1.0 message as VST3 carries it; `None` for one it does not.

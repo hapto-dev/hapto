@@ -625,10 +625,11 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d59-the-shape-of-the-vst3-exporter)
 
-- `crates/host/src/vst3/component/midi_out.rs`: module, `Out`, `write_events`, `native`, `expression`, `midi_1`, `midi_1_event`, `sysex`
+- `crates/host/src/vst3/component/midi_out.rs`: module, `Out`, `write_events`, `native`, `expression`, `midi_1`, `system_event`, `midi_1_event`, `sysex`
+- `crates/host/src/vst3/component/midi.rs`: `volume_of_expression`, `expression_of_volume`
 - test `crates/host/src/vst3/tests/midi_out.rs`: module
 - `crates/host/src/vst3/component/midi.rs`: `read_events`, `note_on`, `expression`, `Notes`
-- test `crates/host/src/vst3/tests/midi.rs`: `a_note_reaches_the_plugin_as_midi_2_named_by_the_hosts_id`, `a_note_on_s_tuning_is_its_pitch_and_its_expressions_name_it`, `a_sysex_reaches_the_plugin_whole`, `every_channel_offers_the_note_expressions_a_plugin_reads`, `a_note_expression_from_before_an_activation_names_no_note`
+- test `crates/host/src/vst3/tests/midi.rs`: `a_note_reaches_the_plugin_as_midi_2_named_by_the_hosts_id`, `a_note_on_s_tuning_is_its_pitch_and_its_expressions_name_it`, `a_volume_expression_reads_on_controller_7_s_curve`, `a_sysex_reaches_the_plugin_whole`, `every_channel_offers_the_note_expressions_a_plugin_reads`, `a_note_expression_from_before_an_activation_names_no_note`
 - `crates/host/src/boundary.rs`: `MainThread`, `AudioSlot`
 - `crates/host/src/engine/automation.rs`: module, `Point`, `Points::queue`, `Points::apply`
 - `crates/host/src/engine/mod.rs`: module, `Engine`, `Engine::new`, `Engine::release`, `Engine::leave`, `Engine::controller_write`, `Engine::set_processing`, `Engine::tick`

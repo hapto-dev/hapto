@@ -1238,36 +1238,41 @@ one there and the old one here until its next block. A block longer than the
 setup promised plays in pieces.
 
 **MIDI.** For a plugin that takes MIDI, the host's events become MIDI 2.0
-packets (C5): a note-on, its tuning as its pitch attribute, a note-off, a
-note's pressure, and a whole SysEx as 7-bit SysEx packets. Each note carries
-VST3's `noteId` in its packet's `Origin::Note`, so a plugin knows it by the
-host's id (D116). The component lists the six note expressions VST3 defines
-through `INoteExpressionController`, and each becomes a registered per-note
-controller: the tuning as the note's absolute pitch, from its key and its
-note-on's tuning; the volume, pan, expression and brightness as the
-controllers of those numbers; and the vibrato as controller 77, vibrato depth.
-A note expression names its note alone, so the component keeps the channel and
-key of each note its host named, from block to block, and forgets them at an
-activation; one for a note it never saw is dropped. Controllers come through
-hidden proxies (D22).
+packets (C5): a note-on, its tuning as its pitch attribute, a note-off, a note's
+pressure, and a whole SysEx as 7-bit SysEx packets. Each note carries VST3's
+`noteId` in its packet's `Origin::Note`, so a plugin knows it by the host's id
+(D116). The component lists the six note expressions VST3 defines through
+`INoteExpressionController`, and each becomes a registered per-note controller:
+the tuning as the note's absolute pitch, from its key and its note-on's tuning;
+the volume as controller 7 on its own curve, whose gain is its value squared, so
+VST3's 0 dB reads as 1 and its boost past it is held there; the pan, expression
+and brightness as the controllers of those numbers; and the vibrato as
+controller 77, vibrato depth. A note expression names its note alone, so the
+component keeps the channel and key of each note its host named, from block to
+block, and forgets them at an activation; one for a note it never saw is
+dropped. Controllers come through hidden proxies (D22).
 
 For a plugin that declares MIDI out, what it sent goes to the host's output
-events in the order it sent it, at or before the block's last frame. A note
-goes out as VST3's note events, under the host's `noteId` where the host named
-it and under none, -1, where the plugin made it up: a made-up id could meet one
-of the host's. A note's pressure goes out as a poly pressure event, and a
-note's registered controllers that the six note expressions stand for go out as
-note expressions, for a note its host named: its absolute pitch as the tuning,
-from its note-on's pitch, which the component keeps for each such note. VST3
-carries everything else only as MIDI 1.0 controllers, so it is downgraded by
-the specification's Default Translation (D114): a controller, channel
-pressure, the bend, its low 7 bits first, and a program change, each a legacy
-controller event. A SysEx goes out whole, joined from its packets in room the
-component makes when it is built, and kept until the next block, as the host
-reads its bytes until `process` returns. What VST3 has no event for is dropped
-and counted inside the component: a note's assignable controllers, its pitch
-bend and its management, a note's own message for a note no host named, and
-system messages.
+events in the order it sent it, at or before the block's last frame. A note goes
+out as VST3's note events, under the host's `noteId` where the host named it and
+under none, -1, where the plugin made it up: a made-up id could meet one of the
+host's. A note's pressure goes out as a poly pressure event, and a note's
+registered controllers that the six note expressions stand for go out as note
+expressions, for a note its host named: its absolute pitch as the tuning, from
+its note-on's pitch, which the component keeps for each such note. VST3 carries
+everything else only as MIDI 1.0 controllers, so it is downgraded by the
+specification's Default Translation (D114): a controller, channel pressure, the
+bend, its low 7 bits first, and a program change, each a legacy controller
+event, as are the system messages VST3 numbers: quarter frame, song position,
+its low 7 bits first, song select, tune request, start, continue, stop and
+active sensing. A note-on's velocity goes out at 1/127 at least, so a host that
+turns it into MIDI 1.0 never reads a note-off, as the Default Translation lifts
+one. A SysEx goes out whole, joined from its packets in room the component makes
+when it is built, and kept until the next block, as the host reads its bytes
+until `process` returns. What VST3 has no event for is dropped and counted
+inside the component: a note's assignable controllers, its pitch bend and its
+management, a note's own message for a note no host named, the timing clock and
+a reset.
 
 Edits reach the host right after each tick (C2), and so does a latency that
 moved, an activation's included, as `kLatencyChanged`. D53's timer is a
