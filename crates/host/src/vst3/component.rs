@@ -342,7 +342,7 @@ impl<P: Plugin> Component<P> {
             let list = unsafe { ComRef::from_raw(output_events) };
             if let (Some(list), Some(out)) = (list, sending.as_deref_mut()) {
                 // SAFETY: as above.
-                unsafe { midi_out::write_events(list, packets, frames, out) };
+                unsafe { midi_out::write_events(list, packets, out) };
             }
         };
         // SAFETY: the caller's contract: `inputs` and `outputs` are null or

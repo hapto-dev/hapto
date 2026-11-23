@@ -8,25 +8,28 @@ use std::marker::PhantomData;
 use std::time::{Duration, Instant};
 
 use ::vst3::Steinberg::Vst::{
-    AudioBusBuffers, AudioBusBuffers__type0, BusDirection, BusDirections_, DataEvent,
-    DataEvent_::DataTypes_, Event, Event_::EventTypes_, IAudioProcessor, IAudioProcessorTrait,
-    IComponent, IComponentHandler, IComponentHandler2, IComponentHandler2Trait,
-    IComponentHandlerTrait, IComponentTrait, IEditController, IEditControllerTrait, IEventList,
-    IEventListTrait, IMidiMapping, IMidiMappingTrait, INoteExpressionController,
-    INoteExpressionControllerTrait, IParamValueQueue, IParamValueQueueTrait, IParameterChanges,
-    IParameterChangesTrait, LegacyMIDICCOutEvent, MediaTypes_, NoteExpressionTypeInfo,
-    NoteExpressionValueEvent, NoteOffEvent, NoteOnEvent, ParamID, ParamValue, ParameterInfo,
-    ParameterInfo_::ParameterFlags_, PolyPressureEvent, ProcessData, ProcessModes_,
-    ProcessSetup as VstSetup, SpeakerArr, SpeakerArrangement, String128, SymbolicSampleSizes_,
+    AudioBusBuffers, AudioBusBuffers__type0, BusDirection, BusDirections_, DataEvent, Event,
+    IAudioProcessor, IAudioProcessorTrait, IComponent, IComponentHandler, IComponentHandler2,
+    IComponentHandler2Trait, IComponentHandlerTrait, IComponentTrait, IEditController,
+    IEditControllerTrait, IEventList, IEventListTrait, IMidiMapping, IMidiMappingTrait,
+    INoteExpressionController, INoteExpressionControllerTrait, IParamValueQueue,
+    IParamValueQueueTrait, IParameterChanges, IParameterChangesTrait, LegacyMIDICCOutEvent,
+    MediaTypes_, NoteExpressionTypeInfo, NoteExpressionValueEvent, NoteOffEvent, NoteOnEvent,
+    ParamID, ParamValue, ParameterInfo, ParameterInfo_::ParameterFlags_, PolyPressureEvent,
+    ProcessData, ProcessModes_, ProcessSetup as VstSetup, SpeakerArr, SpeakerArrangement,
+    String128, SymbolicSampleSizes_,
 };
 use ::vst3::Steinberg::{
     FIDString, IBStream, IBStreamTrait, IPluginBaseTrait, TBool, int32, int64, kInternalError,
     kInvalidArgument, kNoInterface, kNotImplemented, kNotInitialized, kOutOfMemory, kResultFalse,
-    kResultOk, kResultTrue, tresult, uint32,
+    kResultOk, kResultTrue, tresult,
 };
 use ::vst3::{Class, ComPtr, ComWrapper};
 
 use super::component::Component;
+use super::events::{
+    DATA, EXPRESSION, LEGACY_CC_OUT, NOTE_OFF, NOTE_ON, POLY_PRESSURE, SYSEX, blank,
+};
 use super::text::copy_utf16;
 use crate::Plugin;
 use crate::engine::timer::pump;
@@ -1511,7 +1514,7 @@ impl<'a> BusEvent<'a> {
     unsafe fn from_vst(event: &Event) -> Option<BusEvent<'a>> {
         let offset = event.sampleOffset;
         Some(match event.r#type {
-            kind if kind == EventTypes_::kNoteOnEvent as u16 => {
+            NOTE_ON => {
                 // SAFETY: the type says which of the union's fields is set.
                 let on = unsafe { event.__field0.noteOn };
                 BusEvent::NoteOn {
@@ -1523,7 +1526,7 @@ impl<'a> BusEvent<'a> {
                     id: on.noteId,
                 }
             }
-            kind if kind == EventTypes_::kNoteOffEvent as u16 => {
+            NOTE_OFF => {
                 // SAFETY: the type says which of the union's fields is set.
                 let off = unsafe { event.__field0.noteOff };
                 BusEvent::NoteOff {
@@ -1534,7 +1537,7 @@ impl<'a> BusEvent<'a> {
                     id: off.noteId,
                 }
             }
-            kind if kind == EventTypes_::kPolyPressureEvent as u16 => {
+            POLY_PRESSURE => {
                 // SAFETY: the type says which of the union's fields is set.
                 let pressure = unsafe { event.__field0.polyPressure };
                 BusEvent::Pressure {
@@ -1545,7 +1548,7 @@ impl<'a> BusEvent<'a> {
                     id: pressure.noteId,
                 }
             }
-            kind if kind == EventTypes_::kNoteExpressionValueEvent as u16 => {
+            EXPRESSION => {
                 // SAFETY: the type says which of the union's fields is set.
                 let value = unsafe { event.__field0.noteExpressionValue };
                 BusEvent::Expression {
@@ -1555,7 +1558,7 @@ impl<'a> BusEvent<'a> {
                     value: value.value,
                 }
             }
-            kind if kind == EventTypes_::kDataEvent as u16 => {
+            DATA => {
                 // SAFETY: the type says which of the union's fields is set.
                 let data = unsafe { event.__field0.data };
                 if data.bytes.is_null() {
@@ -1565,7 +1568,7 @@ impl<'a> BusEvent<'a> {
                 let bytes = unsafe { std::slice::from_raw_parts(data.bytes, data.size as usize) };
                 BusEvent::SysEx { offset, bytes }
             }
-            kind if kind == EventTypes_::kLegacyMIDICCOutEvent as u16 => {
+            LEGACY_CC_OUT => {
                 // SAFETY: the type says which of the union's fields is set.
                 let out = unsafe { event.__field0.midiCCOut };
                 BusEvent::Controller {
@@ -1583,9 +1586,7 @@ impl<'a> BusEvent<'a> {
     /// The event as VST3 carries it, its bytes borrowed for as long as
     /// `self`'s are.
     fn to_vst(self) -> Event {
-        // SAFETY: every field of an `Event` is an integer, a float or a raw
-        // pointer, for which all zeros is a value.
-        let mut event: Event = unsafe { std::mem::zeroed() };
+        let mut event = blank(0, 0);
         match self {
             BusEvent::NoteOn {
                 offset,
@@ -1596,7 +1597,7 @@ impl<'a> BusEvent<'a> {
                 id,
             } => {
                 event.sampleOffset = offset;
-                event.r#type = EventTypes_::kNoteOnEvent as u16;
+                event.r#type = NOTE_ON;
                 event.__field0.noteOn = NoteOnEvent {
                     channel,
                     pitch,
@@ -1614,7 +1615,7 @@ impl<'a> BusEvent<'a> {
                 id,
             } => {
                 event.sampleOffset = offset;
-                event.r#type = EventTypes_::kNoteOffEvent as u16;
+                event.r#type = NOTE_OFF;
                 event.__field0.noteOff = NoteOffEvent {
                     channel,
                     pitch,
@@ -1631,7 +1632,7 @@ impl<'a> BusEvent<'a> {
                 id,
             } => {
                 event.sampleOffset = offset;
-                event.r#type = EventTypes_::kPolyPressureEvent as u16;
+                event.r#type = POLY_PRESSURE;
                 event.__field0.polyPressure = PolyPressureEvent {
                     channel,
                     pitch,
@@ -1646,7 +1647,7 @@ impl<'a> BusEvent<'a> {
                 value,
             } => {
                 event.sampleOffset = offset;
-                event.r#type = EventTypes_::kNoteExpressionValueEvent as u16;
+                event.r#type = EXPRESSION;
                 event.__field0.noteExpressionValue = NoteExpressionValueEvent {
                     typeId: kind,
                     noteId: id,
@@ -1655,10 +1656,10 @@ impl<'a> BusEvent<'a> {
             }
             BusEvent::SysEx { offset, bytes } => {
                 event.sampleOffset = offset;
-                event.r#type = EventTypes_::kDataEvent as u16;
+                event.r#type = DATA;
                 event.__field0.data = DataEvent {
                     size: u32::try_from(bytes.len()).unwrap_or(u32::MAX),
-                    r#type: DataTypes_::kMidiSysEx as uint32,
+                    r#type: SYSEX,
                     bytes: bytes.as_ptr(),
                 };
             }
@@ -1670,7 +1671,7 @@ impl<'a> BusEvent<'a> {
                 value2,
             } => {
                 event.sampleOffset = offset;
-                event.r#type = EventTypes_::kLegacyMIDICCOutEvent as u16;
+                event.r#type = LEGACY_CC_OUT;
                 event.__field0.midiCCOut = LegacyMIDICCOutEvent {
                     controlNumber: controller,
                     channel: i8::try_from(channel).unwrap_or(0),

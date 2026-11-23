@@ -31,9 +31,8 @@
 
 use ::vst3::ComRef;
 use ::vst3::Steinberg::Vst::{
-    ControllerNumbers_, DataEvent, Event as VstEvent, Event_::EventTypes_, IEventList,
-    IEventListTrait, LegacyMIDICCOutEvent, NoteExpressionValueEvent, NoteOffEvent, NoteOnEvent,
-    PolyPressureEvent,
+    ControllerNumbers_, DataEvent, Event as VstEvent, IEventList, IEventListTrait,
+    LegacyMIDICCOutEvent, NoteExpressionValueEvent, NoteOffEvent, NoteOnEvent, PolyPressureEvent,
 };
 use ::vst3::Steinberg::{int32, kResultOk, uint8};
 use hapto_ump::{
@@ -41,9 +40,10 @@ use hapto_ump::{
     scale,
 };
 
-use super::midi::{
-    EXPRESSIONS, Named, Notes, PER_NOTE_PITCH, SYSEX, TUNING_REACH, expression_of_volume,
+use super::super::events::{
+    DATA, EXPRESSION, LEGACY_CC_OUT, NOTE_OFF, NOTE_ON, POLY_PRESSURE, SYSEX, blank,
 };
+use super::midi::{EXPRESSIONS, Named, Notes, PER_NOTE_PITCH, TUNING_REACH, expression_of_volume};
 
 /// VST3's numbers for the MIDI 1.0 messages it carries as controllers.
 const PRESSURE: uint8 = ControllerNumbers_::kAfterTouch as uint8;
@@ -87,10 +87,6 @@ impl Out {
     pub(crate) fn lost(&self) -> u64 {
         self.lost
     }
-
-    fn lose(&mut self) {
-        self.lost = self.lost.saturating_add(1);
-    }
 }
 
 impl std::fmt::Debug for Out {
@@ -101,22 +97,15 @@ impl std::fmt::Debug for Out {
     }
 }
 
-/// Writes `sent`, what the plugin sent in a block of `frames` frames, to
-/// `events`, in the order the plugin sent it. A packet at or past the
-/// block's end goes out at its last frame.
+/// Writes `sent`, what the plugin sent in a block, to `events`, in the order
+/// the plugin sent it.
 ///
 /// # Safety
 ///
 /// `events` is alive until this call returns, as the SDK promises for the
 /// output events `process` receives.
-pub(super) unsafe fn write_events(
-    events: ComRef<'_, IEventList>,
-    sent: &[Event],
-    frames: usize,
-    out: &mut Out,
-) {
+pub(super) unsafe fn write_events(events: ComRef<'_, IEventList>, sent: &[Event], out: &mut Out) {
     out.block.clear();
-    let last = u32::try_from(frames.saturating_sub(1)).unwrap_or(u32::MAX);
     let mut add = |mut event: VstEvent| {
         // SAFETY: the caller's contract; the host copies the event, and a
         // SysEx's bytes stay in `out.block` until the next block.
@@ -125,37 +114,39 @@ pub(super) unsafe fn write_events(
     let downgrade = Downgrade::new();
     let mut lost = 0_u64;
     for packet in sent {
-        let offset = packet.offset.min(last);
-        let at = Event { offset, ..*packet };
         // Every packet goes through the join, so one on a SysEx's group
         // ends it.
-        let joined = out.joining.push(&at);
-        lost = lost.saturating_add(u64::from(joined.dropped));
-        if at.message_type() == MessageType::SYSEX7 {
+        let joined = out.joining.push(packet);
+        let mut dropped = joined.dropped;
+        if packet.message_type() == MessageType::SYSEX7 {
             if let Some(whole) = joined.whole
-                && !sysex(&mut out.block, whole.framed(), at.offset, &mut add)
+                && !sysex(&mut out.block, whole.framed(), packet.offset, &mut add)
             {
-                lost = lost.saturating_add(1);
+                dropped = dropped.saturating_add(1);
             }
-            continue;
+        } else {
+            let not_sent = match native(packet, &mut out.notes) {
+                Some(Native::Event(event)) => u32::from(!add(event)),
+                Some(Native::Lost) => 1,
+                None => {
+                    let mut refused = 0_u32;
+                    let cannot = downgrade.translate(packet, |midi1| {
+                        let sent = match midi_1(&midi1) {
+                            Some(event) => add(event),
+                            None => false,
+                        };
+                        if !sent {
+                            refused = refused.saturating_add(1);
+                        }
+                    });
+                    cannot.saturating_add(refused)
+                }
+            };
+            dropped = dropped.saturating_add(not_sent);
         }
-        if native(&at, out, &mut add) {
-            continue;
-        }
-        let dropped = downgrade.translate(&at, |midi1| midi_1(&midi1, out, &mut add));
         lost = lost.saturating_add(u64::from(dropped));
     }
     out.lost = out.lost.saturating_add(lost);
-}
-
-/// An event of `kind` at `offset` on the event bus, its body set after.
-fn event(offset: u32, kind: u16) -> VstEvent {
-    // SAFETY: every field of an `Event` is an integer, a float or a raw
-    // pointer, for which all zeros is a value.
-    let mut event: VstEvent = unsafe { std::mem::zeroed() };
-    event.sampleOffset = int32::try_from(offset).unwrap_or(int32::MAX);
-    event.r#type = kind;
-    event
 }
 
 /// The host's name for the packet's note, or -1, VST3's none.
@@ -166,15 +157,20 @@ fn note_id(packet: &Event) -> int32 {
     }
 }
 
+/// What a MIDI 2.0 packet comes to in VST3's own events.
+enum Native {
+    /// VST3's event for it.
+    Event(VstEvent),
+    /// Nothing: VST3 has no event for it, or no note to put it on.
+    Lost,
+}
+
 /// A MIDI 2.0 note, a note's pressure or its own message, in VST3's own
-/// events; false for any other packet, which goes out downgraded.
-fn native(packet: &Event, out: &mut Out, add: &mut impl FnMut(VstEvent) -> bool) -> bool {
-    let Some(voice) = packet.channel_voice() else {
-        return false;
-    };
-    let channel = i16::from(voice.channel);
-    let id = note_id(packet);
-    let sent = match voice.message {
+/// events; `None` for any other packet, which goes out downgraded.
+fn native(packet: &Event, notes: &mut Notes) -> Option<Native> {
+    let voice = packet.channel_voice()?;
+    let (offset, channel, id) = (packet.offset, voice.channel, note_id(packet));
+    Some(match voice.message {
         ChannelMessage::NoteOn {
             note,
             velocity,
@@ -184,73 +180,107 @@ fn native(packet: &Event, out: &mut Out, add: &mut impl FnMut(VstEvent) -> bool)
                 .semitones()
                 .map_or(0.0, |pitch| ((pitch - f64::from(note)) * 100.0) as f32);
             if id >= 0 {
-                out.notes.start(Named {
+                notes.start(Named {
                     id,
-                    channel: voice.channel,
+                    channel,
                     key: note,
                     cents,
                 });
             }
-            let mut event = event(packet.offset, EventTypes_::kNoteOnEvent as u16);
-            event.__field0.noteOn = NoteOnEvent {
-                channel,
-                pitch: i16::from(note),
-                tuning: cents,
-                // A host that turns it into MIDI 1.0 rounds a velocity
-                // under half a step to 0, a note-off, so it goes out at
-                // the least MIDI 1.0 has, as the Default Translation does.
-                velocity: (scale::unit_of_16(velocity) as f32).max(1.0 / 127.0),
-                length: 0,
-                noteId: id,
-            };
-            add(event)
+            // A host that turns it into MIDI 1.0 rounds a velocity under
+            // half a step to 0, a note-off, so it goes out at the least
+            // MIDI 1.0 has, as the Default Translation does.
+            let velocity = (scale::unit_of_16(velocity) as f32).max(1.0 / 127.0);
+            Native::Event(note_on(offset, channel, note, velocity, cents, id))
         }
         ChannelMessage::NoteOff { note, velocity, .. } => {
-            let cents = out.notes.find(id).map_or(0.0, |named| named.cents);
+            let cents = notes.find(id).map_or(0.0, |named| named.cents);
             if id >= 0 {
-                out.notes.end(id);
+                notes.end(id);
             }
-            let mut event = event(packet.offset, EventTypes_::kNoteOffEvent as u16);
-            event.__field0.noteOff = NoteOffEvent {
-                channel,
-                pitch: i16::from(note),
-                velocity: scale::unit_of_16(velocity) as f32,
-                noteId: id,
-                tuning: cents,
-            };
-            add(event)
+            let velocity = scale::unit_of_16(velocity) as f32;
+            Native::Event(note_off(offset, channel, note, velocity, cents, id))
         }
         ChannelMessage::PolyPressure { note, value } => {
-            let mut event = event(packet.offset, EventTypes_::kPolyPressureEvent as u16);
-            event.__field0.polyPressure = PolyPressureEvent {
-                channel,
-                pitch: i16::from(note),
-                pressure: scale::unit_of_32(value) as f32,
-                noteId: id,
-            };
-            add(event)
+            let pressure = scale::unit_of_32(value) as f32;
+            Native::Event(poly_pressure(offset, channel, note, pressure, id))
         }
         ChannelMessage::RegisteredPerNoteController { note, index, value } => {
-            match expression(id, note, index, value, &out.notes) {
+            match expression(id, note, index, value, notes) {
                 Some(value) => {
-                    let mut event =
-                        event(packet.offset, EventTypes_::kNoteExpressionValueEvent as u16);
+                    let mut event = blank(offset, EXPRESSION);
                     event.__field0.noteExpressionValue = value;
-                    add(event)
+                    Native::Event(event)
                 }
-                None => false,
+                None => Native::Lost,
             }
         }
         // VST3 has no event for these.
         ChannelMessage::AssignablePerNoteController { .. }
         | ChannelMessage::PerNotePitchBend { .. }
-        | ChannelMessage::PerNoteManagement { .. } => false,
-        _ => return false,
+        | ChannelMessage::PerNoteManagement { .. } => Native::Lost,
+        _ => return None,
+    })
+}
+
+/// A note-on: its velocity 0 to 1, its tuning in cents from its key, and
+/// its host's id, or -1 for none.
+fn note_on(offset: u32, channel: u8, pitch: u8, velocity: f32, tuning: f32, id: int32) -> VstEvent {
+    let mut event = blank(offset, NOTE_ON);
+    event.__field0.noteOn = NoteOnEvent {
+        channel: i16::from(channel),
+        pitch: i16::from(pitch),
+        tuning,
+        velocity,
+        length: 0,
+        noteId: id,
     };
-    if !sent {
-        out.lose();
-    }
-    true
+    event
+}
+
+/// A note-off, as [`note_on`] takes a note-on.
+fn note_off(
+    offset: u32,
+    channel: u8,
+    pitch: u8,
+    velocity: f32,
+    tuning: f32,
+    id: int32,
+) -> VstEvent {
+    let mut event = blank(offset, NOTE_OFF);
+    event.__field0.noteOff = NoteOffEvent {
+        channel: i16::from(channel),
+        pitch: i16::from(pitch),
+        velocity,
+        noteId: id,
+        tuning,
+    };
+    event
+}
+
+/// A note's pressure, 0 to 1.
+fn poly_pressure(offset: u32, channel: u8, pitch: u8, pressure: f32, id: int32) -> VstEvent {
+    let mut event = blank(offset, POLY_PRESSURE);
+    event.__field0.polyPressure = PolyPressureEvent {
+        channel: i16::from(channel),
+        pitch: i16::from(pitch),
+        pressure,
+        noteId: id,
+    };
+    event
+}
+
+/// A legacy controller out: a MIDI 1.0 controller, or a system message, by
+/// the number VST3 gives it, its values held to 7 bits.
+fn legacy_cc(offset: u32, channel: u8, number: uint8, value: u8, value2: u8) -> VstEvent {
+    let mut event = blank(offset, LEGACY_CC_OUT);
+    event.__field0.midiCCOut = LegacyMIDICCOutEvent {
+        controlNumber: number,
+        channel: i8::try_from(channel).unwrap_or(0),
+        value: i8::try_from(value & 0x7F).unwrap_or(0),
+        value2: i8::try_from(value2 & 0x7F).unwrap_or(0),
+    };
+    event
 }
 
 /// A note's registered controller as the note expression it stands for,
@@ -283,20 +313,14 @@ fn expression(
     })
 }
 
-/// A packet the downgrade sent: MIDI 1.0, which VST3 carries as note
-/// events and controllers, or a SysEx packet, or what VST3 has no event
-/// for, which is counted.
-fn midi_1(packet: &Event, out: &mut Out, add: &mut impl FnMut(VstEvent) -> bool) {
-    let sent = match packet.message_type() {
-        MessageType::MIDI1 => match packet.midi1_voice() {
-            Some(voice) => midi_1_event(packet.offset, voice).is_some_and(&mut *add),
-            None => false,
-        },
-        MessageType::SYSTEM => system_event(packet.offset, packet.words[0]).is_some_and(&mut *add),
-        _ => false,
-    };
-    if !sent {
-        out.lose();
+/// A packet the downgrade sent, as the VST3 event it is: MIDI 1.0 as note
+/// events and controllers, and a system message as its controller; `None`
+/// for one VST3 has no event for.
+fn midi_1(packet: &Event) -> Option<VstEvent> {
+    match packet.message_type() {
+        MessageType::MIDI1 => midi_1_event(packet.offset, packet.midi1_voice()?),
+        MessageType::SYSTEM => system_event(packet.offset, packet.words[0]),
+        _ => None,
     }
 }
 
@@ -318,88 +342,32 @@ fn system_event(offset: u32, word: u32) -> Option<VstEvent> {
         0xFE => (ControllerNumbers_::kSystemActiveSensing, 0, 0),
         _ => return None,
     };
-    let mut event = event(offset, EventTypes_::kLegacyMIDICCOutEvent as u16);
-    event.__field0.midiCCOut = LegacyMIDICCOutEvent {
-        controlNumber: number as uint8,
-        channel: 0,
-        value: i8::try_from(value).unwrap_or(0),
-        value2: i8::try_from(value2).unwrap_or(0),
-    };
-    Some(event)
+    Some(legacy_cc(offset, 0, number as uint8, value, value2))
 }
 
 /// A MIDI 1.0 message as VST3 carries it; `None` for one it does not.
 fn midi_1_event(offset: u32, voice: Midi1Voice) -> Option<VstEvent> {
     let channel = voice.channel;
-    let controller = |number: uint8, value: u8, value2: u8| {
-        let mut event = event(offset, EventTypes_::kLegacyMIDICCOutEvent as u16);
-        event.__field0.midiCCOut = LegacyMIDICCOutEvent {
-            controlNumber: number,
-            channel: i8::try_from(channel).unwrap_or(0),
-            value: i8::try_from(value & 0x7F).unwrap_or(0),
-            value2: i8::try_from(value2 & 0x7F).unwrap_or(0),
-        };
-        event
-    };
-    let note = |on: bool, note: u8, velocity: u8| {
-        let kind = if on {
-            EventTypes_::kNoteOnEvent
-        } else {
-            EventTypes_::kNoteOffEvent
-        };
-        let mut event = event(offset, kind as u16);
-        let velocity = f32::from(velocity) / 127.0;
-        let (channel, pitch) = (i16::from(channel), i16::from(note));
-        if on {
-            event.__field0.noteOn = NoteOnEvent {
-                channel,
-                pitch,
-                tuning: 0.0,
-                velocity,
-                length: 0,
-                noteId: -1,
-            };
-        } else {
-            event.__field0.noteOff = NoteOffEvent {
-                channel,
-                pitch,
-                velocity,
-                noteId: -1,
-                tuning: 0.0,
-            };
-        }
-        event
-    };
+    let unit = |value: u8| f32::from(value) / 127.0;
+    let cc =
+        |number: uint8, value: u8, value2: u8| legacy_cc(offset, channel, number, value, value2);
     Some(match voice.message {
         // A MIDI 1.0 note-on at velocity 0 is a note-off.
-        Midi1Message::NoteOn {
-            note: key,
-            velocity,
-        } => note(velocity > 0, key, velocity),
-        Midi1Message::NoteOff {
-            note: key,
-            velocity,
-        } => note(false, key, velocity),
+        Midi1Message::NoteOn { note, velocity: 0 } => note_off(offset, channel, note, 0.0, 0.0, -1),
+        Midi1Message::NoteOn { note, velocity } => {
+            note_on(offset, channel, note, unit(velocity), 0.0, -1)
+        }
+        Midi1Message::NoteOff { note, velocity } => {
+            note_off(offset, channel, note, unit(velocity), 0.0, -1)
+        }
         Midi1Message::PolyPressure { note, value } => {
-            let mut event = event(offset, EventTypes_::kPolyPressureEvent as u16);
-            event.__field0.polyPressure = PolyPressureEvent {
-                channel: i16::from(channel),
-                pitch: i16::from(note),
-                pressure: f32::from(value) / 127.0,
-                noteId: -1,
-            };
-            event
+            poly_pressure(offset, channel, note, unit(value), -1)
         }
-        Midi1Message::ControlChange {
-            controller: number,
-            value,
-        } => controller(number, value, 0),
-        Midi1Message::ChannelPressure { value } => controller(PRESSURE, value, 0),
+        Midi1Message::ControlChange { controller, value } => cc(controller, value, 0),
+        Midi1Message::ChannelPressure { value } => cc(PRESSURE, value, 0),
         // VST3 takes the bend's low 7 bits first.
-        Midi1Message::PitchBend { value } => {
-            controller(BEND, (value & 0x7F) as u8, (value >> 7) as u8)
-        }
-        Midi1Message::ProgramChange { program } => controller(PROGRAM, program, 0),
+        Midi1Message::PitchBend { value } => cc(BEND, (value & 0x7F) as u8, (value >> 7) as u8),
+        Midi1Message::ProgramChange { program } => cc(PROGRAM, program, 0),
         _ => return None,
     })
 }
@@ -419,7 +387,7 @@ fn sysex(
     // Within the room, so it never allocates.
     block.extend_from_slice(framed);
     let whole = block.get(start..).unwrap_or(&[]);
-    let mut event = event(offset, EventTypes_::kDataEvent as u16);
+    let mut event = blank(offset, DATA);
     event.__field0.data = DataEvent {
         size: u32::try_from(whole.len()).unwrap_or(0),
         r#type: SYSEX,

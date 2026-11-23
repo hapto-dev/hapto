@@ -32,9 +32,9 @@
 
 use ::vst3::ComRef;
 use ::vst3::Steinberg::Vst::{
-    ControllerNumbers_, DataEvent_::DataTypes_, Event, Event_::EventTypes_, IEventList,
-    IEventListTrait, IMidiMappingTrait, INoteExpressionControllerTrait, IParamValueQueueTrait,
-    IParameterChanges, IParameterChangesTrait, NoteExpressionTypeIDs_, NoteExpressionTypeInfo,
+    ControllerNumbers_, Event, IEventList, IEventListTrait, IMidiMappingTrait,
+    INoteExpressionControllerTrait, IParamValueQueueTrait, IParameterChanges,
+    IParameterChangesTrait, NoteExpressionTypeIDs_, NoteExpressionTypeInfo,
     NoteExpressionTypeInfo_::NoteExpressionTypeFlags_, NoteExpressionValue,
     NoteExpressionValueEvent, NoteOnEvent, ParamID, ParameterInfo, ParameterInfo_::ParameterFlags_,
     String128, TChar, kRootUnitId,
@@ -49,6 +49,7 @@ use hapto_ump::{
     Attribute, ChannelMessage, ChannelVoice, Midi1Message, Midi1Voice, Origin, SysEx7, scale,
 };
 
+use super::super::events::{DATA, EXPRESSION, NOTE_OFF, NOTE_ON, POLY_PRESSURE, SYSEX, blank};
 use super::Component;
 use crate::Plugin;
 use crate::engine::{MidiIn, Rank};
@@ -72,15 +73,6 @@ const _: () = assert!(FIRST_PROXY + (GRID - 1) <= *RESERVED_HOST_IDS.end());
 /// The most events one block's list is read for: far past any block's
 /// room, so a host that claims millions is walked a bounded way.
 const MOST_EVENTS: int32 = 1 << 16;
-
-/// The event types a plugin reads, as `Event::type` holds them.
-const NOTE_ON: u16 = EventTypes_::kNoteOnEvent as u16;
-const NOTE_OFF: u16 = EventTypes_::kNoteOffEvent as u16;
-const DATA: u16 = EventTypes_::kDataEvent as u16;
-const POLY_PRESSURE: u16 = EventTypes_::kPolyPressureEvent as u16;
-const EXPRESSION: u16 = EventTypes_::kNoteExpressionValueEvent as u16;
-/// A data event's type for SysEx.
-pub(super) const SYSEX: u32 = DataTypes_::kMidiSysEx as uint32;
 
 /// MIDI 2.0's registered per-note controller for a note's absolute pitch,
 /// 7.25.
@@ -409,15 +401,16 @@ pub(super) unsafe fn read_events(
     midi: &mut MidiIn<'_>,
 ) {
     // SAFETY: the caller's contract, for each call below.
-    let count = unsafe { events.getEventCount() }.clamp(0, MOST_EVENTS);
+    let count = unsafe { event_count(events) };
     for index in 0..count {
         if !midi.has_room() {
             midi.add_dropped(u32::try_from(count.saturating_sub(index)).unwrap_or(u32::MAX));
             break;
         }
-        // SAFETY: every field of an `Event` is an integer, a float or a raw
-        // pointer, for which all zeros is a value.
-        let mut event: Event = unsafe { std::mem::zeroed() };
+        let mut event = blank(0, 0);
+        let Ok(index) = int32::try_from(index) else {
+            break;
+        };
         // SAFETY: as above; `event` is room for one.
         if unsafe { events.getEvent(index, &mut event) } != kResultOk || event.busIndex != 0 {
             continue;

@@ -39,6 +39,7 @@
 //! `IMidiMapping2` cannot pass it across COM as they declare it.
 
 mod component;
+mod events;
 mod factory;
 mod stream;
 #[cfg(any(test, feature = "test-host"))]
