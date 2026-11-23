@@ -662,7 +662,8 @@ impl AudioSide<'_> {
         for (slot, channel) in list.iter_mut().zip(channels.iter_mut()) {
             *slot = channel.as_mut_ptr();
         }
-        let mut sent = 0;
+        // Not 0, so a block that does not answer how many it wrote shows.
+        let mut sent = u32::MAX;
         let block = HaptoProcess {
             inputs: list.as_ptr().cast::<*const f32>(),
             outputs: list.as_ptr(),

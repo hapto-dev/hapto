@@ -198,6 +198,33 @@ fn past_the_room_out_a_packet_is_dropped_and_the_count_says_what_fit() {
 }
 
 #[test]
+fn midi_2_in_and_a_sysex_go_through_and_back_out() {
+    let host = running();
+    let sent = [
+        // A MIDI 2.0 note-on, and a SysEx in two packets.
+        HaptoPacket {
+            frame: 1,
+            words: [0x4090_3C00, 0x8000_0000, 0, 0],
+        },
+        HaptoPacket {
+            frame: 2,
+            words: [0x3016_7E7F, 0x0601_0203, 0, 0],
+        },
+        HaptoPacket {
+            frame: 2,
+            words: [0x3032_0405, 0, 0, 0],
+        },
+    ];
+    let out = play(&host, &sent, 8, false);
+    let heads: Vec<(u32, u32)> = out.iter().map(|p| (p.frame, p.words[0])).collect();
+    assert_eq!(
+        heads,
+        [(1, 0x4090_3C00), (2, 0x3016_7E7F), (2, 0x3032_0405)],
+        "the note as it came, and the SysEx whole again"
+    );
+}
+
+#[test]
 fn a_block_with_no_midi_or_no_processor_sends_none() {
     let host = running();
     assert_eq!(play(&host, &[], 4, false).len(), 0);

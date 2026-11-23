@@ -14,7 +14,7 @@ use hapto_host::{
     AuCodes, Block, Category, Driver, Event, EventList, Parts, Plugin, PluginInfo, ProcessSetup,
     Processor, Status,
 };
-use hapto_learn::{Config, Control, Mapping, Source};
+use hapto_learn::{Config, Control, Mapping, Source, Takes};
 use hapto_params::{Declarer, Float, FloatDecl, Params};
 use hapto_testkit::alloc::assert_no_allocations;
 use hapto_undo::Bound;
@@ -261,6 +261,84 @@ fn a_block_through_the_engine_with_learn_on_does_not_allocate() {
     assert_eq!(host.faults(), 0);
 }
 
+/// A plugin with learn on, a controller mapped and its target armed, which
+/// sends what it reads back out.
+#[cfg(all(feature = "cabi", feature = "test-host"))]
+struct Learned {
+    _parts: Parts,
+}
+
+#[cfg(all(feature = "cabi", feature = "test-host"))]
+impl Plugin for Learned {
+    const INFO: PluginInfo = PluginInfo {
+        id: "dev.hapto.learned",
+        midi_output: true,
+        ..Listening::INFO
+    };
+    type Params = Gain;
+    type Processor = Echo;
+
+    fn new(_: Gain, mut parts: Parts) -> Self {
+        parts.midi_learn(Config::default());
+        let gain = parts.set().id("gain").expect("declared");
+        let volume = Mapping::new(Source::any(Control::Cc(7)));
+        parts.learn().map(gain, volume).expect("legal");
+        parts.learn().arm(gain, Takes::CONTROLLER).expect("known");
+        Learned { _parts: parts }
+    }
+
+    fn activate(&mut self, _: &ProcessSetup) -> Echo {
+        Echo
+    }
+}
+
+#[cfg(all(feature = "cabi", feature = "test-host"))]
+#[test]
+fn midi_through_the_c_interface_with_learn_mapped_and_armed_does_not_allocate() {
+    use hapto_host::cabi::{HaptoPacket, MidiBlock, TestHost};
+
+    let host = TestHost::<Learned>::new();
+    assert_eq!(host.activate(48_000.0, 256, Width::STEREO), Ok(()));
+    let packet = |frame, first, second| HaptoPacket {
+        frame,
+        words: [first, second, 0, 0],
+    };
+    // MIDI 1.0 as a JUCE host hands it over: a note, the mapped controller,
+    // an NRPN whose high byte the upgrade holds to the block's end, and a
+    // SysEx; then a MIDI 2.0 note-off.
+    let midi_in = [
+        packet(0, 0x2090_3C7F, 0),
+        packet(1, 0x20B0_0764, 0),
+        packet(2, 0x20B0_6302, 0),
+        packet(2, 0x20B0_622C, 0),
+        packet(3, 0x20B0_0640, 0),
+        packet(4, 0x3016_7E7F, 0x0601_0203),
+        packet(4, 0x3032_0405, 0),
+        packet(5, 0x4080_3C00, 0x8000_0000),
+    ];
+    let mut out = [packet(0, 0, 0); 64];
+    let (mut left, mut right) = (vec![0.25f32; 600], vec![-0.25f32; 600]);
+    let mut sent = 0;
+    assert_no_allocations(
+        "blocks of MIDI through the C interface, learn reading them, sent back",
+        || {
+            for midi_1_out in [false, true] {
+                for frames in [256, 600, 1, 255] {
+                    let midi = MidiBlock {
+                        midi_in: &midi_in,
+                        midi_out: &mut out,
+                        midi_1_out,
+                    };
+                    let block = &mut [&mut left[..frames], &mut right[..frames]];
+                    sent += host.process_with_midi(block, frames, midi).1;
+                }
+            }
+        },
+    );
+    assert!(sent > 0, "it sent what it read");
+    assert_eq!(host.faults(), 0);
+}
+
 #[cfg(all(feature = "vst3", feature = "test-host"))]
 #[test]
 fn a_block_of_notes_controllers_and_sysex_through_the_vst3_exporter_does_not_allocate() {
@@ -274,7 +352,8 @@ fn a_plugin_sending_its_midi_back_through_the_vst3_exporter_does_not_allocate() 
 }
 
 /// Blocks with a note, its expression and pressure, a SysEx and
-/// controllers through the VST3 exporter, after one that is let allocate.
+/// controllers through the VST3 exporter, the first after activation among
+/// them.
 #[cfg(all(feature = "vst3", feature = "test-host"))]
 fn vst3_midi_blocks<P: Plugin>(what: &str) {
     use hapto_host::vst3::{BusEvent, TestHost};
@@ -324,11 +403,8 @@ fn vst3_midi_blocks<P: Plugin>(what: &str) {
     let bend_points: &[(i32, f64)] = &[(0, 0.5)];
     let queues = [(volume, volume_points), (bend, bend_points)];
     let (mut left, mut right) = (vec![0.25f32; 600], vec![-0.25f32; 600]);
-    let first = &mut [&mut left[..256], &mut right[..256]];
-    host.process_events(first, 256, &events, &queues)
-        .expect("played");
     assert_no_allocations(what, || {
-        for frames in [256, 600, 1, 255] {
+        for frames in [256, 256, 600, 1, 255] {
             let block = &mut [&mut left[..frames], &mut right[..frames]];
             host.process_events(block, frames, &events, &queues)
                 .expect("played");

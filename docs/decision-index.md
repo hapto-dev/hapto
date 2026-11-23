@@ -671,7 +671,8 @@ move its line here; when a decision gains code, add one.
 - `crates/host/src/cabi/abi.rs`: `HaptoPacket`, `HaptoProcess`, `MIDI_OUT_1`
 - `crates/host/src/cabi/mod.rs`: `packets_in`, `send_out`
 - `adapters/juce/HaptoPluginProcessor.cpp`: `addPackets`, `PluginProcessor::addMessage`, `PluginProcessor::prepareToPlay`, `PluginProcessor::processBlock`, `midiOutBytes`, `sysexRoom`
-- test `crates/host/tests/cabi_midi.rs`: module
+- test `crates/host/tests/cabi_midi.rs`: module, `midi_2_in_and_a_sysex_go_through_and_back_out`
+- test `crates/host/tests/alloc_gate.rs`: `midi_through_the_c_interface_with_learn_mapped_and_armed_does_not_allocate`
 - `crates/host/include/hapto.h`: module
 - `crates/host/src/boundary.rs`: `MainThread::bound`, `MainThread::unbound`, `MainThread::lend`, `MainThread::lend_or_wait`, `MainThread::is_owner`, `MainThread::owned`, `here`, `Wait`, `Lent`, `Refused`
 - `crates/host/src/cabi/abi.rs`: `HaptoPlugin`, `HaptoHost`
