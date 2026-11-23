@@ -1462,6 +1462,7 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d116-midi-in-musicians-terms)
 
+- test `crates/midi/tests/block.rs`: `a_message_sent_reads_back_as_itself`, `a_sysex_split_across_two_blocks_comes_whole_in_the_second`, `a_new_sysex_on_its_group_cuts_the_one_under_way_short`
 - `crates/midi/src/values.rs`: `NoteId::own`
 - `crates/midi/src/message.rs`: `NoteOn::with_key`, `NoteOn::with_id`
 - `crates/midi/src/controller.rs`: `Controller::registered`
