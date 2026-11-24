@@ -39,7 +39,7 @@
 //! let message = Midi1Message::ControlChange { controller: 7, value: 100 };
 //! let sent = Midi1Voice { group: 0, channel: 2, message }.event(32);
 //! let mut block = EventList::with_capacity(64);
-//! Upgrade::new().block(&[sent], 63, &mut block);
+//! Upgrade::new().block(&[sent], &mut block);
 //!
 //! for event in block.as_slice() {
 //!     // A packet Hapto does not read gives `None`: skip it.
@@ -48,7 +48,7 @@
 //!     };
 //!     if let ChannelMessage::ControlChange { controller, value } = message {
 //!         assert_eq!((event.offset, channel, controller), (32, 2, 7));
-//!         // `scale` narrows the upgraded value back to what was sent.
+//!         // Upgraded from MIDI 1.0, it narrows back to what was sent.
 //!         assert_eq!(scale::down_32_to_7(value), 100);
 //!     }
 //! }
@@ -134,10 +134,11 @@ pub enum Origin {
     Midi2,
     /// Sent as MIDI 1.0 and upgraded on the way in.
     Midi1,
-    /// Sent as an RPN or NRPN whose data entry high byte came without a low
-    /// byte, and upgraded as if the low byte were 0. A later low byte arrives
-    /// as a separate controller marked [`Midi1`](Self::Midi1), so a reader
-    /// can tell a sent low byte of 0 from a missing one.
+    /// Sent as an RPN or NRPN whose data entry high byte came with no low
+    /// byte at its frame, and upgraded on the way in as if its low byte were
+    /// 0. A low byte at a later frame follows as a controller of its own,
+    /// marked [`Midi1`](Self::Midi1), so a low byte of 0 that was sent reads
+    /// apart from one that never came.
     Midi1HighByte,
 }
 

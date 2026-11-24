@@ -406,7 +406,7 @@ pub trait Plugin: 'static {
     /// # let message = Midi1Message::ControlChange { controller: 74, value: 64 };
     /// # let sent = Midi1Voice { group: 0, channel: 0, message }.event(0);
     /// # let mut events = EventList::with_capacity(1);
-    /// # Upgrade::new().block(&[sent], 0, &mut events);
+    /// # Upgrade::new().block(&[sent], &mut events);
     /// # let (mut left, mut right) = ([0.0_f32; 1], [0.0_f32; 1]);
     /// # let mut out = EventList::with_capacity(0);
     /// # let mut channels = [&mut left[..], &mut right[..]];

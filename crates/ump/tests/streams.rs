@@ -11,7 +11,7 @@ use hapto_ump::{
 use proptest::prelude::*;
 use proptest::test_runner::FileFailurePersistence;
 
-/// The frame at which a block's held high bytes are sent.
+/// A block's last frame, which every message past it shares.
 const LAST_FRAME: u32 = 63;
 
 /// Each block's packets, in order.
@@ -22,9 +22,8 @@ fn upgrade(sent: &[Vec<Event>]) -> Blocks {
     let mut upgrade = Upgrade::new();
     sent.iter()
         .map(|block| {
-            // Room for each message and a held high byte per group and channel.
-            let mut out = EventList::with_capacity(block.len() + 256);
-            upgrade.block(block, LAST_FRAME, &mut out);
+            let mut out = EventList::with_capacity(block.len());
+            upgrade.block(block, &mut out);
             assert_eq!(out.dropped(), 0);
             out.as_slice().to_vec()
         })
@@ -269,6 +268,55 @@ fn sender(steps: Vec<Step>) -> Blocks {
     blocks(sent)
 }
 
+/// `sent`, each message at a frame of the stream, upgraded by one upgrade in
+/// blocks that begin at frame 0 and at each of `starts`, and every packet
+/// with its frame in the stream.
+fn upgrade_cut_at(sent: &[(u32, Midi1Voice)], starts: &[u32]) -> Vec<(u32, [u32; 4], Origin)> {
+    let end = sent.iter().map(|(frame, _)| frame + 1).max().unwrap_or(0);
+    let mut bounds: Vec<u32> = starts.iter().copied().filter(|&at| at < end).collect();
+    bounds.extend([0, end]);
+    bounds.sort_unstable();
+    bounds.dedup();
+    let mut up = Upgrade::new();
+    let mut upgraded = Vec::new();
+    for block in bounds.windows(2) {
+        let [start, next] = [block[0], block[1]];
+        let input: Vec<Event> = sent
+            .iter()
+            .filter(|(frame, _)| (start..next).contains(frame))
+            .map(|(frame, voice)| voice.event(frame - start))
+            .collect();
+        let mut out = EventList::with_capacity(input.len());
+        up.block(&input, &mut out);
+        assert_eq!(out.dropped(), 0);
+        let at = |event: &Event| (start + event.offset, event.words, event.origin);
+        upgraded.extend(out.as_slice().iter().map(at));
+    }
+    upgraded
+}
+
+/// Any MIDI 1.0 stream on two groups and two channels, each message 0 to 2
+/// frames after the one before, so a pair often shares a frame.
+fn stream() -> impl Strategy<Value = Vec<(u32, Midi1Voice)>> {
+    proptest::collection::vec((0_u32..3, 0_u8..2, 0_u8..2, midi1_message()), 0..64).prop_map(
+        |steps| {
+            let mut frame = 0;
+            steps
+                .into_iter()
+                .map(|(step, group, channel, message)| {
+                    frame += step;
+                    let voice = Midi1Voice {
+                        group,
+                        channel,
+                        message,
+                    };
+                    (frame, voice)
+                })
+                .collect()
+        },
+    )
+}
+
 proptest! {
     #![proptest_config(ProptestConfig {
         failure_persistence: Some(Box::new(FileFailurePersistence::Direct(
@@ -278,9 +326,20 @@ proptest! {
         ..ProptestConfig::default()
     })]
 
-    /// Checks that any stream gives the same messages at the same frames after
-    /// an upgrade, a downgrade and another upgrade, however the blocks split a
-    /// data entry that the upgrade holds.
+    /// Where the host cuts its blocks changes nothing: any stream, cut
+    /// anywhere, upgrades to the packets one block gives, at the same frames
+    /// of the stream.
+    #[test]
+    fn any_stream_cut_into_blocks_anywhere_upgrades_as_one_block_does(
+        sent in stream(),
+        starts in proptest::collection::vec(0_u32..130, 0..8),
+    ) {
+        prop_assert_eq!(upgrade_cut_at(&sent, &starts), upgrade_cut_at(&sent, &[]));
+    }
+
+    /// Upgraded, downgraded and upgraded again, any stream gives the same
+    /// messages at the same frames: the downgrade sends nothing the upgrade
+    /// reads another way, however the blocks cut a data entry.
     #[test]
     fn what_the_downgrade_sends_upgrades_to_the_same_messages(
         sent in proptest::collection::vec(
@@ -296,9 +355,9 @@ proptest! {
         prop_assert_eq!(messages(&again), messages(&upgraded));
     }
 
-    /// Checks that a MIDI 1.0 receiver of the downgrade ends every block with
-    /// the values of a receiver of the sender, so the upgrade must send every
-    /// data entry that it holds by the block's end, where MIDI 1.0 puts it.
+    /// A MIDI 1.0 receiver of the downgrade holds, at the end of every block,
+    /// the values a receiver of the sender holds: the upgrade sends every
+    /// data entry in its own block, where MIDI 1.0 puts it.
     #[test]
     fn a_receiver_of_the_downgrade_ends_each_block_where_the_sender_put_it(
         steps in proptest::collection::vec(step(), 0..48),

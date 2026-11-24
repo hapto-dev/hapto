@@ -64,13 +64,13 @@
 //! // On each activation: a fresh audio side that starts from the mappings so far.
 //! let mut audio = learn.borrow_mut().replace_audio();
 //!
-//! // In each block, on the audio thread, controller 7 at full writes the
-//! // gain. `Upgrade` converts it to MIDI 2.0 first, as an exporter does.
+//! // In each block, on the audio thread: controller 7 at full writes the
+//! // gain, once an exporter has upgraded it to the MIDI 2.0 learn reads.
 //! let message = Midi1Message::ControlChange { controller: 7, value: 127 };
 //! let sent = Midi1Voice { group: 0, channel: 0, message }.event(0);
 //! let mut upgrade = Upgrade::new();
 //! let mut midi = EventList::with_capacity(1);
-//! upgrade.block(&[sent], 0, &mut midi);
+//! upgrade.block(&[sent], &mut midi);
 //! audio.process(&midi);
 //! assert_eq!(set.value(gain), 1.0);
 //!

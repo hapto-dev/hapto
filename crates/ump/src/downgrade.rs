@@ -10,31 +10,23 @@ use crate::{
     Midi1Voice,
 };
 
-/// Downgrades MIDI 2.0 to MIDI 1.0 for a destination that accepts only MIDI
-/// 1.0, when someone asks for it or the other end forces it.
+/// Downgrades MIDI 2.0 to MIDI 1.0, for a destination that takes only MIDI
+/// 1.0: when someone asks for it, or the other end forces it.
 ///
-/// Values drop their low bits, and three messages change form.
+/// It follows the specification's Default Translation. Values cut their
+/// low bits off. A note-on that would cut to velocity 0, which MIDI 1.0
+/// reads as a note-off, goes out at velocity 1. A registered or assignable
+/// controller becomes its four controllers (101 and 100, or 99 and 98, then
+/// 6 and 38), even one upgraded from a high byte sent alone: a MIDI 1.0
+/// receiver reads its low byte of 0 as it reads none. A program change with
+/// a bank becomes bank select (0 and 32) and then the program.
 ///
-/// - A note-on that would drop to velocity 0, which MIDI 1.0 treats as a
-///   note-off, goes out at velocity 1.
-/// - A registered or assignable controller becomes four controllers (101 and
-///   100, or 99 and 98, then 6 and 38), even one upgraded from a lone high
-///   byte. A MIDI 1.0 receiver treats a low byte of 0 as no low byte, and one
-///   that waits for the low byte, as [`Upgrade`](crate::Upgrade) does, gets
-///   the value without delay.
-/// - A program change with a bank becomes bank select (0 and 32), then the
-///   program.
-///
-/// It drops what MIDI 1.0 can't carry, and counts it in
-/// [`lost`](Self::lost):
-///
-/// - relative controllers, per-note controllers, per-note pitch bend and
-///   per-note management
-/// - a note's attribute, though the note still goes out
-/// - a MIDI 2.0 channel voice packet with a reserved status
-///
-/// Packets of other types pass through unchanged, because a destination that
-/// accepts MIDI 1.0 in UMP may accept any of them.
+/// What MIDI 1.0 cannot carry is dropped and counted in
+/// [`lost`](Self::lost): relative controllers, per-note controllers, per-note
+/// pitch bend and per-note management, a note's attribute, whose note still
+/// goes out, and a MIDI 2.0 channel voice packet of a status the
+/// specification reserves. Packets of the other types pass as they are,
+/// since a destination that takes MIDI 1.0 in UMP may take each of them.
 ///
 /// # Examples
 ///

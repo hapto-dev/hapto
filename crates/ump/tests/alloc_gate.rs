@@ -120,7 +120,7 @@ fn midi1_voices() -> Vec<Midi1Voice> {
         cc(98, 44),
         cc(6, 64),
         cc(38, 1),
-        // A high byte held until the end of the block.
+        // A high byte sent alone.
         cc(101, 0),
         cc(100, 0),
         cc(6, 12),
@@ -216,10 +216,14 @@ fn splitting_words_and_decoding_and_encoding_voices_does_not_allocate() {
 
 #[test]
 fn upgrading_and_downgrading_a_block_does_not_allocate() {
-    let sent: Vec<Event> = midi1_voices()
+    // Each place's messages at one frame, so an NRPN's two data bytes join
+    // into one message there.
+    let sent = midi1_voices();
+    let per_place = sent.len() / PLACES.len();
+    let sent: Vec<Event> = sent
         .iter()
         .zip(0..)
-        .map(|(voice, offset)| voice.event(offset))
+        .map(|(voice, index)| voice.event(index / per_place as u32))
         .collect();
     let midi2: Vec<Event> = voices()
         .iter()
@@ -237,7 +241,7 @@ fn upgrading_and_downgrading_a_block_does_not_allocate() {
         for _ in 0..4 {
             upgraded.clear();
             back.clear();
-            upgrade.block(&sent, 255, &mut upgraded);
+            upgrade.block(&sent, &mut upgraded);
             downgrade.block(upgraded.as_slice(), &mut back);
             let up = upgraded.as_slice().len();
             let down = back.as_slice().len();
@@ -247,10 +251,10 @@ fn upgrading_and_downgrading_a_block_does_not_allocate() {
         }
         seen
     });
-    // Each place's 17 messages upgrade to 10, because bank select and the
-    // addresses send nothing alone and each data entry becomes one
-    // controller. They downgrade to 18, because the bank goes out with its
-    // program and the held high byte with its low byte.
+    // Each place's 17 messages upgrade to 10: bank select and the
+    // addresses send nothing of their own, and each data entry is one
+    // controller. They downgrade to 18: the bank goes out with its
+    // program, and the high byte sent alone with a low byte of 0.
     assert_eq!(seen.0, PLACES.len() * 10);
     assert_eq!(seen.1, PLACES.len() * 18);
     // Of MIDI 2.0's 15 messages:

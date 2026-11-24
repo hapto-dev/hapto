@@ -68,7 +68,7 @@ fn midi1_block() -> (Upgrade, Vec<Event>, EventList) {
 #[library_benchmark]
 #[bench::keyboard(midi1_block())]
 fn upgrade_a_block((mut upgrade, events, mut out): (Upgrade, Vec<Event>, EventList)) -> EventList {
-    upgrade.block(black_box(&events), 255, &mut out);
+    upgrade.block(black_box(&events), &mut out);
     black_box(out)
 }
 

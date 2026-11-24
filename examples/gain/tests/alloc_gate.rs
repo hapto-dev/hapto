@@ -29,7 +29,7 @@ fn control_change(events: &mut EventList, controller: u8, value: u8) {
         message,
     }
     .event(0);
-    Upgrade::new().block(&[sent], 0, events);
+    Upgrade::new().block(&[sent], events);
 }
 
 #[test]

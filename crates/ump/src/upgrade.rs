@@ -15,43 +15,37 @@ use crate::{
 /// Both bytes of the null parameter number, which selects nothing.
 const NULL: u8 = 127;
 
-/// Upgrades incoming MIDI 1.0 to MIDI 2.0, as an exporter does.
+/// Upgrades MIDI 1.0 to MIDI 2.0, as an exporter does on the way in.
 ///
-/// Values scale up as [`scale`](crate::scale) describes, and each packet it
-/// makes is marked [`Origin::Midi1`]. Other packets pass through unchanged.
+/// It follows the specification's Default Translation. Values upscale as
+/// [`scale`](crate::scale) says, and every packet
+/// it makes is marked [`Origin::Midi1`], or [`Origin::Midi1HighByte`] for
+/// a data entry high byte sent with no low byte. A note-on at velocity 0
+/// becomes a note-off at `0x8000`. The pair of a 14-bit controller stays two
+/// controllers. Bank select is held for the next program change, which
+/// carries it, and is not translated on its own; a bank byte never sent
+/// reads as 0.
 ///
-/// - A note-on at velocity 0 becomes a note-off at velocity `0x8000`.
-/// - A 14-bit controller pair stays two controllers.
-/// - Bank select (0 and 32) is held for the next program change, which
-///   carries it. A bank byte that was never sent counts as 0.
-/// - An RPN or NRPN becomes one registered or assignable controller. Its
-///   address can come in either byte order, the null number (127, 127)
-///   selects nothing, and Reset All Controllers clears it.
+/// An RPN or NRPN becomes one registered or assignable controller. Its
+/// data entry high byte (controller 6) goes out at once, at its own frame,
+/// as if its low byte were 0. Its low byte (38) at the same frame joins it,
+/// so a pair sent together is one message: the upgrade rewrites the packet
+/// it just sent, while that is still the last in the list. A low byte at a
+/// later frame refines it as a message of its own. Nothing waits for a
+/// later message, so what comes out never depends on where the blocks are
+/// cut. An address may come in either byte order, and the null number
+/// (127, 127) selects nothing. Reset All Controllers forgets the address.
 ///
-/// The data entry high byte (6) is held, and the controller goes out when one
-/// of these comes:
+/// A data entry belongs to the number it was sent under. A low byte refines
+/// its number's latest high byte however often the address is sent between,
+/// as the specification holds the latest high byte. The upgrade departs
+/// from the specification in two places, so that one parameter's high byte
+/// never lands on another: a low byte never takes the high byte of another
+/// number, and one sent before its own number's high byte waits for it.
 ///
-/// - The data entry low byte (38).
-/// - Another high byte, or an address byte.
-/// - A data increment or decrement (96, 97), which goes out after it.
-/// - The end of the block. The controller then goes out at the block's last
-///   frame, which is the short timeout that the specification allows, so a
-///   sender that never sends the low byte loses nothing.
-///
-/// A controller sent without its low byte is marked
-/// [`Origin::Midi1HighByte`].
-///
-/// A held byte belongs to the number that it was sent under. A low byte
-/// refines its own number's latest high byte, even if the address is sent
-/// again in between, as the specification says. The upgrade differs from the
-/// specification in two places, so that one parameter's high byte never
-/// reaches another:
-///
-/// - A low byte never combines with another number's high byte.
-/// - A low byte sent before its own number's high byte waits for it.
-///
-/// State for every group and channel is allocated once, so
-/// [`block`](Self::block) allocates nothing.
+/// Other packets pass as they are. State is kept for every group and
+/// channel, made once and never grown, so [`block`](Self::block) allocates
+/// nothing.
 ///
 /// # Examples
 ///
@@ -64,23 +58,23 @@ const NULL: u8 = 127;
 ///     channel: 0,
 ///     message: Midi1Message::ControlChange { controller, value },
 /// };
-/// // These four MIDI 1.0 controllers set NRPN 2, 5 to 100.
-/// let sent = [cc(99, 2).event(0), cc(98, 5).event(0), cc(6, 100).event(1), cc(38, 0).event(2)];
+/// // NRPN 2, 5 at 100, sent at frame 1, then its low byte moved alone.
+/// let sent = [cc(99, 2), cc(98, 5), cc(6, 100), cc(38, 0)].map(|cc| cc.event(1));
 /// let mut upgraded = EventList::with_capacity(4);
-/// upgrade.block(&sent, 63, &mut upgraded);
+/// upgrade.block(&sent, &mut upgraded);
+/// upgrade.block(&[cc(38, 1).event(5)], &mut upgraded);
 ///
-/// // They become one MIDI 2.0 message, at the low byte's frame.
-/// let [event] = upgraded.as_slice() else { panic!("one message") };
-/// assert_eq!((event.offset, event.origin), (2, Origin::Midi1));
-/// let message = event.channel_voice().map(|voice| voice.message);
+/// // One MIDI 2.0 message for the pair sent at one frame, and one for the
+/// // low byte that refines it later.
+/// let [pair, fine] = upgraded.as_slice() else { panic!("two messages") };
+/// assert_eq!((pair.offset, pair.origin), (1, Origin::Midi1));
+/// assert_eq!((fine.offset, fine.origin), (5, Origin::Midi1));
+/// let message = pair.channel_voice().map(|voice| voice.message);
 /// assert!(matches!(message, Some(ChannelMessage::AssignableController { bank: 2, index: 5, .. })));
 /// ```
 #[derive(Debug)]
 pub struct Upgrade {
     channels: Box<[[Channel; 16]; 16]>,
-    /// For each group, a bit for each channel that holds an unsent high byte,
-    /// so that `block` checks only those channels when the block ends.
-    pending: [u16; 16],
 }
 
 /// The MIDI 1.0 parameter number and bank of one group and channel.
@@ -142,21 +136,20 @@ struct Numbers {
     unpaired: Option<u8>,
     /// The kind that data entry applies to, if an address selects one.
     selected: Option<Kind>,
-    /// The latest data entry high byte, which only a low byte under the same
-    /// number refines.
+    /// The latest data entry high byte, already sent. A low byte under its
+    /// number refines it, however often the address is sent again; one
+    /// under another number never does.
     high: Option<Held>,
     /// A low byte that arrived before its number's high byte, which MIDI 1.0
     /// allows, kept for that high byte.
     early_low: Option<(Number, u8)>,
 }
 
-/// A held data entry high byte, with the number that it was sent under.
+/// A data entry high byte, with the number it was sent under.
 #[derive(Debug, Clone, Copy)]
 struct Held {
     number: Number,
     value: u8,
-    /// Whether it is unsent, because no low byte has arrived.
-    pending: bool,
 }
 
 /// A parameter number's kind, bank and index.
@@ -167,8 +160,8 @@ struct Number {
     index: u8,
 }
 
-/// A data entry ready to send, with its number, its high byte and its low
-/// byte, if one arrived.
+/// A data entry to send: its number, its high byte, and its low byte unless
+/// none came.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Entry {
     number: Number,
@@ -198,36 +191,14 @@ impl Numbers {
         }
     }
 
-    /// Returns whether a held high byte is still pending.
-    fn is_pending(&self) -> bool {
-        self.high.is_some_and(|held| held.pending)
-    }
-
-    /// Sends the pending high byte without a low byte, and clears `pending`.
-    fn flush(&mut self, send: &mut impl FnMut(ChannelMessage, Origin)) {
-        if let Some(held) = self.high.as_mut().filter(|held| held.pending) {
-            held.pending = false;
-            Entry {
-                number: held.number,
-                high: held.value,
-                low: None,
-            }
-            .send(send);
-        }
-    }
-
-    /// Records an address byte, 99 or 98 for an NRPN and 101 or 100 for an
-    /// RPN.
+    /// An address byte, 99 or 98 for an NRPN, 101 or 100 for an RPN.
     ///
-    /// A pair can come in either order, and JUCE's generator sends the low
-    /// byte first.
-    ///
-    /// - A byte whose partner is unpaired completes the address.
-    /// - An unpaired high byte starts a new address and clears the held low
-    ///   byte, which belonged to an address already used.
-    /// - An unpaired low byte replaces the one that goes with the held high
-    ///   byte.
-    /// - The pair 127, 127 selects nothing.
+    /// A pair comes in either order (JUCE's generator sends the low byte
+    /// first), so a byte completes the address with its partner when that
+    /// one is still unpaired. A high byte with nothing to pair with starts a
+    /// new address and forgets the low byte held, which belonged to an
+    /// address already used. A low byte with nothing to pair with changes
+    /// the low byte under the high byte held. 127 and 127 select nothing.
     fn address_byte(&mut self, controller: u8, value: u8) {
         let (kind, most) = Kind::of_address(controller);
         let [msb, lsb] = kind.address();
@@ -245,84 +216,56 @@ impl Numbers {
         self.selected = (!null).then_some(kind);
     }
 
-    /// Handles a parameter-number control change or Reset All Controllers. It
-    /// first sends any held controller that the change ends, then the one
-    /// that the change completes.
-    fn control(
-        &mut self,
-        controller: u8,
-        value: u8,
-        send: &mut impl FnMut(ChannelMessage, Origin),
-    ) {
+    /// A control change to a parameter-number controller or Reset All
+    /// Controllers, sending what it completes.
+    fn control(&mut self, controller: u8, value: u8, send: &mut Sender<'_>) {
         match controller {
-            NRPN_LSB..=RPN_MSB => {
-                // A new address sends the held high byte first.
-                self.flush(send);
-                self.address_byte(controller, value);
-            }
+            NRPN_LSB..=RPN_MSB => self.address_byte(controller, value),
             DATA_ENTRY => {
                 self.unpaired = None;
-                // Another high byte sends the previous one first.
-                self.flush(send);
-                // A data entry consumes `early_low`, even when it selects
-                // nothing.
+                // A low byte sent first is spent here, even by a data entry
+                // that selects nothing.
                 let early = self.early_low.take();
                 let Some(number) = self.number() else {
                     self.high = None;
                     return;
                 };
-                let complete = matches!(early, Some((under, _)) if under == number);
-                self.high = Some(Held {
+                self.high = Some(Held { number, value });
+                let low = early
+                    .filter(|&(under, _)| under == number)
+                    .map(|(_, low)| low);
+                send.entry(Entry {
                     number,
-                    value,
-                    pending: !complete,
+                    high: value,
+                    low,
                 });
-                if let Some((_, low)) = early.filter(|_| complete) {
-                    Entry {
-                        number,
-                        high: value,
-                        low: Some(low),
-                    }
-                    .send(send);
-                }
             }
             DATA_ENTRY_LSB => {
                 self.unpaired = None;
                 let Some(number) = self.number() else {
                     return;
                 };
-                match self.high.as_mut() {
-                    Some(held) if held.number == number => {
-                        held.pending = false;
-                        Entry {
-                            number,
-                            high: held.value,
-                            low: Some(value),
-                        }
-                        .send(send);
-                    }
+                match self.high {
+                    Some(held) if held.number == number => send.refine(Entry {
+                        number,
+                        high: held.value,
+                        low: Some(value),
+                    }),
                     _ => self.early_low = Some((number, value)),
                 }
             }
-            RESET_ALL_CONTROLLERS => {
-                self.flush(send);
-                *self = Numbers::default();
-            }
-            // Increment and decrement step the parameter, so a held high byte
-            // goes out first, in the order sent. An address byte sent before
-            // them doesn't pair with any byte after them.
-            _ => {
-                self.unpaired = None;
-                self.flush(send);
-            }
+            RESET_ALL_CONTROLLERS => *self = Numbers::default(),
+            // Increment and decrement: an address byte before one pairs with
+            // no byte after it.
+            _ => self.unpaired = None,
         }
     }
 }
 
 impl Channel {
-    /// Translates one MIDI 1.0 message on this channel, and sends each
-    /// completed MIDI 2.0 message with its origin.
-    fn translate(&mut self, message: Midi1Message, mut send: impl FnMut(ChannelMessage, Origin)) {
+    /// Translates one MIDI 1.0 message on this channel, sending each MIDI
+    /// 2.0 message it completes.
+    fn translate(&mut self, message: Midi1Message, send: &mut Sender<'_>) {
         let translated = match message {
             Midi1Message::NoteOn { note, velocity: 0 } => ChannelMessage::NoteOff {
                 note,
@@ -365,18 +308,13 @@ impl Channel {
                 return;
             }
         };
-        send(translated, Origin::Midi1);
+        send.send(translated);
     }
 
-    /// Translates a MIDI 1.0 control change by holding bank select, passing
-    /// parameter-number controllers to `Numbers`, and sending the rest as MIDI
-    /// 2.0 control changes.
-    fn control_change(
-        &mut self,
-        controller: u8,
-        value: u8,
-        mut send: impl FnMut(ChannelMessage, Origin),
-    ) {
+    /// Translates a MIDI 1.0 control change: bank select is held, the
+    /// parameter-number controllers feed their state, and the rest become
+    /// MIDI 2.0 control changes.
+    fn control_change(&mut self, controller: u8, value: u8, send: &mut Sender<'_>) {
         let as_is = ChannelMessage::ControlChange {
             controller,
             value: up_7_to_32(value),
@@ -385,19 +323,18 @@ impl Channel {
             BANK_SELECT => self.bank[0] = Some(value),
             BANK_SELECT_LSB => self.bank[1] = Some(value),
             _ if is_parameter_number(controller) || controller == RESET_ALL_CONTROLLERS => {
-                self.numbers.control(controller, value, &mut send);
-                // In MIDI 2.0, increment and decrement are controllers of
-                // their own with no parameter number to step, and Reset All
-                // Controllers resets the other controllers, so all three also
-                // go out as control changes.
+                self.numbers.control(controller, value, send);
+                // Increment and decrement are controllers of their own in
+                // MIDI 2.0, with no parameter number to step, and Reset All
+                // Controllers resets the rest.
                 if matches!(
                     controller,
                     DATA_INCREMENT | DATA_DECREMENT | RESET_ALL_CONTROLLERS
                 ) {
-                    send(as_is, Origin::Midi1);
+                    send.send(as_is);
                 }
             }
-            _ => send(as_is, Origin::Midi1),
+            _ => send.send(as_is),
         }
     }
 }
@@ -417,28 +354,24 @@ impl Upgrade {
     pub fn new() -> Self {
         Upgrade {
             channels: Box::new([[Channel::default(); 16]; 16]),
-            pending: [0; 16],
         }
     }
 
-    /// Upgrades a block's packets, in order, into `out`. Any high byte that is
-    /// still held then goes out at `last_frame`.
-    ///
-    /// A packet that doesn't fit is dropped, and `out` counts it.
+    /// Upgrades a block's packets, in order, into `out`. A packet past
+    /// `out`'s room is dropped and counted there.
     ///
     /// Thread: audio. Allocates nothing.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
-    pub fn block(&mut self, input: &[Event], last_frame: u32, out: &mut EventList) {
+    pub fn block(&mut self, input: &[Event], out: &mut EventList) {
         for event in input {
             self.event(event, out);
         }
-        self.end_block(last_frame, out);
     }
 
-    /// Upgrades one packet into `out`.
-    ///
-    /// A MIDI 1.0 channel voice message becomes the MIDI 2.0 messages that it
-    /// completes, if any, and any other packet passes through unchanged.
+    /// Upgrades one packet into `out`: a MIDI 1.0 channel voice message
+    /// becomes what it completes, which may be nothing, and any other packet
+    /// passes as it is. A data entry low byte may rewrite the packet `out`
+    /// ends with, its high byte sent at the same frame, as [`Upgrade`] says.
     ///
     /// Thread: audio. Allocates nothing.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
@@ -452,75 +385,78 @@ impl Upgrade {
             out.push(*event);
             return;
         };
-        let (Some(channels), Some(pending)) = (
-            self.channels.get_mut(usize::from(group)),
-            self.pending.get_mut(usize::from(group)),
-        ) else {
+        let state = self
+            .channels
+            .get_mut(usize::from(group))
+            .and_then(|channels| channels.get_mut(usize::from(channel)));
+        let Some(state) = state else {
             return;
         };
-        let Some(state) = channels.get_mut(usize::from(channel)) else {
-            return;
+        let mut send = Sender {
+            out,
+            group,
+            channel,
+            offset: event.offset,
         };
-        state.translate(message, sender(out, group, channel, event.offset));
-        let bit = 1 << channel;
-        if state.numbers.is_pending() {
-            *pending |= bit;
-        } else {
-            *pending &= !bit;
-        }
-    }
-
-    /// Sends every held high byte at `last_frame`.
-    ///
-    /// The end of a block is the timeout after which a data entry without a
-    /// low byte goes out alone.
-    ///
-    /// Thread: audio. Allocates nothing.
-    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
-    pub fn end_block(&mut self, last_frame: u32, out: &mut EventList) {
-        let groups = self.channels.iter_mut().zip(&mut self.pending);
-        for (group, (channels, pending)) in (0_u8..).zip(groups) {
-            if *pending == 0 {
-                continue;
-            }
-            let held = std::mem::take(pending);
-            let channels = (0_u8..).zip(channels.iter_mut());
-            for (channel, state) in channels.filter(|(channel, _)| held & (1 << channel) != 0) {
-                state
-                    .numbers
-                    .flush(&mut sender(out, group, channel, last_frame));
-            }
-        }
+        state.translate(message, &mut send);
     }
 }
 
-/// Returns a callback that pushes each MIDI 2.0 message, with its origin,
-/// onto `out` on `group` and `channel` at frame `offset`.
-fn sender(
-    out: &mut EventList,
+/// Where one MIDI 1.0 message's translation goes: `out`, on its group and
+/// channel, at its frame.
+struct Sender<'a> {
+    out: &'a mut EventList,
     group: u8,
     channel: u8,
     offset: u32,
-) -> impl FnMut(ChannelMessage, Origin) {
-    move |message, origin| {
+}
+
+impl Sender<'_> {
+    /// The packet `message` is here, marked with `origin`.
+    fn event(&self, message: ChannelMessage, origin: Origin) -> Event {
         let voice = ChannelVoice {
-            group,
-            channel,
+            group: self.group,
+            channel: self.channel,
             message,
         };
-        out.push(Event {
+        Event {
             origin,
-            ..voice.event(offset)
-        });
+            ..voice.event(self.offset)
+        }
+    }
+
+    /// Sends a message translated whole from MIDI 1.0.
+    fn send(&mut self, message: ChannelMessage) {
+        self.out.push(self.event(message, Origin::Midi1));
+    }
+
+    /// Sends a data entry as it is.
+    fn entry(&mut self, entry: Entry) {
+        let (message, origin) = entry.message();
+        self.out.push(self.event(message, origin));
+    }
+
+    /// Sends a data entry its low byte completes. When the packet last sent
+    /// is its high byte alone, at this frame, the pair rewrites it, so a pair
+    /// sent at one frame is one message; otherwise the pair refines the high
+    /// byte as a message of its own.
+    fn refine(&mut self, entry: Entry) {
+        let (message, origin) = Entry { low: None, ..entry }.message();
+        let alone = self.event(message, origin);
+        let (message, origin) = entry.message();
+        let pair = self.event(message, origin);
+        match self.out.as_mut_slice().last_mut() {
+            Some(last) if *last == alone => *last = pair,
+            _ => self.out.push(pair),
+        }
     }
 }
 
 impl Entry {
-    /// Sends this entry's MIDI 2.0 controller, with an origin that says
-    /// whether it had a low byte.
-    ///
-    /// A high byte alone goes out as if its low byte were 0.
-    fn send(self, send: &mut impl FnMut(ChannelMessage, Origin)) {
+    /// The MIDI 2.0 controller it becomes, with how it was sent: with its low
+    /// byte, or as a high byte alone, which goes out as if its low byte were
+    /// 0.
+    fn message(self) -> (ChannelMessage, Origin) {
         let Number { kind, bank, index } = self.number;
         let value = up_14_to_32(join_14(self.low.unwrap_or(0), self.high));
         let origin = if self.low.is_some() {
@@ -528,6 +464,6 @@ impl Entry {
         } else {
             Origin::Midi1HighByte
         };
-        send(kind.message(bank, index, value), origin);
+        (kind.message(bank, index, value), origin)
     }
 }

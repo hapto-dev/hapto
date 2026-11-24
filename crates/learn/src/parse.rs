@@ -311,11 +311,9 @@ mod tests {
             ..ProptestConfig::default()
         })]
 
-        /// Checks that controllers in any order and on any channels, upgraded
-        /// and then parsed, mean what the model says.
-        ///
-        /// Each controller arrives in its own block, so `Upgrade` sends any
-        /// high byte that it holds at the end of that block.
+        /// Whatever order the controllers arrive in, on whichever channels,
+        /// upgraded and then parsed they mean what the model says. Each
+        /// arrives in a block of its own.
         #[test]
         fn upgraded_midi_1_parses_as_a_model_of_midi_1_0_reads_it(
             changes in proptest::collection::vec(control_change(), 0..48),
@@ -329,7 +327,7 @@ mod tests {
                 let message = Midi1Message::ControlChange { controller, value };
                 let event = Midi1Voice { group, channel, message }.event(0);
                 upgraded.clear();
-                upgrade.block(&[event], 0, &mut upgraded);
+                upgrade.block(&[event], &mut upgraded);
                 let parsed: Vec<Message> = upgraded.as_slice().iter().filter_map(parse).collect();
                 let expected: Vec<Message> = model(history)
                     .map(|(control, value)| Message {

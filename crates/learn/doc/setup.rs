@@ -14,7 +14,7 @@
 #         sent.push(Midi1Voice { group: 0, channel: 0, message }.event(0));
 #     }
 #     let mut events = EventList::with_capacity(16);
-#     upgrade.block(sent.as_slice(), 0, &mut events);
+#     upgrade.block(sent.as_slice(), &mut events);
 #     events
 # };
 # // A target that does nothing, for the examples that only register one:

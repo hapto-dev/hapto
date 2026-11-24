@@ -292,8 +292,8 @@ impl Custom {
 /// let gain = set.ids().next().expect("one parameter");
 /// let (mut learn, mut audio) = Learn::new(&set, Config::default());
 ///
-/// // One block of MIDI 1.0 control changes from (controller, value) pairs,
-/// // upgraded as an exporter does.
+/// // One block of MIDI 1.0 control changes, as (controller, value) pairs,
+/// // upgraded to the MIDI 2.0 learn reads, as an exporter does.
 /// let mut upgrade = Upgrade::new();
 /// let mut block = |changes: &[(u8, u8)]| {
 ///     let mut sent = EventList::with_capacity(changes.len());
@@ -302,7 +302,7 @@ impl Custom {
 ///         sent.push(Midi1Voice { group: 0, channel: 0, message }.event(0));
 ///     }
 ///     let mut events = EventList::with_capacity(changes.len());
-///     upgrade.block(sent.as_slice(), 0, &mut events);
+///     upgrade.block(sent.as_slice(), &mut events);
 ///     events
 /// };
 ///

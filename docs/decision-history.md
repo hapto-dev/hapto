@@ -1308,6 +1308,14 @@ passed a MIDI 2.0 packet of a reserved status on to a MIDI 1.0 destination,
 uncounted, though section 3.2.1.2 of the specification keeps message type 4
 from a MIDI 1.0 device. It is dropped and counted since.
 
+Until 2026-11-24 the upgrade held a high byte sent alone until its low byte,
+another parameter-number message or the end of the block. A review of the MIDI
+branches that day found that the channel's later notes and bends overtook it,
+an MPE zone's configuration among them, and that the host's block size moved
+it. Its audit recommended sending the high byte at once, the alternative the
+record had turned down, and the owner took it; the record holds it "to
+confirm".
+
 ## Rules
 
 ### P7. The host write: sanitise, clamp, convert, snap, store, publish

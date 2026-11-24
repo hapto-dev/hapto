@@ -14,6 +14,6 @@ pub(crate) fn upgraded_cc(controller: u8, value: u8) -> EventList {
     }
     .event(0);
     let mut events = EventList::with_capacity(1);
-    Upgrade::new().block(&[sent], 0, &mut events);
+    Upgrade::new().block(&[sent], &mut events);
     events
 }

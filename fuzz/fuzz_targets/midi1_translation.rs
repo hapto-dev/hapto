@@ -1,16 +1,15 @@
-//! Fuzzes upgrading a host's MIDI 1.0, cut into blocks anywhere, as an
-//! exporter does, then downgrading it for a MIDI 1.0-only destination and
-//! upgrading it again. It checks these properties:
-//! - Nothing panics, and nothing is dropped or lost.
-//! - Every upgraded packet has a MIDI 1.0 origin.
-//! - The second upgrade gives the first one's packets at the same frames,
-//!   however the blocks split a data entry that the upgrade holds.
+//! A host's MIDI 1.0, cut into blocks anywhere, upgraded as an exporter
+//! upgrades it, downgraded for a destination that takes MIDI 1.0 alone, and
+//! upgraded again. Nothing panics, nothing is dropped or lost, every packet
+//! the upgrade makes says it came from MIDI 1.0, and the second upgrade gives
+//! the first one's packets at the same frames: a fixpoint, however the blocks
+//! cut a data entry.
 #![no_main]
 
 use hapto_ump::{Downgrade, Event, EventList, Midi1Message, Midi1Voice, Origin, Upgrade};
 use libfuzzer_sys::fuzz_target;
 
-/// The frame at which a block's held high bytes are sent.
+/// A block's last frame, which every message past it shares.
 const LAST_FRAME: u32 = 63;
 
 /// Builds blocks of messages from `data`, four bytes to a message:
@@ -62,9 +61,8 @@ fn upgrade(sent: &[Vec<Event>]) -> Vec<Vec<Event>> {
     let mut upgrade = Upgrade::new();
     sent.iter()
         .map(|block| {
-            // Room for each message and a held high byte per group and channel.
-            let mut out = EventList::with_capacity(block.len() + 256);
-            upgrade.block(block, LAST_FRAME, &mut out);
+            let mut out = EventList::with_capacity(block.len());
+            upgrade.block(block, &mut out);
             assert_eq!(out.dropped(), 0);
             out.as_slice().to_vec()
         })

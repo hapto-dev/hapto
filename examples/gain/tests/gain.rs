@@ -193,7 +193,7 @@ fn a_learned_controller_drives_the_gain() {
             message,
         }
         .event(0);
-        Upgrade::new().block(&[sent], 0, &mut events);
+        Upgrade::new().block(&[sent], &mut events);
         events
     };
     let mut run = |processor: &mut _, events: &EventList| {

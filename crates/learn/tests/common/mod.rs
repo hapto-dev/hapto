@@ -80,7 +80,7 @@ pub(crate) fn upgraded(upgrade: &mut Upgrade, sent: &[Event]) -> EventList {
         .map(|(event, offset)| Event { offset, ..*event })
         .collect();
     let mut events = EventList::with_capacity(sent.len() + 256);
-    upgrade.block(&sent, sent.len() as u32, &mut events);
+    upgrade.block(&sent, &mut events);
     events
 }
 

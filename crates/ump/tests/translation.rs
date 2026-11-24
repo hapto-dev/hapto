@@ -8,8 +8,6 @@ use hapto_ump::{
     Midi1Voice, Origin, Upgrade, scale,
 };
 
-const LAST_FRAME: u32 = 63;
-
 fn one(message: Midi1Message) -> Midi1Voice {
     Midi1Voice {
         group: 0,
@@ -29,7 +27,7 @@ fn upgrade(upgrade: &mut Upgrade, sent: &[(u32, Midi1Voice)]) -> Vec<(u32, Chann
         .map(|(frame, voice)| voice.event(*frame))
         .collect();
     let mut out = EventList::with_capacity(64);
-    upgrade.block(&input, LAST_FRAME, &mut out);
+    upgrade.block(&input, &mut out);
     out.as_slice()
         .iter()
         .map(|event| {
@@ -119,7 +117,7 @@ fn a_fourteen_bit_controller_pair_stays_two_controllers() {
 }
 
 #[test]
-fn an_nrpn_goes_out_when_its_low_byte_arrives() {
+fn an_nrpn_s_low_byte_at_a_later_frame_refines_its_high_byte() {
     let sent = [
         (0, cc(99, 2)),
         (0, cc(98, 5)),
@@ -128,18 +126,18 @@ fn an_nrpn_goes_out_when_its_low_byte_arrives() {
     ];
     assert_eq!(
         upgrade(&mut Upgrade::new(), &sent),
-        [(9, assignable(2, 5, 100 << 7 | 3))]
+        [
+            (4, assignable(2, 5, 100 << 7)),
+            (9, assignable(2, 5, 100 << 7 | 3)),
+        ]
     );
 }
 
 #[test]
-fn a_high_byte_alone_goes_out_at_the_end_of_its_block() {
+fn a_high_byte_alone_goes_out_at_its_own_frame() {
     let mut up = Upgrade::new();
     let sent = [(0, cc(99, 2)), (0, cc(98, 5)), (4, cc(6, 100))];
-    assert_eq!(
-        upgrade(&mut up, &sent),
-        [(LAST_FRAME, assignable(2, 5, 100 << 7))]
-    );
+    assert_eq!(upgrade(&mut up, &sent), [(4, assignable(2, 5, 100 << 7))]);
     // A low byte in the next block refines it.
     assert_eq!(
         upgrade(&mut up, &[(2, cc(38, 3))]),
@@ -154,8 +152,8 @@ fn a_high_byte_sent_alone_is_marked_apart_from_a_low_byte_of_0() {
     let mut up = Upgrade::new();
     let mut out = EventList::with_capacity(4);
     let high = [cc(99, 2).event(0), cc(98, 5).event(0), cc(6, 64).event(1)];
-    up.block(&high, LAST_FRAME, &mut out);
-    up.block(&[cc(38, 0).event(0)], LAST_FRAME, &mut out);
+    up.block(&high, &mut out);
+    up.block(&[cc(38, 0).event(0)], &mut out);
     let [alone, refined] = out.as_slice() else {
         panic!("two messages: {:?}", out.as_slice());
     };
@@ -164,20 +162,171 @@ fn a_high_byte_sent_alone_is_marked_apart_from_a_low_byte_of_0() {
             (alone.offset, alone.origin),
             (refined.offset, refined.origin)
         ],
-        [(LAST_FRAME, Origin::Midi1HighByte), (0, Origin::Midi1)]
+        [(1, Origin::Midi1HighByte), (0, Origin::Midi1)]
     );
     assert_eq!(alone.words, refined.words);
 }
 
 #[test]
-fn another_high_byte_or_a_new_address_ends_the_one_held() {
+fn a_low_byte_joins_its_high_byte_only_as_the_packet_just_sent() {
+    // Another channel's note between the two at their frame: the high byte
+    // has gone out before the note, so its low byte refines it after.
+    let other = Midi1Voice {
+        channel: 1,
+        ..one(Midi1Message::NoteOn {
+            note: 60,
+            velocity: 100,
+        })
+    };
+    let sent = [cc(99, 2), cc(98, 5), cc(6, 10), other, cc(38, 3)];
+    let input: Vec<Event> = sent.iter().map(|voice| voice.event(3)).collect();
+    let mut out = EventList::with_capacity(8);
+    Upgrade::new().block(&input, &mut out);
+    let origins: Vec<Origin> = out.as_slice().iter().map(|event| event.origin).collect();
+    assert_eq!(
+        origins,
+        [Origin::Midi1HighByte, Origin::Midi1, Origin::Midi1]
+    );
+    let last = out.as_slice().last().and_then(Event::channel_voice);
+    assert_eq!(
+        last.map(|voice| voice.message),
+        Some(assignable(2, 5, 10 << 7 | 3))
+    );
+}
+
+/// Upgrades `sent`, each a MIDI 1.0 message at a frame of the stream, in
+/// blocks of `frames`, and returns every packet at its frame in the stream.
+fn upgrade_in_blocks(sent: &[(u32, Midi1Voice)], frames: u32) -> Vec<Event> {
+    let mut up = Upgrade::new();
+    let end = sent.iter().map(|(frame, _)| frame + 1).max().unwrap_or(0);
+    let mut upgraded = Vec::new();
+    for start in (0..end).step_by(frames as usize) {
+        let input: Vec<Event> = sent
+            .iter()
+            .filter(|(frame, _)| (start..start + frames).contains(frame))
+            .map(|(frame, voice)| voice.event(frame - start))
+            .collect();
+        let mut out = EventList::with_capacity(64);
+        up.block(&input, &mut out);
+        upgraded.extend(out.as_slice().iter().map(|event| Event {
+            offset: start + event.offset,
+            ..*event
+        }));
+    }
+    upgraded
+}
+
+#[test]
+fn a_high_byte_alone_goes_out_before_the_channel_s_later_messages() {
+    // A bend range of 12 set by its high byte alone, then a bend and a note,
+    // in a block of 512: the note bends by the new range.
+    let note = one(Midi1Message::NoteOn {
+        note: 60,
+        velocity: 100,
+    });
+    let sent = [
+        (0, cc(101, 0)),
+        (0, cc(100, 0)),
+        (1, cc(6, 12)),
+        (2, one(Midi1Message::PitchBend { value: 0x3FFF })),
+        (3, note),
+    ];
+    let upgraded = upgrade_in_blocks(&sent, 512);
+    let range = ChannelMessage::RegisteredController {
+        bank: 0,
+        index: 0,
+        value: scale::up_14_to_32(12 << 7),
+    };
+    let first = upgraded.first().map(|event| (event.offset, event.origin));
+    assert_eq!(first, Some((1, Origin::Midi1HighByte)));
+    let messages: Vec<(u32, ChannelMessage)> = upgraded
+        .iter()
+        .map(|event| {
+            (
+                event.offset,
+                event.channel_voice().expect("MIDI 2.0").message,
+            )
+        })
+        .collect();
+    assert_eq!(
+        messages,
+        [
+            (1, range),
+            (2, ChannelMessage::PitchBend { value: u32::MAX }),
+            (
+                3,
+                ChannelMessage::NoteOn {
+                    note: 60,
+                    velocity: scale::up_7_to_16(100),
+                    attribute: Attribute::NONE
+                }
+            ),
+        ]
+    );
+}
+
+#[test]
+fn an_mpe_zone_s_configuration_goes_out_before_its_member_s_note() {
+    // The configuration is RPN 0/6 on the master channel with its high byte
+    // alone; the note it places comes on a member channel at the same frame.
+    let member = Midi1Voice {
+        channel: 1,
+        ..one(Midi1Message::NoteOn {
+            note: 60,
+            velocity: 100,
+        })
+    };
+    let sent = [
+        (0, cc(101, 0)),
+        (0, cc(100, 6)),
+        (0, cc(6, 15)),
+        (0, member),
+    ];
+    let order: Vec<(u32, u8, ChannelMessage)> = upgrade_in_blocks(&sent, 512)
+        .iter()
+        .map(|event| {
+            let voice = event.channel_voice().expect("MIDI 2.0");
+            (event.offset, voice.channel, voice.message)
+        })
+        .collect();
+    let configuration = ChannelMessage::RegisteredController {
+        bank: 0,
+        index: 6,
+        value: scale::up_14_to_32(15 << 7),
+    };
+    let note = ChannelMessage::NoteOn {
+        note: 60,
+        velocity: scale::up_7_to_16(100),
+        attribute: Attribute::NONE,
+    };
+    assert_eq!(order, [(0, 0, configuration), (0, 1, note)]);
+}
+
+#[test]
+fn a_pair_a_block_cuts_goes_out_as_one_block_sends_it() {
+    let sent = [
+        (0, cc(99, 2)),
+        (0, cc(98, 5)),
+        (3, cc(6, 10)),
+        (5, cc(38, 3)),
+    ];
+    let whole = upgrade_in_blocks(&sent, 8);
+    assert_eq!(upgrade_in_blocks(&sent, 4), whole);
+    // The high byte at its own frame, then its low byte refining it.
+    let sent_at: Vec<(u32, Origin)> = whole
+        .iter()
+        .map(|event| (event.offset, event.origin))
+        .collect();
+    assert_eq!(sent_at, [(3, Origin::Midi1HighByte), (5, Origin::Midi1)]);
+}
+
+#[test]
+fn each_high_byte_goes_out_at_its_frame_under_the_address_it_was_sent_under() {
     let sent = [
         (0, cc(99, 2)),
         (0, cc(98, 5)),
         (1, cc(6, 10)),
-        // A second high byte makes the upgrade send the first.
         (2, cc(6, 20)),
-        // A new address makes the upgrade send the second, under the old one.
         (3, cc(99, 7)),
         (3, cc(98, 1)),
         (4, cc(6, 30)),
@@ -185,9 +334,9 @@ fn another_high_byte_or_a_new_address_ends_the_one_held() {
     assert_eq!(
         upgrade(&mut Upgrade::new(), &sent),
         [
-            (2, assignable(2, 5, 10 << 7)),
-            (3, assignable(2, 5, 20 << 7)),
-            (LAST_FRAME, assignable(7, 1, 30 << 7)),
+            (1, assignable(2, 5, 10 << 7)),
+            (2, assignable(2, 5, 20 << 7)),
+            (4, assignable(7, 1, 30 << 7)),
         ]
     );
 }
@@ -260,7 +409,7 @@ fn an_address_sent_again_keeps_its_high_byte_for_the_low_byte() {
     assert_eq!(
         upgrade(&mut up, &sent),
         [
-            (2, assignable(2, 5, 100 << 7)),
+            (1, assignable(2, 5, 100 << 7)),
             (3, assignable(2, 5, 100 << 7 | 3)),
         ]
     );
@@ -310,7 +459,7 @@ fn the_null_number_and_a_lone_data_entry_send_nothing() {
 }
 
 #[test]
-fn reset_all_controllers_sends_what_is_held_then_forgets_the_address() {
+fn reset_all_controllers_forgets_the_address() {
     let sent = [
         (0, cc(99, 2)),
         (0, cc(98, 5)),
@@ -321,7 +470,7 @@ fn reset_all_controllers_sends_what_is_held_then_forgets_the_address() {
     assert_eq!(
         upgrade(&mut Upgrade::new(), &sent),
         [
-            (2, assignable(2, 5, 10 << 7)),
+            (1, assignable(2, 5, 10 << 7)),
             (
                 2,
                 ChannelMessage::ControlChange {
@@ -356,20 +505,20 @@ fn increment_and_decrement_are_controllers_of_their_own() {
             ),
         ]
     );
-    // A held high byte goes out first, so a MIDI 1.0 receiver steps the value
-    // that it sets, not the one before.
+    // A high byte goes out at its own frame, before the step, so a MIDI 1.0
+    // receiver steps the value it sets rather than the one before.
     let sent = [
         (0, cc(99, 2)),
         (0, cc(98, 5)),
         (1, cc(6, 100)),
-        (2, cc(96, 1)),
+        (1, cc(96, 1)),
     ];
     assert_eq!(
         upgrade(&mut Upgrade::new(), &sent),
         [
-            (2, assignable(2, 5, 100 << 7)),
+            (1, assignable(2, 5, 100 << 7)),
             (
-                2,
+                1,
                 ChannelMessage::ControlChange {
                     controller: 96,
                     value: up
@@ -445,12 +594,12 @@ fn groups_and_channels_keep_their_own_state() {
     ];
     assert_eq!(
         upgrade(&mut Upgrade::new(), &sent),
-        [(LAST_FRAME, assignable(2, 5, 10 << 7))]
+        [(3, assignable(2, 5, 10 << 7))]
     );
 }
 
 #[test]
-fn every_channel_still_holding_a_high_byte_sends_it_at_the_end_of_the_block() {
+fn a_low_byte_refines_its_own_channel_s_high_byte() {
     let on = |group, channel, voice: Midi1Voice| Midi1Voice {
         group,
         channel,
@@ -460,15 +609,15 @@ fn every_channel_still_holding_a_high_byte_sends_it_at_the_end_of_the_block() {
     for (frame, (group, channel, high)) in (0..).zip([(3, 9, 30), (0, 15, 20), (0, 4, 10)]) {
         sent.extend([cc(99, 2), cc(98, 5), cc(6, high)].map(|cc| (frame, on(group, channel, cc))));
     }
-    // The low byte completes one data entry. The other two go out at the end
-    // of the block, ordered by group and then channel.
+    // Each high byte at its frame, then the low byte of one of them.
     sent.push((5, on(0, 15, cc(38, 1))));
     assert_eq!(
         upgrade(&mut Upgrade::new(), &sent),
         [
+            (0, assignable(2, 5, 30 << 7)),
+            (1, assignable(2, 5, 20 << 7)),
+            (2, assignable(2, 5, 10 << 7)),
             (5, assignable(2, 5, 20 << 7 | 1)),
-            (LAST_FRAME, assignable(2, 5, 10 << 7)),
-            (LAST_FRAME, assignable(2, 5, 30 << 7)),
         ]
     );
 }
@@ -478,7 +627,7 @@ fn other_packets_pass_as_they_are() {
     let midi2 = Event::new(0, [0x40B0_0700, 1, 0, 0]);
     let sysex = Event::new(1, [0x3016_7E7F, 0x0D70_0201, 0, 0]);
     let mut out = EventList::with_capacity(4);
-    Upgrade::new().block(&[midi2, sysex], LAST_FRAME, &mut out);
+    Upgrade::new().block(&[midi2, sysex], &mut out);
     assert_eq!(out.as_slice(), [midi2, sysex]);
 }
 
@@ -682,7 +831,7 @@ fn midi_1_comes_back_from_midi_2_as_it_was_sent() {
     for sent in every_midi_1_message() {
         let input: Vec<Event> = sent.iter().map(|&message| one(message).event(0)).collect();
         let mut upgraded = EventList::with_capacity(8);
-        up.block(&input, LAST_FRAME, &mut upgraded);
+        up.block(&input, &mut upgraded);
         let mut back = EventList::with_capacity(8);
         down.block(upgraded.as_slice(), &mut back);
         let back: Vec<Midi1Message> = back
@@ -704,7 +853,7 @@ fn a_note_on_at_velocity_0_comes_back_as_its_equivalent() {
     })
     .event(0)];
     let mut upgraded = EventList::with_capacity(2);
-    Upgrade::new().block(&sent, LAST_FRAME, &mut upgraded);
+    Upgrade::new().block(&sent, &mut upgraded);
     let mut back = EventList::with_capacity(2);
     Downgrade::new().block(upgraded.as_slice(), &mut back);
     let message = back.as_slice()[0].midi1_voice().map(|voice| voice.message);

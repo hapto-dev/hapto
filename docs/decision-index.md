@@ -751,7 +751,7 @@ move its line here; when a decision gains code, add one.
 - `crates/ump/src/upgrade.rs`: module, `Numbers::address_byte`, `Numbers::control`, `Numbers::unpaired`, `Numbers::high`, `Number`, `Kind`, `Channel::control_change`, `NULL`
 - `crates/ump/src/controller.rs`: module, `RESET_ALL_CONTROLLERS`, `is_parameter_number`
 - test `crates/learn/src/parse.rs`: `upgraded_midi_1_parses_as_a_model_of_midi_1_0_reads_it`, `model`, `begins_an_address`
-- test `crates/ump/tests/translation.rs`: `an_address_reads_in_either_byte_order`, `the_null_number_and_a_lone_data_entry_send_nothing`, `reset_all_controllers_sends_what_is_held_then_forgets_the_address`, `a_low_byte_sent_first_waits_for_its_high_byte`, `an_address_sent_again_keeps_its_high_byte_for_the_low_byte`, `a_low_byte_never_takes_another_numbers_high_byte`
+- test `crates/ump/tests/translation.rs`: `an_address_reads_in_either_byte_order`, `the_null_number_and_a_lone_data_entry_send_nothing`, `reset_all_controllers_forgets_the_address`, `a_low_byte_sent_first_waits_for_its_high_byte`, `an_address_sent_again_keeps_its_high_byte_for_the_low_byte`, `a_low_byte_never_takes_another_numbers_high_byte`
 - test `crates/learn/tests/capture.rs`: `a_14_bit_controller_pair_learns_its_high_byte`, `a_controller_32_to_63_learns_itself_a_tick_later_unless_its_high_byte_came_just_before`, `an_arm_between_a_pairs_halves_waits_through_polls_and_learns_the_high_byte_that_follows`, `a_capture_held_back_between_a_high_byte_and_its_low_byte_stops_the_pairing`, `data_increment_and_decrement_are_never_learned`
 - test `crates/learn/tests/dispatch.rs`: `the_null_parameter_number_selects_nothing`, `a_data_entry_low_byte_sent_first_waits_for_its_high_byte`, `a_waiting_low_byte_waits_for_its_own_numbers_high_byte`, `an_address_sent_again_keeps_what_its_data_entry_holds`, `a_new_address_high_byte_forgets_the_old_low_byte`, `reset_all_controllers_forgets_the_address`, `an_nrpn_address_selects_its_number_whichever_byte_comes_first`, `juces_rpn_generator_reaches_its_nrpn_with_or_without_the_low_byte`, `a_lone_high_byte_never_pairs_with_a_low_byte_from_before_a_data_entry`, `data_increment_and_decrement_use_the_address_and_drive_nothing`, `the_parameter_number_controllers_never_bind`
 
@@ -1367,14 +1367,14 @@ move its line here; when a decision gains code, add one.
 - `crates/ump/src/lib.rs`: module, `Origin`
 - `crates/ump/src/voice.rs`: `ChannelVoice`, `ChannelMessage`
 - `crates/ump/src/midi1.rs`: module, `Midi1Voice`, `Midi1Message`
-- `crates/ump/src/upgrade.rs`: module, `Upgrade`, `Numbers::control`, `Channel::translate`, `Entry::send`
+- `crates/ump/src/upgrade.rs`: module, `Upgrade`, `Numbers::control`, `Channel::translate`, `Sender::refine`, `Entry::message`
 - `crates/ump/src/downgrade.rs`: module, `Downgrade`
 - `crates/ump/src/scale.rs`: module
 - `crates/ump/src/bytes.rs`: module, `ByteStream`, `Bytes`
 - `crates/learn/src/parse.rs`: module, `parse`, `Value::nrpn`, `Value::normalized`
 - `crates/learn/src/source.rs`: `Control::Cc`
-- test `crates/ump/tests/translation.rs`: module, `midi_1_comes_back_from_midi_2_as_it_was_sent`, `a_high_byte_alone_goes_out_at_the_end_of_its_block`, `a_high_byte_sent_alone_is_marked_apart_from_a_low_byte_of_0`, `bank_select_is_held_for_the_program_change_that_carries_it`, `a_bank_byte_sent_alone_selects_a_bank_with_its_partner_at_0`, `increment_and_decrement_are_controllers_of_their_own`, `what_midi_1_cannot_carry_is_dropped_and_counted`, `a_midi_2_packet_of_a_reserved_status_is_dropped_and_counted`, `the_types_a_midi_1_destination_takes_in_ump_pass_as_they_are`
-- test `crates/ump/tests/streams.rs`: module, `what_the_downgrade_sends_upgrades_to_the_same_messages`, `a_receiver_of_the_downgrade_ends_each_block_where_the_sender_put_it`
+- test `crates/ump/tests/translation.rs`: module, `midi_1_comes_back_from_midi_2_as_it_was_sent`, `a_high_byte_alone_goes_out_at_its_own_frame`, `a_high_byte_alone_goes_out_before_the_channel_s_later_messages`, `an_mpe_zone_s_configuration_goes_out_before_its_member_s_note`, `a_pair_a_block_cuts_goes_out_as_one_block_sends_it`, `a_low_byte_joins_its_high_byte_only_as_the_packet_just_sent`, `a_high_byte_sent_alone_is_marked_apart_from_a_low_byte_of_0`, `bank_select_is_held_for_the_program_change_that_carries_it`, `a_bank_byte_sent_alone_selects_a_bank_with_its_partner_at_0`, `increment_and_decrement_are_controllers_of_their_own`, `what_midi_1_cannot_carry_is_dropped_and_counted`, `a_midi_2_packet_of_a_reserved_status_is_dropped_and_counted`, `the_types_a_midi_1_destination_takes_in_ump_pass_as_they_are`
+- test `crates/ump/tests/streams.rs`: module, `what_the_downgrade_sends_upgrades_to_the_same_messages`, `a_receiver_of_the_downgrade_ends_each_block_where_the_sender_put_it`, `any_stream_cut_into_blocks_anywhere_upgrades_as_one_block_does`
 - test `crates/ump/tests/bytes.rs`: module, `a_stream_reads_as_its_messages_however_it_is_cut`, `real_time_bytes_anywhere_leave_the_rest_alone`, `a_sysex_of_every_length_goes_out_six_bytes_at_a_time_and_writes_back`
 - test `crates/learn/src/parse.rs`: `upgraded_midi_1_parses_as_a_model_of_midi_1_0_reads_it`
 - test `crates/learn/tests/dispatch.rs`: `a_coarse_binding_reads_a_high_byte_as_seven_bit_and_ignores_low_bytes`, `every_fourteen_bit_nrpn_value_reads_centre_anchored_fine_or_coarse`

@@ -35,12 +35,11 @@ pub struct Midi1Voice {
 /// ```
 /// use hapto_ump::{ChannelMessage, EventList, Midi1Message, Midi1Voice, Upgrade};
 ///
-/// // MIDI 1.0 treats a note-on with velocity 0 as a note-off, so `Upgrade`
-/// // sends a note-off.
+/// // MIDI 1.0 reads a velocity of 0 as a note-off, and the upgrade sends one.
 /// let message = Midi1Message::NoteOn { note: 60, velocity: 0 };
 /// let quiet = Midi1Voice { group: 0, channel: 0, message };
 /// let mut out = EventList::with_capacity(4);
-/// Upgrade::new().block(&[quiet.event(0)], 0, &mut out);
+/// Upgrade::new().block(&[quiet.event(0)], &mut out);
 /// let upgraded = out.as_slice()[0].channel_voice().map(|voice| voice.message);
 /// assert!(matches!(upgraded, Some(ChannelMessage::NoteOff { note: 60, .. })));
 /// ```

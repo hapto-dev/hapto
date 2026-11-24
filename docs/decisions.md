@@ -66,7 +66,7 @@ comments never cite an id: they state the reason in words, and
 | D27 | [What runs the generator? (B3)](#d27-what-runs-the-generator) | An xtask: `cargo xtask gen` writes every file the repository generates. A plugin's own page map is its own test's, which `cargo hapto` runs (D109). | decided |
 | D28 | [Which threads may make a program write? (P6, P11)](#d28-threads-that-may-make-a-program-write) | An edit runs on the UI thread only and joins the parameter's gesture count. A sync runs on any thread but audio. | decided |
 | D29 | [Do plain values have gestures? (U3, U4, U5, U16, L7)](#d29-gestures-on-plain-values) | Yes. A plain value has its own gesture count and token, so one drag on any control is one undo step. | decided |
-| D30 | [An NRPN data entry sent with only its high byte. (L2)](#d30-an-nrpn-data-entry-with-only-its-high-byte) | A high byte alone dispatches the 14-bit value with the low byte at 0 at the end of its block, and a low byte that follows refines it. A binding whose capture saw no low byte scales the high byte as 7-bit instead. | decided |
+| D30 | [An NRPN data entry sent with only its high byte. (L2)](#d30-an-nrpn-data-entry-with-only-its-high-byte) | A high byte alone dispatches the 14-bit value with the low byte at 0 at its own frame, and a low byte that follows refines it. A binding whose capture saw no low byte scales the high byte as 7-bit instead. | decided |
 | D31 | [What identifies a parameter to VST3, CLAP and AU hosts: its declaration index or a hash of its key? (P10, H5)](#d31-what-identifies-a-parameter-to-hosts) | A hash of the key, so a later version of a plugin can insert, reorder, regroup or remove parameters without orphaning automation. The hash function is fixed forever. | decided |
 | D32 | [When does the host hear that a user's gesture began? (P6, P11)](#d32-when-the-host-hears-a-gesture-begin) | When it opens, so a touch held still reaches the host and Touch and Latch modes hold the value. A program edit and a replay open only on a changing write. | decided |
 | D33 | [Undo or redo requested while a user gesture is open? (U8, U11, U12)](#d33-undo-during-a-user-gesture) | Refused with `HistoryError::GestureOpen` until the gesture closes. | decided |
@@ -150,7 +150,7 @@ comments never cite an id: they state the reason in words, and
 | D111 | [How does a plugin's author see it through a plugin format while working on it, with no real host? (D109, D110)](#d111-the-dev-host) | The standalone app's dev host: the plugin through Hapto's own VST3 and C interface test hosts, in process, its editor as the exporter's view below a bar that names the format, with a settings window of what the host sees, a tab each. It changes the sample rate, of those the device takes, and the most frames a block holds by reactivating the plugin as a host does, cuts blocks by a plan, and logs what the plugin tells the host. A switch of format starts the app again with the saved block, and a block the plugin refused is kept for the next run. It stands in for no real host. | to confirm |
 | D112 | [How does a processor see its block's audio, and the widths it runs at? (D23, D97)](#d112-the-blocks-audio-and-the-layout-as-a-type) | As a type: `Processor::Layout` names the main bus's channels, a `Bus<IN, OUT>` at one width, with `Mono`, `Stereo` and the like for the common ones, or `AnyLayout` at each width `PluginInfo::layouts` lists. `Block::audio` lends the channels as `Audio`, walked by frame or by channel with no index or frame count, and in a `Bus` both are arrays that destructure. `Width` counts channels at run time, and `AudioBuf` owns audio for tests. | decided |
 | D113 | [Where do the audio types live? (D112)](#d113-the-audio-types-crate) | In `hapto-audio`, a core crate of layer 1 beside `hapto-params` and `hapto-ump`, which `hapto-host` re-exports, so code that only writes audio, such as a voice, needs no host. | decided |
-| D114 | [Which MIDI does Hapto pass inside, and how does MIDI 1.0 reach it? (D10, D23, D70)](#d114-midi-20-inside) | MIDI 2.0: `ChannelVoice` reads and writes MIDI 2.0's channel voice messages alone. An exporter upgrades MIDI 1.0 on the way in with `Upgrade`, and downgrades with `Downgrade` only for a destination that takes MIDI 1.0 alone, both by the specification's Default Translation. Each packet keeps its `Origin`, so learn reads a value upgraded from MIDI 1.0 at the width it was sent at. | decided |
+| D114 | [Which MIDI does Hapto pass inside, and how does MIDI 1.0 reach it? (D10, D23, D70)](#d114-midi-20-inside) | MIDI 2.0: `ChannelVoice` reads and writes MIDI 2.0's channel voice messages alone. An exporter upgrades MIDI 1.0 on the way in with `Upgrade`, and downgrades with `Downgrade` only for a destination that takes MIDI 1.0 alone, both by the specification's Default Translation. Each packet keeps its `Origin`, so learn reads a value upgraded from MIDI 1.0 at the width it was sent at. | to confirm |
 
 **Open.** D25 is held until `hapto-ci` needs it. It keeps its recommendation
 until decided, and no rule depends on it.
@@ -597,9 +597,9 @@ control is one undo step.
 `msb << 7`, as MIDI 1.0 specifies (a new high byte sets the low byte to 0), so a
 sender that never sends the low byte tops out at 0.99225.
 
-**Rust.** Follow MIDI 1.0: a high byte dispatches the 14-bit value with its low
-byte when one follows in its block, and otherwise at the end of the block with
-the low byte at 0, and a low byte a block later refines it (D114). A low byte
+**Rust.** Follow MIDI 1.0: a high byte dispatches the 14-bit value at its own
+frame, with its low byte when that comes at the same frame and otherwise with
+the low byte at 0, and a low byte at a later frame refines it (D114). A low byte
 sent before its number's high byte waits, and that high byte then dispatches
 with it (D70). A binding whose capture saw no low byte
 scales the high byte as 7-bit instead, so such a sender reaches 1.0. The binding
@@ -3533,16 +3533,17 @@ in with `Upgrade`, by the Default Translation in appendix D of the UMP and MIDI
 program change that carries their bank, and an RPN or NRPN becomes one
 registered or assignable controller.
 
-The upgrade holds a data entry high byte (6) until its low byte (38), another
-high byte, an address byte, data increment or decrement (96, 97) or the end of
-the block sends it, so a MIDI 1.0 receiver of the downgrade steps the value
-the high byte set. A pair one block carries becomes one message, a high byte
-alone goes out at the block's last frame with its low byte at 0, and a low
-byte a block later refines it. The null number (127, 127) translates to
-nothing, increment and decrement pass on as controllers, and the address and
-the departures from the Default Translation read as D70 states. A bank byte
-sent alone selects a bank with its partner at 0, since a program change carries
-the bank select values current.
+The upgrade sends a data entry high byte (6) at once, at its own frame, with
+its low byte at 0, so no later message overtakes it and a MIDI 1.0 receiver of
+the downgrade steps the value it set. A low byte (38) at the same frame joins
+it into one message, as the upgrade rewrites the packet it just sent, and one
+at a later frame refines it as a second. Nothing waits for a later message, so
+where a host cuts its blocks changes nothing: any stream, cut anywhere,
+upgrades to the same packets at the same frames. The null number (127, 127)
+translates to nothing, increment and decrement pass on as controllers, and the
+address and the departures from the Default Translation read as D70 states. A
+bank byte sent alone selects a bank with its partner at 0, since a program
+change carries the bank select values current.
 
 An exporter downgrades with `Downgrade` only for a destination that takes MIDI
 1.0 alone, by the same appendix. Values cut their low bits, a note-on that
@@ -3573,9 +3574,15 @@ byte arrived as a message of its own.
 
 **Alternatives.** The alternatives were both protocols inside, each in messages
 of its own, which leaves every reader two protocols to handle; MIDI 1.0 inside,
-which loses MIDI 2.0's widths and per-note messages; and an upgrade that sends
-a high byte at once and again with its low byte, which the specification's
-translation does not do and which sends two messages for one move.
+which loses MIDI 2.0's widths and per-note messages; an upgrade that holds a
+high byte until its low byte, another parameter-number message or the end of
+the block, the short timeout the specification allows, which lets the
+channel's later notes and bends overtake the parameter its sender set first
+and makes what a plugin hears depend on the host's block size; and a hold
+counted in frames across blocks, flushed before the group's next channel voice
+message, which keeps a pair spread over frames one message at about three
+times the code. Sending the high byte at once costs two messages for such a
+pair, as a MIDI 1.0 receiver of the sender sees it too.
 
 ## How to read this
 

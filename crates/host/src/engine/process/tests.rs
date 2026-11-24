@@ -179,7 +179,7 @@ pub(in crate::engine) fn upgraded_cc(offset: u32, controller: u8, value: u8) -> 
     }
     .event(offset);
     let mut upgraded = EventList::with_capacity(1);
-    Upgrade::new().block(&[sent], offset, &mut upgraded);
+    Upgrade::new().block(&[sent], &mut upgraded);
     *upgraded
         .as_slice()
         .first()

@@ -42,10 +42,13 @@ exporter.
   `Midi1Voice` reads and writes the MIDI 1.0 messages it translates;
   `Downgrade` translates back for a destination that takes MIDI 1.0 alone.
   Each `Event` keeps its `Origin`, and `scale` moves values between the
-  widths. Learn reads MIDI 2.0 alone: a MIDI 1.0 controller learns and plays
-  as before once upgraded, but for controllers 0 and 32, which select a bank.
-  A packet's message type is a `MessageType`, whose constants name the UMP
-  table's types and whose `words` replaces `packet_words`.
+  widths. An RPN or NRPN's data entry high byte goes out at its own frame, and
+  its low byte joins it there or refines it later, so where a host cuts its
+  blocks changes nothing. Learn reads MIDI 2.0 alone: a MIDI 1.0 controller
+  learns and plays as before once upgraded, but for controllers 0 and 32,
+  which select a bank. A packet's message type is a `MessageType`, whose
+  constants name the UMP table's types and whose `words` replaces
+  `packet_words`.
 
 ### Added
 
