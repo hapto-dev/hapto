@@ -2,6 +2,9 @@
 //! Translation in appendix D.2 of the UMP and MIDI 2.0 Protocol
 //! specification.
 
+use crate::controller::{
+    BANK_SELECT, BANK_SELECT_LSB, DATA_ENTRY, DATA_ENTRY_LSB, NRPN_LSB, NRPN_MSB, RPN_LSB, RPN_MSB,
+};
 use crate::scale::{down_16_to_7, down_32_to_7, down_32_to_14};
 use crate::{
     Attribute, Bank, ChannelMessage, ChannelVoice, Event, EventList, Midi1Message, Midi1Voice,
@@ -96,6 +99,14 @@ impl Downgrade {
             );
         };
         let cc = |controller: u8, value: u8| Midi1Message::ControlChange { controller, value };
+        let parameter =
+            |[msb, lsb]: [u8; 2], bank: u8, index: u8, value: u32, out: &mut EventList| {
+                let value = down_32_to_14(value);
+                send(cc(msb, bank), out);
+                send(cc(lsb, index), out);
+                send(cc(DATA_ENTRY, (value >> 7) as u8), out);
+                send(cc(DATA_ENTRY_LSB, (value & 0x7F) as u8), out);
+            };
         match message {
             ChannelMessage::NoteOn {
                 note,
@@ -127,8 +138,8 @@ impl Downgrade {
             }
             ChannelMessage::ProgramChange { program, bank } => {
                 if let Some(Bank { msb, lsb }) = bank {
-                    send(cc(0, msb), out);
-                    send(cc(32, lsb), out);
+                    send(cc(BANK_SELECT, msb), out);
+                    send(cc(BANK_SELECT_LSB, lsb), out);
                 }
                 send(Midi1Message::ProgramChange { program }, out);
             }
@@ -144,19 +155,11 @@ impl Downgrade {
                 },
                 out,
             ),
-            ChannelMessage::RegisteredController { bank, index, value }
-            | ChannelMessage::AssignableController { bank, index, value } => {
-                let (high, low) = if matches!(message, ChannelMessage::RegisteredController { .. })
-                {
-                    (101, 100)
-                } else {
-                    (99, 98)
-                };
-                let value = down_32_to_14(value);
-                send(cc(high, bank), out);
-                send(cc(low, index), out);
-                send(cc(6, (value >> 7) as u8), out);
-                send(cc(38, (value & 0x7F) as u8), out);
+            ChannelMessage::RegisteredController { bank, index, value } => {
+                parameter([RPN_MSB, RPN_LSB], bank, index, value, out);
+            }
+            ChannelMessage::AssignableController { bank, index, value } => {
+                parameter([NRPN_MSB, NRPN_LSB], bank, index, value, out);
             }
             _ => self.lost = self.lost.saturating_add(1),
         }
