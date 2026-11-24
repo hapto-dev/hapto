@@ -23,7 +23,6 @@ use crate::Event;
 ///     other => panic!("{other:?} is no note"),
 /// }
 /// assert_eq!(MessageType::MIDI2.words(), 2);
-/// assert_eq!(MessageType::new(0x10), None);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct MessageType(u8);
@@ -50,16 +49,7 @@ impl MessageType {
     /// no group.
     pub const STREAM: Self = MessageType(0xF);
 
-    /// Returns the type numbered `value`, or `None` above 15.
-    pub const fn new(value: u8) -> Option<Self> {
-        if value <= 0xF {
-            Some(MessageType(value))
-        } else {
-            None
-        }
-    }
-
-    /// Returns the type of a packet whose first word is `first`.
+    /// The type of a packet whose first word is `first`.
     pub const fn of(first: u32) -> Self {
         MessageType((first >> 28) as u8)
     }

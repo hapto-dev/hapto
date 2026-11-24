@@ -29,11 +29,9 @@ const TABLE: [(u8, usize); 16] = [
 #[test]
 fn every_message_type_has_the_size_the_table_gives() {
     for (message_type, bits) in TABLE {
-        let words = MessageType::new(message_type).map(MessageType::words);
-        assert_eq!(words, Some(bits / 32), "{message_type:#X}");
-    }
-    for message_type in 16..=u8::MAX {
-        assert_eq!(MessageType::new(message_type), None, "{message_type:#X}");
+        let read = MessageType::of(u32::from(message_type) << 28);
+        assert_eq!(read.get(), message_type);
+        assert_eq!(read.words(), bits / 32, "{message_type:#X}");
     }
 }
 
