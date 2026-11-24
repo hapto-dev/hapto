@@ -603,7 +603,8 @@ refinement of it at a later frame (D114). It skips a high byte sent alone,
 which the upgrade sends at once with its low byte at 0, so a pair that a block
 cuts never dips to `msb << 7` between its halves; a sender that sends high
 bytes alone never moves it. A low byte sent before its number's high byte
-waits, and that high byte then dispatches with it (D70). A binding whose
+waits until the next address byte, and that high byte then dispatches with it
+(D70). A binding whose
 capture saw no low byte scales the high byte as 7-bit instead, so such a sender
 reaches 1.0. The binding records which, and the `midiLearn` section saves it
 from schema 1.
@@ -1595,7 +1596,8 @@ byte stays held when its address is sent again, so a low byte after it refines
 it, as the specification's Default Translation holds the latest high byte. The
 upgrade departs from that translation twice, so that one parameter's high byte
 never lands on another: a low byte never takes another number's high byte, and
-one sent before its own number's high byte waits for it.
+one sent before its own number's high byte waits for it, until the next address
+byte drops it, so it never pairs with a high byte a later address sends.
 
 A controller 32 to 63 that comes right after the controller 32 below it on the
 same group and channel, with no other capture between, learns that one, the

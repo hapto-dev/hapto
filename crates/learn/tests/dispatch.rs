@@ -279,14 +279,15 @@ fn a_partial_nrpn_sequence_is_dropped() {
 }
 
 #[test]
-fn an_address_sent_again_keeps_what_its_data_entry_holds() {
+fn an_address_sent_again_keeps_its_high_byte_and_forgets_a_low_byte_sent_first() {
     let mut rig = rig(1);
     rig.map(0, Source::any(Control::Nrpn(300)));
     let [high, low] = nrpn_address(300);
-    // A sender that names the address before every data byte.
+    // A sender that names the address before every data byte. A low byte
+    // sent first pairs only with the high byte right after its address.
     rig.block(&[high, low, cc(38, 5)]);
     rig.block(&[high, low, cc(6, 100)]);
-    assert_eq!(rig.value(0), stored(fourteen(100 << 7 | 5)));
+    assert_eq!(rig.value(0), UNTOUCHED, "5 is forgotten at the address");
     rig.block(&[high, low, cc(38, 7)]);
     assert_eq!(rig.value(0), stored(fourteen(100 << 7 | 7)));
 }

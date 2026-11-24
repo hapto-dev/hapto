@@ -393,6 +393,23 @@ fn a_low_byte_sent_first_waits_for_its_high_byte() {
 }
 
 #[test]
+fn a_low_byte_sent_first_is_forgotten_at_the_next_address_byte() {
+    // NRPN 2/5's low byte, whose high byte came before the upgrade began;
+    // another number's controller; a long wait; then 2/5's high byte. A
+    // MIDI 1.0 receiver of the sender holds (20, 0).
+    let mut up = Upgrade::new();
+    let early = [(0, cc(99, 2)), (0, cc(98, 5)), (0, cc(38, 3))];
+    assert_eq!(upgrade(&mut up, &early), []);
+    let other = [(0, cc(99, 7)), (0, cc(98, 1)), (1, cc(7, 100))];
+    assert_eq!(upgrade(&mut up, &other).len(), 1);
+    for _ in 0..1000 {
+        assert_eq!(upgrade(&mut up, &[]), []);
+    }
+    let high = [(0, cc(99, 2)), (0, cc(98, 5)), (4, cc(6, 20))];
+    assert_eq!(upgrade(&mut up, &high), [(4, assignable(2, 5, 20 << 7))]);
+}
+
+#[test]
 fn an_address_sent_again_keeps_its_high_byte_for_the_low_byte() {
     // The upgrade holds the latest data entry high byte (6), and a low byte
     // (38) goes out with it (appendix D.3.3).

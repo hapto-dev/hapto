@@ -507,6 +507,12 @@ Default Translation holds the latest high byte across addresses. The owner
 decided on 2026-11-23 to follow it for a number sent again and to keep the two
 departures that keep one parameter's high byte off another.
 
+From 2026-11-23 to 2026-11-24 a low byte sent before its high byte waited
+across any number of blocks and addresses, so it could join a high byte sent
+long after under the same number, a value its sender never set. A review of
+the MIDI branches found it; the owner took its audit's recommendations on
+2026-11-24, and an address byte drops it again, as before 2026-11-23.
+
 ### D71. Learn after an unreadable midiLearn section
 
 [The decision](decisions.md#d71-learn-after-an-unreadable-midilearn-section)

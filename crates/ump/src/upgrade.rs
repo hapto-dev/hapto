@@ -41,7 +41,8 @@ const NULL: u8 = 127;
 /// as the specification holds the latest high byte. The upgrade departs
 /// from the specification in two places, so that one parameter's high byte
 /// never lands on another: a low byte never takes the high byte of another
-/// number, and one sent before its own number's high byte waits for it.
+/// number, and one sent before its own number's high byte waits for it, until
+/// the next address byte.
 ///
 /// Other packets pass as they are. State is kept for every group and
 /// channel, made once and never grown, so [`block`](Self::block) allocates
@@ -141,7 +142,8 @@ struct Numbers {
     /// under another number never does.
     high: Option<Held>,
     /// A low byte that arrived before its number's high byte, which MIDI 1.0
-    /// allows, kept for that high byte.
+    /// allows; that high byte completes it, unless an address byte comes
+    /// first.
     early_low: Option<(Number, u8)>,
 }
 
@@ -220,7 +222,14 @@ impl Numbers {
     /// Controllers, sending what it completes.
     fn control(&mut self, controller: u8, value: u8, send: &mut Sender<'_>) {
         match controller {
-            NRPN_LSB..=RPN_MSB => self.address_byte(controller, value),
+            NRPN_LSB..=RPN_MSB => {
+                // A low byte sent first pairs with the high byte sent right
+                // after its address, never with one a later address sends:
+                // a MIDI 1.0 receiver would hold that one with a low byte
+                // of 0.
+                self.early_low = None;
+                self.address_byte(controller, value);
+            }
             DATA_ENTRY => {
                 self.unpaired = None;
                 // A low byte sent first is spent here, even by a data entry

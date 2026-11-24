@@ -139,37 +139,38 @@ mod tests {
 
     use super::*;
 
-    /// Returns what the last control change in `history` means under MIDI
-    /// 1.0, except where Hapto departs from it on purpose.
+    /// What the last of `history`, one channel's control changes in order,
+    /// means: MIDI 1.0's reading, except where Hapto departs from it on
+    /// purpose.
     ///
-    /// `history` is one channel's control changes in order. The model rereads
-    /// all of it for each message instead of keeping state, so it shares no
-    /// structure with `Upgrade` or the parser. MIDI 1.0 has these rules:
+    /// The reading goes over the whole history again for each message instead
+    /// of keeping state, so it shares no structure with the upgrade or the
+    /// parser.
     ///
-    /// - Controllers 99 and 98 each latch one byte of the NRPN number, in
-    ///   either order, and 101 and 100 latch the RPN number.
-    /// - Data entry applies to the number that the newest of the four
-    ///   selected. An address of 127 and 127 selects no number.
-    /// - Reset All Controllers (121) sets the number to null, as RP-015
-    ///   recommends.
-    /// - A data entry high byte (6) sets the low byte to zero, and a low byte
-    ///   (38) refines the held high byte.
+    /// MIDI 1.0: controllers 99 and 98 each latch one byte of the NRPN
+    /// number, in either order, and 101 and 100 the RPN's. Data entry is for
+    /// the number the newest of the four selected, and 127 and 127 select
+    /// nothing. Reset All Controllers (121) sets the number to null, as RP-015
+    /// recommends. A data entry high byte (6) sets the low byte to zero, and a
+    /// low byte (38) refines the high byte held.
     ///
-    /// Hapto's deviations, which `Upgrade` or the parser documents:
+    /// Hapto's deviations, each the upgrade's or the parser's documented
+    /// choice:
     ///
-    /// 1. An address high byte (99, 101) that begins an address clears the
+    /// 1. An address high byte (99, 101) that begins an address forgets the
     ///    latched low byte, which belonged to an address already used
     ///    ([`begins_an_address`]).
-    /// 2. A data entry low byte refines the newest high byte only if both
-    ///    were sent under the same number, however often the address was
-    ///    resent in between. Otherwise it is kept for the next high byte
-    ///    under its number. MIDI 1.0 would refine the receiver's own high
-    ///    byte for that number, but learn holds none.
-    /// 3. Increment and decrement (96, 97) drive nothing, because learn holds
-    ///    no value to step.
-    /// 4. Reset All Controllers also clears both latched bytes, so data entry
-    ///    after it needs a whole address. RP-015's null leaves both bytes at
-    ///    127, so a lone NRPN low byte (98) after it would select a number.
+    /// 2. A 38 refines the newest 6 only when that 6 was sent under the same
+    ///    number, however often the address was sent between. Otherwise it
+    ///    waits, and the next 6 carries it when no address byte comes
+    ///    between and the 6 is under its number. MIDI 1.0 would refine the
+    ///    receiver's own high byte for that number, which learn does not
+    ///    hold.
+    /// 3. Increment and decrement (96, 97) drive nothing, since learn holds no
+    ///    value to step.
+    /// 4. Reset All Controllers also forgets both latched bytes, so data entry
+    ///    after it waits for a whole address. RP-015's null leaves both bytes
+    ///    at 127, so a lone 98 after it would select a number.
     fn model(history: &[(u8, u8)]) -> Option<(Control, Value)> {
         let (&(controller, value), earlier) = history.split_last()?;
         if !matches!(controller, 6 | 38 | 96 | 97 | 98 | 99 | 100 | 101) {
@@ -202,10 +203,12 @@ mod tests {
                 },
             ));
         }
-        // The low byte is zero, as MIDI 1.0 says, unless deviation 2 kept one
-        // for this number, which is the newest after the previous high byte.
+        // Zero, as MIDI 1.0 says, unless deviation 2 holds a 38 for it: the
+        // newest 38 since the last 6 and the last address byte that came
+        // before its own number's high byte.
         let held = newest_high.and_then(under);
-        let start = newest_high.map_or(0, |at| at + 1);
+        let newest_address = earlier.iter().rposition(|&(c, _)| matches!(c, 98..=101));
+        let start = newest_high.max(newest_address).map_or(0, |at| at + 1);
         let early = (start..earlier.len())
             .rev()
             .filter(|&at| earlier[at].0 == 38)
