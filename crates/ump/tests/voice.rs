@@ -361,6 +361,15 @@ fn midi1_message() -> impl Strategy<Value = Midi1Message> {
     ]
 }
 
+/// The words of a packet of message type `kind`, every other bit any, so a
+/// reader meets bits no writer sets.
+fn words_of(kind: u32) -> impl Strategy<Value = [u32; 4]> {
+    any::<[u32; 4]>().prop_map(move |mut words| {
+        words[0] = (words[0] & 0x0FFF_FFFF) | (kind << 28);
+        words
+    })
+}
+
 proptest! {
     #![proptest_config(ProptestConfig {
         failure_persistence: Some(Box::new(FileFailurePersistence::Direct(
@@ -386,5 +395,22 @@ proptest! {
     ) {
         let voice = Midi1Voice { group, channel, message };
         prop_assert_eq!(Midi1Voice::decode(voice.words()), Some(voice));
+    }
+
+    /// Any MIDI 2.0 packet that reads as a message, whatever its unused and
+    /// reserved bits hold, writes back as words that read the same.
+    #[test]
+    fn any_midi_2_packet_reads_as_a_message_that_writes_back(words in words_of(4)) {
+        if let Some(voice) = ChannelVoice::decode(words) {
+            prop_assert_eq!(ChannelVoice::decode(voice.words()), Some(voice));
+        }
+    }
+
+    /// Any MIDI 1.0 packet the same.
+    #[test]
+    fn any_midi_1_packet_reads_as_a_message_that_writes_back(words in words_of(2)) {
+        if let Some(voice) = Midi1Voice::decode(words) {
+            prop_assert_eq!(Midi1Voice::decode(voice.words()), Some(voice));
+        }
     }
 }
