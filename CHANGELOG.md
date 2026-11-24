@@ -37,8 +37,8 @@ exporter.
   beyond the main one can join it later without breaking a caller.
 - **Breaking.** MIDI is MIDI 2.0 inside. `ChannelVoice` reads and writes MIDI
   2.0's channel voice messages alone, a `ChannelMessage` for each status MIDI
-  2.0 has, and `Voice` with its MIDI 1.0 variants is gone. An exporter runs
-  `Upgrade` over each block, by the specification's Default Translation, and
+  2.0 has, and `Voice` with its MIDI 1.0 variants is gone. MIDI 1.0 becomes
+  MIDI 2.0 through `Upgrade`, by the specification's Default Translation, and
   `Midi1Voice` reads and writes the MIDI 1.0 messages it translates;
   `Downgrade` translates back for a destination that takes MIDI 1.0 alone.
   Each `Event` keeps its `Origin`, and `scale` moves values between the

@@ -18,8 +18,11 @@ use crate::{
 /// low bits off. A note-on that would cut to velocity 0, which MIDI 1.0
 /// reads as a note-off, goes out at velocity 1. A registered or assignable
 /// controller becomes its four controllers (101 and 100, or 99 and 98, then
-/// 6 and 38), and a program change with a bank becomes bank select (0 and
-/// 32) and then the program.
+/// 6 and 38), even one upgraded from a high byte sent alone: a MIDI 1.0
+/// receiver reads its low byte of 0 as it reads none, and one that holds a
+/// high byte for its low byte, as [`Upgrade`](crate::Upgrade) does, takes
+/// it at the frame it was sent. A program change with a bank becomes bank
+/// select (0 and 32) and then the program.
 ///
 /// What MIDI 1.0 cannot carry is dropped and counted in
 /// [`lost`](Self::lost): relative controllers, per-note controllers, per-note

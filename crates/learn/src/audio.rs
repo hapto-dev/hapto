@@ -82,8 +82,8 @@ impl LearnAudio {
     /// a target is armed the newest legal message is staged for the poll to
     /// learn. The list is read and never changed, so a processor gets every
     /// packet as the exporter delivered it. Learn reads MIDI 2.0 alone, so
-    /// MIDI 1.0 goes through [`Upgrade`](hapto_ump::Upgrade) first, as an
-    /// exporter does. The [`LearnAudio`] example shows a block.
+    /// MIDI 1.0 goes through [`Upgrade`](hapto_ump::Upgrade) first. The
+    /// [`LearnAudio`] example shows a block.
     ///
     /// Thread: audio.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
