@@ -248,6 +248,11 @@ with `cargo doc -p hapto-host --features vst3,cabi,test-host
 - The audio thread never lets a store go. A typed parameter's drop asserts it
   is off the audio thread in a debug build, and a learn table that routes to
   a store drops on the UI thread.
+- Where a host cuts its blocks never changes what a plugin hears. A stage that
+  carries MIDI from one block to the next sends each message at its own frame
+  and keeps nothing back for a block's end, so a stream cut anywhere gives the
+  same messages at the same frames as one block does
+  ([`streams.rs`](crates/ump/tests/streams.rs) checks it for the upgrade).
 - Generated files (the page's protocol types, its test parameter map, `hapto.h`,
   the example EQ's JUCE settings) are committed and compared byte for byte in
   CI ([what runs the generator][generator], [keeping the header true][header]).
