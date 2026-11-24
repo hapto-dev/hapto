@@ -51,8 +51,9 @@ const NULL: u8 = 127;
 /// goes on as controllers 0 and 32 when it comes, which the specification
 /// carries in the program change alone and tells a MIDI 2.0 receiver to
 /// ignore: common controllers send a fader or a button on them, which a
-/// plugin can learn. [`Downgrade`](crate::Downgrade) sends a program change
-/// upgraded here without its bank, so MIDI 1.0 still comes back as sent.
+/// plugin can learn. Sent back down through
+/// [`Downgrade`](crate::Downgrade), MIDI 1.0 then repeats its bank select
+/// before each program change, which leaves a receiver on the same bank.
 ///
 /// Other packets pass as they are. State is kept for every group and
 /// channel, made once and never grown, so [`block`](Self::block) allocates

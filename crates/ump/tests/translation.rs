@@ -1,7 +1,8 @@
-//! Tests the Default Translation between MIDI 1.0 and MIDI 2.0 in appendix D
-//! of the UMP and MIDI 2.0 Protocol specification. It covers an exporter's
-//! upgrade on the way in, the downgrade on the way out, and the round trip,
-//! which must give back what MIDI 1.0 sent.
+//! Translating between MIDI 1.0 and MIDI 2.0 by the Default Translation in
+//! appendix D of the UMP and MIDI 2.0 Protocol specification: the upgrade
+//! an exporter makes on the way in, the downgrade on the way out, and the
+//! round trip that must give back what MIDI 1.0 sent, its bank select sent
+//! again before a program change.
 
 use hapto_ump::{
     Attribute, Bank, ChannelMessage, ChannelVoice, Downgrade, Event, EventList, Midi1Message,
@@ -767,30 +768,45 @@ fn a_controller_becomes_its_four_and_a_program_its_bank_first() {
 }
 
 #[test]
-fn a_program_change_upgraded_from_midi_1_goes_out_without_its_bank() {
-    // Its bank select went on as controllers of their own when it came, so
-    // sending it again with the program would send it twice.
-    let program = ChannelMessage::ProgramChange {
-        program: 6,
-        bank: Some(Bank { msb: 1, lsb: 2 }),
-    };
-    let upgraded = Event {
-        origin: Origin::Midi1,
-        ..ChannelVoice {
-            group: 0,
-            channel: 0,
-            message: program,
-        }
-        .event(0)
-    };
+fn a_program_change_from_midi_1_keeps_its_bank_when_its_controllers_are_dropped() {
+    // A processor that drops the controllers it does not read, 0 and 32
+    // among them, and passes the program change on: the program still goes
+    // out on its bank.
+    let sent = [
+        cc(0, 1),
+        cc(32, 2),
+        one(Midi1Message::ProgramChange { program: 6 }),
+    ];
+    let input: Vec<Event> = sent.iter().map(|voice| voice.event(0)).collect();
+    let mut upgraded = EventList::with_capacity(4);
+    Upgrade::new().block(&input, &mut upgraded);
+    let program: Vec<Event> = upgraded
+        .as_slice()
+        .iter()
+        .filter(|event| {
+            !matches!(
+                event.channel_voice().map(|voice| voice.message),
+                Some(ChannelMessage::ControlChange { .. })
+            )
+        })
+        .copied()
+        .collect();
     let mut out = EventList::with_capacity(4);
-    Downgrade::new().block(&[upgraded], &mut out);
-    let sent: Vec<Midi1Message> = out
+    Downgrade::new().block(&program, &mut out);
+    let back: Vec<Midi1Message> = out
         .as_slice()
         .iter()
         .map(|event| event.midi1_voice().expect("MIDI 1.0").message)
         .collect();
-    assert_eq!(sent, [Midi1Message::ProgramChange { program: 6 }]);
+    let controller = |controller, value| Midi1Message::ControlChange { controller, value };
+    assert_eq!(
+        back,
+        [
+            controller(0, 1),
+            controller(32, 2),
+            Midi1Message::ProgramChange { program: 6 }
+        ]
+    );
 }
 
 #[test]
@@ -908,6 +924,35 @@ fn every_midi_1_message() -> Vec<Vec<Midi1Message>> {
     all
 }
 
+/// `sent` as the round trip gives it back: a program change on a bank comes
+/// back after its bank select again, since the upgrade sends controllers 0
+/// and 32 on as well, which leaves a receiver on the same bank.
+fn with_bank_select_again(sent: &[Midi1Message]) -> Vec<Midi1Message> {
+    let mut bank = [None; 2];
+    let mut back = Vec::new();
+    for &message in sent {
+        match message {
+            Midi1Message::ControlChange { controller, value } if matches!(controller, 0 | 32) => {
+                bank[usize::from(controller == 32)] = Some(value);
+            }
+            Midi1Message::ProgramChange { .. } if bank != [None; 2] => {
+                let [msb, lsb] = bank.map(|byte| byte.unwrap_or(0));
+                back.push(Midi1Message::ControlChange {
+                    controller: 0,
+                    value: msb,
+                });
+                back.push(Midi1Message::ControlChange {
+                    controller: 32,
+                    value: lsb,
+                });
+            }
+            _ => {}
+        }
+        back.push(message);
+    }
+    back
+}
+
 #[test]
 fn midi_1_comes_back_from_midi_2_as_it_was_sent() {
     // MIDI 1.0 comes back unchanged from MIDI 2.0 (appendix D.1.2).
@@ -924,7 +969,7 @@ fn midi_1_comes_back_from_midi_2_as_it_was_sent() {
             .iter()
             .map(|event| event.midi1_voice().expect("MIDI 1.0").message)
             .collect();
-        assert_eq!(back, sent);
+        assert_eq!(back, with_bank_select_again(&sent));
     }
     assert_eq!(down.lost(), 0);
 }

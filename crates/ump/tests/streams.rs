@@ -1,12 +1,13 @@
-//! Tests whole MIDI 1.0 streams, cut into blocks anywhere, through the
-//! upgrade and back through the downgrade. What the downgrade sends upgrades
-//! to the same messages, and a MIDI 1.0 receiver of the downgrade ends each
-//! block in the same state as a receiver of the sender.
+//! Whole MIDI 1.0 streams cut into blocks anywhere, through the upgrade and
+//! back through the downgrade: what the downgrade sends upgrades to the same
+//! messages, but for the bank select it sends again before a program change,
+//! and a MIDI 1.0 receiver of it ends each block where the sender put it.
 
 use std::collections::BTreeMap;
 
 use hapto_ump::{
-    ChannelMessage, Downgrade, Event, EventList, Midi1Message, Midi1Voice, Origin, Upgrade,
+    Bank, ChannelMessage, Downgrade, Event, EventList, Midi1Message, Midi1Voice, Origin, Upgrade,
+    scale,
 };
 use proptest::prelude::*;
 use proptest::test_runner::FileFailurePersistence;
@@ -64,8 +65,49 @@ fn messages(blocks: &[Vec<Event>]) -> Vec<Vec<(u32, u8, u8, ChannelMessage)>> {
         .collect()
 }
 
-/// Builds blocks from `sent` at rising frames, with each message on its group
-/// and channel. A message whose flag is set starts a new block.
+/// `blocks` without the bank select the downgrade sends again before a
+/// program change on a bank: upgraded once more, controllers 0 and 32 just
+/// before it, at its frame and on its channel, which leave a receiver on the
+/// bank it was on.
+fn without_bank_select_again(
+    blocks: Vec<Vec<(u32, u8, u8, ChannelMessage)>>,
+) -> Vec<Vec<(u32, u8, u8, ChannelMessage)>> {
+    blocks
+        .into_iter()
+        .map(|block| {
+            let mut kept: Vec<(u32, u8, u8, ChannelMessage)> = Vec::with_capacity(block.len());
+            for message in block {
+                if let (
+                    at,
+                    group,
+                    channel,
+                    ChannelMessage::ProgramChange {
+                        bank: Some(Bank { msb, lsb }),
+                        ..
+                    },
+                ) = message
+                {
+                    let select = |controller, value| {
+                        let value = scale::up_7_to_32(value);
+                        (
+                            at,
+                            group,
+                            channel,
+                            ChannelMessage::ControlChange { controller, value },
+                        )
+                    };
+                    let again = kept.split_off(kept.len().saturating_sub(2));
+                    assert_eq!(again, [select(0, msb), select(32, lsb)]);
+                }
+                kept.push(message);
+            }
+            kept
+        })
+        .collect()
+}
+
+/// Blocks of `sent`, each message on its group and channel and after a cut
+/// when its flag says so, at frames that rise through the block.
 fn blocks(sent: Vec<(bool, u8, u8, Midi1Message)>) -> Blocks {
     let mut blocks: Blocks = vec![Vec::new()];
     for (cut, group, channel, message) in sent {
@@ -338,8 +380,9 @@ proptest! {
     }
 
     /// Upgraded, downgraded and upgraded again, any stream gives the same
-    /// messages at the same frames: the downgrade sends nothing the upgrade
-    /// reads another way, however the blocks cut a data entry.
+    /// messages at the same frames, but for the bank select the downgrade
+    /// sends again before a program change: the downgrade sends nothing the
+    /// upgrade reads another way, however the blocks cut a data entry.
     #[test]
     fn what_the_downgrade_sends_upgrades_to_the_same_messages(
         sent in proptest::collection::vec(
@@ -352,7 +395,7 @@ proptest! {
             prop_assert!(matches!(event.origin, Origin::Midi1 | Origin::Midi1HighByte));
         }
         let again = upgrade(&downgrade(&upgraded));
-        prop_assert_eq!(messages(&again), messages(&upgraded));
+        prop_assert_eq!(without_bank_select_again(messages(&again)), messages(&upgraded));
     }
 
     /// A MIDI 1.0 receiver of the downgrade holds, at the end of every block,

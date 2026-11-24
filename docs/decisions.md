@@ -3541,9 +3541,10 @@ Controllers 0 and 32 also pass on as controllers when they come. That departs
 from appendix D.3.4, which carries them in the program change alone, and from
 section 7.4.6, which tells a MIDI 2.0 receiver to ignore them: common
 controllers send a fader or a button on them, which a plugin learns as any
-other. The downgrade sends a program change upgraded from MIDI 1.0 without its
-bank, since its bank select went back as the controllers it came as, so MIDI
-1.0 sent through both still comes back as it was sent.
+other. The downgrade still sends every program change on a bank after its bank
+select, so MIDI 1.0 sent through both repeats its bank select before the
+program: a receiver ends on the same bank, and a processor that drops
+controllers 0 and 32 still sends the bank.
 
 The upgrade sends a data entry high byte (6) at once, at its own frame, with
 its low byte at 0, so no later message overtakes it and a MIDI 1.0 receiver of

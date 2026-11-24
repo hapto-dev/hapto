@@ -1335,9 +1335,11 @@ next program change alone, as the Default Translation does, so a binding on
 them could be made and never fired, and a fader on controller 0 could not be
 learned. The review recommended refusing such bindings; its audit recommended
 passing the two on as well, since common controllers send a fader or a button
-on them, and the owner took the audit's. The downgrade's program change
-without its bank, which keeps MIDI 1.0's round trip exact, was the
-implementer's, and is to confirm with the rest.
+on them, and the owner took the audit's. The implementer first had the
+downgrade send a program change upgraded from MIDI 1.0 without its bank,
+which kept the round trip exact; the owner turned that down the same day,
+since a processor that drops controllers 0 and 32 would then lose the bank,
+and a receiver sent the bank select twice ends on the same bank.
 
 ## Rules
 

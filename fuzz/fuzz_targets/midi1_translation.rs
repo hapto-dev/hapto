@@ -2,11 +2,15 @@
 //! upgrades it, downgraded for a destination that takes MIDI 1.0 alone, and
 //! upgraded again. Nothing panics, nothing is dropped or lost, every packet
 //! the upgrade makes says it came from MIDI 1.0, and the second upgrade gives
-//! the first one's packets at the same frames: a fixpoint, however the blocks
-//! cut a data entry.
+//! the first one's packets at the same frames, but for the bank select the
+//! downgrade sends again before a program change: a fixpoint, however the
+//! blocks cut a data entry.
 #![no_main]
 
-use hapto_ump::{Downgrade, Event, EventList, Midi1Message, Midi1Voice, Origin, Upgrade};
+use hapto_ump::{
+    Bank, ChannelMessage, ChannelVoice, Downgrade, Event, EventList, Midi1Message, Midi1Voice,
+    Origin, Upgrade, scale,
+};
 use libfuzzer_sys::fuzz_target;
 
 /// A block's last frame, which every message past it shares.
@@ -87,7 +91,51 @@ fn downgrade(upgraded: &[Vec<Event>]) -> Vec<Vec<Event>> {
     back
 }
 
-/// Returns each block's packets and frames, without their origins.
+/// `blocks` without the bank select the downgrade sends again before a
+/// program change on a bank: upgraded once more, controllers 0 and 32 just
+/// before it, at its frame and on its channel, which leave a receiver on the
+/// bank it was on.
+fn without_bank_select_again(blocks: Vec<Vec<Event>>) -> Vec<Vec<Event>> {
+    blocks
+        .into_iter()
+        .map(|block| {
+            let mut kept: Vec<Event> = Vec::with_capacity(block.len());
+            for event in block {
+                if let Some(ChannelVoice {
+                    group,
+                    channel,
+                    message:
+                        ChannelMessage::ProgramChange {
+                            bank: Some(Bank { msb, lsb }),
+                            ..
+                        },
+                }) = event.channel_voice()
+                {
+                    let select = |controller, value| {
+                        let message = ChannelMessage::ControlChange {
+                            controller,
+                            value: scale::up_7_to_32(value),
+                        };
+                        let voice = ChannelVoice {
+                            group,
+                            channel,
+                            message,
+                        };
+                        (event.offset, voice.event(event.offset).words)
+                    };
+                    let again = kept.split_off(kept.len().saturating_sub(2));
+                    let again: Vec<(u32, [u32; 4])> =
+                        again.iter().map(|sent| (sent.offset, sent.words)).collect();
+                    assert_eq!(again, [select(0, msb), select(32, lsb)]);
+                }
+                kept.push(event);
+            }
+            kept
+        })
+        .collect()
+}
+
+/// Each block's packets at their frames, their origins aside.
 fn packets(blocks: &[Vec<Event>]) -> Vec<Vec<(u32, [u32; 4])>> {
     blocks
         .iter()
@@ -108,6 +156,6 @@ fuzz_target!(|data: &[u8]| {
             .flatten()
             .all(|event| matches!(event.origin, Origin::Midi1 | Origin::Midi1HighByte))
     );
-    let again = upgrade(&downgrade(&upgraded));
+    let again = without_bank_select_again(upgrade(&downgrade(&upgraded)));
     assert_eq!(packets(&again), packets(&upgraded));
 });

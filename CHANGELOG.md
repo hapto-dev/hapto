@@ -45,18 +45,18 @@ exporter.
   widths. An RPN or NRPN's data entry high byte goes out at its own frame, and
   its low byte joins it there or refines it later, so where a host cuts its
   blocks changes nothing. Controllers 0 and 32 pass on as controllers as well
-  as riding the next program change, so a fader on them learns, and a program
-  change upgraded from MIDI 1.0 downgrades without the bank its controllers
-  already sent. Learn reads MIDI 2.0 alone: a MIDI 1.0 controller learns and
-  plays as before once upgraded, but for four rules of NRPN data entry. A low
-  byte refines its number's high byte when the address is sent again between
-  them, where learn dropped the entry; an address byte sent alone keeps the
-  other one held, as a MIDI 1.0 receiver does, where learn forgot the low byte
-  at a lone 99; a binding that is not coarse skips a high byte sent alone and
-  moves when its low byte comes, so a pair a block cuts never dips; and a
-  coarse binding reads the high byte of a data entry that carries its low byte
-  too, where learn wrote nothing. A packet's message type is a `MessageType`,
-  whose constants name the UMP table's types and whose `words` replaces
+  as riding the next program change, so a fader on them learns, and MIDI 1.0
+  sent back through `Downgrade` repeats its bank select before the program.
+  Learn reads MIDI 2.0 alone: a MIDI 1.0 controller learns and plays as before
+  once upgraded, but for four rules of NRPN data entry. A low byte refines its
+  number's high byte when the address is sent again between them, where learn
+  dropped the entry; an address byte sent alone keeps the other one held, as a
+  MIDI 1.0 receiver does, where learn forgot the low byte at a lone 99; a
+  binding that is not coarse skips a high byte sent alone and moves when its
+  low byte comes, so a pair a block cuts never dips; and a coarse binding
+  reads the high byte of a data entry that carries its low byte too, where
+  learn wrote nothing. A packet's message type is a `MessageType`, whose
+  constants name the UMP table's types and whose `words` replaces
   `packet_words`.
 
 ### Added

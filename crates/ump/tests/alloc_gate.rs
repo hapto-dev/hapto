@@ -253,15 +253,13 @@ fn upgrading_and_downgrading_a_block_does_not_allocate() {
     });
     // Each place's 17 messages upgrade to 12: the addresses send nothing of
     // their own, and each data entry is one controller. They downgrade to
-    // 18: the program goes out without the bank its controllers sent, and
-    // the high byte sent alone with a low byte of 0.
+    // 20: the program goes out after its bank select again, and the high
+    // byte sent alone with a low byte of 0.
     assert_eq!(seen.0, PLACES.len() * 12);
-    assert_eq!(seen.1, PLACES.len() * 18);
-    // Of MIDI 2.0's 15 messages:
-    // - MIDI 1.0 loses the six relative and per-note ones.
-    // - The other nine become 17, because the bank and the two controllers
-    //   each take several messages.
-    // - The note-on's attribute is lost too, in each of the four rounds.
+    assert_eq!(seen.1, PLACES.len() * 20);
+    // Of MIDI 2.0's 15 messages, MIDI 1.0 loses the relative and per-note
+    // six, and the other nine are 17: the bank and the two controllers
+    // grow. The note-on's attribute is lost too, on each of four rounds.
     assert_eq!(seen.2, PLACES.len() * 17);
     assert_eq!(downgrade.lost(), 4 * 7 * PLACES.len() as u64);
 }
