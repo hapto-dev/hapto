@@ -513,6 +513,14 @@ long after under the same number, a value its sender never set. A review of
 the MIDI branches found it; the owner took its audit's recommendations on
 2026-11-24, and an address byte drops it again, as before 2026-11-23.
 
+Until 2026-11-24 a 99 or 101 with nothing to pair with forgot the low byte
+held, so a sender that sends only the address byte that changed lost its next
+data entry, uncounted. The rule came from learn's own parser and guarded
+against a stale low byte, which needs a data entry between an address's two
+bytes. The same review found it a third departure from the Default
+Translation, whose appendix D.3.3 holds the latest of 98 to 101, and the owner
+followed the specification that day.
+
 ### D71. Learn after an unreadable midiLearn section
 
 [The decision](decisions.md#d71-learn-after-an-unreadable-midilearn-section)

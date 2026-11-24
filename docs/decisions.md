@@ -106,7 +106,7 @@ comments never cite an id: they state the reason in words, and
 | D67 | [How are the rules checked that keep locking types off the audio thread? (P6, D39)](#d67-checking-the-audio-thread-locking-rule) | By a debug-build mark, `hapto_params::audio_thread`: a per-thread depth an exporter raises around everything its `process` call runs, and every call that locks asserts the mark is absent. | decided |
 | D68 | [Which of the 2026-11-05 audits' items wait until their code exists?](#d68-audit-items-that-wait-for-their-code) | Those whose code has not started: the CLAP exporter, automation smoothing and splitting, and semver checks. | decided |
 | D69 | [Where is a continuous range checked, and how does a declaration that is a constant build one? (P2, P10, D57)](#d69-where-a-continuous-range-is-checked) | When it is made. `Range::new`, a `const fn`, returns a `RangeError` for an invalid range, and `Kind::continuous`, a public `const fn`, panics on what it refuses. A typed declaration's range is checked by `Range::new` too: by `FloatDecl::checked` while compiling, and when it is added. | decided |
-| D70 | [How does learn read MIDI 1.0's paired controllers and parameter numbers where MIDI 1.0 leaves room? (L2, L3, D30)](#d70-learns-reading-of-midi-10-pairs) | Per group and channel, the two NRPN address bytes pair in either order, 127 with 127 selects nothing, and data increment and decrement are never learned. A controller 32 to 63 right after the controller 32 below it learns that one as a 7-bit controller. A learned pair plays at 7 bits: 14-bit controller playback is open, to be built when an exporter delivers MIDI. | decided |
+| D70 | [How does learn read MIDI 1.0's paired controllers and parameter numbers where MIDI 1.0 leaves room? (L2, L3, D30)](#d70-learns-reading-of-midi-10-pairs) | Per group and channel, each NRPN address byte replaces its own and keeps the other, so the two come in either order or one at a time, 127 with 127 selects nothing, and data increment and decrement are never learned. A controller 32 to 63 right after the controller 32 below it learns that one as a 7-bit controller. A learned pair plays at 7 bits: 14-bit controller playback is open, to be built when an exporter delivers MIDI. | decided |
 | D71 | [What does learn route after a restore whose `midiLearn` section it cannot read? (L9, D14, H2)](#d71-learn-after-an-unreadable-midilearn-section) | Nothing from before it. Learn ends the arm, clears every mapping and held entry and publishes the empty table, then closes open bursts (D82) and fails the apply, so the session keeps the section. | decided |
 | D72 | [How much may a host ask of an instance? (H2, D59, D62)](#d72-how-much-a-host-may-ask) | Fixed limits: a processor is built for at most 65,536 frames a block, a setup that promises more being built for that many, a saved block is at most 64 MiB, and a block's automation has room for 8 points per parameter on average, shared by its queues. | decided |
 | D73 | [What does an activation make of what the host's setup leaves open? (D58, D59, D62)](#d73-what-an-activation-makes-of-an-open-setup) | An activation while active builds a fresh processor and hands the old one back to the plugin, in both exporters. A setup whose block size is 0, or negative in VST3, takes 1,024 frames. | decided |
@@ -1578,16 +1578,16 @@ controllers 99, 98, 6 and 38 and treated every other controller as plain (L2);
 the rest was not checked against C++.
 
 **Rust.** The upgrade to MIDI 2.0 reads the address (D114), per group and
-channel, and learn reads the assignable controller it sends. The two address
-bytes pair in either order, as MIDI 1.0 allows and JUCE's `MidiRPNGenerator`
-sends them (98 first): a byte completes the address with the other one when that
-one arrived since the last data entry, RPN address or completed address.
+channel, and learn reads the assignable controller it sends. Each address byte
+replaces the one it names and keeps the other, as the specification's Default
+Translation holds the latest of 98 to 101 and a MIDI 1.0 receiver does: the two
+bytes come in either order, as MIDI 1.0 allows and JUCE's `MidiRPNGenerator`
+sends them (98 first), and a sender that sends only the byte that changed, a
+lone 99 or 98, selects the number a receiver of it selects.
 
-A 99 with nothing to pair with forgets the 98 held, so a lone 99 never completes
-from a stale low byte; a 98 alone changes the low byte under the 99 held; 127
-with 127 is the null number and selects nothing, so stray data entry drives no
-mapping. An RPN address (101, 100) selects RPN and leaves the NRPN bytes held,
-so a later 98 alone selects that NRPN again.
+127 with 127 is the null number and selects nothing, so stray data entry drives
+no mapping. An RPN address (101, 100) selects RPN and leaves the NRPN bytes
+held, so a later 98 alone selects that NRPN again.
 
 Reset All Controllers (121) forgets both address bytes and the selection, where
 its recommended response (RP-015) sets the number to null, and still passes on
@@ -1614,8 +1614,7 @@ the open question in full.
 
 A mapping then reads only the high byte: there is no 14-bit controller source,
 and a learned pair plays at 7 bits. Data increment and decrement (96, 97) are
-never learned or bound, and end the stretch in which address bytes pair, as
-data entry does.
+never learned or bound, and leave the address bytes held.
 
 **Alternatives.** The alternatives were a 14-bit controller source that reads
 both bytes, as an NRPN's data entry does; RPN selection that clears the NRPN

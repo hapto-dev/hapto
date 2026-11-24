@@ -33,8 +33,11 @@ const NULL: u8 = 127;
 /// it just sent, while that is still the last in the list. A low byte at a
 /// later frame refines it as a message of its own. Nothing waits for a
 /// later message, so what comes out never depends on where the blocks are
-/// cut. An address may come in either byte order, and the null number
-/// (127, 127) selects nothing. Reset All Controllers forgets the address.
+/// cut. Each address byte (99 and 98, or 101 and 100) replaces the one it
+/// names and keeps the other, as the specification holds the latest of the
+/// four: an address may come in either byte order, a sender may send only
+/// the byte that changed, and the null number (127, 127) selects nothing.
+/// Reset All Controllers forgets the address.
 ///
 /// A data entry belongs to the number it was sent under. A low byte refines
 /// its number's latest high byte however often the address is sent between,
@@ -107,16 +110,7 @@ impl Kind {
         }
     }
 
-    /// Returns this kind's two address controllers, the most significant
-    /// first.
-    const fn address(self) -> [u8; 2] {
-        match self {
-            Kind::Registered => [RPN_MSB, RPN_LSB],
-            Kind::Assignable => [NRPN_MSB, NRPN_LSB],
-        }
-    }
-
-    /// Returns this kind's MIDI 2.0 controller at `bank` and `index`.
+    /// The MIDI 2.0 controller it is at `bank` and `index`.
     const fn message(self, bank: u8, index: u8, value: u32) -> ChannelMessage {
         match self {
             Kind::Registered => ChannelMessage::RegisteredController { bank, index, value },
@@ -132,10 +126,8 @@ struct Numbers {
     nrpn: [Option<u8>; 2],
     /// An RPN's address bytes, 101 and 100.
     rpn: [Option<u8>; 2],
-    /// An unpaired address byte, sent since the last data entry or completed
-    /// address.
-    unpaired: Option<u8>,
-    /// The kind that data entry applies to, if an address selects one.
+    /// The kind data entry is for: that of the latest address byte, unless
+    /// the null number is selected.
     selected: Option<Kind>,
     /// The latest data entry high byte, already sent. A low byte under its
     /// number refines it, however often the address is sent again; one
@@ -193,28 +185,14 @@ impl Numbers {
         }
     }
 
-    /// An address byte, 99 or 98 for an NRPN, 101 or 100 for an RPN.
-    ///
-    /// A pair comes in either order (JUCE's generator sends the low byte
-    /// first), so a byte completes the address with its partner when that
-    /// one is still unpaired. A high byte with nothing to pair with starts a
-    /// new address and forgets the low byte held, which belonged to an
-    /// address already used. A low byte with nothing to pair with changes
-    /// the low byte under the high byte held. 127 and 127 select nothing.
+    /// An address byte, 99 or 98 for an NRPN, 101 or 100 for an RPN: it
+    /// replaces the byte it names, keeps the other, and selects its kind.
     fn address_byte(&mut self, controller: u8, value: u8) {
         let (kind, most) = Kind::of_address(controller);
-        let [msb, lsb] = kind.address();
-        let partner = if most { lsb } else { msb };
-        let pairs = self.unpaired == Some(partner);
         let bytes = self.address(kind);
-        if most {
-            let low = if pairs { bytes[1] } else { None };
-            *bytes = [Some(value), low];
-        } else {
-            bytes[1] = Some(value);
-        }
+        let [msb, lsb] = &mut *bytes;
+        *(if most { msb } else { lsb }) = Some(value);
         let null = *bytes == [Some(NULL), Some(NULL)];
-        self.unpaired = (!pairs).then_some(controller);
         self.selected = (!null).then_some(kind);
     }
 
@@ -231,7 +209,6 @@ impl Numbers {
                 self.address_byte(controller, value);
             }
             DATA_ENTRY => {
-                self.unpaired = None;
                 // A low byte sent first is spent here, even by a data entry
                 // that selects nothing.
                 let early = self.early_low.take();
@@ -250,7 +227,6 @@ impl Numbers {
                 });
             }
             DATA_ENTRY_LSB => {
-                self.unpaired = None;
                 let Some(number) = self.number() else {
                     return;
                 };
@@ -264,9 +240,9 @@ impl Numbers {
                 }
             }
             RESET_ALL_CONTROLLERS => *self = Numbers::default(),
-            // Increment and decrement: an address byte before one pairs with
-            // no byte after it.
-            _ => self.unpaired = None,
+            // Increment and decrement step the value a receiver holds, which
+            // the upgrade does not.
+            _ => {}
         }
     }
 }

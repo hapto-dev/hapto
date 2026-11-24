@@ -379,6 +379,38 @@ fn an_address_reads_in_either_byte_order() {
 }
 
 #[test]
+fn a_lone_address_high_byte_keeps_the_low_byte_held() {
+    // D.3.3 holds the latest of 98 to 101, so a sender that sends only the
+    // address byte that changed reaches the number a MIDI 1.0 receiver
+    // reaches: RPN 0/0 again, here.
+    let registered = |value| ChannelMessage::RegisteredController {
+        bank: 0,
+        index: 0,
+        value: scale::up_14_to_32(value),
+    };
+    let mut up = Upgrade::new();
+    let first = [cc(101, 0), cc(100, 0), cc(6, 2), cc(38, 0)].map(|cc| (0, cc));
+    assert_eq!(upgrade(&mut up, &first), [(0, registered(2 << 7))]);
+    let again = [(1, cc(101, 0)), (2, cc(6, 3)), (3, cc(38, 0))];
+    assert_eq!(
+        upgrade(&mut up, &again),
+        [(2, registered(3 << 7)), (3, registered(3 << 7))]
+    );
+    // NRPN 1/5, then 99 alone moves it to 2/5.
+    let mut up = Upgrade::new();
+    let first = [cc(99, 1), cc(98, 5), cc(6, 9), cc(38, 9)].map(|cc| (0, cc));
+    assert_eq!(
+        upgrade(&mut up, &first),
+        [(0, assignable(1, 5, 9 << 7 | 9))]
+    );
+    let moved = [(1, cc(99, 2)), (2, cc(6, 3)), (3, cc(38, 0))];
+    assert_eq!(
+        upgrade(&mut up, &moved),
+        [(2, assignable(2, 5, 3 << 7)), (3, assignable(2, 5, 3 << 7))]
+    );
+}
+
+#[test]
 fn a_low_byte_sent_first_waits_for_its_high_byte() {
     let sent = [
         (0, cc(99, 2)),

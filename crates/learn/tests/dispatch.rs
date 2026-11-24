@@ -811,15 +811,18 @@ fn a_waiting_low_byte_waits_for_its_own_numbers_high_byte() {
 }
 
 #[test]
-fn a_new_address_high_byte_forgets_the_old_low_byte() {
+fn an_address_byte_alone_keeps_the_other_byte_held() {
     let mut rig = rig(2);
     rig.map(0, Source::any(Control::Nrpn(300)));
     rig.map(1, Source::any(Control::Nrpn(2 << 7)));
     let [high, low] = nrpn_address(300);
-    // 300 is 2 << 7 | 44. A high byte alone selects no number: it does not
-    // pair with the low byte of the address before it.
+    // 300 is 2 << 7 | 44. Each address byte replaces its own and keeps the
+    // other, as a MIDI 1.0 receiver holds them, so 99 alone keeps 44.
     rig.block(&[high, low, cc(99, 2), cc(6, 100), cc(38, 5)]);
-    assert_eq!([rig.value(0), rig.value(1)], [UNTOUCHED, UNTOUCHED]);
+    assert_eq!(
+        [rig.value(0), rig.value(1)],
+        [stored(fourteen(100 << 7 | 5)), UNTOUCHED]
+    );
     rig.block(&[cc(98, 0), cc(6, 100), cc(38, 0)]);
     assert_eq!(rig.value(1), stored(fourteen(100 << 7)));
 }
@@ -883,7 +886,7 @@ fn juces_rpn_generator_reaches_its_nrpn_with_or_without_the_low_byte() {
 }
 
 #[test]
-fn a_lone_high_byte_never_pairs_with_a_low_byte_from_before_a_data_entry() {
+fn an_address_byte_held_across_a_data_entry_completes_a_later_address() {
     let mut rig = rig(2);
     rig.map(0, Source::any(Control::Nrpn(300)));
     rig.map(1, Source::any(Control::Nrpn(3 << 7 | 44)));
@@ -891,16 +894,21 @@ fn a_lone_high_byte_never_pairs_with_a_low_byte_from_before_a_data_entry() {
     rig.block(&[high, low, cc(6, 10), cc(38, 0)]);
     let before = rig.value(0);
     assert_ne!(before, UNTOUCHED);
-    // 44 belongs to the address that data entry used.
+    // A sender that sends only the address byte that changed: 44 stays.
     rig.block(&[cc(99, 3), cc(6, 20), cc(38, 5)]);
-    assert_eq!([rig.value(0), rig.value(1)], [before, UNTOUCHED]);
+    assert_eq!(
+        [rig.value(0), rig.value(1)],
+        [before, stored(fourteen(20 << 7 | 5))]
+    );
 
-    // A low byte sent first is spent by a data entry too, even one that
-    // selected nothing.
+    // Data entry while the address is half sent selects nothing, and the
+    // byte sent stays for the other one.
     let mut rig = self::rig(1);
     rig.map(0, Source::any(Control::Nrpn(300)));
-    rig.block(&[cc(98, 44), cc(6, 10), cc(99, 2), cc(6, 20), cc(38, 0)]);
+    rig.block(&[cc(98, 44), cc(6, 10), cc(38, 0)]);
     assert_eq!(rig.value(0), UNTOUCHED);
+    rig.block(&[cc(99, 2), cc(6, 20), cc(38, 0)]);
+    assert_eq!(rig.value(0), stored(fourteen(20 << 7)));
 }
 
 #[test]
@@ -915,11 +923,11 @@ fn data_increment_and_decrement_use_the_address_and_drive_nothing() {
     rig.block(&[cc(96, 1), cc(97, 1)]);
     assert_eq!(rig.value(0), before);
 
-    // A low byte the increment used does not pair with a high byte after it.
+    // An increment leaves the address bytes held.
     let mut rig = self::rig(1);
     rig.map(0, Source::any(Control::Nrpn(300)));
     rig.block(&[cc(98, 44), cc(96, 1), cc(99, 2), cc(6, 20), cc(38, 0)]);
-    assert_eq!(rig.value(0), UNTOUCHED);
+    assert_eq!(rig.value(0), stored(fourteen(20 << 7)));
 }
 
 #[test]

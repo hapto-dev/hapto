@@ -48,7 +48,9 @@ exporter.
   learns and plays as before once upgraded, but for controllers 0 and 32,
   which select a bank, and an NRPN binding that is not coarse, which skips a
   high byte sent alone and moves when its low byte comes, so a pair a block
-  cuts never dips. A packet's message type is a `MessageType`, whose
+  cuts never dips. An address byte sent alone keeps the other one held, as a
+  MIDI 1.0 receiver does, where learn forgot the low byte at a lone 99. A
+  packet's message type is a `MessageType`, whose
   constants name the UMP table's types and whose `words` replaces
   `packet_words`.
 
