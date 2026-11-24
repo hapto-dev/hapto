@@ -1303,6 +1303,11 @@ byte's block ended before its low byte of 0 came learned as coarse, which the
 same audit found; the owner chose to mark the high byte sent alone by its
 origin.
 
+A last review before the pull request, on 2026-11-23, found that the downgrade
+passed a MIDI 2.0 packet of a reserved status on to a MIDI 1.0 destination,
+uncounted, though section 3.2.1.2 of the specification keeps message type 4
+from a MIDI 1.0 device. It is dropped and counted since.
+
 ## Rules
 
 ### P7. The host write: sanitise, clamp, convert, snap, store, publish

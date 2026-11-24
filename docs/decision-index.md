@@ -1373,7 +1373,7 @@ move its line here; when a decision gains code, add one.
 - `crates/ump/src/bytes.rs`: module, `ByteStream`, `Bytes`
 - `crates/learn/src/parse.rs`: module, `parse`, `Value::nrpn`, `Value::normalized`
 - `crates/learn/src/source.rs`: `Control::Cc`
-- test `crates/ump/tests/translation.rs`: module, `midi_1_comes_back_from_midi_2_as_it_was_sent`, `a_high_byte_alone_goes_out_at_the_end_of_its_block`, `a_high_byte_sent_alone_is_marked_apart_from_a_low_byte_of_0`, `bank_select_is_held_for_the_program_change_that_carries_it`, `a_bank_byte_sent_alone_selects_a_bank_with_its_partner_at_0`, `increment_and_decrement_are_controllers_of_their_own`, `what_midi_1_cannot_carry_is_dropped_and_counted`
+- test `crates/ump/tests/translation.rs`: module, `midi_1_comes_back_from_midi_2_as_it_was_sent`, `a_high_byte_alone_goes_out_at_the_end_of_its_block`, `a_high_byte_sent_alone_is_marked_apart_from_a_low_byte_of_0`, `bank_select_is_held_for_the_program_change_that_carries_it`, `a_bank_byte_sent_alone_selects_a_bank_with_its_partner_at_0`, `increment_and_decrement_are_controllers_of_their_own`, `what_midi_1_cannot_carry_is_dropped_and_counted`, `a_midi_2_packet_of_a_reserved_status_is_dropped_and_counted`, `the_types_a_midi_1_destination_takes_in_ump_pass_as_they_are`
 - test `crates/ump/tests/streams.rs`: module, `what_the_downgrade_sends_upgrades_to_the_same_messages`, `a_receiver_of_the_downgrade_ends_each_block_where_the_sender_put_it`
 - test `crates/ump/tests/bytes.rs`: module, `a_stream_reads_as_its_messages_however_it_is_cut`, `real_time_bytes_anywhere_leave_the_rest_alone`, `a_sysex_of_every_length_goes_out_six_bytes_at_a_time_and_writes_back`
 - test `crates/learn/src/parse.rs`: `upgraded_midi_1_parses_as_a_model_of_midi_1_0_reads_it`

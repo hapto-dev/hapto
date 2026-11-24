@@ -7,7 +7,8 @@ use crate::controller::{
 };
 use crate::scale::{down_16_to_7, down_32_to_7, down_32_to_14};
 use crate::{
-    Attribute, Bank, ChannelMessage, ChannelVoice, Event, EventList, Midi1Message, Midi1Voice,
+    Attribute, Bank, ChannelMessage, ChannelVoice, Event, EventList, MessageType, Midi1Message,
+    Midi1Voice,
 };
 
 /// Downgrades MIDI 2.0 to MIDI 1.0, for a destination that takes only MIDI
@@ -22,8 +23,10 @@ use crate::{
 ///
 /// What MIDI 1.0 cannot carry is dropped and counted in
 /// [`lost`](Self::lost): relative controllers, per-note controllers, per-note
-/// pitch bend and per-note management, and a note's attribute, whose note
-/// still goes out. Other packets pass as they are.
+/// pitch bend and per-note management, a note's attribute, whose note still
+/// goes out, and a MIDI 2.0 channel voice packet of a status the
+/// specification reserves. Packets of the other types pass as they are,
+/// since a destination that takes MIDI 1.0 in UMP may take each of them.
 ///
 /// # Examples
 ///
@@ -73,8 +76,8 @@ impl Downgrade {
     }
 
     /// Downgrades one packet into `out`: a MIDI 2.0 channel voice message
-    /// becomes the MIDI 1.0 messages it translates to, and any other packet
-    /// passes as it is.
+    /// becomes the MIDI 1.0 messages it translates to, and a packet of
+    /// another type passes as it is.
     ///
     /// Thread: audio. Allocates nothing.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
@@ -85,7 +88,11 @@ impl Downgrade {
             message,
         }) = event.channel_voice()
         else {
-            out.push(*event);
+            if event.message_type() == MessageType::MIDI2 {
+                self.lost = self.lost.saturating_add(1);
+            } else {
+                out.push(*event);
+            }
             return;
         };
         let send = |message: Midi1Message, out: &mut EventList| {

@@ -585,6 +585,38 @@ fn what_midi_1_cannot_carry_is_dropped_and_counted() {
     assert_eq!(down.lost(), 7);
 }
 
+#[test]
+fn a_midi_2_packet_of_a_reserved_status_is_dropped_and_counted() {
+    // Status 0x7, which no MIDI 2.0 channel voice message has, and which a
+    // MIDI 1.0 destination may not be sent.
+    let reserved = Event::new(0, [0x4070_3C00, 0xFFFF_0000, 0, 0]);
+    let mut down = Downgrade::new();
+    let mut out = EventList::with_capacity(4);
+    down.block(&[reserved], &mut out);
+    assert_eq!(out.as_slice(), []);
+    assert_eq!(down.lost(), 1);
+}
+
+#[test]
+fn the_types_a_midi_1_destination_takes_in_ump_pass_as_they_are() {
+    // Utility, system, MIDI 1.0 channel voice, SysEx, SysEx 8, flex data and
+    // stream packets: a UMP MIDI 1.0 device may use each.
+    let others = [
+        Event::new(0, [0x0020_0400, 0, 0, 0]),
+        Event::new(0, [0x10F8_0000, 0, 0, 0]),
+        Event::new(0, [0x20B0_0740, 0, 0, 0]),
+        Event::new(0, [0x3016_7E7F, 0x0D70_0201, 0, 0]),
+        Event::new(0, [0x5002_0001, 0x0200_0000, 0, 0]),
+        Event::new(0, [0xD010_0000, 0x0098_9680, 0, 0]),
+        Event::new(0, [0xF000_0101, 0x0000_001F, 0, 0]),
+    ];
+    let mut down = Downgrade::new();
+    let mut out = EventList::with_capacity(8);
+    down.block(&others, &mut out);
+    assert_eq!(out.as_slice(), others);
+    assert_eq!(down.lost(), 0);
+}
+
 /// Every MIDI 1.0 message, each data entry with its whole address and both
 /// bytes, one sequence per message.
 fn every_midi_1_message() -> Vec<Vec<Midi1Message>> {
