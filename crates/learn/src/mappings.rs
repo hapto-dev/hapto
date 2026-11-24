@@ -51,13 +51,15 @@ pub struct Mapping {
     ///
     /// A coarse binding reads the high byte of every data entry as 7-bit,
     /// whatever its low byte, so a sender that never sends the low byte
-    /// reaches 1.0. Otherwise the
-    /// value is 14-bit and moves only when a low byte comes: a high byte sent
-    /// alone, which a 14-bit sender follows with its low byte, moves it not
-    /// at all, so a pair a block cuts never dips to `high << 7`. A sender
-    /// that sends high bytes alone never moves a binding that is not coarse.
-    /// Ignored by every other source, MIDI 2.0's assignable controllers
-    /// included.
+    /// reaches 1.0. Otherwise the value is 14-bit and moves only when a low
+    /// byte comes: a high byte sent alone, which a 14-bit sender follows with
+    /// its low byte, moves it not at all, so a pair a block cuts never dips
+    /// to `high << 7`. A sender that sends high bytes alone never moves a
+    /// binding that is not coarse, and one that sends each move's low byte
+    /// before its high byte moves it one high byte behind: after the first
+    /// pair, each low byte refines the high byte before it, and the high byte
+    /// that follows comes alone. Ignored by every other source, MIDI 2.0's
+    /// assignable controllers included.
     pub coarse: bool,
 }
 

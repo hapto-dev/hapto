@@ -109,6 +109,14 @@ listed through both. Recorded 2026-11-12.
 Decided on 2026-11-03; amended after the 2026-11-05 audits, which found a low
 byte sent first dropped (MD-5); confirmed by the owner on 2026-11-07.
 
+Until 2026-11-24 a binding that is not coarse read a high byte sent alone with
+its low byte at 0, so a 14-bit knob whose pair a block cut dipped to
+`msb << 7` for a block; a review of the MIDI branches found it that day. Since
+then such a binding skips a high byte sent alone, which the owner kept when the
+upgrade came to send one at once (D114). The review of that change found that
+it reads a sender of each low byte before its high byte one high byte behind,
+and the owner accepted that the same day.
+
 ### D33. Undo during a user gesture
 
 [The decision](decisions.md#d33-undo-during-a-user-gesture)

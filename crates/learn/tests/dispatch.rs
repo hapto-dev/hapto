@@ -814,6 +814,33 @@ fn a_data_entry_low_byte_sent_first_waits_for_its_high_byte() {
 }
 
 #[test]
+fn a_fine_binding_reads_a_sender_of_low_bytes_first_one_high_byte_behind() {
+    // Three moves, 10/5, 100/6 and 127/127, each low byte sent before its
+    // high byte. After the first pair each low byte refines the high byte
+    // before it, and the high byte that follows comes alone, which a binding
+    // that is not coarse skips until the next move.
+    let mut rig = rig(1);
+    rig.map(0, Source::any(Control::Nrpn(300)));
+    let [high, low] = nrpn_address(300);
+    let mut written = Vec::new();
+    for block in [
+        &[high, low, cc(38, 5), cc(6, 10)][..],
+        &[cc(38, 6), cc(6, 100)],
+        &[cc(38, 127), cc(6, 127)],
+    ] {
+        rig.block(block);
+        written.push(rig.value(0));
+    }
+    let behind = [
+        stored(fourteen(10 << 7 | 5)),
+        stored(fourteen(10 << 7 | 6)),
+        stored(fourteen(100 << 7 | 127)),
+    ];
+    assert_eq!(behind, [0.078430176, 0.07849121, 0.78903675]);
+    assert_eq!(written, behind);
+}
+
+#[test]
 fn a_waiting_low_byte_waits_for_its_own_numbers_high_byte() {
     let mut rig = rig(1);
     rig.map(0, Source::any(Control::Nrpn(300)));

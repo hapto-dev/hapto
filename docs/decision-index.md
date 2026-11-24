@@ -311,7 +311,7 @@ move its line here; when a decision gains code, add one.
 - `crates/learn/src/table.rs`: `Table::dispatch`
 - `crates/learn/src/saved.rs`: module
 - test `crates/learn/tests/capture.rs`: module, `an_nrpn_high_byte_waits_for_its_low_byte_through_polls_with_no_block_between`, `an_nrpn_high_byte_alone_learns_as_coarse_after_a_tick_or_a_second_high_byte`, `a_newer_message_clears_a_high_byte_still_waiting`
-- test `crates/learn/tests/dispatch.rs`: module, `a_fine_binding_reads_each_pair_and_waits_out_a_high_byte_alone`, `a_fourteen_bit_knob_never_dips_however_the_blocks_cut_its_move`, `a_coarse_binding_reads_the_high_byte_of_every_data_entry_as_seven_bit`, `a_data_entry_low_byte_sent_first_waits_for_its_high_byte`
+- test `crates/learn/tests/dispatch.rs`: module, `a_fine_binding_reads_each_pair_and_waits_out_a_high_byte_alone`, `a_fourteen_bit_knob_never_dips_however_the_blocks_cut_its_move`, `a_coarse_binding_reads_the_high_byte_of_every_data_entry_as_seven_bit`, `a_data_entry_low_byte_sent_first_waits_for_its_high_byte`, `a_fine_binding_reads_a_sender_of_low_bytes_first_one_high_byte_behind`
 - test `crates/learn/tests/saved.rs`: module, `the_section_is_schema_1_sorted_by_key_with_the_identity_curve_left_out`
 
 ### D31. What identifies a parameter to hosts

@@ -604,9 +604,12 @@ which the upgrade sends at once with its low byte at 0, so a pair that a block
 cuts never dips to `msb << 7` between its halves; a sender that sends high
 bytes alone never moves it. A low byte sent before its number's high byte
 waits until the next address byte, and that high byte then dispatches with it
-(D70). A binding whose capture saw no low byte scales the high byte as 7-bit
-instead, so such a sender reaches 1.0. The binding records which, and the
-`midiLearn` section saves it from schema 1.
+(D70). Once a number has had a pair, the upgrade keeps its high byte, so a
+sender that sends each move's low byte before its high byte moves the binding
+one high byte behind: each low byte refines the high byte before it, and the
+high byte that follows comes alone. A binding whose capture saw no low byte
+scales the high byte as 7-bit instead, so such a sender reaches 1.0. The
+binding records which, and the `midiLearn` section saves it from schema 1.
 
 [History](decision-history.md#d30-an-nrpn-data-entry-with-only-its-high-byte)
 
