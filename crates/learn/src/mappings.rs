@@ -51,15 +51,19 @@ pub struct Mapping {
     ///
     /// A coarse binding reads the high byte as 7-bit and ignores low bytes,
     /// so a sender that never sends the low byte reaches 1.0. Otherwise the
-    /// value is 14-bit, and a high byte alone reads as `high << 7`, as MIDI
-    /// 1.0 says. Ignored by every other source, MIDI 2.0's assignable
-    /// controllers included.
+    /// value is 14-bit and moves only when a low byte comes: a high byte sent
+    /// alone, which a 14-bit sender follows with its low byte, moves it not
+    /// at all, so a pair a block cuts never dips to `high << 7`. A sender
+    /// that sends high bytes alone never moves a binding that is not coarse.
+    /// Ignored by every other source, MIDI 2.0's assignable controllers
+    /// included.
     pub coarse: bool,
 }
 
 impl Mapping {
     /// Creates a mapping of `source` through the identity curve, 14-bit for an
-    /// NRPN, as the [`Mapping`] example shows.
+    /// NRPN, as the [`Mapping`] example shows: such a binding waits for each
+    /// low byte, as [`coarse`](Self::coarse) says.
     pub const fn new(source: Source) -> Self {
         Mapping {
             source,
@@ -82,7 +86,7 @@ impl Mapping {
     /// ```
     /// use hapto_learn::{Control, Mapping, Source};
     ///
-    /// // A sender that never sends the low byte still reaches the top.
+    /// // A sender that never sends the low byte moves a coarse binding alone.
     /// let mapping = Mapping::new(Source::any(Control::Nrpn(300)));
     /// assert!(!mapping.coarse);
     /// assert!(mapping.as_coarse().coarse);

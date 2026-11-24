@@ -132,6 +132,7 @@ fn every_packet_reaches_the_processor_untouched_and_in_order() {
         high,
         low,
         cc(6, 9),
+        cc(38, 0),
         midi2(
             3,
             2,
@@ -195,22 +196,17 @@ fn groups_and_channels_stay_apart_and_any_matches_every_one() {
 }
 
 #[test]
-fn an_nrpn_assembles_and_a_high_byte_alone_reads_as_midi_1_says() {
-    // A high byte resets the low byte and dispatches at once, as `msb << 7`;
-    // a low byte refines it, here a block later.
+fn a_fine_binding_reads_each_pair_and_waits_out_a_high_byte_alone() {
+    // A binding that is not coarse reads 14 bits once the low byte comes,
+    // here a block later, and a high byte alone moves it not at all.
     let mut rig = rig(1);
     rig.map(0, Source::any(Control::Nrpn(300)));
     let [high, low] = nrpn_address(300);
     rig.block(&[high, low, cc(6, 127)]);
-    assert_eq!(rig.value(0), stored(fourteen(127 << 7)));
-    assert!(
-        rig.value(0) < 1.0,
-        "a 14-bit binding tops out below 1 on high bytes alone"
-    );
+    assert_eq!(rig.value(0), UNTOUCHED, "waiting for its low byte");
     rig.block(&[cc(38, 127)]);
     assert_eq!(rig.value(0), 1.0);
-    // A new high byte resets the low byte.
-    rig.block(&[cc(6, 64)]);
+    rig.block(&[cc(6, 64), cc(38, 0)]);
     assert_eq!(rig.value(0), 0.5);
 }
 
@@ -229,6 +225,38 @@ fn a_coarse_binding_reads_a_high_byte_as_seven_bit_and_ignores_low_bytes() {
 }
 
 #[test]
+fn a_fourteen_bit_knob_never_dips_however_the_blocks_cut_its_move() {
+    // A knob at 10/100 turned down to 10/50, each move its address and both
+    // data bytes, as senders send them even when the high byte holds. A
+    // block may end anywhere in the second move.
+    let mut moves = Vec::new();
+    for low in [100, 50] {
+        moves.extend(nrpn_address(300));
+        moves.extend([cc(6, 10), cc(38, low)]);
+    }
+    let (first, second) = (
+        stored(fourteen(10 << 7 | 100)),
+        stored(fourteen(10 << 7 | 50)),
+    );
+    assert_eq!((first, second), (0.084228516, 0.08117676));
+    for cut in 4..=moves.len() {
+        let mut rig = rig(1);
+        rig.map(0, Source::any(Control::Nrpn(300)));
+        let mut written = Vec::new();
+        for block in [&moves[..4], &moves[4..cut], &moves[cut..]] {
+            rig.block(block);
+            written.push(rig.value(0));
+        }
+        let ends_on_the_low_byte = if cut == moves.len() { second } else { first };
+        assert_eq!(
+            written,
+            [first, ends_on_the_low_byte, second],
+            "blocks cut at {cut}"
+        );
+    }
+}
+
+#[test]
 fn a_partial_nrpn_sequence_is_dropped() {
     let mut rig = rig(2);
     rig.map(0, Source::any(Control::Nrpn(44)));
@@ -238,7 +266,7 @@ fn a_partial_nrpn_sequence_is_dropped() {
     assert_eq!([rig.value(0), rig.value(1)], [UNTOUCHED, UNTOUCHED]);
 
     let [high, low] = nrpn_address(300);
-    rig.block(&[high, low, cc(6, 100)]);
+    rig.block(&[high, low, cc(6, 100), cc(38, 0)]);
     assert_eq!(rig.value(1), stored(fourteen(100 << 7)));
     // Another number's lone low byte is partial, because it never takes
     // this number's high byte.
@@ -269,8 +297,9 @@ fn rpn_data_entry_never_dispatches_as_the_last_nrpn() {
     let mut rig = rig(1);
     rig.map(0, Source::any(Control::Nrpn(300)));
     let [high, low] = nrpn_address(300);
-    rig.block(&[high, low, cc(6, 10)]);
+    rig.block(&[high, low, cc(6, 10), cc(38, 0)]);
     let before = rig.value(0);
+    assert_ne!(before, UNTOUCHED);
     // RPN 0, pitch bend range, then its data entry.
     rig.block(&[cc(101, 0), cc(100, 0), cc(6, 2), cc(38, 0)]);
     assert_eq!(rig.value(0), before);
@@ -741,8 +770,9 @@ fn the_null_parameter_number_selects_nothing() {
     rig.map(0, Source::any(Control::Nrpn(16383)));
     rig.map(1, Source::any(Control::Nrpn(300)));
     let [high, low] = nrpn_address(300);
-    rig.block(&[high, low, cc(6, 50)]);
+    rig.block(&[high, low, cc(6, 50), cc(38, 0)]);
     let before = rig.value(1);
+    assert_ne!(before, UNTOUCHED);
     // NRPN 127, 127 deselects, so the data entry after it drives nothing.
     rig.block(&[cc(99, 127), cc(98, 127), cc(6, 100), cc(38, 5)]);
     assert_eq!(rig.value(0), UNTOUCHED);
@@ -758,9 +788,12 @@ fn a_data_entry_low_byte_sent_first_waits_for_its_high_byte() {
     assert_eq!(rig.value(0), UNTOUCHED, "nothing to refine yet");
     rig.block(&[cc(6, 100)]);
     assert_eq!(rig.value(0), stored(fourteen(100 << 7 | 5)));
-    // The low byte is spent: a high byte alone is coarse again.
+    // The low byte is spent: the next high byte alone waits for a low byte
+    // of its own.
     rig.block(&[cc(6, 101)]);
-    assert_eq!(rig.value(0), stored(fourteen(101 << 7)));
+    assert_eq!(rig.value(0), stored(fourteen(100 << 7 | 5)));
+    rig.block(&[cc(38, 6)]);
+    assert_eq!(rig.value(0), stored(fourteen(101 << 7 | 6)));
 }
 
 #[test]
@@ -771,7 +804,9 @@ fn a_waiting_low_byte_waits_for_its_own_numbers_high_byte() {
     rig.block(&[high, low, cc(38, 5)]);
     let [high, low] = nrpn_address(300);
     rig.block(&[high, low, cc(6, 100)]);
-    assert_eq!(rig.value(0), stored(fourteen(100 << 7)));
+    assert_eq!(rig.value(0), UNTOUCHED, "44's low byte stays 44's");
+    rig.block(&[cc(38, 9)]);
+    assert_eq!(rig.value(0), stored(fourteen(100 << 7 | 9)));
 }
 
 #[test]
@@ -784,7 +819,7 @@ fn a_new_address_high_byte_forgets_the_old_low_byte() {
     // pair with the low byte of the address before it.
     rig.block(&[high, low, cc(99, 2), cc(6, 100), cc(38, 5)]);
     assert_eq!([rig.value(0), rig.value(1)], [UNTOUCHED, UNTOUCHED]);
-    rig.block(&[cc(98, 0), cc(6, 100)]);
+    rig.block(&[cc(98, 0), cc(6, 100), cc(38, 0)]);
     assert_eq!(rig.value(1), stored(fourteen(100 << 7)));
 }
 
@@ -793,7 +828,7 @@ fn reset_all_controllers_forgets_the_address() {
     let mut rig = rig(1);
     rig.map(0, Source::any(Control::Nrpn(300)));
     let [high, low] = nrpn_address(300);
-    rig.block(&[high, low, cc(121, 0), cc(98, 44), cc(6, 100)]);
+    rig.block(&[high, low, cc(121, 0), cc(98, 44), cc(6, 100), cc(38, 0)]);
     assert_eq!(
         rig.value(0),
         UNTOUCHED,
@@ -807,10 +842,10 @@ fn an_nrpn_address_selects_its_number_whichever_byte_comes_first() {
     for address in [[cc(99, 2), cc(98, 44)], [cc(98, 44), cc(99, 2)]] {
         let mut rig = rig(1);
         rig.map(0, Source::any(Control::Nrpn(300)));
-        rig.block(&[address[0], address[1], cc(6, 100)]);
+        rig.block(&[address[0], address[1], cc(6, 100), cc(38, 0)]);
         assert_eq!(rig.value(0), stored(fourteen(100 << 7)), "{address:?}");
         // The same address again, in the same order, after the first was used.
-        rig.block(&[address[0], address[1], cc(6, 101)]);
+        rig.block(&[address[0], address[1], cc(6, 101), cc(38, 0)]);
         assert_eq!(rig.value(0), stored(fourteen(101 << 7)), "{address:?}");
     }
 }
@@ -832,16 +867,18 @@ fn juce_nrpn(number: u16, value: u16, fourteen_bit: bool) -> Vec<Event> {
 fn juces_rpn_generator_reaches_its_nrpn_with_or_without_the_low_byte() {
     let mut rig = rig(2);
     rig.map(0, Source::any(Control::Nrpn(300)));
-    rig.map(1, Source::any(Control::Nrpn(5)));
+    // Coarse, as learn captures a sender that sends no low byte.
+    let seven_bit = Mapping::new(Source::any(Control::Nrpn(5))).as_coarse();
+    rig.learn.map(rig.ids[1], seven_bit).expect("legal");
     rig.block(&juce_nrpn(300, 100 << 7 | 5, true));
     assert_eq!(rig.value(0), stored(fourteen(100 << 7 | 5)));
     // The next message names another number while 300's bytes are held.
     rig.block(&juce_nrpn(5, 64, false));
-    assert_eq!(rig.value(1), stored(fourteen(64 << 7)));
+    assert_eq!(rig.value(1), 0.5);
     assert_eq!(rig.value(0), stored(fourteen(100 << 7 | 5)), "5's alone");
     rig.block(&juce_nrpn(300, 16383, true));
     assert_eq!(rig.value(0), 1.0);
-    assert_eq!(rig.value(1), stored(fourteen(64 << 7)), "300's alone");
+    assert_eq!(rig.value(1), 0.5, "300's alone");
 }
 
 #[test]
@@ -850,8 +887,9 @@ fn a_lone_high_byte_never_pairs_with_a_low_byte_from_before_a_data_entry() {
     rig.map(0, Source::any(Control::Nrpn(300)));
     rig.map(1, Source::any(Control::Nrpn(3 << 7 | 44)));
     let [high, low] = nrpn_address(300);
-    rig.block(&[high, low, cc(6, 10)]);
+    rig.block(&[high, low, cc(6, 10), cc(38, 0)]);
     let before = rig.value(0);
+    assert_ne!(before, UNTOUCHED);
     // 44 belongs to the address that data entry used.
     rig.block(&[cc(99, 3), cc(6, 20), cc(38, 5)]);
     assert_eq!([rig.value(0), rig.value(1)], [before, UNTOUCHED]);
@@ -860,7 +898,7 @@ fn a_lone_high_byte_never_pairs_with_a_low_byte_from_before_a_data_entry() {
     // selected nothing.
     let mut rig = self::rig(1);
     rig.map(0, Source::any(Control::Nrpn(300)));
-    rig.block(&[cc(98, 44), cc(6, 10), cc(99, 2), cc(6, 20)]);
+    rig.block(&[cc(98, 44), cc(6, 10), cc(99, 2), cc(6, 20), cc(38, 0)]);
     assert_eq!(rig.value(0), UNTOUCHED);
 }
 
@@ -869,8 +907,9 @@ fn data_increment_and_decrement_use_the_address_and_drive_nothing() {
     let mut rig = rig(1);
     rig.map(0, Source::any(Control::Nrpn(300)));
     let [high, low] = nrpn_address(300);
-    rig.block(&[high, low, cc(6, 10)]);
+    rig.block(&[high, low, cc(6, 10), cc(38, 0)]);
     let before = rig.value(0);
+    assert_ne!(before, UNTOUCHED);
     // Learn does not step a parameter number's value.
     rig.block(&[cc(96, 1), cc(97, 1)]);
     assert_eq!(rig.value(0), before);
@@ -878,7 +917,7 @@ fn data_increment_and_decrement_use_the_address_and_drive_nothing() {
     // A low byte the increment used does not pair with a high byte after it.
     let mut rig = self::rig(1);
     rig.map(0, Source::any(Control::Nrpn(300)));
-    rig.block(&[cc(98, 44), cc(96, 1), cc(99, 2), cc(6, 20)]);
+    rig.block(&[cc(98, 44), cc(96, 1), cc(99, 2), cc(6, 20), cc(38, 0)]);
     assert_eq!(rig.value(0), UNTOUCHED);
 }
 

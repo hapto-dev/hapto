@@ -66,7 +66,7 @@ comments never cite an id: they state the reason in words, and
 | D27 | [What runs the generator? (B3)](#d27-what-runs-the-generator) | An xtask: `cargo xtask gen` writes every file the repository generates. A plugin's own page map is its own test's, which `cargo hapto` runs (D109). | decided |
 | D28 | [Which threads may make a program write? (P6, P11)](#d28-threads-that-may-make-a-program-write) | An edit runs on the UI thread only and joins the parameter's gesture count. A sync runs on any thread but audio. | decided |
 | D29 | [Do plain values have gestures? (U3, U4, U5, U16, L7)](#d29-gestures-on-plain-values) | Yes. A plain value has its own gesture count and token, so one drag on any control is one undo step. | decided |
-| D30 | [An NRPN data entry sent with only its high byte. (L2)](#d30-an-nrpn-data-entry-with-only-its-high-byte) | A high byte alone dispatches the 14-bit value with the low byte at 0 at its own frame, and a low byte that follows refines it. A binding whose capture saw no low byte scales the high byte as 7-bit instead. | decided |
+| D30 | [An NRPN data entry sent with only its high byte. (L2)](#d30-an-nrpn-data-entry-with-only-its-high-byte) | A binding whose capture saw a low byte reads 14 bits, moves only with a low byte, and skips a high byte sent alone; one whose capture saw none scales the high byte as 7-bit. | decided |
 | D31 | [What identifies a parameter to VST3, CLAP and AU hosts: its declaration index or a hash of its key? (P10, H5)](#d31-what-identifies-a-parameter-to-hosts) | A hash of the key, so a later version of a plugin can insert, reorder, regroup or remove parameters without orphaning automation. The hash function is fixed forever. | decided |
 | D32 | [When does the host hear that a user's gesture began? (P6, P11)](#d32-when-the-host-hears-a-gesture-begin) | When it opens, so a touch held still reaches the host and Touch and Latch modes hold the value. A program edit and a replay open only on a changing write. | decided |
 | D33 | [Undo or redo requested while a user gesture is open? (U8, U11, U12)](#d33-undo-during-a-user-gesture) | Refused with `HistoryError::GestureOpen` until the gesture closes. | decided |
@@ -597,13 +597,16 @@ control is one undo step.
 `msb << 7`, as MIDI 1.0 specifies (a new high byte sets the low byte to 0), so a
 sender that never sends the low byte tops out at 0.99225.
 
-**Rust.** Follow MIDI 1.0: a high byte dispatches the 14-bit value at its own
-frame, with its low byte when that comes at the same frame and otherwise with
-the low byte at 0, and a low byte at a later frame refines it (D114). A low byte
-sent before its number's high byte waits, and that high byte then dispatches
-with it (D70). A binding whose capture saw no low byte
-scales the high byte as 7-bit instead, so such a sender reaches 1.0. The binding
-records which, and the `midiLearn` section saves it from schema 1.
+**Rust.** A binding whose capture saw a low byte reads the 14-bit value when
+the low byte comes: with its high byte when the two share a frame, and as a
+refinement of it at a later frame (D114). It skips a high byte sent alone,
+which the upgrade sends at once with its low byte at 0, so a pair that a block
+cuts never dips to `msb << 7` between its halves; a sender that sends high
+bytes alone never moves it. A low byte sent before its number's high byte
+waits, and that high byte then dispatches with it (D70). A binding whose
+capture saw no low byte scales the high byte as 7-bit instead, so such a sender
+reaches 1.0. The binding records which, and the `midiLearn` section saves it
+from schema 1.
 
 [History](decision-history.md#d30-an-nrpn-data-entry-with-only-its-high-byte)
 
@@ -3570,7 +3573,8 @@ a bank and are never learned. The upgrade sends a high byte with no low byte as
 if its low byte were 0, and marks it `Origin::Midi1HighByte`, so learn tells a
 low byte that never came from one of 0 (D47). A coarse binding reads the high
 byte of every data entry, so its target lands where it did when a pair's high
-byte arrived as a message of its own.
+byte arrived as a message of its own; one that is not coarse skips a high byte
+sent alone and waits for its low byte (D30).
 
 **Alternatives.** The alternatives were both protocols inside, each in messages
 of its own, which leaves every reader two protocols to handle; MIDI 1.0 inside,

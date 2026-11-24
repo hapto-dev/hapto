@@ -306,11 +306,12 @@ move its line here; when a decision gains code, add one.
 
 - `crates/learn/src/capture.rs`: module, `Resolution::Coarse`, `Stager::offer`, `Arm::capture`
 - `crates/learn/src/lib.rs`: module
-- `crates/learn/src/mappings.rs`: `Mapping::coarse`, `Learn::poll`
+- `crates/learn/src/mappings.rs`: `Mapping::coarse`, `Mapping::new`, `Learn::poll`
 - `crates/learn/src/parse.rs`: module, `Value::Nrpn`, `Value::normalized`
+- `crates/learn/src/table.rs`: `Table::dispatch`
 - `crates/learn/src/saved.rs`: module
 - test `crates/learn/tests/capture.rs`: module, `an_nrpn_high_byte_waits_for_its_low_byte_through_polls_with_no_block_between`, `an_nrpn_high_byte_alone_learns_as_coarse_after_a_tick_or_a_second_high_byte`, `a_newer_message_clears_a_high_byte_still_waiting`
-- test `crates/learn/tests/dispatch.rs`: module, `an_nrpn_assembles_and_a_high_byte_alone_reads_as_midi_1_says`, `a_coarse_binding_reads_a_high_byte_as_seven_bit_and_ignores_low_bytes`, `a_data_entry_low_byte_sent_first_waits_for_its_high_byte`
+- test `crates/learn/tests/dispatch.rs`: module, `a_fine_binding_reads_each_pair_and_waits_out_a_high_byte_alone`, `a_fourteen_bit_knob_never_dips_however_the_blocks_cut_its_move`, `a_coarse_binding_reads_a_high_byte_as_seven_bit_and_ignores_low_bytes`, `a_data_entry_low_byte_sent_first_waits_for_its_high_byte`
 - test `crates/learn/tests/saved.rs`: module, `the_section_is_schema_1_sorted_by_key_with_the_identity_curve_left_out`
 
 ### D31. What identifies a parameter to hosts
@@ -1882,7 +1883,7 @@ move its line here; when a decision gains code, add one.
 - `crates/learn/src/reservation.rs`: module, `CcReservation`, `NrpnReservation`, `ReservationError`
 - `crates/learn/src/source.rs`: module, `Control::Cc`
 - test `crates/learn/tests/capture.rs`: module, `a_refused_message_leaves_the_target_armed`, `a_reserved_controller_can_still_be_mapped_by_hand_and_dispatches`, `a_midi_2_assignable_controller_learns_as_an_nrpn`, `a_controller_reservation_on_one_group_leaves_the_others_free`
-- test `crates/learn/tests/dispatch.rs`: module, `an_nrpn_assembles_and_a_high_byte_alone_reads_as_midi_1_says`, `a_partial_nrpn_sequence_is_dropped`, `rpn_data_entry_never_dispatches_as_the_last_nrpn`, `the_parser_runs_while_nothing_is_mapped`, `the_parameter_number_controllers_never_bind`, `each_group_and_channel_keeps_its_own_nrpn_state`, `reset_all_controllers_deselects_the_nrpn`, `a_reserved_nrpn_is_never_bound`, `the_null_parameter_number_selects_nothing`, `a_data_entry_low_byte_sent_first_waits_for_its_high_byte`, `a_waiting_low_byte_waits_for_its_own_numbers_high_byte`, `a_new_address_high_byte_forgets_the_old_low_byte`, `reset_all_controllers_forgets_the_address`
+- test `crates/learn/tests/dispatch.rs`: module, `a_fine_binding_reads_each_pair_and_waits_out_a_high_byte_alone`, `a_partial_nrpn_sequence_is_dropped`, `rpn_data_entry_never_dispatches_as_the_last_nrpn`, `the_parser_runs_while_nothing_is_mapped`, `the_parameter_number_controllers_never_bind`, `each_group_and_channel_keeps_its_own_nrpn_state`, `reset_all_controllers_deselects_the_nrpn`, `a_reserved_nrpn_is_never_bound`, `the_null_parameter_number_selects_nothing`, `a_data_entry_low_byte_sent_first_waits_for_its_high_byte`, `a_waiting_low_byte_waits_for_its_own_numbers_high_byte`, `a_new_address_high_byte_forgets_the_old_low_byte`, `reset_all_controllers_forgets_the_address`
 - test `crates/learn/src/parse.rs`: `upgraded_midi_1_parses_as_a_model_of_midi_1_0_reads_it`
 
 ### L3. The learn flow

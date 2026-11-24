@@ -50,18 +50,21 @@ pub(crate) enum Value {
 }
 
 impl Value {
-    /// Returns the value as 0..1 for a [`coarse`](crate::Mapping::coarse) or
-    /// fine binding.
-    pub(crate) fn normalized(self, coarse: bool) -> f64 {
-        match self {
+    /// The value as 0..1 for a binding, [`coarse`](crate::Mapping::coarse) or
+    /// not; none for a binding that is not coarse and a high byte sent alone,
+    /// whose low byte it waits for.
+    pub(crate) fn normalized(self, coarse: bool) -> Option<f64> {
+        Some(match self {
             Value::Seven(value) => scale::seven(value),
             Value::Nrpn { high, .. } if coarse => scale::seven(high),
-            Value::Nrpn { high, low } => {
-                scale::fourteen(u16::from(high) << 7 | u16::from(low.unwrap_or(0)))
-            }
+            Value::Nrpn {
+                high,
+                low: Some(low),
+            } => scale::fourteen(u16::from(high) << 7 | u16::from(low)),
+            Value::Nrpn { low: None, .. } => return None,
             Value::Sixteen(value) => scale::sixteen(value),
             Value::ThirtyTwo(value) => scale::thirty_two(value),
-        }
+        })
     }
 
     /// Returns the 14-bit value of an assignable controller upgraded from an
