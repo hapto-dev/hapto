@@ -2,7 +2,7 @@
 
 use std::marker::PhantomData;
 
-use hapto_audio::layout::Layout;
+use hapto_audio::layout::{Layout, StereoOut};
 use hapto_audio::{Audio, Status};
 
 use super::Voice;
@@ -50,6 +50,9 @@ const KEYS: usize = 256;
 /// - **MPE** is off unless the plugin turns it on with
 ///   [`with_mpe`](Self::with_mpe).
 ///
+/// Its layout is [`Voice`]'s, [`StereoOut`] unless named, so a stereo
+/// instrument's voices are a `Poly<Sine>`.
+///
 /// It works at two levels, as a block does. [`play`](Self::play) takes a
 /// whole block. Inside a loop over [`Spans`], [`handle`](Self::handle)
 /// takes the span's messages and [`render`](Self::render) its audio, so a
@@ -69,7 +72,7 @@ const KEYS: usize = 256;
 ///     on: bool,
 /// }
 ///
-/// impl Voice<StereoOut> for Sine {
+/// impl Voice for Sine {
 ///     fn start(&mut self, _: &NoteOn) {
 ///         (self.phase, self.on) = (0.0, true);
 ///     }
@@ -78,7 +81,7 @@ const KEYS: usize = 256;
 ///         self.on = false;
 ///     }
 ///
-///     fn render(&mut self, expression: &Expression<'_>, out: &mut VoiceAudio<'_, StereoOut>) {
+///     fn render(&mut self, expression: &Expression<'_>, out: &mut VoiceAudio<'_>) {
 ///         if !self.on {
 ///             return;
 ///         }
@@ -94,7 +97,7 @@ const KEYS: usize = 256;
 ///     }
 /// }
 ///
-/// let mut voices: Poly<Sine, StereoOut> = Poly::new(8, Sine::default);
+/// let mut voices: Poly<Sine> = Poly::new(8, Sine::default);
 /// voices.handle(&Message::NoteOn(NoteOn::new(Key::A4, 1.0)));
 /// let mut buffer = AudioBuf::<StereoOut>::new(64);
 /// voices.render(&mut buffer.audio());
@@ -102,7 +105,7 @@ const KEYS: usize = 256;
 /// assert_eq!(voices.notes().count(), 1);
 /// ```
 #[derive(Debug)]
-pub struct Poly<V, L> {
+pub struct Poly<V, L = StereoOut> {
     slots: Box<[Slot<V>]>,
     channels: Channels,
     keys: Keys,
@@ -380,7 +383,7 @@ impl<V: Voice<L>, L: Layout> Poly<V, L> {
     ///
     /// /// The plugin's audio-thread half.
     /// struct Synth {
-    ///     voices: Poly<Click, StereoOut>,
+    ///     voices: Poly<Click>,
     /// }
     ///
     /// impl Synth {
@@ -391,10 +394,10 @@ impl<V: Voice<L>, L: Layout> Poly<V, L> {
     ///     }
     /// }
     /// # struct Click;
-    /// # impl Voice<StereoOut> for Click {
+    /// # impl Voice for Click {
     /// #     fn start(&mut self, _: &NoteOn) {}
     /// #     fn release(&mut self, _: &NoteOff) {}
-    /// #     fn render(&mut self, _: &Expression<'_>, _: &mut VoiceAudio<'_, StereoOut>) {}
+    /// #     fn render(&mut self, _: &Expression<'_>, _: &mut VoiceAudio<'_>) {}
     /// #     fn is_done(&self) -> bool { true }
     /// # }
     /// # let mut buffer = hapto_audio::AudioBuf::<StereoOut>::new(8);

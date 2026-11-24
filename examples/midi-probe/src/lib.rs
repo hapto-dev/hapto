@@ -83,7 +83,7 @@ impl Plugin for MidiProbe {
 /// and sends that MIDI back out.
 #[derive(Debug)]
 pub struct Probe {
-    voices: Poly<Tone, StereoOut>,
+    voices: Poly<Tone>,
 }
 
 impl Processor for Probe {
@@ -126,7 +126,7 @@ impl Tone {
     }
 }
 
-impl Voice<StereoOut> for Tone {
+impl Voice for Tone {
     fn start(&mut self, note: &NoteOn) {
         (self.velocity, self.level, self.released) = (note.velocity, 0.0, false);
     }
@@ -135,7 +135,7 @@ impl Voice<StereoOut> for Tone {
         self.released = true;
     }
 
-    fn render(&mut self, expression: &Expression<'_>, out: &mut VoiceAudio<'_, StereoOut>) {
+    fn render(&mut self, expression: &Expression<'_>, out: &mut VoiceAudio<'_>) {
         let step = expression.pitch.hz() / self.sample_rate;
         let gain = LEVEL * self.velocity * expression.get(VOLUME);
         let octave = 0.5 * expression.pressure;

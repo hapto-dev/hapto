@@ -3989,7 +3989,9 @@ once none sounds. `handle` and `render` do the two halves, for a plugin that
 loops over spans itself. `Spans` moved down to `hapto-midi` and `Status` to
 `hapto-audio` for it, and `hapto-host` re-exports both. `Poly` is generic over
 the layout as well as the voice, so `handle`, which renders nothing, knows
-which voice's methods to call.
+which voice's methods to call. The layout is `StereoOut` unless named, on
+`Voice`, `Poly` and `VoiceAudio` alike, since most instruments are stereo:
+`impl Voice for Sine` and `Poly<Sine>`.
 
 A note-on takes an idle voice, then a released one, then one only a pedal
 holds, then one whose key is held, the oldest of each first. A second note-on

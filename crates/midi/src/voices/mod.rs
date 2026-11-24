@@ -11,7 +11,7 @@ mod state;
 mod tests;
 mod tuning;
 
-use hapto_audio::layout::Layout;
+use hapto_audio::layout::{Layout, StereoOut};
 
 pub use audio::{VoiceAudio, VoiceFrame};
 pub use expression::Expression;
@@ -23,6 +23,9 @@ use crate::message::{NoteOff, NoteOn};
 /// One of a plugin's voices, which [`Poly`] gives notes to, rendering into
 /// audio in layout `L`.
 ///
+/// `L` is [`StereoOut`] unless the voice names another, as most instruments
+/// are: a stereo voice is `impl Voice for Sine`, and a mono one `impl
+/// Voice<Mono> for Sine`. [`Poly`] and [`VoiceAudio`] take the same default.
 /// A voice that renders the same in any layout is written once for all:
 /// `impl<L: Layout> Voice<L> for Sine`. One written for a layout reaches its
 /// channels by name, `[left, right]` in a stereo bus.
@@ -40,14 +43,14 @@ use crate::message::{NoteOff, NoteOn};
 ///     level: f32,
 /// }
 ///
-/// impl Voice<StereoOut> for Click {
+/// impl Voice for Click {
 ///     fn start(&mut self, note: &NoteOn) {
 ///         self.level = note.velocity;
 ///     }
 ///
 ///     fn release(&mut self, _: &NoteOff) {}
 ///
-///     fn render(&mut self, _: &Expression<'_>, out: &mut VoiceAudio<'_, StereoOut>) {
+///     fn render(&mut self, _: &Expression<'_>, out: &mut VoiceAudio<'_>) {
 ///         for frame in out.frames_mut() {
 ///             frame.add(self.level);
 ///             // Halving, and silent once below -80 dB.
@@ -69,7 +72,7 @@ use crate::message::{NoteOff, NoteOn};
 /// click.render(&Expression::at(middle_c), &mut out);
 /// assert_eq!(buffer.channels(), [[1.0, 0.5, 0.25], [0.0, 0.0, 0.0]]);
 /// ```
-pub trait Voice<L: Layout> {
+pub trait Voice<L: Layout = StereoOut> {
     /// Starts a note, on a voice that was idle or that `Poly` took from
     /// another note.
     fn start(&mut self, note: &NoteOn);

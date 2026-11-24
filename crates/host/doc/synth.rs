@@ -10,7 +10,7 @@
 #     sample_rate: f32,
 # }
 #
-# impl Voice<StereoOut> for Sine {
+# impl Voice for Sine {
 #     fn start(&mut self, note: &NoteOn) {
 #         (self.phase, self.level) = (0.0, note.velocity);
 #     }
@@ -19,7 +19,7 @@
 #         self.level = 0.0;
 #     }
 #
-#     fn render(&mut self, expression: &Expression<'_>, out: &mut VoiceAudio<'_, StereoOut>) {
+#     fn render(&mut self, expression: &Expression<'_>, out: &mut VoiceAudio<'_>) {
 #         self.step = expression.pitch.hz() / self.sample_rate;
 #         for frame in out.frames_mut() {
 #             frame.add(self.level * (self.phase * std::f32::consts::TAU).sin());
@@ -33,7 +33,7 @@
 # }
 #
 # /// Eight sines.
-# struct Voices(Poly<Sine, StereoOut>);
+# struct Voices(Poly<Sine>);
 #
 # impl Processor for Voices {
 #     type Layout = StereoOut;

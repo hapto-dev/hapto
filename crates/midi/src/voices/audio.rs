@@ -3,7 +3,7 @@
 
 use std::fmt;
 
-use hapto_audio::layout::{Layout, MAX_CHANNELS};
+use hapto_audio::layout::{Layout, MAX_CHANNELS, StereoOut};
 use hapto_audio::{AddSample, Audio};
 
 use crate::values::Centred;
@@ -12,7 +12,8 @@ use crate::values::Centred;
 /// processor's own layout, other voices' sound in it already, and a gain for
 /// each channel from its note's [`pan`](super::Expression::pan). Each of its
 /// [frames](Self::frames_mut) adds a mono voice's sample at those gains, so
-/// the voice is placed without a word about it.
+/// the voice is placed without a word about it. Its layout defaults as
+/// [`Voice`](super::Voice)'s does.
 ///
 /// The pan law is balanced, as JUCE's default is: at the centre both sides
 /// are at full level, and a side fades as the note moves away from it. A
@@ -36,7 +37,7 @@ use crate::values::Centred;
 /// assert_eq!(buffer.channels(), [[0.5, 0.5], [1.0, 1.0]]);
 /// ```
 #[derive(Debug)]
-pub struct VoiceAudio<'a, L: Layout> {
+pub struct VoiceAudio<'a, L: Layout = StereoOut> {
     audio: Audio<'a, L>,
     gains: [f32; MAX_CHANNELS],
 }
@@ -121,7 +122,7 @@ impl<'a, L: Layout> VoiceAudio<'a, L> {
 /// }
 /// assert_eq!(buffer.channels(), [[0.0, 0.5], [1.0, 0.5]]);
 /// ```
-pub struct VoiceFrame<'a, L: Layout> {
+pub struct VoiceFrame<'a, L: Layout = StereoOut> {
     frame: L::Frame<'a>,
     gains: &'a [f32; MAX_CHANNELS],
 }

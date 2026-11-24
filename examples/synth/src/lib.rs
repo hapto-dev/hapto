@@ -60,7 +60,7 @@ impl Plugin for Synth {
 /// The audio-thread half: the voices, played from the block's MIDI.
 #[derive(Debug)]
 pub struct SynthProcessor {
-    voices: Poly<Sine, StereoOut>,
+    voices: Poly<Sine>,
 }
 
 impl Processor for SynthProcessor {
@@ -96,7 +96,7 @@ impl Sine {
     }
 }
 
-impl Voice<StereoOut> for Sine {
+impl Voice for Sine {
     fn start(&mut self, note: &NoteOn) {
         self.level = LEVEL * note.velocity;
         self.released = false;
@@ -106,7 +106,7 @@ impl Voice<StereoOut> for Sine {
         self.released = true;
     }
 
-    fn render(&mut self, expression: &Expression<'_>, out: &mut VoiceAudio<'_, StereoOut>) {
+    fn render(&mut self, expression: &Expression<'_>, out: &mut VoiceAudio<'_>) {
         let step = expression.pitch.hz() / self.sample_rate;
         let octave = 0.5 * expression.pressure;
         for frame in out.frames_mut() {
