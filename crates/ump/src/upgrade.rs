@@ -356,8 +356,11 @@ impl Upgrade {
         }
     }
 
-    /// Upgrades a block's packets, in order, into `out`. A packet past
-    /// `out`'s room is dropped and counted there.
+    /// Upgrades a block's packets, in order, into `out`, the block's own
+    /// list: frames count from each block's start, so in a list kept from an
+    /// earlier block, a low byte could join a high byte alone that block
+    /// ended with at the same frame. A packet past `out`'s room is dropped
+    /// and counted there.
     ///
     /// Thread: audio. Allocates nothing.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
@@ -370,7 +373,8 @@ impl Upgrade {
     /// Upgrades one packet into `out`: a MIDI 1.0 channel voice message
     /// becomes what it completes, which may be nothing, and any other packet
     /// passes as it is. A data entry low byte may rewrite the packet `out`
-    /// ends with, its high byte sent at the same frame, as [`Upgrade`] says.
+    /// ends with, its high byte sent at the same frame, as [`Upgrade`] says,
+    /// so `out` is the block's own list, as [`block`](Self::block) says.
     ///
     /// Thread: audio. Allocates nothing.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
