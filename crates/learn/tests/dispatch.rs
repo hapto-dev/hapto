@@ -941,6 +941,20 @@ fn controllers_0_and_32_from_midi_1_drive_their_bindings() {
     assert_eq!([rig.value(0), rig.value(1)], [1.0, 0.5]);
 }
 
+#[cfg(debug_assertions)]
+#[test]
+fn midi_1_handed_to_learn_unupgraded_is_a_contract_panic() {
+    // Learn reads MIDI 2.0 alone, so a MIDI 1.0 controller handed to it as
+    // it came would move nothing and say nothing.
+    let mut rig = rig(1);
+    rig.map(0, Source::any(Control::Cc(7)));
+    let mut raw = hapto_ump::EventList::with_capacity(1);
+    raw.push(cc(7, 127));
+    hapto_testkit::contract::expect_contract_panic("hapto_ump::Upgrade", || {
+        rig.audio.process(&raw);
+    });
+}
+
 #[test]
 fn every_seven_bit_controller_value_reads_centre_anchored() {
     let mut rig = rig(1);

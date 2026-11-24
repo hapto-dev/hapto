@@ -1374,11 +1374,12 @@ move its line here; when a decision gains code, add one.
 - `crates/ump/src/bytes.rs`: module, `ByteStream`, `Bytes`
 - `crates/learn/src/parse.rs`: module, `parse`, `Value::nrpn`, `Value::normalized`
 - `crates/learn/src/source.rs`: `Control::Cc`
+- `crates/learn/src/audio.rs`: `LearnAudio::process`
 - test `crates/ump/tests/translation.rs`: module, `midi_1_comes_back_from_midi_2_as_it_was_sent`, `a_high_byte_alone_goes_out_at_its_own_frame`, `a_high_byte_alone_goes_out_before_the_channel_s_later_messages`, `an_mpe_zone_s_configuration_goes_out_before_its_member_s_note`, `a_pair_a_block_cuts_goes_out_as_one_block_sends_it`, `a_low_byte_joins_its_high_byte_only_as_the_packet_just_sent`, `a_high_byte_sent_alone_is_marked_apart_from_a_low_byte_of_0`, `bank_select_passes_on_and_rides_the_next_program_change`, `a_program_change_upgraded_from_midi_1_goes_out_without_its_bank`, `a_bank_byte_sent_alone_selects_a_bank_with_its_partner_at_0`, `increment_and_decrement_are_controllers_of_their_own`, `what_midi_1_cannot_carry_is_dropped_and_counted`, `a_midi_2_packet_of_a_reserved_status_is_dropped_and_counted`, `the_types_a_midi_1_destination_takes_in_ump_pass_as_they_are`
 - test `crates/ump/tests/streams.rs`: module, `what_the_downgrade_sends_upgrades_to_the_same_messages`, `a_receiver_of_the_downgrade_ends_each_block_where_the_sender_put_it`, `any_stream_cut_into_blocks_anywhere_upgrades_as_one_block_does`
 - test `crates/ump/tests/bytes.rs`: module, `a_stream_reads_as_its_messages_however_it_is_cut`, `real_time_bytes_anywhere_leave_the_rest_alone`, `a_sysex_of_every_length_goes_out_six_bytes_at_a_time_and_writes_back`
 - test `crates/learn/src/parse.rs`: `upgraded_midi_1_parses_as_a_model_of_midi_1_0_reads_it`
-- test `crates/learn/tests/dispatch.rs`: `a_coarse_binding_reads_a_high_byte_as_seven_bit_and_ignores_low_bytes`, `every_fourteen_bit_nrpn_value_reads_centre_anchored_fine_or_coarse`, `controllers_0_and_32_from_midi_1_drive_their_bindings`
+- test `crates/learn/tests/dispatch.rs`: `a_coarse_binding_reads_a_high_byte_as_seven_bit_and_ignores_low_bytes`, `every_fourteen_bit_nrpn_value_reads_centre_anchored_fine_or_coarse`, `controllers_0_and_32_from_midi_1_drive_their_bindings`, `midi_1_handed_to_learn_unupgraded_is_a_contract_panic`
 - test `crates/learn/tests/capture.rs`: `a_low_byte_of_0_a_block_after_its_high_byte_learns_14_bit`, `controllers_0_and_32_from_midi_1_learn`
 
 ## Parameters
