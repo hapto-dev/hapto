@@ -1,5 +1,7 @@
 //! Targets learn writes on the UI thread: bursts, detaching and holding.
 
+mod common;
+
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::Arc;
@@ -10,7 +12,7 @@ use hapto_learn::{
 };
 use hapto_params::{Declarer, Float, FloatDecl, Kind, ParamDecl, ParamSet, ParamSetBuilder};
 use hapto_session::Session;
-use hapto_ump::{Event, EventList, Midi1Message, Midi1Voice, Upgrade};
+use hapto_ump::{Event, EventList, Upgrade};
 
 fn set() -> Arc<ParamSet> {
     let mut builder = ParamSetBuilder::new();
@@ -322,20 +324,9 @@ fn a_target_panicking_as_a_restore_closes_its_burst_leaves_learn_usable() {
 fn controllers(changes: &[(u8, u8)]) -> EventList {
     let sent: Vec<Event> = changes
         .iter()
-        .zip(0..)
-        .map(|(&(controller, value), offset)| {
-            let message = Midi1Message::ControlChange { controller, value };
-            Midi1Voice {
-                group: 0,
-                channel: 0,
-                message,
-            }
-            .event(offset)
-        })
+        .map(|&(controller, value)| common::cc(controller, value))
         .collect();
-    let mut events = EventList::with_capacity(changes.len());
-    Upgrade::new().block(&sent, 0, &mut events);
-    events
+    common::upgraded(&mut Upgrade::new(), &sent)
 }
 
 #[test]

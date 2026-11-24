@@ -9,7 +9,7 @@ use hapto_learn::{Config, LearnAudio, SESSION_KEY, Takes};
 use hapto_params::host_id;
 use hapto_params::{Declarer, Float, FloatDecl, Params, Value, audio_thread};
 use hapto_session::{ApplyError, Participant, Registration, Section};
-use hapto_ump::{EventList, Midi1Message, Midi1Voice, Upgrade};
+use hapto_ump::{Event, EventList, Midi1Message, Midi1Voice, Upgrade};
 use hapto_undo::{Bound, History};
 use serde_json::{Map, Value as Json};
 
@@ -436,6 +436,24 @@ macro_rules! through_every_shell {
 mod before_activation;
 mod told;
 
+/// A MIDI 1.0 control change on group 0, channel 0, at `offset`, upgraded
+/// to the MIDI 2.0 learn reads.
+pub(super) fn upgraded_cc(offset: u32, controller: u8, value: u8) -> Event {
+    let message = Midi1Message::ControlChange { controller, value };
+    let sent = Midi1Voice {
+        group: 0,
+        channel: 0,
+        message,
+    }
+    .event(offset);
+    let mut upgraded = EventList::with_capacity(1);
+    Upgrade::new().block(&[sent], offset, &mut upgraded);
+    *upgraded
+        .as_slice()
+        .first()
+        .expect("one controller upgrades to one")
+}
+
 through_every_shell!(
     Probe:
     the_parameters_new_is_handed_are_the_ones_the_host_writes,
@@ -847,18 +865,8 @@ fn a_plugin_that_writes_no_idle_still_has_its_parts_ticked<S: Shell>() {
     // An edit, and a controller learn hears, as a block would bring it.
     handed(|handed| {
         handed.level.as_ref().expect("handed").set(0.5);
-        let message = Midi1Message::ControlChange {
-            controller: 74,
-            value: 64,
-        };
-        let sent = Midi1Voice {
-            group: 0,
-            channel: 0,
-            message,
-        }
-        .event(0);
         let mut events = EventList::with_capacity(1);
-        Upgrade::new().block(&[sent], 0, &mut events);
+        events.push(upgraded_cc(0, 74, 64));
         handed.learn.as_mut().expect("handed").process(&events);
     });
     host.tick();

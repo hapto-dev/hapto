@@ -4,6 +4,8 @@
 
 #![cfg(all(feature = "vst3", feature = "cabi", feature = "test-host"))]
 
+mod common;
+
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeSet;
 use std::rc::Rc;
@@ -21,7 +23,6 @@ use hapto_params::{
     audio_thread, host_id,
 };
 use hapto_session::{ApplyError, Participant, Registration, Section};
-use hapto_ump::{Midi1Message, Midi1Voice, Upgrade};
 use hapto_undo::{Bound, History, UndoSize};
 use serde_json::{Value as Json, json};
 
@@ -565,19 +566,6 @@ fn block(processor: &mut MixerProcessor, events: &EventList) -> f32 {
     left[0]
 }
 
-fn cc(controller: u8, value: u8) -> EventList {
-    let mut events = EventList::with_capacity(1);
-    let message = Midi1Message::ControlChange { controller, value };
-    let sent = Midi1Voice {
-        group: 0,
-        channel: 0,
-        message,
-    }
-    .event(0);
-    Upgrade::new().block(&[sent], 0, &mut events);
-    events
-}
-
 /// A mapping of controller `number` on any channel.
 fn on(number: u8) -> Mapping {
     Mapping::new(Source::any(Control::Cc(number)))
@@ -757,12 +745,12 @@ fn midi_learnable_in_the_block_the_controller_arrives_in() {
         .learn()
         .arm(&first.volume, Takes::CONTROLLER)
         .expect("a parameter made at run time is learnable");
-    run(&mut processor, &cc(7, 64));
+    run(&mut processor, &common::upgraded_cc(7, 64));
     tick(&mut plugin, &driver);
     assert_eq!(plugin.learned(&first.volume), Some(Control::Cc(7)));
 
     // Controller 7 at 0: -60 dB, in its own block.
-    let level = run(&mut processor, &cc(7, 0));
+    let level = run(&mut processor, &common::upgraded_cc(7, 0));
     assert!(close(level, factor(-60.0)), "{level}");
     assert_eq!(first.volume.get(), -60.0);
     tick(&mut plugin, &driver);
