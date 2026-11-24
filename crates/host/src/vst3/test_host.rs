@@ -20,9 +20,9 @@ use ::vst3::Steinberg::Vst::{
     String128, SymbolicSampleSizes_,
 };
 use ::vst3::Steinberg::{
-    FIDString, IBStream, IBStreamTrait, IPluginBaseTrait, TBool, int32, int64, kInternalError,
-    kInvalidArgument, kNoInterface, kNotImplemented, kNotInitialized, kOutOfMemory, kResultFalse,
-    kResultOk, kResultTrue, tresult,
+    FIDString, IBStream, IBStreamTrait, IPluginBaseTrait, TBool, int8, int32, int64,
+    kInternalError, kInvalidArgument, kNoInterface, kNotImplemented, kNotInitialized, kOutOfMemory,
+    kResultFalse, kResultOk, kResultTrue, tresult,
 };
 use ::vst3::{Class, ComPtr, ComWrapper};
 
@@ -1546,9 +1546,9 @@ pub enum BusEvent<'a> {
         /// pressure, 129 the bend, 130 a program change.
         controller: u8,
         /// The value, 0 to 127: the bend's low 7 bits.
-        value: i8,
+        value: int8,
         /// The bend's high 7 bits; 0 for any other.
-        value2: i8,
+        value2: int8,
     },
 }
 
@@ -1722,7 +1722,7 @@ impl<'a> BusEvent<'a> {
                 event.r#type = LEGACY_CC_OUT;
                 event.__field0.midiCCOut = LegacyMIDICCOutEvent {
                     controlNumber: controller,
-                    channel: i8::try_from(channel).unwrap_or(0),
+                    channel: int8::try_from(channel).unwrap_or(0),
                     value,
                     value2,
                 };

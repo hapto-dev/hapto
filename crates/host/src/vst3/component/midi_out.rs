@@ -34,7 +34,7 @@ use ::vst3::Steinberg::Vst::{
     ControllerNumbers_, DataEvent, Event as VstEvent, IEventList, IEventListTrait,
     LegacyMIDICCOutEvent, NoteExpressionValueEvent, NoteOffEvent, NoteOnEvent, PolyPressureEvent,
 };
-use ::vst3::Steinberg::{int32, kResultOk, uint8};
+use ::vst3::Steinberg::{int8, int32, kResultOk, uint8};
 use hapto_ump::{
     ChannelMessage, Downgrade, Event, MessageType, Midi1Message, Midi1Voice, Origin, SysExJoin,
     scale,
@@ -276,9 +276,9 @@ fn legacy_cc(offset: u32, channel: u8, number: uint8, value: u8, value2: u8) -> 
     let mut event = blank(offset, LEGACY_CC_OUT);
     event.__field0.midiCCOut = LegacyMIDICCOutEvent {
         controlNumber: number,
-        channel: i8::try_from(channel).unwrap_or(0),
-        value: i8::try_from(value & 0x7F).unwrap_or(0),
-        value2: i8::try_from(value2 & 0x7F).unwrap_or(0),
+        channel: int8::try_from(channel).unwrap_or(0),
+        value: int8::try_from(value & 0x7F).unwrap_or(0),
+        value2: int8::try_from(value2 & 0x7F).unwrap_or(0),
     };
     event
 }

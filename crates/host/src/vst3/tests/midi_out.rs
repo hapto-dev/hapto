@@ -2,6 +2,8 @@
 //! host's ids, a note's expressions, controllers as MIDI 1.0, SysEx whole,
 //! and what VST3 has no event for counted.
 
+use ::vst3::Steinberg::int8;
+
 use super::super::BusEvent;
 use super::{Sender, note_on, play, playing};
 use crate::layout::Stereo;
@@ -141,7 +143,7 @@ fn controllers_go_back_out_as_the_midi_1_values_they_came_in_as() {
         (low, &[(4, 0.0)]),
     ];
     play(&mut host, &[], &queues);
-    let sent: Vec<(i32, u8, i8, i8)> = host
+    let sent: Vec<(i32, u8, int8, int8)> = host
         .sent()
         .iter()
         .map(|event| match *event {
