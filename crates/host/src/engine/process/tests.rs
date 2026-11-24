@@ -3,9 +3,9 @@ use std::sync::Arc;
 
 use hapto_learn::{Config, Control, Learn, Learned, Mapping, Source, Takes};
 use hapto_params::{Kind, ParamDecl, ParamId, ParamSet};
+use hapto_ump::{EventList, Midi1Message, Midi1Voice, Upgrade};
 
 use super::{Active, pieces};
-use crate::engine::tests::upgraded_cc;
 use crate::layout::{AnyLayout, Width};
 use crate::{Block, Event, Processor, Status};
 
@@ -166,6 +166,24 @@ fn learning() -> (Learn, Active<Reads>, ParamId) {
     let mut audio = Active::around(reads, Width::new(0, 0), max_frames, 4, 0);
     audio.learn = Some(learn_audio);
     (learn, audio, gain)
+}
+
+/// A MIDI 1.0 control change on group 0, channel 0, at `offset`, upgraded
+/// to the MIDI 2.0 learn reads.
+pub(in crate::engine) fn upgraded_cc(offset: u32, controller: u8, value: u8) -> Event {
+    let message = Midi1Message::ControlChange { controller, value };
+    let sent = Midi1Voice {
+        group: 0,
+        channel: 0,
+        message,
+    }
+    .event(offset);
+    let mut upgraded = EventList::with_capacity(1);
+    Upgrade::new().block(&[sent], offset, &mut upgraded);
+    *upgraded
+        .as_slice()
+        .first()
+        .expect("one controller upgrades to one")
 }
 
 #[test]

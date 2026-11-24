@@ -373,7 +373,7 @@ fn share(block: &EventList, piece: &mut EventList, frames: usize, offset: usize,
 }
 
 #[cfg(test)]
-mod tests;
+pub(super) mod tests;
 
 #[cfg(all(test, loom))]
 mod loom_models {
