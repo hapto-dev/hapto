@@ -38,10 +38,11 @@ use crate::field::Field;
 pub enum Control {
     /// A control change, 0 to 127, from MIDI 1.0 or MIDI 2.0.
     ///
-    /// Controllers 6, 38, 96, 97, 98, 99, 100 and 101 are never bound: the
-    /// upgrade to MIDI 2.0 consumes them to assemble an RPN or NRPN, as
+    /// Controllers 6, 38, 96, 97, 98, 99, 100 and 101 are never bound, as
     /// [`is_parameter_number`](hapto_ump::controller::is_parameter_number)
-    /// says. They select a parameter number, enter its value, or step it.
+    /// names them. The upgrade to MIDI 2.0 assembles an RPN or NRPN from 6,
+    /// 38 and 98 to 101, and 96 and 97 step a number's value rather than set
+    /// a position, so a binding on them would jump its target.
     ///
     /// Controllers 0 and 32 select the bank the next program change carries.
     /// MIDI 2.0 tells a receiver to ignore them, since its program change
@@ -102,11 +103,8 @@ impl Control {
         }
     }
 
-    /// Returns whether this is a controller that the upgrade consumes to
-    /// assemble a parameter number.
-    ///
-    /// Such a controller never acts as a plain one. An increment's value is a
-    /// step, not a position, so a binding would make its target jump.
+    /// Whether it is a controller that is never bound, as [`Control::Cc`]
+    /// says.
     pub(crate) fn selects_a_number(self) -> bool {
         matches!(self, Control::Cc(number) if is_parameter_number(number))
     }

@@ -42,11 +42,10 @@ pub const RPN_MSB: u8 = 101;
 /// (RP-015).
 pub(crate) const RESET_ALL_CONTROLLERS: u8 = 121;
 
-/// Returns whether [`Upgrade`](crate::Upgrade) consumes `controller` to build
-/// an RPN or NRPN.
-///
-/// These are data entry and its low byte, increment and decrement, and the
-/// four address bytes.
+/// Whether `controller` is one of MIDI 1.0's parameter-number controllers:
+/// data entry, its low byte and the four address bytes, which the upgrade
+/// assembles into an RPN or NRPN, and increment and decrement, which step
+/// one.
 ///
 /// # Examples
 ///

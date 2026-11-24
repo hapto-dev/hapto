@@ -48,12 +48,16 @@ exporter.
   as riding the next program change, so a fader on them learns, and a program
   change upgraded from MIDI 1.0 downgrades without the bank its controllers
   already sent. Learn reads MIDI 2.0 alone: a MIDI 1.0 controller learns and
-  plays as before once upgraded, but for an NRPN binding that is not coarse,
-  which skips a high byte sent alone and moves when its low byte comes, so a
-  pair a block cuts never dips. An address byte sent alone keeps the other one
-  held, as a MIDI 1.0 receiver does, where learn forgot the low byte at a lone
-  99. A packet's message type is a `MessageType`, whose constants name the UMP
-  table's types and whose `words` replaces `packet_words`.
+  plays as before once upgraded, but for four rules of NRPN data entry. A low
+  byte refines its number's high byte when the address is sent again between
+  them, where learn dropped the entry; an address byte sent alone keeps the
+  other one held, as a MIDI 1.0 receiver does, where learn forgot the low byte
+  at a lone 99; a binding that is not coarse skips a high byte sent alone and
+  moves when its low byte comes, so a pair a block cuts never dips; and a
+  coarse binding reads the high byte of a data entry that carries its low byte
+  too, where learn wrote nothing. A packet's message type is a `MessageType`,
+  whose constants name the UMP table's types and whose `words` replaces
+  `packet_words`.
 
 ### Added
 

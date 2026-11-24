@@ -49,8 +49,9 @@ pub struct Mapping {
     /// For a MIDI 1.0 NRPN: whether the capture saw no low byte (controller
     /// 38).
     ///
-    /// A coarse binding reads the high byte as 7-bit and ignores low bytes,
-    /// so a sender that never sends the low byte reaches 1.0. Otherwise the
+    /// A coarse binding reads the high byte of every data entry as 7-bit,
+    /// whatever its low byte, so a sender that never sends the low byte
+    /// reaches 1.0. Otherwise the
     /// value is 14-bit and moves only when a low byte comes: a high byte sent
     /// alone, which a 14-bit sender follows with its low byte, moves it not
     /// at all, so a pair a block cuts never dips to `high << 7`. A sender
@@ -178,9 +179,9 @@ pub enum LearnError {
     UnknownTarget(TargetId),
     /// A number in the source is out of range for its kind.
     BadSource(Source),
-    /// The source can never be bound, because it is a controller that the
-    /// upgrade consumes or an NRPN that the plugin reserved.
-    /// [`Control::Cc`](crate::Control::Cc) lists those controllers.
+    /// The source can never be bound: a controller that sets or steps a
+    /// parameter number, as [`Control::Cc`](crate::Control::Cc) says, or an
+    /// NRPN the plugin reserved.
     Blocked(Source),
     /// The table holds [`Config::max_mappings`] mappings and the target has
     /// none to re-point.

@@ -36,7 +36,9 @@ const NULL: u8 = 127;
 /// names and keeps the other, as the specification holds the latest of the
 /// four: an address may come in either byte order, a sender may send only
 /// the byte that changed, and the null number (127, 127) selects nothing.
-/// Reset All Controllers forgets the address.
+/// Reset All Controllers forgets the address. Data increment and decrement
+/// (96, 97) pass on as controllers of their own, which name no number, so a
+/// destination of the downgrade steps the number it last saw.
 ///
 /// A data entry belongs to the number it was sent under. A low byte refines
 /// its number's latest high byte however often the address is sent between,
