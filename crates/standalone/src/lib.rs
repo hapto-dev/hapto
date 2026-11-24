@@ -60,6 +60,8 @@ mod session;
 mod settings;
 #[cfg(any(windows, test))]
 mod signal;
+#[cfg(test)]
+mod tests;
 
 use std::marker::PhantomData;
 use std::process::ExitCode;

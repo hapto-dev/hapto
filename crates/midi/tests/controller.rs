@@ -2,7 +2,7 @@
 //! from its own message alone, a registered, an assignable and a note's
 //! own, and each sent and read back as it was.
 
-use hapto_midi::controller::{self, Controller};
+use hapto_midi::controller::{self, Address, Controller};
 use hapto_midi::{Centred, Channel, Decoder, Group, Message, MidiOut, Pedal};
 use hapto_ump::{Event, EventList, Midi1Message, Midi1Voice, Upgrade};
 
@@ -184,4 +184,43 @@ fn a_value_that_is_not_a_number_reads_as_each_types_rest() {
     // In range, each is held to its ends.
     assert_eq!(Centred::from_unit(2.0), Centred::new(1.0));
     assert_eq!(f32::from_unit(-1.0), 0.0);
+}
+
+#[test]
+fn a_controller_made_at_run_time_is_the_one_its_constant_would_be() {
+    let (group, channel) = (Group::FIRST, Channel::number(2));
+    let swell = Controller::control(20, 0.5_f32);
+    assert_eq!(swell.address(), Address::Control(20));
+    let full = round_trip(swell.message(group, channel, 1.0));
+    assert_eq!(swell.read(&full), Some(1.0));
+    let fine = Controller::registered(0, 1, Centred::CENTRE);
+    assert_eq!(fine.address(), controller::FINE_TUNING.address());
+    let cutoff = Controller::assignable(1, 7, 0.5_f32);
+    assert_eq!(cutoff.address(), Address::Assignable { bank: 1, index: 7 });
+    let shut = round_trip(cutoff.message(group, channel, 0.0));
+    assert_eq!(cutoff.read(&shut), Some(0.0));
+}
+
+#[test]
+fn every_controller_midi_1_0_defines_has_a_name_and_no_other_does() {
+    // The numbers MIDI 1.0's table of controllers leaves undefined.
+    let undefined = |number: u8| {
+        matches!(
+            number,
+            3 | 9 | 14 | 15 | 20..=31 | 35 | 41 | 46 | 47 | 52..=63 | 85..=87 | 89 | 90 | 102..=119
+        )
+    };
+    let mut names = std::collections::HashSet::new();
+    for number in 0..=127 {
+        let name = controller::name(number);
+        assert_eq!(
+            name.is_none(),
+            undefined(number),
+            "controller {number}: {name:?}"
+        );
+        if let Some(name) = name {
+            assert!(names.insert(name), "{name} names two controllers");
+        }
+    }
+    assert_eq!(controller::name(128), None, "past MIDI 1.0's 7 bits");
 }
