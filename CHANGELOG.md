@@ -44,15 +44,16 @@ exporter.
   Each `Event` keeps its `Origin`, and `scale` moves values between the
   widths. An RPN or NRPN's data entry high byte goes out at its own frame, and
   its low byte joins it there or refines it later, so where a host cuts its
-  blocks changes nothing. Learn reads MIDI 2.0 alone: a MIDI 1.0 controller
-  learns and plays as before once upgraded, but for controllers 0 and 32,
-  which select a bank, and an NRPN binding that is not coarse, which skips a
-  high byte sent alone and moves when its low byte comes, so a pair a block
-  cuts never dips. An address byte sent alone keeps the other one held, as a
-  MIDI 1.0 receiver does, where learn forgot the low byte at a lone 99. A
-  packet's message type is a `MessageType`, whose
-  constants name the UMP table's types and whose `words` replaces
-  `packet_words`.
+  blocks changes nothing. Controllers 0 and 32 pass on as controllers as well
+  as riding the next program change, so a fader on them learns, and a program
+  change upgraded from MIDI 1.0 downgrades without the bank its controllers
+  already sent. Learn reads MIDI 2.0 alone: a MIDI 1.0 controller learns and
+  plays as before once upgraded, but for an NRPN binding that is not coarse,
+  which skips a high byte sent alone and moves when its low byte comes, so a
+  pair a block cuts never dips. An address byte sent alone keeps the other one
+  held, as a MIDI 1.0 receiver does, where learn forgot the low byte at a lone
+  99. A packet's message type is a `MessageType`, whose constants name the UMP
+  table's types and whose `words` replaces `packet_words`.
 
 ### Added
 

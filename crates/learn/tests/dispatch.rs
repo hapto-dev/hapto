@@ -931,6 +931,17 @@ fn data_increment_and_decrement_use_the_address_and_drive_nothing() {
 }
 
 #[test]
+fn controllers_0_and_32_from_midi_1_drive_their_bindings() {
+    // A fader on 0 and a button on 32, as common controllers send them: the
+    // upgrade passes them on as well as holding them for a program change.
+    let mut rig = rig(2);
+    rig.map(0, Source::any(Control::Cc(0)));
+    rig.map(1, Source::any(Control::Cc(32)));
+    rig.block(&[cc(0, 127), cc(32, 64)]);
+    assert_eq!([rig.value(0), rig.value(1)], [1.0, 0.5]);
+}
+
+#[test]
 fn every_seven_bit_controller_value_reads_centre_anchored() {
     let mut rig = rig(1);
     rig.map(0, Source::any(Control::Cc(1)));

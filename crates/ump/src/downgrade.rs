@@ -7,7 +7,7 @@ use crate::controller::{
 use crate::scale::{down_16_to_7, down_32_to_7, down_32_to_14};
 use crate::{
     Attribute, Bank, ChannelMessage, ChannelVoice, Event, EventList, MessageType, Midi1Message,
-    Midi1Voice,
+    Midi1Voice, Origin,
 };
 
 /// Downgrades MIDI 2.0 to MIDI 1.0, for a destination that takes only MIDI
@@ -19,7 +19,10 @@ use crate::{
 /// controller becomes its four controllers (101 and 100, or 99 and 98, then
 /// 6 and 38), even one upgraded from a high byte sent alone: a MIDI 1.0
 /// receiver reads its low byte of 0 as it reads none. A program change with
-/// a bank becomes bank select (0 and 32) and then the program.
+/// a bank becomes bank select (0 and 32) and then the program, but one
+/// upgraded from MIDI 1.0 goes out alone: [`Upgrade`](crate::Upgrade) sent
+/// its bank select on as controllers when they came, which go back as they
+/// came, so MIDI 1.0 sent through both comes back as it was sent.
 ///
 /// What MIDI 1.0 cannot carry is dropped and counted in
 /// [`lost`](Self::lost): relative controllers, per-note controllers, per-note
@@ -146,7 +149,8 @@ impl Downgrade {
                 send(cc(controller, down_32_to_7(value)), out);
             }
             ChannelMessage::ProgramChange { program, bank } => {
-                if let Some(Bank { msb, lsb }) = bank {
+                let sent_before = event.origin == Origin::Midi1;
+                if let Some(Bank { msb, lsb }) = bank.filter(|_| !sent_before) {
                     send(cc(BANK_SELECT, msb), out);
                     send(cc(BANK_SELECT_LSB, lsb), out);
                 }

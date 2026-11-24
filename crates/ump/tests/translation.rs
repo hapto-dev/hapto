@@ -578,7 +578,7 @@ fn increment_and_decrement_are_controllers_of_their_own() {
 }
 
 #[test]
-fn bank_select_is_held_for_the_program_change_that_carries_it() {
+fn bank_select_passes_on_and_rides_the_next_program_change() {
     let mut up = Upgrade::new();
     let program = |program| one(Midi1Message::ProgramChange { program });
     assert_eq!(
@@ -591,8 +591,16 @@ fn bank_select_is_held_for_the_program_change_that_carries_it() {
             }
         )]
     );
-    // Bank select (0 and 32) alone translates to nothing.
-    assert_eq!(upgrade(&mut up, &[(0, cc(0, 1)), (0, cc(32, 2))]), []);
+    // Controllers 0 and 32 go on as controllers, for a plugin that reads
+    // them as a fader or a button, and wait for the program change too.
+    let controller = |controller, value| ChannelMessage::ControlChange {
+        controller,
+        value: scale::up_7_to_32(value),
+    };
+    assert_eq!(
+        upgrade(&mut up, &[(0, cc(0, 1)), (0, cc(32, 2))]),
+        [(0, controller(0, 1)), (0, controller(32, 2))]
+    );
     let bank = Some(Bank { msb: 1, lsb: 2 });
     assert_eq!(
         upgrade(&mut up, &[(3, program(6))]),
@@ -613,15 +621,16 @@ fn a_bank_byte_sent_alone_selects_a_bank_with_its_partner_at_0() {
         (cc(0, 1), Bank { msb: 1, lsb: 0 }),
         (cc(32, 2), Bank { msb: 0, lsb: 2 }),
     ] {
+        let upgraded = upgrade(&mut Upgrade::new(), &[(0, byte), (0, program)]);
         assert_eq!(
-            upgrade(&mut Upgrade::new(), &[(0, byte), (0, program)]),
-            [(
+            upgraded.last(),
+            Some(&(
                 0,
                 ChannelMessage::ProgramChange {
                     program: 5,
                     bank: Some(bank)
                 }
-            )]
+            ))
         );
     }
 }
@@ -758,6 +767,33 @@ fn a_controller_becomes_its_four_and_a_program_its_bank_first() {
 }
 
 #[test]
+fn a_program_change_upgraded_from_midi_1_goes_out_without_its_bank() {
+    // Its bank select went on as controllers of their own when it came, so
+    // sending it again with the program would send it twice.
+    let program = ChannelMessage::ProgramChange {
+        program: 6,
+        bank: Some(Bank { msb: 1, lsb: 2 }),
+    };
+    let upgraded = Event {
+        origin: Origin::Midi1,
+        ..ChannelVoice {
+            group: 0,
+            channel: 0,
+            message: program,
+        }
+        .event(0)
+    };
+    let mut out = EventList::with_capacity(4);
+    Downgrade::new().block(&[upgraded], &mut out);
+    let sent: Vec<Midi1Message> = out
+        .as_slice()
+        .iter()
+        .map(|event| event.midi1_voice().expect("MIDI 1.0").message)
+        .collect();
+    assert_eq!(sent, [Midi1Message::ProgramChange { program: 6 }]);
+}
+
+#[test]
 fn what_midi_1_cannot_carry_is_dropped_and_counted() {
     let mut down = Downgrade::new();
     let lost = [
@@ -844,7 +880,7 @@ fn every_midi_1_message() -> Vec<Vec<Midi1Message>> {
     let cc = |controller, value| Midi1Message::ControlChange { controller, value };
     let mut all = Vec::new();
     for value in 0..=127 {
-        for controller in (0..=127).filter(|c| !matches!(c, 0 | 6 | 32 | 38 | 98..=101)) {
+        for controller in (0..=127).filter(|c| !matches!(c, 6 | 38 | 98..=101)) {
             all.push(vec![cc(controller, value)]);
         }
         all.push(vec![Midi1Message::NoteOn {

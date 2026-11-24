@@ -1330,6 +1330,15 @@ it. Its audit recommended sending the high byte at once, the alternative the
 record had turned down, and the owner took it; the record holds it "to
 confirm".
 
+Until 2026-11-24 the upgrade held MIDI 1.0's controllers 0 and 32 for the
+next program change alone, as the Default Translation does, so a binding on
+them could be made and never fired, and a fader on controller 0 could not be
+learned. The review recommended refusing such bindings; its audit recommended
+passing the two on as well, since common controllers send a fader or a button
+on them, and the owner took the audit's. The downgrade's program change
+without its bank, which keeps MIDI 1.0's round trip exact, was the
+implementer's, and is to confirm with the rest.
+
 ## Rules
 
 ### P7. The host write: sanitise, clamp, convert, snap, store, publish

@@ -22,9 +22,8 @@ const NULL: u8 = 127;
 /// it makes is marked [`Origin::Midi1`], or [`Origin::Midi1HighByte`] for
 /// a data entry high byte sent with no low byte. A note-on at velocity 0
 /// becomes a note-off at `0x8000`. The pair of a 14-bit controller stays two
-/// controllers. Bank select is held for the next program change, which
-/// carries it, and is not translated on its own; a bank byte never sent
-/// reads as 0.
+/// controllers. Bank select (controllers 0 and 32) is held for the next
+/// program change, which carries it; a bank byte never sent reads as 0.
 ///
 /// An RPN or NRPN becomes one registered or assignable controller. Its
 /// data entry high byte (controller 6) goes out at once, at its own frame,
@@ -41,11 +40,17 @@ const NULL: u8 = 127;
 ///
 /// A data entry belongs to the number it was sent under. A low byte refines
 /// its number's latest high byte however often the address is sent between,
-/// as the specification holds the latest high byte. The upgrade departs
-/// from the specification in two places, so that one parameter's high byte
-/// never lands on another: a low byte never takes the high byte of another
-/// number, and one sent before its own number's high byte waits for it, until
-/// the next address byte.
+/// as the specification holds the latest high byte.
+///
+/// The upgrade departs from the specification in three places. So that one
+/// parameter's high byte never lands on another, a low byte never takes the
+/// high byte of another number, and one sent before its own number's high
+/// byte waits for it, until the next address byte. And bank select also
+/// goes on as controllers 0 and 32 when it comes, which the specification
+/// carries in the program change alone and tells a MIDI 2.0 receiver to
+/// ignore: common controllers send a fader or a button on them, which a
+/// plugin can learn. [`Downgrade`](crate::Downgrade) sends a program change
+/// upgraded here without its bank, so MIDI 1.0 still comes back as sent.
 ///
 /// Other packets pass as they are. State is kept for every group and
 /// channel, made once and never grown, so [`block`](Self::block) allocates
@@ -296,17 +301,23 @@ impl Channel {
         send.send(translated);
     }
 
-    /// Translates a MIDI 1.0 control change: bank select is held, the
-    /// parameter-number controllers feed their state, and the rest become
-    /// MIDI 2.0 control changes.
+    /// Translates a MIDI 1.0 control change: the parameter-number
+    /// controllers feed their state, and the rest become MIDI 2.0 control
+    /// changes, bank select held as well.
     fn control_change(&mut self, controller: u8, value: u8, send: &mut Sender<'_>) {
         let as_is = ChannelMessage::ControlChange {
             controller,
             value: up_7_to_32(value),
         };
         match controller {
-            BANK_SELECT => self.bank[0] = Some(value),
-            BANK_SELECT_LSB => self.bank[1] = Some(value),
+            BANK_SELECT => {
+                self.bank[0] = Some(value);
+                send.send(as_is);
+            }
+            BANK_SELECT_LSB => {
+                self.bank[1] = Some(value);
+                send.send(as_is);
+            }
             _ if is_parameter_number(controller) || controller == RESET_ALL_CONTROLLERS => {
                 self.numbers.control(controller, value, send);
                 // Increment and decrement are controllers of their own in

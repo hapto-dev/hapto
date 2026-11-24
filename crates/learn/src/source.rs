@@ -38,17 +38,21 @@ use crate::field::Field;
 pub enum Control {
     /// A control change, 0 to 127, from MIDI 1.0 or MIDI 2.0.
     ///
-    /// Controllers 6, 38, 96, 97, 98, 99, 100 and 101 are never bound, because
-    /// the upgrade to MIDI 2.0 consumes them to assemble an RPN or NRPN, as
+    /// Controllers 6, 38, 96, 97, 98, 99, 100 and 101 are never bound: the
+    /// upgrade to MIDI 2.0 consumes them to assemble an RPN or NRPN, as
     /// [`is_parameter_number`](hapto_ump::controller::is_parameter_number)
     /// says. They select a parameter number, enter its value, or step it.
-    /// MIDI 1.0's controllers 0 and 32 never arrive either, because the
-    /// upgrade reads them as the bank for the next program change.
     ///
-    /// A binding reads only its own controller, so a MIDI 1.0 14-bit pair
-    /// plays at 7 bits through the bound byte. In the cases that
-    /// [`Learn::poll`](crate::Learn::poll) names, that is the high byte (below
-    /// 32). Open: reading both bytes waits for an exporter that delivers MIDI.
+    /// Controllers 0 and 32 select the bank the next program change carries.
+    /// MIDI 2.0 tells a receiver to ignore them, since its program change
+    /// carries the bank, and Hapto does not: the upgrade passes MIDI 1.0's on
+    /// as controllers too, so a fader or a button a controller sends on them
+    /// learns and plays as any other.
+    ///
+    /// A binding reads that controller alone, so a MIDI 1.0 14-bit pair plays
+    /// at 7 bits through the byte learn bound: the high byte (below 32) in the
+    /// cases [`Learn::poll`](crate::Learn::poll) names. Open: reading both
+    /// bytes waits for an exporter that delivers MIDI.
     Cc(u8),
     /// A non-registered (assignable) parameter number, 0 to 16383. In MIDI
     /// 1.0 it is an NRPN, assembled from controllers 99, 98, 6 and 38. In

@@ -3537,6 +3537,14 @@ in with `Upgrade`, by the Default Translation in appendix D of the UMP and MIDI
 program change that carries their bank, and an RPN or NRPN becomes one
 registered or assignable controller.
 
+Controllers 0 and 32 also pass on as controllers when they come. That departs
+from appendix D.3.4, which carries them in the program change alone, and from
+section 7.4.6, which tells a MIDI 2.0 receiver to ignore them: common
+controllers send a fader or a button on them, which a plugin learns as any
+other. The downgrade sends a program change upgraded from MIDI 1.0 without its
+bank, since its bank select went back as the controllers it came as, so MIDI
+1.0 sent through both still comes back as it was sent.
+
 The upgrade sends a data entry high byte (6) at once, at its own frame, with
 its low byte at 0, so no later message overtakes it and a MIDI 1.0 receiver of
 the downgrade steps the value it set. A low byte (38) at the same frame joins
@@ -3553,11 +3561,11 @@ An exporter downgrades with `Downgrade` only for a destination that takes MIDI
 1.0 alone, by the same appendix. Values cut their low bits, a note-on that
 would cut to velocity 0 goes out at 1, a registered or assignable controller
 becomes its four controllers, and a program change with a bank goes out after
-bank select. What MIDI 1.0 cannot carry is dropped and counted: relative and
-per-note controllers, per-note pitch bend and management, a note's attribute,
-whose note still goes out, and a MIDI 2.0 packet of a status the specification
-reserves. Packets of the other types pass, since a destination that takes MIDI
-1.0 in UMP may take each of them.
+bank select, but for one upgraded from MIDI 1.0. What MIDI 1.0 cannot carry is
+dropped and counted: relative and per-note controllers, per-note pitch bend and
+management, a note's attribute, whose note still goes out, and a MIDI 2.0
+packet of a status the specification reserves. Packets of the other types
+pass, since a destination that takes MIDI 1.0 in UMP may take each of them.
 
 A device or port that carries MIDI 1.0's byte stream meets UMP at the same
 edge. `ByteStream` reads its bytes into MIDI 1.0 packets as MIDI 1.0 says:
@@ -3569,13 +3577,12 @@ bytes, each message in full.
 Each `Event` keeps its `Origin`. The translation gives back what MIDI 1.0 sent,
 so learn narrows a value upgraded from MIDI 1.0 to the 7 or 14 bits it was sent
 at and scales it as D10 says, and a MIDI 1.0 controller learns and plays as it
-did when learn read MIDI 1.0 itself, but for controllers 0 and 32, which select
-a bank and are never learned. The upgrade sends a high byte with no low byte as
-if its low byte were 0, and marks it `Origin::Midi1HighByte`, so learn tells a
-low byte that never came from one of 0 (D47). A coarse binding reads the high
-byte of every data entry, so its target lands where it did when a pair's high
-byte arrived as a message of its own; one that is not coarse skips a high byte
-sent alone and waits for its low byte (D30).
+did when learn read MIDI 1.0 itself. The upgrade sends a high byte with no low
+byte as if its low byte were 0, and marks it `Origin::Midi1HighByte`, so learn
+tells a low byte that never came from one of 0 (D47). A coarse binding reads
+the high byte of every data entry, so its target lands where it did when a
+pair's high byte arrived as a message of its own; one that is not coarse skips
+a high byte sent alone and waits for its low byte (D30).
 
 **Alternatives.** The alternatives were both protocols inside, each in messages
 of its own, which leaves every reader two protocols to handle; MIDI 1.0 inside,

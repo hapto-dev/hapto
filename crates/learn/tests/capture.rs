@@ -74,6 +74,22 @@ fn arming_captures_the_next_message_and_the_poll_commits_it() {
 }
 
 #[test]
+fn controllers_0_and_32_from_midi_1_learn() {
+    let mut rig = rig();
+    let target = rig.ids[0];
+    rig.learn.arm(target, Takes::CONTROLLER).expect("known");
+    rig.block(&[cc(0, 100)]);
+    let fader = exact(Control::Cc(0), 0, 0);
+    assert_eq!(rig.learn.poll(), learned(target, fader, false));
+    // 32 alone is the low byte of no pair sent: it learns itself once its
+    // wait for a high byte is over, as any controller 32 to 63 does.
+    rig.learn.arm(target, Takes::CONTROLLER).expect("known");
+    rig.block(&[cc(32, 100)]);
+    let button = exact(Control::Cc(32), 0, 0);
+    assert_eq!(after_its_wait(&mut rig), learned(target, button, false));
+}
+
+#[test]
 fn several_captures_before_a_poll_commit_only_the_newest_legal_one() {
     // A refused message later in a tick does not hide an earlier legal one,
     // across blocks too.
