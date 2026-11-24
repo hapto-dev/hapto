@@ -143,8 +143,9 @@ struct Numbers {
     high: Option<Held>,
     /// A low byte that arrived before its number's high byte, which MIDI 1.0
     /// allows; that high byte completes it, unless an address byte comes
-    /// first.
-    early_low: Option<(Number, u8)>,
+    /// first. It is always the selected number's: only an address byte or
+    /// Reset All Controllers changes the number, and each drops it.
+    early_low: Option<u8>,
 }
 
 /// A data entry high byte, with the number it was sent under.
@@ -217,17 +218,16 @@ impl Numbers {
                 self.address_byte(controller, value);
             }
             DATA_ENTRY => {
-                // A low byte sent first is spent here, even by a data entry
-                // that selects nothing.
-                let early = self.early_low.take();
+                // A low byte sent first is spent here. It is the selected
+                // number's, since every address byte and Reset All
+                // Controllers drop it, so a data entry that selects nothing
+                // never finds one.
+                let low = self.early_low.take();
                 let Some(number) = self.number() else {
                     self.high = None;
                     return;
                 };
                 self.high = Some(Held { number, value });
-                let low = early
-                    .filter(|&(under, _)| under == number)
-                    .map(|(_, low)| low);
                 send.entry(Entry {
                     number,
                     high: value,
@@ -244,7 +244,7 @@ impl Numbers {
                         high: held.value,
                         low: Some(value),
                     }),
-                    _ => self.early_low = Some((number, value)),
+                    _ => self.early_low = Some(value),
                 }
             }
             RESET_ALL_CONTROLLERS => *self = Numbers::default(),
