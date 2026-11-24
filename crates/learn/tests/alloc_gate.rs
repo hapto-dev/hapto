@@ -75,6 +75,9 @@ fn events() -> EventList {
     for value in [0, 64, 127] {
         sent.extend((1..=5).map(|controller| cc(controller, value)));
         sent.extend([cc(99, 2), cc(98, 44), cc(6, value), cc(38, value)]);
+        // NRPN 301's high byte alone: a binding that is not coarse skips
+        // it, and an armed capture stages it as waiting for its low byte.
+        sent.extend([cc(99, 2), cc(98, 45), cc(6, value)]);
         sent.extend([cc(101, 0), cc(100, 0), cc(6, value)]);
         sent.push(on(Midi1Message::NoteOn {
             note: 60,

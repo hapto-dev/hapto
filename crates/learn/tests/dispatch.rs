@@ -6,7 +6,7 @@ use hapto_learn::{
     Config, Control, Curve, CurveError, LearnError, Mapping, NrpnReservation, ReservationError,
     Source,
 };
-use hapto_ump::{Attribute, ChannelMessage, Event, Midi1Message};
+use hapto_ump::{Attribute, ChannelMessage, Event, EventList, Midi1Message};
 
 /// A value no message in these tests writes.
 const UNTOUCHED: f32 = 0.37;
@@ -49,6 +49,14 @@ fn fourteen(value: u16) -> f64 {
     } else {
         0.5 + (value - 8192.0) / 16382.0
     }
+}
+
+/// Runs `sent` through the rig's upgrade and learn as one block, every
+/// message at frame 0, so a data entry's two bytes join into one message.
+fn at_one_frame(rig: &mut Rig, sent: &[Event]) {
+    let mut events = EventList::with_capacity(sent.len());
+    rig.upgrade.block(sent, &mut events);
+    rig.audio.process(&events);
 }
 
 /// The two controllers of MIDI 1.0 NRPN `number`'s address, 99 and 98.
@@ -211,7 +219,7 @@ fn a_fine_binding_reads_each_pair_and_waits_out_a_high_byte_alone() {
 }
 
 #[test]
-fn a_coarse_binding_reads_a_high_byte_as_seven_bit_and_ignores_low_bytes() {
+fn a_coarse_binding_reads_the_high_byte_of_every_data_entry_as_seven_bit() {
     let mut rig = rig(1);
     let mapping = Mapping::new(Source::any(Control::Nrpn(300))).as_coarse();
     rig.learn.map(rig.ids[0], mapping).expect("legal");
@@ -219,9 +227,15 @@ fn a_coarse_binding_reads_a_high_byte_as_seven_bit_and_ignores_low_bytes() {
     rig.block(&[high, low, cc(6, 127)]);
     assert_eq!(rig.value(0), 1.0);
     rig.block(&[cc(38, 0)]);
-    assert_eq!(rig.value(0), 1.0, "the low byte is ignored");
+    assert_eq!(rig.value(0), 1.0, "a low byte moves it no further");
     rig.block(&[cc(6, 64)]);
     assert_eq!(rig.value(0), 0.5);
+    // A pair sent at one frame is one message, with its low byte: a coarse
+    // binding still reads its high byte, in either order.
+    at_one_frame(&mut rig, &[high, low, cc(6, 100), cc(38, 5)]);
+    assert_eq!(rig.value(0), stored(seven(100)));
+    at_one_frame(&mut rig, &[high, low, cc(38, 5), cc(6, 90)]);
+    assert_eq!(rig.value(0), stored(seven(90)));
 }
 
 #[test]
@@ -310,8 +324,9 @@ fn rpn_data_entry_never_dispatches_as_the_last_nrpn() {
 }
 
 #[test]
-fn the_parser_runs_while_nothing_is_mapped() {
-    // An address sent while nothing is mapped is still current later.
+fn the_upgrade_keeps_an_address_sent_while_nothing_is_mapped() {
+    // The upgrade an exporter runs before learn holds the address, so one
+    // sent before the mapping is made is still current after it.
     let mut rig = rig(1);
     let [high, low] = nrpn_address(300);
     rig.block(&[high, low]);
@@ -322,8 +337,9 @@ fn the_parser_runs_while_nothing_is_mapped() {
 
 #[test]
 fn the_parameter_number_controllers_never_bind() {
-    // The parser owns the NRPN and RPN address, data entry, and data
-    // increment and decrement controllers.
+    // The upgrade assembles an NRPN or RPN from its address and data entry
+    // controllers, and increment and decrement step a value rather than
+    // set one, so none of them binds.
     let mut rig = rig(1);
     for controller in [6, 38, 96, 97, 98, 99, 100, 101] {
         let source = Source::any(Control::Cc(controller));
@@ -354,7 +370,7 @@ fn the_parameter_number_controllers_never_bind() {
 
 #[test]
 fn each_group_and_channel_keeps_its_own_nrpn_state() {
-    // The parser keeps a fixed state per group and channel, so two
+    // The upgrade keeps a fixed state per group and channel, so two
     // controllers sending NRPNs at once never mix addresses.
     let mut rig = rig(3);
     let on_channel = |channel| Source {

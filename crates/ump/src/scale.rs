@@ -144,6 +144,15 @@ mod tests {
     }
 
     #[test]
+    fn above_the_centre_the_bits_repeat_to_32_bits_as_the_reference_code_does() {
+        // Values from appendix D.1.3's reference code, not from this code:
+        // the bits below the top one repeat through the whole word.
+        assert_eq!(up_7_to_32(65), 0x8208_2082);
+        assert_eq!(up_7_to_32(87), 0xAEBA_EBAE);
+        assert_eq!(up_14_to_32(0x2001), 0x8004_0020);
+    }
+
+    #[test]
     fn every_value_comes_back_down_as_it_went_up() {
         for value in 0..=127 {
             assert_eq!(down_16_to_7(up_7_to_16(value)), value);

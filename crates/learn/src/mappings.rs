@@ -605,13 +605,25 @@ impl Learn {
     /// let (mut learn, mut audio) = Learn::new(&set, Config::default());
     /// learn.arm(gain, Takes::CONTROLLER)?;
     ///
+    /// // An exporter runs one upgrade over every block, before learn: it
+    /// // keeps the address and the high byte for a low byte that comes later.
+    /// let mut upgrade = Upgrade::new();
+    /// let mut upgraded = |changes: &[(u8, u8)]| {
+    ///     let mut events = EventList::with_capacity(changes.len());
+    ///     for &(controller, value) in changes {
+    ///         let message = Midi1Message::ControlChange { controller, value };
+    ///         upgrade.event(&Midi1Voice { group: 0, channel: 0, message }.event(0), &mut events);
+    ///     }
+    ///     events
+    /// };
+    ///
     /// // NRPN 300's address (controllers 99 and 98), then its high byte (6).
-    /// audio.process(&block(&[(99, 2), (98, 44), (6, 64)]));
+    /// audio.process(&upgraded(&[(99, 2), (98, 44), (6, 64)]));
     /// assert!(learn.poll().is_none(), "the high byte waits for its low byte");
     /// assert!(learn.poll().is_none(), "no block ran since the last poll");
     ///
     /// // The low byte (38) comes in the next block: a 14-bit mapping.
-    /// audio.process(&block(&[(38, 5)]));
+    /// audio.process(&upgraded(&[(38, 5)]));
     /// match learn.poll() {
     ///     Some(Learned::Mapped { mapping, .. }) => {
     ///         assert_eq!(mapping.source.control, Control::Nrpn(300));
