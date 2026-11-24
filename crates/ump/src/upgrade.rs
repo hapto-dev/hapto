@@ -72,6 +72,9 @@ const NULL: u8 = 127;
 #[derive(Debug)]
 pub struct Upgrade {
     channels: Box<[[Channel; 16]; 16]>,
+    /// For each group, a bit for each channel holding a high byte still to
+    /// go out, so the end of a block visits those alone.
+    pending: [u16; 16],
 }
 
 /// One group and channel's MIDI 1.0 state: its parameter number and its
@@ -188,6 +191,11 @@ impl Numbers {
             Kind::Registered => &mut self.rpn,
             Kind::Assignable => &mut self.nrpn,
         }
+    }
+
+    /// Whether a high byte is still to go out.
+    fn is_pending(&self) -> bool {
+        self.high.is_some_and(|held| held.pending)
     }
 
     /// Sends the high byte still to go out, with no low byte, which leaves
@@ -398,6 +406,7 @@ impl Upgrade {
     pub fn new() -> Self {
         Upgrade {
             channels: Box::new([[Channel::default(); 16]; 16]),
+            pending: [0; 16],
         }
     }
 
@@ -430,14 +439,22 @@ impl Upgrade {
             out.push(*event);
             return;
         };
-        let Some(state) = self
-            .channels
-            .get_mut(usize::from(group))
-            .and_then(|group| group.get_mut(usize::from(channel)))
-        else {
+        let (Some(channels), Some(pending)) = (
+            self.channels.get_mut(usize::from(group)),
+            self.pending.get_mut(usize::from(group)),
+        ) else {
+            return;
+        };
+        let Some(state) = channels.get_mut(usize::from(channel)) else {
             return;
         };
         state.translate(message, sender(out, group, channel, event.offset));
+        let bit = 1 << channel;
+        if state.numbers.is_pending() {
+            *pending |= bit;
+        } else {
+            *pending &= !bit;
+        }
     }
 
     /// Sends, at `last_frame`, every high byte still held: the end of a
@@ -447,8 +464,14 @@ impl Upgrade {
     /// Thread: audio. Allocates nothing.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn end_block(&mut self, last_frame: u32, out: &mut EventList) {
-        for (group, channels) in (0_u8..).zip(self.channels.iter_mut()) {
-            for (channel, state) in (0_u8..).zip(channels.iter_mut()) {
+        let groups = self.channels.iter_mut().zip(&mut self.pending);
+        for (group, (channels, pending)) in (0_u8..).zip(groups) {
+            if *pending == 0 {
+                continue;
+            }
+            let held = std::mem::take(pending);
+            let channels = (0_u8..).zip(channels.iter_mut());
+            for (channel, state) in channels.filter(|(channel, _)| held & (1 << channel) != 0) {
                 state
                     .numbers
                     .flush(&mut sender(out, group, channel, last_frame));

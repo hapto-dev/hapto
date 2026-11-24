@@ -450,6 +450,30 @@ fn groups_and_channels_keep_their_own_state() {
 }
 
 #[test]
+fn every_channel_still_holding_a_high_byte_sends_it_at_the_end_of_the_block() {
+    let on = |group, channel, voice: Midi1Voice| Midi1Voice {
+        group,
+        channel,
+        ..voice
+    };
+    let mut sent = Vec::new();
+    for (frame, (group, channel, high)) in (0..).zip([(3, 9, 30), (0, 15, 20), (0, 4, 10)]) {
+        sent.extend([cc(99, 2), cc(98, 5), cc(6, high)].map(|cc| (frame, on(group, channel, cc))));
+    }
+    // The low byte completes one; the other two go out at the end, group by
+    // group and channel by channel.
+    sent.push((5, on(0, 15, cc(38, 1))));
+    assert_eq!(
+        upgrade(&mut Upgrade::new(), &sent),
+        [
+            (5, assignable(2, 5, 20 << 7 | 1)),
+            (LAST_FRAME, assignable(2, 5, 10 << 7)),
+            (LAST_FRAME, assignable(2, 5, 30 << 7)),
+        ]
+    );
+}
+
+#[test]
 fn other_packets_pass_as_they_are() {
     let midi2 = Event::new(0, [0x40B0_0700, 1, 0, 0]);
     let sysex = Event::new(1, [0x3016_7E7F, 0x0D70_0201, 0, 0]);
