@@ -363,8 +363,9 @@ impl Upgrade {
         }
     }
 
-    /// Discards everything held, such as a high byte, an address or a bank,
-    /// as when a new source takes over the stream. Nothing held is sent.
+    /// Forgets what the upgrade keeps between messages, such as an address, a
+    /// bank or a high byte that a low byte would refine, as when a new source
+    /// takes over the stream. Nothing is sent.
     ///
     /// Thread: any. Allocates nothing.
     ///
@@ -380,9 +381,9 @@ impl Upgrade {
     /// let mut upgrade = Upgrade::new();
     /// let mut out = EventList::with_capacity(4);
     /// // An NRPN's address, then a new source sends its high byte alone.
-    /// upgrade.block(&[cc(99, 2), cc(98, 5)], 63, &mut out);
+    /// upgrade.block(&[cc(99, 2), cc(98, 5)], &mut out);
     /// upgrade.reset();
-    /// upgrade.block(&[cc(6, 64)], 63, &mut out);
+    /// upgrade.block(&[cc(6, 64)], &mut out);
     /// assert!(out.as_slice().is_empty(), "no address: nothing to send");
     /// ```
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
@@ -392,8 +393,10 @@ impl Upgrade {
         }
     }
 
-    /// Upgrades a block's packets, in order, into `out`. Any high byte that is
-    /// still held then goes out at `last_frame`.
+    /// Upgrades a block's packets, in order, into `out`, the block's own
+    /// list. Frames count from each block's start, so in a list kept from an
+    /// earlier block, a low byte could join a lone high byte that the earlier
+    /// block ended with at the same frame.
     ///
     /// A packet that doesn't fit is dropped, and `out` counts it.
     ///

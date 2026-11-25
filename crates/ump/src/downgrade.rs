@@ -21,15 +21,18 @@ use crate::{
 ///   note-off, goes out at velocity 1.
 /// - A registered or assignable controller becomes four controllers (101 and
 ///   100, or 99 and 98, then 6 and 38), even one upgraded from a lone high
-///   byte. A MIDI 1.0 receiver treats a low byte of 0 as no low byte, and one
-///   that waits for the low byte, as [`Upgrade`](crate::Upgrade) does, gets
-///   the value without delay.
+///   byte. A MIDI 1.0 receiver treats a low byte of 0 as no low byte.
 /// - A program change with a bank becomes bank select (0 and 32), then the
-///   program.
+///   program, whatever it came from.
 ///
-/// It sends only what MIDI 1.0 carries, which is exactly what [`Bytes::of`]
-/// writes: channel voice messages, system messages and 7-bit SysEx. Each call
-/// drops the rest and returns how many packets it dropped:
+/// [`Upgrade`](crate::Upgrade) also passes MIDI 1.0's bank select on as
+/// controllers, so MIDI 1.0 sent through both repeats its bank select before
+/// the program. That leaves a receiver on the same bank, and a processor that
+/// drops controllers 0 and 32 still sends the bank.
+///
+/// The downgrade sends only what MIDI 1.0 carries, which is exactly what
+/// [`Bytes::of`] writes: channel voice messages, system messages and 7-bit
+/// SysEx. Each call drops the rest and returns how many packets it dropped:
 ///
 /// - relative controllers, per-note controllers, per-note pitch bend and
 ///   per-note management

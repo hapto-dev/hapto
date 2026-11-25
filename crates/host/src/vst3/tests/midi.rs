@@ -314,8 +314,8 @@ fn a_parameter_s_address_comes_before_its_data_entry_at_one_frame_whatever_the_q
             })
             .collect::<Vec<_>>()
     });
-    // With no low byte, the entry goes out at the block's last frame.
-    assert_eq!(ranges.expect("active"), [(15, 12.0)]);
+    // With no low byte, the entry goes out at once, at its own frame.
+    assert_eq!(ranges.expect("active"), [(4, 12.0)]);
 }
 
 #[test]

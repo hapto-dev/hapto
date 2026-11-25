@@ -161,17 +161,18 @@ fn controllers_go_back_out_as_the_midi_1_values_they_came_in_as() {
         })
         .collect();
     // The pitch bend's low 7 bits go first. The range's data entry has no
-    // low byte, so it goes out at the block's last frame as four controllers.
+    // low byte, so it goes out at once, at its own frame, as four
+    // controllers.
     assert_eq!(
         sent,
         [
             (0, 129, 57, 96),
             (1, 7, 100, 0),
             (3, 128, 127, 0),
-            (15, 101, 0, 0),
-            (15, 100, 0, 0),
-            (15, 6, 12, 0),
-            (15, 38, 0, 0),
+            (4, 101, 0, 0),
+            (4, 100, 0, 0),
+            (4, 6, 12, 0),
+            (4, 38, 0, 0),
         ]
     );
 }

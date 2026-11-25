@@ -242,7 +242,7 @@ fn upgrading_and_downgrading_a_block_does_not_allocate() {
         for _ in 0..4 {
             upgraded.clear();
             back.clear();
-            upgrade.block(&sent, 255, &mut upgraded);
+            upgrade.block(&sent, &mut upgraded);
             lost += downgrade.block(upgraded.as_slice(), &mut back);
             let up = upgraded.as_slice().len();
             let down = back.as_slice().len();

@@ -254,7 +254,7 @@ fn sent(offset: u32, controller: u8, value: u8) -> Event {
 fn midi_1_an_exporter_hands_over_reaches_the_block_as_midi_2_and_midi_2_as_sent() {
     let mut audio = audio();
     let midi2 = Event::new(9, [0x40B0_0700, 1, 0, 0]);
-    fill(&mut audio, 64, |into| {
+    fill(&mut audio, |into| {
         into.push(sent(3, 7, 127));
         into.push(midi2);
     });
@@ -271,9 +271,9 @@ fn midi_1_an_exporter_hands_over_reaches_the_block_as_midi_2_and_midi_2_as_sent(
 }
 
 #[test]
-fn a_high_byte_sent_alone_reaches_its_block_at_the_last_frame_and_the_next_starts_clean() {
+fn a_high_byte_sent_alone_reaches_its_block_at_its_own_frame_and_the_next_starts_clean() {
     let mut audio = audio();
-    fill(&mut audio, 32, |into| {
+    fill(&mut audio, |into| {
         into.push(sent(0, 99, 2));
         into.push(sent(0, 98, 44));
         into.push(sent(4, 6, 64));
@@ -294,8 +294,8 @@ fn a_high_byte_sent_alone_reaches_its_block_at_the_last_frame_and_the_next_start
         index: 44,
         value: hapto_ump::scale::up_14_to_32(64 << 7),
     };
-    assert_eq!(events, [(31, Some(entry))]);
-    fill(&mut audio, 32, |_| {});
+    assert_eq!(events, [(4, Some(entry))]);
+    fill(&mut audio, |_| {});
     assert!(audio.events.as_slice().is_empty(), "nothing held over");
 }
 
@@ -307,7 +307,7 @@ fn packets_handed_over_out_of_order_reach_the_block_in_time_order_and_at_one_fra
     // VST3 hands each controller over in its own queue, so here an RPN's data
     // entry comes before its address. At frame 9, a note-off and then a
     // note-on must stay in that order.
-    fill(&mut audio, 32, |into| {
+    fill(&mut audio, |into| {
         into.push(sent(5, 6, 64));
         into.push(off);
         into.push(sent(2, 101, 0));
@@ -340,7 +340,7 @@ fn packets_handed_over_out_of_order_reach_the_block_in_time_order_and_at_one_fra
 #[test]
 fn a_packet_pushed_first_goes_before_the_rest_at_its_frame_and_never_to_an_earlier_one() {
     let mut audio = audio();
-    fill(&mut audio, 32, |into| {
+    fill(&mut audio, |into| {
         into.push(sent(2, 6, 64));
         into.push(sent(1, 7, 100));
         into.push_ranked(sent(2, 101, 0), Rank::Address);
@@ -366,10 +366,9 @@ fn a_packet_pushed_first_goes_before_the_rest_at_its_frame_and_never_to_an_earli
         index: 0,
         value: hapto_ump::scale::up_14_to_32(64 << 7),
     };
-    // The data entry at frame 2 finds the address pushed after it, and with
-    // no low byte it goes out at the block's last frame. The volume at frame
-    // 1 still comes first.
-    assert_eq!(events, [(1, Some(volume)), (31, Some(range))]);
+    // The data entry at frame 2 finds the address pushed after it, and goes
+    // out at its own frame. The volume at frame 1 still comes first.
+    assert_eq!(events, [(1, Some(volume)), (2, Some(range))]);
 }
 
 #[test]
@@ -381,7 +380,7 @@ fn a_high_byte_goes_before_a_low_byte_at_its_frame_whatever_order_they_come_in()
         value: hapto_ump::scale::up_14_to_32(value),
     };
     // A first move of NRPN 2/44.
-    fill(&mut audio, 32, |into| {
+    fill(&mut audio, |into| {
         into.push_ranked(sent(0, 99, 2), Rank::Address);
         into.push_ranked(sent(0, 98, 44), Rank::Address);
         into.push_ranked(sent(0, 6, 64), Rank::HighByte);
@@ -389,7 +388,7 @@ fn a_high_byte_goes_before_a_low_byte_at_its_frame_whatever_order_they_come_in()
     });
     // The next move lists its low byte's queue first, and the low byte still
     // refines its own high byte, not the one before.
-    fill(&mut audio, 32, |into| {
+    fill(&mut audio, |into| {
         into.push(sent(5, 38, 3));
         into.push_ranked(sent(5, 6, 65), Rank::HighByte);
     });
@@ -438,7 +437,7 @@ fn what_a_piece_sends_past_its_end_goes_at_its_last_frame() {
 fn packets_past_the_room_are_dropped_and_counted_before_they_are_put_in_order() {
     // Room for six.
     let mut audio = audio();
-    fill(&mut audio, 32, |into| {
+    fill(&mut audio, |into| {
         for frame in (0..8).rev() {
             into.push(Event::new(frame, [0x4090_3C00, 0xFFFF_0000, 0, 0]));
         }

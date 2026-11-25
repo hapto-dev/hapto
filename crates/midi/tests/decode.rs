@@ -120,7 +120,7 @@ fn upgraded(sent: &[(u8, u8)]) -> Vec<Event> {
         })
         .collect();
     let mut out = EventList::with_capacity(8);
-    Upgrade::new().block(&events, 0, &mut out);
+    Upgrade::new().block(&events, &mut out);
     out.as_slice().to_vec()
 }
 

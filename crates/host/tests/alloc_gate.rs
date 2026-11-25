@@ -309,8 +309,8 @@ fn midi_through_the_c_interface_with_learn_mapped_and_armed_does_not_allocate() 
         words: [first, second, 0, 0],
     };
     // MIDI 1.0 as a JUCE host hands it over (a note, the mapped controller,
-    // an NRPN whose high byte the upgrade holds until the block's end, and a
-    // SysEx), then a MIDI 2.0 note-off.
+    // an NRPN whose high byte the upgrade sends at once, and a SysEx), then a
+    // MIDI 2.0 note-off.
     let midi_in = [
         packet(0, 0x2090_3C7F, 0),
         packet(1, 0x20B0_0764, 0),

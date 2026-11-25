@@ -309,9 +309,6 @@ impl InputsReader {
             }
             lane.head = ready(&lane.ring, now);
         }
-        for lane in &mut self.lanes {
-            lane.upgrade.end_block(Event::last_offset(frames), out);
-        }
     }
 
     /// Returns how many messages have been dropped because their input's ring

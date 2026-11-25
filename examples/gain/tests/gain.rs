@@ -264,7 +264,7 @@ fn the_page_s_learn_button_arms_learn_at_the_next_idle() {
         message,
     }
     .event(0);
-    Upgrade::new().block(&[sent], 0, &mut events);
+    Upgrade::new().block(&[sent], &mut events);
     learn.process(&events);
     tick(&mut plugin);
     assert_eq!(plugin.learn_state(), "learned");

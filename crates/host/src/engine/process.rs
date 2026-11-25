@@ -268,10 +268,9 @@ impl Arrivals {
     }
 }
 
-/// Fills `audio`'s MIDI in for a block of `frames` frames, at least one, with
-/// what `midi` pushes, in time order, then what the upgrade held until the
-/// block's end.
-fn fill<R>(audio: &mut Active<R>, frames: usize, midi: impl FnOnce(&mut MidiIn<'_>)) {
+/// Fills `audio`'s MIDI in for a block with what `midi` pushes, in time
+/// order.
+fn fill<R>(audio: &mut Active<R>, midi: impl FnOnce(&mut MidiIn<'_>)) {
     let Active {
         arrivals,
         events,
@@ -292,7 +291,6 @@ fn fill<R>(audio: &mut Active<R>, frames: usize, midi: impl FnOnce(&mut MidiIn<'
     for (event, ..) in &arrivals.packets {
         upgrade.event(event, events);
     }
-    upgrade.end_block(Event::last_offset(frames), events);
 }
 
 /// What a block found in the audio slot.
@@ -473,7 +471,7 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
             }
             // `fill` runs the exporter's code, not the processor's, so a panic
             // in it silences the block without faulting the processor.
-            if self.faults.caught(|| fill(audio, frames, midi)) {
+            if self.faults.caught(|| fill(audio, midi)) {
                 return Outcome::Silent;
             }
             // SAFETY: this function's contract.
