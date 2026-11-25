@@ -29,19 +29,15 @@ use crate::Plugin;
 use crate::engine::timer::pump;
 use crate::layout::Width;
 
-#[cfg(windows)]
-mod child;
 #[cfg(test)]
 mod run_loop;
 mod view;
+mod window;
 
-#[cfg(windows)]
-pub use child::ChildWindow;
 #[cfg(test)]
 pub(crate) use run_loop::TestRunLoop;
-#[cfg(windows)]
-pub use view::HiddenWindow;
 pub use view::TestView;
+pub use window::{ChildWindow, HiddenWindow};
 
 /// VST3's restart flag asking the host to re-read every parameter value.
 pub const RESTART_VALUES: i32 = 4;

@@ -54,12 +54,9 @@ pub(crate) use test_host::TestRunLoop;
 #[cfg(any(test, feature = "test-host"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "test-host")))]
 pub use test_host::{
-    AudioSide, HostCall, Options, ParamInfo, RESTART_LATENCY, RESTART_VALUES, Refused, TestHost,
-    TestView,
+    AudioSide, ChildWindow, HiddenWindow, HostCall, Options, ParamInfo, RESTART_LATENCY,
+    RESTART_VALUES, Refused, TestHost, TestView,
 };
-#[cfg(all(windows, any(test, feature = "test-host")))]
-#[cfg_attr(docsrs, doc(cfg(all(windows, feature = "test-host"))))]
-pub use test_host::{ChildWindow, HiddenWindow};
 
 use crate::Plugin;
 use crate::boundary::guard;
@@ -78,8 +75,18 @@ pub fn plugin_factory<P: Plugin>() -> *mut c_void {
     })
 }
 
-/// Runs as the host unloads the module: unregisters the timer's window class.
-/// [`export_vst3!`](crate::export_vst3) calls it. Returns whether it ran.
+/// Returns whether the host may use the module, as the host loads it. It sets
+/// nothing up, so it returns `true`. The entry point that
+/// [`export_vst3!`](crate::export_vst3) writes for each system calls it.
+#[doc(hidden)]
+pub fn enter_module() -> bool {
+    true
+}
+
+/// Runs as the host unloads the module. On Windows it unregisters the
+/// timer's window class. The exit point that
+/// [`export_vst3!`](crate::export_vst3) writes for each system calls it.
+/// Returns `false` if unregistering panicked.
 #[doc(hidden)]
 pub fn exit_module() -> bool {
     guard(false, || {
@@ -219,7 +226,7 @@ macro_rules! export_vst3 {
         #[allow(unsafe_code, reason = "a module entry point the host finds by name")]
         #[unsafe(no_mangle)]
         pub extern "system" fn InitDll() -> bool {
-            true
+            $crate::vst3::enter_module()
         }
 
         /// Called by the host before it unloads the module.
@@ -235,7 +242,7 @@ macro_rules! export_vst3 {
         #[allow(unsafe_code, reason = "a module entry point the host finds by name")]
         #[unsafe(no_mangle)]
         pub extern "system" fn bundleEntry(_bundle: *mut ::std::ffi::c_void) -> bool {
-            true
+            $crate::vst3::enter_module()
         }
 
         /// Called by the host before it unloads the bundle.

@@ -1111,12 +1111,16 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d101-the-vst3-editor-view)
 
-- `crates/host/src/vst3/view.rs`: module, `View`, `View::call`, `View::call_held`, `View::only_holder`, `View::retire`, `ComponentRef`, `View::rect`, `View::size`, `View::ask_to_resize`, `create`, `parent_window`
+- `crates/host/src/vst3/view.rs`: module, `View`, `View::call`, `View::call_held`, `View::only_holder`, `View::retire`, `ComponentRef`, `View::rect`, `View::size`, `View::ask_to_resize`, `create`, `is_offered`, `is_platform_type`
+- `crates/host/src/vst3/view/win32.rs`: module, `PLATFORM_TYPE`, `parent_window`
+- `crates/host/src/vst3/view/none.rs`: module, `PLATFORM_TYPE`
 - `crates/host/src/vst3/component.rs`: `Component::wrap`, `Component::this`
 - `crates/host/src/vst3/component/controller.rs`: `EDITOR`
 - `crates/host/src/engine/editor.rs`: `EditorSlot::close`, `EditorSlot::catch_up`, `Opened`
 - `crates/host/src/faults.rs`: `NoEditor`, `Faults::record_with_reason`
-- `crates/host/src/vst3/test_host/view.rs`: `TestView`, `Frame`, `HiddenWindow`
+- `crates/host/src/vst3/test_host/view.rs`: `TestView`, `Frame`
+- `crates/host/src/vst3/test_host/window.rs`: `HiddenWindow`
+- `crates/host/src/vst3/test_host/window/win32.rs`: `Window::hidden`, `Window::child`
 - test `crates/host/src/vst3/tests.rs`: `off_windows_a_plugin_with_an_editor_offers_no_view`
 - test `crates/host/src/vst3/view/tests.rs`: module, `the_instance_released_before_its_view_lives_until_the_view_goes`, `a_view_released_while_attached_closes_its_editor`, `an_editor_that_panics_as_it_drops_is_a_fault_and_the_host_goes_on`, `an_editor_that_panics_in_close_and_as_it_drops_is_two_faults_and_the_host_goes_on`, `a_view_call_from_another_thread_is_refused_and_counted`, `an_editor_that_fails_to_open_is_a_fault_with_its_reason`, `an_editor_that_panics_in_open_is_a_fault_and_stays_closed`, `a_resize_and_a_tick_from_inside_open_wait_until_it_returns`, `a_removal_from_inside_open_closes_the_editor_once_it_returns`, `an_attach_after_a_removal_inside_open_is_refused_and_counted`, `an_attach_while_the_editor_closes_is_refused_and_counted`, `an_attach_after_a_removal_inside_a_tick_is_refused_and_counted`, `a_view_the_host_releases_from_inside_open_lets_its_editor_go_after_it`, `a_new_scale_while_open_asks_the_frame_for_the_editors_size_there`, `a_resize_reaches_the_editor_in_logical_pixels`
 
@@ -1314,12 +1318,12 @@ move its line here; when a decision gains code, add one.
 - `crates/standalone/src/dev_host/saved.rs`: module, `FirstLoad`, `FirstLoad::of`, `FirstLoad::holds`, `LastSave`, `LastSave::fresh`, `LastSave::recent`
 - `crates/standalone/src/dev_host/learned.rs`: module, `learned`
 - `crates/standalone/src/signal.rs`: `Signal::index`, `Generator::set`
-- `crates/host/src/vst3/test_host/child.rs`: module, `ChildWindow`, `ChildWindow::new`, `ChildWindow::place`
+- `crates/host/src/vst3/test_host/window.rs`: module, `ChildWindow`, `ChildWindow::new`, `ChildWindow::place`
 - test `crates/host/src/vst3/view/tests.rs`: `the_view_opens_in_a_child_window_a_host_places_in_its_own`
 - `crates/standalone/src/dev_host/message.rs`: `Message::read`, `Shown::script`, `AudioChange`, `AudioChange::apply`
 - `crates/standalone/src/dev_host/format.rs`: `Format`, `Call`
 - `crates/standalone/src/session.rs`: `RELAUNCH`, `Session::format`, `Session::set_format`
-- `crates/host/src/vst3/test_host/view.rs`: `TestView::attach_to`
+- `crates/host/src/vst3/test_host/view.rs`: `TestView::attach`
 - `crates/cli/src/dev.rs`: `RELAUNCH`, `App::of`
 - test `crates/standalone/src/dev_host/pending/tests.rs`: `a_change_reaches_the_next_block_once_by_its_host_id`, `changes_past_the_room_wait_for_the_next_block`
 - test `crates/standalone/src/dev_host/message/tests.rs`: `a_set_and_a_switch_are_read`, `what_is_shown_reaches_the_page_as_one_update`

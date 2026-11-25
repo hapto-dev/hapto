@@ -13,8 +13,11 @@
 //! On Windows a view's size is in the screen's pixels, and an editor's in
 //! logical ones, so the view converts with the scale the host last gave. A
 //! scale that changes while the editor is open asks the host's frame for the
-//! size the editor now needs. Only Windows' `HWND` is a platform a view
-//! attaches to, and the exporter makes no view anywhere else.
+//! size the editor now needs.
+//!
+//! Each system's file, such as `view/win32.rs`, names the platform type that
+//! the view attaches to and converts the host's window to a `ParentWindow`. A
+//! system with no window type uses `view/none.rs`.
 
 use std::cell::{Cell, RefCell};
 use std::ffi::{CStr, c_void};
@@ -37,8 +40,34 @@ use crate::boundary::MainThread;
 use crate::engine::{EditorSlot, Engine, Opened};
 use crate::{Plugin, Size};
 
-/// The platform type the view attaches to, as the SDK names it.
-const HWND: &CStr = c"HWND";
+#[cfg(not(windows))]
+mod none;
+#[cfg(windows)]
+mod win32;
+
+#[cfg(not(windows))]
+use none as system;
+#[cfg(windows)]
+use win32 as system;
+
+/// Returns whether this system has a window type that the view attaches to.
+/// Where it has none, the exporter offers no view, so the host shows its own
+/// controls.
+pub(crate) const fn is_offered() -> bool {
+    system::PLATFORM_TYPE.is_some()
+}
+
+/// Returns whether `type`, a host's platform type, is the one that the view
+/// attaches to.
+///
+/// # Safety
+///
+/// `type` is null or a NUL-terminated string that is valid during the call.
+unsafe fn is_platform_type(r#type: FIDString) -> bool {
+    // SAFETY: `type` isn't null here, and the caller promises a
+    // NUL-terminated string that is valid during the call.
+    !r#type.is_null() && system::PLATFORM_TYPE == Some(unsafe { CStr::from_ptr(r#type) })
+}
 
 /// One view of the plugin's editor.
 pub(crate) struct View<P: Plugin> {
@@ -279,7 +308,7 @@ impl<P: Plugin> IPlugViewTrait for View<P> {
         self.call(kResultFalse, |_, _| {
             // SAFETY: the SDK's contract: `type` is null or a NUL-terminated
             // string valid during the call.
-            if cfg!(windows) && !r#type.is_null() && unsafe { CStr::from_ptr(r#type) } == HWND {
+            if unsafe { is_platform_type(r#type) } {
                 kResultTrue
             } else {
                 kResultFalse
@@ -292,10 +321,10 @@ impl<P: Plugin> IPlugViewTrait for View<P> {
         // may release the view inside it.
         self.call_held(kResultFalse, |_, slot| {
             // SAFETY: as in `isPlatformTypeSupported`.
-            if r#type.is_null() || unsafe { CStr::from_ptr(r#type) } != HWND {
+            if !unsafe { is_platform_type(r#type) } {
                 return kResultFalse;
             }
-            let Some(parent) = parent_window(parent) else {
+            let Some(parent) = system::parent_window(parent) else {
                 return kInvalidArgument;
             };
             match slot.open(&parent) {
@@ -410,27 +439,6 @@ impl<P: Plugin> IPlugViewContentScaleSupportTrait for View<P> {
             }
             kResultOk
         })
-    }
-}
-
-/// The window a host handed `attached`, as an editor takes it; `None` for
-/// null, and on any platform but Windows.
-fn parent_window(parent: *mut c_void) -> Option<crate::ParentWindow> {
-    #[cfg(windows)]
-    {
-        use std::num::NonZeroIsize;
-
-        use raw_window_handle::{RawWindowHandle, Win32WindowHandle};
-
-        let hwnd = NonZeroIsize::new(parent as isize)?;
-        Some(crate::ParentWindow::new(RawWindowHandle::Win32(
-            Win32WindowHandle::new(hwnd),
-        )))
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = parent;
-        None
     }
 }
 

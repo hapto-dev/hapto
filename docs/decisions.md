@@ -3343,7 +3343,7 @@ hosts, in process, linked into the app.
 
 - **VST3.** `vst3::TestHost`, made with its timer, so the exporter ticks the
   instance on the window's message loop as in a host, and its editor is the
-  exporter's view, attached with `TestView::attach_to` to a `ChildWindow`
+  exporter's view, attached with `TestView::attach` to a `ChildWindow`
   below the bar, since an editor opens at the top left of the window it is
   given. A resize the view asks of its frame resizes the window. The
   settings window's controls reach the processor as one-point queues with the

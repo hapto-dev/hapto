@@ -251,6 +251,18 @@ fn the_view_attaches_to_a_windows_window_only() {
     assert!(view.supports(c"HWND"));
     assert!(!view.supports(c"NSView"));
     assert!(view.can_resize());
+    let view = view.interface();
+    // SAFETY: the view is alive while `view` borrows it, and a null type is
+    // what the call is checked with.
+    let supported = unsafe { view.isPlatformTypeSupported(std::ptr::null()) };
+    assert_eq!(supported, kResultFalse);
+    let window = std::ptr::dangling_mut::<std::ffi::c_void>();
+    // SAFETY: the view is alive, and the type is a terminated string valid
+    // for the call. The window is a number, which the stub editor never
+    // touches.
+    let attached = unsafe { view.attached(window, c"NSView".as_ptr()) };
+    assert_eq!(attached, kResultFalse);
+    assert!(calls().is_empty(), "the editor isn't told or opened");
 }
 
 #[test]
@@ -278,7 +290,7 @@ fn the_view_opens_in_a_child_window_a_host_places_in_its_own() {
     let (_host, view) = viewed();
     let window = HiddenWindow::new().expect("a window");
     let child = ChildWindow::new(&window, 0, 36, 320, 200).expect("a child");
-    assert_eq!(view.attach_to(&child), Ok(()));
+    assert_eq!(view.attach(&child), Ok(()));
     assert_eq!(
         calls(),
         [Call::Scale(1.0), Call::Size(320, 200), Call::Open]

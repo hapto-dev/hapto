@@ -3,15 +3,16 @@
 //! asks of it.
 
 use std::cell::RefCell;
-use std::ffi::CStr;
+use std::ffi::{CStr, c_void};
 
 use ::vst3::Steinberg::Vst::IEditControllerTrait;
 use ::vst3::Steinberg::{
-    IPlugFrame, IPlugFrameTrait, IPlugView, IPlugViewContentScaleSupport,
-    IPlugViewContentScaleSupportTrait, IPlugViewTrait, ViewRect, kInvalidArgument, kResultOk,
-    kResultTrue, tresult,
+    FIDString, IPlugFrame, IPlugFrameTrait, IPlugView, IPlugViewContentScaleSupport,
+    IPlugViewContentScaleSupportTrait, IPlugViewTrait, ViewRect, kInvalidArgument,
+    kPlatformTypeHWND, kResultOk, kResultTrue, tresult,
 };
 use ::vst3::{Class, ComPtr, ComRef, ComWrapper};
+use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
 use super::{Refused, TestHost};
 use crate::Plugin;
@@ -19,8 +20,7 @@ use crate::Plugin;
 impl<P: Plugin> TestHost<P> {
     /// Asks the plugin for its editor's view, as a host does when the user
     /// opens the editor, and gives it a frame: `None` for a plugin with no
-    /// editor, and on any platform but Windows, where the exporter offers
-    /// none.
+    /// editor, and on a system where the exporter offers no view.
     ///
     /// The view keeps the instance alive, so it may outlive this host.
     pub fn view(&self) -> Option<TestView> {
@@ -88,59 +88,41 @@ impl TestView {
         unsafe { self.view.isPlatformTypeSupported(platform.as_ptr()) == kResultTrue }
     }
 
-    /// Attaches the view to `window`, as a host does once it has made the
-    /// window: the editor opens in it. Windows only.
-    ///
-    /// # Errors
-    ///
-    /// The [`Refused`] answer: the editor did not open.
-    #[cfg(windows)]
-    pub fn attach(&self, window: &HiddenWindow) -> Result<(), Refused> {
-        self.attach_raw(window.window as isize)
-    }
-
-    /// Attaches the view to a window of the caller's, as a host attaches it to
-    /// the window it made for the editor: the editor opens in it. The caller
-    /// keeps the window until it [removes](Self::remove) the view. Windows
-    /// only.
+    /// Attaches the view to `window`, as a host attaches it to the window that
+    /// it made for the editor: the editor opens in it. The caller keeps the
+    /// window until it [removes](Self::remove) the view.
     ///
     /// # Errors
     ///
     /// The [`Refused`] answer: the editor did not open; `kInvalidArgument`
-    /// for a window that gives no Win32 handle.
-    #[cfg(windows)]
-    pub fn attach_to(
-        &self,
-        window: &impl raw_window_handle::HasWindowHandle,
-    ) -> Result<(), Refused> {
-        use raw_window_handle::RawWindowHandle;
-
-        match window.window_handle().map(|handle| handle.as_raw()) {
-            Ok(RawWindowHandle::Win32(handle)) => self.attach_raw(handle.hwnd.get()),
-            _ => Err(Refused(kInvalidArgument)),
+    /// for a window that gives no handle, or one of a kind that VST3 names no
+    /// platform type for.
+    pub fn attach(&self, window: &impl HasWindowHandle) -> Result<(), Refused> {
+        let handle = window.window_handle().map(|handle| handle.as_raw());
+        match handle.ok().and_then(platform_type) {
+            Some((platform, parent)) => self.attached(platform, parent),
+            None => Err(Refused(kInvalidArgument)),
         }
     }
 
-    /// Attaches the view to the window handle `window`. The exporter's own
-    /// tests pass a number, any but 0, for stub editors that never touch the
-    /// window.
+    /// Attaches the view to the `HWND` `window`. The exporter's own tests pass
+    /// a number, any but 0, for stub editors that never touch the window.
     ///
     /// # Errors
     ///
     /// As [`attach`](Self::attach).
-    #[cfg(windows)]
+    #[cfg(all(test, windows))]
     pub(crate) fn attach_raw(&self, window: isize) -> Result<(), Refused> {
-        use std::ffi::c_void;
+        self.attached(kPlatformTypeHWND, window)
+    }
 
-        use ::vst3::Steinberg::kPlatformTypeHWND;
-
-        // SAFETY: the view is alive while this holds it. The handle is a
-        // hidden window that outlives the attachment, a window of the caller's
-        // that the caller keeps until it removes the view, or a number that
-        // only a stub editor, which never borrows it, is given. A handle is
-        // checked by the system at each use, so one destroyed early makes a
-        // call fail and touches no memory.
-        Refused::check(unsafe { self.view.attached(window as *mut c_void, kPlatformTypeHWND) })
+    /// Calls the view's `attached` with `platform` and `window`.
+    fn attached(&self, platform: FIDString, window: isize) -> Result<(), Refused> {
+        // SAFETY: the view is alive while this holds it, and `platform` is one
+        // of the SDK's static strings. `window` is a window that the caller
+        // keeps until it removes the view, or a number that only a stub editor
+        // gets, and a stub never uses it.
+        Refused::check(unsafe { self.view.attached(window as *mut c_void, platform) })
     }
 
     /// Removes the view from its window, as a host does before closing it.
@@ -225,6 +207,16 @@ impl TestView {
     }
 }
 
+/// Returns the platform type that VST3 names for `handle`'s kind of window,
+/// with the window as a view's `attached` takes it, or `None` for a kind that
+/// VST3 names no type for.
+fn platform_type(handle: RawWindowHandle) -> Option<(FIDString, isize)> {
+    match handle {
+        RawWindowHandle::Win32(handle) => Some((kPlatformTypeHWND, handle.hwnd.get())),
+        _ => None,
+    }
+}
+
 impl std::fmt::Debug for TestView {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TestView").finish_non_exhaustive()
@@ -258,117 +250,5 @@ impl IPlugFrameTrait for Frame {
             Some(view) => unsafe { view.onSize(rect) },
             None => kInvalidArgument,
         }
-    }
-}
-
-/// A window of the test's own that is never shown: a real editor opens in
-/// it with no window on the screen, no focus taken and no input sent.
-/// Windows only.
-///
-/// It is destroyed when dropped, on the thread that made it.
-///
-/// # Examples
-///
-/// ```
-#[doc = include_str!("../../../doc/editor.rs")]
-/// # #[cfg(windows)]
-/// # {
-/// use hapto_host::vst3::{HiddenWindow, TestHost};
-///
-/// let host = TestHost::<Panel>::new();
-/// let view = host.view().expect("the plugin has an editor");
-/// let window = HiddenWindow::new().expect("a window");
-/// view.attach(&window)?;
-/// view.remove()?;
-/// # }
-/// # Ok::<(), hapto_host::vst3::Refused>(())
-/// ```
-#[cfg(windows)]
-#[derive(Debug)]
-pub struct HiddenWindow {
-    window: windows_sys::Win32::Foundation::HWND,
-}
-
-#[cfg(windows)]
-impl HiddenWindow {
-    /// Makes the window: a top-level one of 800 by 600 pixels that is never
-    /// shown. `None` when the system refuses one.
-    pub fn new() -> Option<Self> {
-        use windows_sys::Win32::UI::WindowsAndMessaging::{
-            CreateWindowExW, WS_CLIPCHILDREN, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
-            WS_OVERLAPPEDWINDOW,
-        };
-
-        // SAFETY: a window of the system's own static class, with a static
-        // name, no parent, menu or creation data; it is never shown, since
-        // no style makes it visible.
-        let window = unsafe {
-            CreateWindowExW(
-                WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
-                windows_sys::w!("STATIC"),
-                windows_sys::w!("hapto test window"),
-                WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
-                0,
-                0,
-                800,
-                600,
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                std::ptr::null(),
-            )
-        };
-        (!window.is_null()).then_some(HiddenWindow { window })
-    }
-
-    /// Returns how many of the windows directly inside it would show, were
-    /// it shown: what an editor left in it that a user would see.
-    pub fn shown_children(&self) -> usize {
-        use windows_sys::Win32::UI::WindowsAndMessaging::{
-            GW_CHILD, GW_HWNDNEXT, GWL_STYLE, GetWindow, GetWindowLongPtrW, WS_VISIBLE,
-        };
-
-        let mut shown = 0;
-        // SAFETY: the window this made, alive while `self` is, on the thread
-        // that made it; the call only reads.
-        let mut child = unsafe { GetWindow(self.window, GW_CHILD) };
-        while !child.is_null() {
-            // SAFETY: a window the system named as this one's child just
-            // now, on this thread, which no other code here destroys; the
-            // calls only read.
-            let style = unsafe { GetWindowLongPtrW(child, GWL_STYLE) } as u32;
-            if style & WS_VISIBLE != 0 {
-                shown += 1;
-            }
-            // SAFETY: as above.
-            child = unsafe { GetWindow(child, GW_HWNDNEXT) };
-        }
-        shown
-    }
-}
-
-#[cfg(windows)]
-impl raw_window_handle::HasWindowHandle for HiddenWindow {
-    fn window_handle(
-        &self,
-    ) -> Result<raw_window_handle::WindowHandle<'_>, raw_window_handle::HandleError> {
-        use raw_window_handle::{HandleError, RawWindowHandle, Win32WindowHandle, WindowHandle};
-
-        let window =
-            std::num::NonZeroIsize::new(self.window as isize).ok_or(HandleError::Unavailable)?;
-        let raw = RawWindowHandle::Win32(Win32WindowHandle::new(window));
-        // SAFETY: the window this made, which this destroys only when it
-        // drops, so not while the handle borrows it; a handle is checked by
-        // the system at each use.
-        Ok(unsafe { WindowHandle::borrow_raw(raw) })
-    }
-}
-
-#[cfg(windows)]
-impl Drop for HiddenWindow {
-    fn drop(&mut self) {
-        // SAFETY: the window this made, on the thread that made it: the
-        // type is neither `Send` nor `Sync`, as a raw handle is not.
-        unsafe { windows_sys::Win32::UI::WindowsAndMessaging::DestroyWindow(self.window) };
     }
 }
