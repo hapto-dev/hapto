@@ -134,11 +134,11 @@ pub enum Origin {
     Midi2,
     /// Sent as MIDI 1.0 and upgraded on the way in.
     Midi1,
-    /// Sent as an RPN or NRPN whose data entry high byte came with no low
-    /// byte at its frame, and upgraded on the way in as if its low byte were
-    /// 0. A low byte at a later frame follows as a controller of its own,
-    /// marked [`Midi1`](Self::Midi1), so a low byte of 0 that was sent reads
-    /// apart from one that never came.
+    /// Sent as an RPN or NRPN whose data entry high byte came without a low
+    /// byte at its frame, and upgraded as if the low byte were 0. A low byte
+    /// at a later frame arrives as a separate controller marked
+    /// [`Midi1`](Self::Midi1), so a reader can tell a sent low byte of 0 from
+    /// a missing one.
     Midi1HighByte,
 }
 

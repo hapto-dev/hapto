@@ -50,9 +50,9 @@ pub(crate) enum Value {
 }
 
 impl Value {
-    /// The value as 0..1 for a binding, [`coarse`](crate::Mapping::coarse) or
-    /// not; none for a binding that is not coarse and a high byte sent alone,
-    /// whose low byte it waits for.
+    /// Returns the value as 0..1 for a [`coarse`](crate::Mapping::coarse) or
+    /// fine binding. It returns `None` for a fine binding and a high byte
+    /// sent alone, because the binding waits for the low byte.
     pub(crate) fn normalized(self, coarse: bool) -> Option<f64> {
         Some(match self {
             Value::Seven(value) => scale::seven(value),
@@ -157,17 +157,17 @@ mod tests {
     ///
     /// Hapto's deviations, which `Upgrade` or the parser documents:
     ///
-    /// 1. A 38 refines the newest 6 only when that 6 was sent under the same
-    ///    number, however often the address was sent between. Otherwise it
-    ///    waits, and the next 6 carries it when no address byte comes
-    ///    between and the 6 is under its number. MIDI 1.0 would refine the
-    ///    receiver's own high byte for that number, which learn does not
-    ///    hold.
-    /// 2. Increment and decrement (96, 97) drive nothing, since learn holds no
-    ///    value to step.
-    /// 3. Reset All Controllers also forgets both latched bytes, so data entry
-    ///    after it waits for a whole address. RP-015's null leaves both bytes
-    ///    at 127, so a lone 98 after it would select a number.
+    /// 1. A data entry low byte refines the newest high byte only if both
+    ///    were sent under the same number, however often the address was
+    ///    resent in between. Otherwise it is kept for the next high byte
+    ///    under its number, unless an address byte comes first. MIDI 1.0
+    ///    would refine the receiver's own high byte for that number, but
+    ///    learn holds none.
+    /// 2. Increment and decrement (96, 97) drive nothing, because learn holds
+    ///    no value to step.
+    /// 3. Reset All Controllers also clears both latched bytes, so data entry
+    ///    after it needs a whole address. RP-015's null leaves both bytes at
+    ///    127, so a lone NRPN low byte (98) after it would select a number.
     fn model(history: &[(u8, u8)]) -> Option<(Control, Value)> {
         let (&(controller, value), earlier) = history.split_last()?;
         if !matches!(controller, 6 | 38 | 96 | 97 | 98 | 99 | 100 | 101) {
@@ -186,7 +186,7 @@ mod tests {
         // The number that the data entry byte at `at` was sent under.
         let under = |at: usize| number(&earlier[..at]);
         if controller == 38 {
-            // Deviation 1: another number's high byte waits.
+            // Deviation 1 keeps a low byte after another number's high byte.
             let at = newest_high?;
             if under(at) != Some(Number::Nrpn(nrpn)) {
                 return None;
@@ -200,9 +200,9 @@ mod tests {
                 },
             ));
         }
-        // Zero, as MIDI 1.0 says, unless deviation 1 holds a 38 for it: the
-        // newest 38 since the last 6 and the last address byte that came
-        // before its own number's high byte.
+        // The low byte is zero, as MIDI 1.0 says, unless deviation 1 kept one
+        // for this number, which is the newest after the previous high byte
+        // and the last address byte.
         let held = newest_high.and_then(under);
         let newest_address = earlier.iter().rposition(|&(c, _)| matches!(c, 98..=101));
         let start = newest_high.max(newest_address).map_or(0, |at| at + 1);
@@ -224,8 +224,8 @@ mod tests {
         Rpn(u16),
     }
 
-    /// What follows the newest Reset All Controllers in `history`, which
-    /// forgets the address (deviation 3).
+    /// Returns the part of `history` after the newest Reset All Controllers,
+    /// which clears the address (deviation 3).
     fn since_reset(history: &[(u8, u8)]) -> &[(u8, u8)] {
         match history.iter().rposition(|&(c, _)| c == 121) {
             Some(reset) => &history[reset + 1..],
@@ -284,9 +284,10 @@ mod tests {
             ..ProptestConfig::default()
         })]
 
-        /// Whatever order the controllers arrive in, on whichever channels,
-        /// upgraded and then parsed they mean what the model says. Each
-        /// arrives in a block of its own.
+        /// Checks that controllers in any order and on any channels, upgraded
+        /// and then parsed, mean what the model says.
+        ///
+        /// Each controller arrives in its own block.
         #[test]
         fn upgraded_midi_1_parses_as_a_model_of_midi_1_0_reads_it(
             changes in proptest::collection::vec(control_change(), 0..48),

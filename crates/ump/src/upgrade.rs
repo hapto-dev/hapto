@@ -17,46 +17,53 @@ const NULL: u8 = 127;
 
 /// Upgrades incoming MIDI 1.0 to MIDI 2.0, as an exporter does.
 ///
-/// It follows the specification's Default Translation. Values upscale as
-/// [`scale`](crate::scale) says, and every packet
-/// it makes is marked [`Origin::Midi1`], or [`Origin::Midi1HighByte`] for
-/// a data entry high byte sent with no low byte. A note-on at velocity 0
-/// becomes a note-off at `0x8000`. The pair of a 14-bit controller stays two
-/// controllers. Bank select (controllers 0 and 32) is held for the next
-/// program change, which carries it; a bank byte never sent reads as 0.
+/// It follows the specification's Default Translation. Values scale up as
+/// [`scale`](crate::scale) describes, and each packet it makes is marked
+/// [`Origin::Midi1`], or [`Origin::Midi1HighByte`] for a data entry high byte
+/// sent without a low byte. Other packets pass through unchanged.
 ///
-/// An RPN or NRPN becomes one registered or assignable controller. Its
-/// data entry high byte (controller 6) goes out at once, at its own frame,
-/// as if its low byte were 0. Its low byte (38) at the same frame joins it,
-/// so a pair sent together is one message: the upgrade rewrites the packet
-/// it just sent, while that is still the last in the list. A low byte at a
-/// later frame refines it as a message of its own. Nothing waits for a
-/// later message, so what comes out never depends on where the blocks are
-/// cut. Each address byte (99 and 98, or 101 and 100) replaces the one it
-/// names and keeps the other, as the specification holds the latest of the
-/// four: an address may come in either byte order, a sender may send only
-/// the byte that changed, and the null number (127, 127) selects nothing.
-/// Reset All Controllers forgets the address. Data increment and decrement
-/// (96, 97) pass on as controllers of their own, which name no number, so a
-/// destination of the downgrade steps the number it last saw.
+/// - A note-on at velocity 0 becomes a note-off at velocity `0x8000`.
+/// - A 14-bit controller pair stays two controllers.
+/// - Bank select (0 and 32) is held for the next program change, which
+///   carries it. A bank byte that was never sent counts as 0.
+/// - An RPN or NRPN becomes one registered or assignable controller.
+/// - Data increment and decrement (96, 97) pass on as controllers of their
+///   own. They name no number, so a destination of the downgrade steps the
+///   number that it last saw.
 ///
-/// A data entry belongs to the number it was sent under. A low byte refines
-/// its number's latest high byte however often the address is sent between,
-/// as the specification holds the latest high byte.
+/// The data entry high byte (6) goes out at once, at its own frame, as if its
+/// low byte were 0. Nothing waits for a later message, so the output never
+/// depends on where the blocks are cut.
 ///
-/// The upgrade departs from the specification in three places. So that one
-/// parameter's high byte never lands on another, a low byte never takes the
-/// high byte of another number, and one sent before its own number's high
-/// byte waits for it, until the next address byte. And bank select also
-/// goes on as controllers 0 and 32 when it comes, which the specification
-/// carries in the program change alone and tells a MIDI 2.0 receiver to
-/// ignore: common controllers send a fader or a button on them, which a
-/// plugin can learn. Sent back down through
-/// [`Downgrade`](crate::Downgrade), MIDI 1.0 then repeats its bank select
-/// before each program change, which leaves a receiver on the same bank.
+/// - A low byte (38) at the same frame joins the high byte, so a pair sent
+///   together is one message. The upgrade rewrites the packet that it just
+///   sent, while that packet is still the last in the list.
+/// - A low byte at a later frame refines the high byte as a second message.
 ///
-/// Other packets pass through unchanged. State for every group and channel
-/// is allocated once, so [`block`](Self::block) allocates nothing.
+/// Each address byte (99 and 98, or 101 and 100) replaces the byte that it
+/// names and keeps the other, because the specification holds the latest of
+/// the four. So an address can come in either byte order, a sender can send
+/// only the byte that changed, and the null number (127, 127) selects nothing.
+/// Reset All Controllers clears the address.
+///
+/// A data entry belongs to the number that it was sent under. A low byte
+/// refines its own number's latest high byte, even if the address is sent
+/// again in between, as the specification says. The upgrade differs from the
+/// specification in three places. The first two keep one parameter's high
+/// byte from reaching another:
+///
+/// - A low byte never combines with another number's high byte.
+/// - A low byte sent before its own number's high byte waits for it, until
+///   the next address byte.
+/// - Bank select also passes on as controllers 0 and 32 when it comes. The
+///   specification carries it only in the program change and tells a MIDI 2.0
+///   receiver to ignore the controllers, but common controllers send a fader
+///   or a button on them, which a plugin can learn. Sent back through
+///   [`Downgrade`](crate::Downgrade), MIDI 1.0 then repeats its bank select
+///   before each program change, which leaves a receiver on the same bank.
+///
+/// State for every group and channel is allocated once, so
+/// [`block`](Self::block) allocates nothing.
 ///
 /// # Examples
 ///
@@ -133,21 +140,20 @@ struct Numbers {
     nrpn: [Option<u8>; 2],
     /// An RPN's address bytes, 101 and 100.
     rpn: [Option<u8>; 2],
-    /// The kind data entry is for: that of the latest address byte, unless
-    /// the null number is selected.
+    /// The kind that data entry applies to, which is that of the latest
+    /// address byte unless the null number is selected.
     selected: Option<Kind>,
-    /// The latest data entry high byte, already sent. A low byte under its
-    /// number refines it, however often the address is sent again; one
-    /// under another number never does.
+    /// The latest data entry high byte, already sent, which only a low byte
+    /// under the same number refines.
     high: Option<Held>,
     /// A low byte that arrived before its number's high byte, which MIDI 1.0
-    /// allows; that high byte completes it, unless an address byte comes
-    /// first. It is always the selected number's: only an address byte or
-    /// Reset All Controllers changes the number, and each drops it.
+    /// allows, kept for that high byte unless an address byte comes first.
+    /// It always belongs to the selected number, because only an address
+    /// byte or Reset All Controllers changes the number, and each drops it.
     early_low: Option<u8>,
 }
 
-/// A data entry high byte, with the number it was sent under.
+/// A data entry high byte, with the number that it was sent under.
 #[derive(Debug, Clone, Copy)]
 struct Held {
     number: Number,
@@ -162,8 +168,8 @@ struct Number {
     index: u8,
 }
 
-/// A data entry to send: its number, its high byte, and its low byte unless
-/// none came.
+/// A data entry to send, with its number, its high byte and its low byte,
+/// if one arrived.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Entry {
     number: Number,
@@ -193,8 +199,9 @@ impl Numbers {
         }
     }
 
-    /// An address byte, 99 or 98 for an NRPN, 101 or 100 for an RPN: it
-    /// replaces the byte it names, keeps the other, and selects its kind.
+    /// Records an address byte, 99 or 98 for an NRPN and 101 or 100 for an
+    /// RPN. It replaces the byte that it names, keeps the other, and selects
+    /// its kind.
     fn address_byte(&mut self, controller: u8, value: u8) {
         let (kind, most) = Kind::of_address(controller);
         let bytes = self.address(kind);
@@ -204,8 +211,8 @@ impl Numbers {
         self.selected = (!null).then_some(kind);
     }
 
-    /// A control change to a parameter-number controller or Reset All
-    /// Controllers, sending what it completes.
+    /// Handles a parameter-number control change or Reset All Controllers,
+    /// and sends the controller that the change completes.
     fn control(&mut self, controller: u8, value: u8, send: &mut Sender<'_>) {
         match controller {
             NRPN_LSB..=RPN_MSB => {
@@ -217,8 +224,8 @@ impl Numbers {
                 self.address_byte(controller, value);
             }
             DATA_ENTRY => {
-                // A low byte sent first is spent here. It is the selected
-                // number's, since every address byte and Reset All
+                // A data entry consumes `early_low`. It belongs to the
+                // selected number, because every address byte and Reset All
                 // Controllers drop it, so a data entry that selects nothing
                 // never finds one.
                 let low = self.early_low.take();
@@ -255,8 +262,8 @@ impl Numbers {
 }
 
 impl Channel {
-    /// Translates one MIDI 1.0 message on this channel, sending each MIDI
-    /// 2.0 message it completes.
+    /// Translates one MIDI 1.0 message on this channel, and sends each
+    /// completed MIDI 2.0 message.
     fn translate(&mut self, message: Midi1Message, send: &mut Sender<'_>) {
         let translated = match message {
             Midi1Message::NoteOn { note, velocity: 0 } => ChannelMessage::NoteOff {
@@ -303,9 +310,9 @@ impl Channel {
         send.send(translated);
     }
 
-    /// Translates a MIDI 1.0 control change: the parameter-number
-    /// controllers feed their state, and the rest become MIDI 2.0 control
-    /// changes, bank select held as well.
+    /// Translates a MIDI 1.0 control change by passing parameter-number
+    /// controllers to `Numbers` and sending the rest as MIDI 2.0 control
+    /// changes. Bank select is sent and also held.
     fn control_change(&mut self, controller: u8, value: u8, send: &mut Sender<'_>) {
         let as_is = ChannelMessage::ControlChange {
             controller,
@@ -357,10 +364,11 @@ impl Upgrade {
     }
 
     /// Upgrades a block's packets, in order, into `out`, the block's own
-    /// list: frames count from each block's start, so in a list kept from an
-    /// earlier block, a low byte could join a high byte alone that block
-    /// ended with at the same frame. A packet past `out`'s room is dropped
-    /// and counted there.
+    /// list. Frames count from each block's start, so in a list kept from an
+    /// earlier block, a low byte could join a lone high byte that the earlier
+    /// block ended with at the same frame.
+    ///
+    /// A packet that doesn't fit is dropped, and `out` counts it.
     ///
     /// Thread: audio. Allocates nothing.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
@@ -370,11 +378,14 @@ impl Upgrade {
         }
     }
 
-    /// Upgrades one packet into `out`: a MIDI 1.0 channel voice message
-    /// becomes what it completes, which may be nothing, and any other packet
-    /// passes as it is. A data entry low byte may rewrite the packet `out`
-    /// ends with, its high byte sent at the same frame, as [`Upgrade`] says,
-    /// so `out` is the block's own list, as [`block`](Self::block) says.
+    /// Upgrades one packet into `out`.
+    ///
+    /// A MIDI 1.0 channel voice message becomes the MIDI 2.0 messages that it
+    /// completes, if any, and any other packet passes through unchanged. A
+    /// data entry low byte may rewrite the packet that `out` ends with, when
+    /// that packet is its high byte sent at the same frame, as [`Upgrade`]
+    /// describes. So `out` is the block's own list, as [`block`](Self::block)
+    /// says.
     ///
     /// Thread: audio. Allocates nothing.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
@@ -456,9 +467,10 @@ impl Sender<'_> {
 }
 
 impl Entry {
-    /// The MIDI 2.0 controller it becomes, with how it was sent: with its low
-    /// byte, or as a high byte alone, which goes out as if its low byte were
-    /// 0.
+    /// Returns this entry's MIDI 2.0 controller, with an origin that says
+    /// whether it had a low byte.
+    ///
+    /// A high byte alone goes out as if its low byte were 0.
     fn message(self) -> (ChannelMessage, Origin) {
         let Number { kind, bank, index } = self.number;
         let value = up_14_to_32(join_14(self.low.unwrap_or(0), self.high));

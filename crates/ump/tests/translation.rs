@@ -1,8 +1,8 @@
-//! Translating between MIDI 1.0 and MIDI 2.0 by the Default Translation in
-//! appendix D of the UMP and MIDI 2.0 Protocol specification: the upgrade
-//! an exporter makes on the way in, the downgrade on the way out, and the
-//! round trip that must give back what MIDI 1.0 sent, its bank select sent
-//! again before a program change.
+//! Tests the Default Translation between MIDI 1.0 and MIDI 2.0 in appendix D
+//! of the UMP and MIDI 2.0 Protocol specification. It covers an exporter's
+//! upgrade on the way in, the downgrade on the way out, and the round trip,
+//! which must give back what MIDI 1.0 sent, with its bank select sent again
+//! before a program change.
 
 use hapto_ump::{
     Attribute, Bank, ChannelMessage, ChannelVoice, Downgrade, Event, EventList, Midi1Message,
@@ -556,7 +556,7 @@ fn increment_and_decrement_are_controllers_of_their_own() {
         ]
     );
     // A high byte goes out at its own frame, before the step, so a MIDI 1.0
-    // receiver steps the value it sets rather than the one before.
+    // receiver steps the value that it sets, not the one before.
     let sent = [
         (0, cc(99, 2)),
         (0, cc(98, 5)),

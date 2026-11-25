@@ -181,9 +181,9 @@ pub enum LearnError {
     UnknownTarget(TargetId),
     /// A number in the source is out of range for its kind.
     BadSource(Source),
-    /// The source can never be bound: a controller that sets or steps a
-    /// parameter number, as [`Control::Cc`](crate::Control::Cc) says, or an
-    /// NRPN the plugin reserved.
+    /// The source can never be bound, because it is a controller that sets
+    /// or steps a parameter number or an NRPN that the plugin reserved.
+    /// [`Control::Cc`](crate::Control::Cc) lists those controllers.
     Blocked(Source),
     /// The table holds [`Config::max_mappings`] mappings and the target has
     /// none to re-point.
@@ -299,8 +299,8 @@ impl Custom {
 /// let gain = set.ids().next().expect("one parameter");
 /// let (mut learn, mut audio) = Learn::new(&set, Config::default());
 ///
-/// // One block of MIDI 1.0 control changes, as (controller, value) pairs,
-/// // upgraded to the MIDI 2.0 learn reads, as an exporter does.
+/// // One block of MIDI 1.0 control changes from (controller, value) pairs,
+/// // upgraded as an exporter does.
 /// let mut upgrade = Upgrade::new();
 /// let mut block = |changes: &[(u8, u8)]| {
 ///     let mut sent = EventList::with_capacity(changes.len());

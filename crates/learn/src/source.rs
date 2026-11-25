@@ -103,8 +103,8 @@ impl Control {
         }
     }
 
-    /// Whether it is a controller that is never bound, as [`Control::Cc`]
-    /// says.
+    /// Returns whether this is a controller that is never bound, as
+    /// [`Control::Cc`] says.
     pub(crate) fn selects_a_number(self) -> bool {
         matches!(self, Control::Cc(number) if is_parameter_number(number))
     }

@@ -1,7 +1,8 @@
-//! Whole MIDI 1.0 streams cut into blocks anywhere, through the upgrade and
-//! back through the downgrade: what the downgrade sends upgrades to the same
-//! messages, but for the bank select it sends again before a program change,
-//! and a MIDI 1.0 receiver of it ends each block where the sender put it.
+//! Tests whole MIDI 1.0 streams, cut into blocks anywhere, through the
+//! upgrade and back through the downgrade. What the downgrade sends upgrades
+//! to the same messages, except for the bank select that it sends again
+//! before a program change, and a MIDI 1.0 receiver of the downgrade ends
+//! each block in the same state as a receiver of the sender.
 
 use std::collections::BTreeMap;
 
@@ -379,10 +380,10 @@ proptest! {
         prop_assert_eq!(upgrade_cut_at(&sent, &starts), upgrade_cut_at(&sent, &[]));
     }
 
-    /// Upgraded, downgraded and upgraded again, any stream gives the same
-    /// messages at the same frames, but for the bank select the downgrade
-    /// sends again before a program change: the downgrade sends nothing the
-    /// upgrade reads another way, however the blocks cut a data entry.
+    /// Checks that any stream gives the same messages at the same frames after
+    /// an upgrade, a downgrade and another upgrade, except for the bank select
+    /// that the downgrade sends again before a program change, however the
+    /// blocks split a data entry.
     #[test]
     fn what_the_downgrade_sends_upgrades_to_the_same_messages(
         sent in proptest::collection::vec(
@@ -398,8 +399,8 @@ proptest! {
         prop_assert_eq!(without_bank_select_again(messages(&again)), messages(&upgraded));
     }
 
-    /// A MIDI 1.0 receiver of the downgrade holds, at the end of every block,
-    /// the values a receiver of the sender holds: the upgrade sends every
+    /// Checks that a MIDI 1.0 receiver of the downgrade ends every block with
+    /// the values of a receiver of the sender, so the upgrade must send every
     /// data entry in its own block, where MIDI 1.0 puts it.
     #[test]
     fn a_receiver_of_the_downgrade_ends_each_block_where_the_sender_put_it(

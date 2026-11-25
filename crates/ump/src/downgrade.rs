@@ -13,17 +13,20 @@ use crate::{
 /// Downgrades MIDI 2.0 to MIDI 1.0 for a destination that accepts only MIDI
 /// 1.0, when someone asks for it or the other end forces it.
 ///
-/// It follows the specification's Default Translation. Values cut their
-/// low bits off. A note-on that would cut to velocity 0, which MIDI 1.0
-/// reads as a note-off, goes out at velocity 1. A registered or assignable
-/// controller becomes its four controllers (101 and 100, or 99 and 98, then
-/// 6 and 38), even one upgraded from a high byte sent alone: a MIDI 1.0
-/// receiver reads its low byte of 0 as it reads none. A program change with
-/// a bank becomes bank select (0 and 32) and then the program, whatever it
-/// came from. [`Upgrade`](crate::Upgrade) also sends MIDI 1.0's bank select
-/// on as controllers, so MIDI 1.0 sent through both repeats its bank select
-/// before the program, which leaves a receiver on the same bank, and a
-/// processor that drops controllers 0 and 32 still sends the bank.
+/// Values drop their low bits, and three messages change form.
+///
+/// - A note-on that would drop to velocity 0, which MIDI 1.0 treats as a
+///   note-off, goes out at velocity 1.
+/// - A registered or assignable controller becomes four controllers (101 and
+///   100, or 99 and 98, then 6 and 38), even one upgraded from a lone high
+///   byte. A MIDI 1.0 receiver treats a low byte of 0 as no low byte.
+/// - A program change with a bank becomes bank select (0 and 32), then the
+///   program, whatever it came from.
+///
+/// [`Upgrade`](crate::Upgrade) also passes MIDI 1.0's bank select on as
+/// controllers, so MIDI 1.0 sent through both repeats its bank select before
+/// the program. That leaves a receiver on the same bank, and a processor that
+/// drops controllers 0 and 32 still sends the bank.
 ///
 /// It drops what MIDI 1.0 can't carry, and counts it in
 /// [`lost`](Self::lost):

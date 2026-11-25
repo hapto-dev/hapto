@@ -1,10 +1,11 @@
-//! A host's MIDI 1.0, cut into blocks anywhere, upgraded as an exporter
-//! upgrades it, downgraded for a destination that takes MIDI 1.0 alone, and
-//! upgraded again. Nothing panics, nothing is dropped or lost, every packet
-//! the upgrade makes says it came from MIDI 1.0, and the second upgrade gives
-//! the first one's packets at the same frames, but for the bank select the
-//! downgrade sends again before a program change: a fixpoint, however the
-//! blocks cut a data entry.
+//! Fuzzes upgrading a host's MIDI 1.0, cut into blocks anywhere, as an
+//! exporter does, then downgrading it for a MIDI 1.0-only destination and
+//! upgrading it again. It checks these properties:
+//! - Nothing panics, and nothing is dropped or lost.
+//! - Every upgraded packet has a MIDI 1.0 origin.
+//! - The second upgrade gives the first one's packets at the same frames,
+//!   except for the bank select that the downgrade sends again before a
+//!   program change, however the blocks split a data entry.
 #![no_main]
 
 use hapto_ump::{

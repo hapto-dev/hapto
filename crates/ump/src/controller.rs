@@ -1,18 +1,19 @@
-//! The MIDI 1.0 controllers the translation between the protocols turns
-//! on: bank select, which a program change carries in MIDI 2.0, and the
-//! parameter-number controllers, which become one registered or assignable
-//! controller. The ones an exporter ranks are public; the rest serve the
-//! translation alone.
+//! The MIDI 1.0 controllers that the translation between the protocols
+//! depends on. These are bank select, which a MIDI 2.0 program change carries,
+//! and the parameter-number controllers, which become one registered or
+//! assignable controller. The ones that an exporter ranks are public, and the
+//! rest serve only the translation.
 //!
 //! # Examples
 //!
 //! ```
 //! use hapto_ump::controller;
 //!
-//! // Data entry and the address bytes are the upgrade's to assemble.
+//! // `Upgrade` consumes data entry and the address bytes to build an RPN or
+//! // NRPN.
 //! assert!(controller::is_parameter_number(controller::DATA_ENTRY));
 //! assert!(controller::is_parameter_number(controller::RPN_MSB));
-//! // The mod wheel, controller 1, passes as it is.
+//! // The mod wheel, controller 1, passes through unchanged.
 //! assert!(!controller::is_parameter_number(1));
 //! ```
 
@@ -40,10 +41,12 @@ pub const RPN_MSB: u8 = 101;
 /// (RP-015).
 pub(crate) const RESET_ALL_CONTROLLERS: u8 = 121;
 
-/// Whether `controller` is one of MIDI 1.0's parameter-number controllers:
-/// data entry, its low byte and the four address bytes, which the upgrade
-/// assembles into an RPN or NRPN, and increment and decrement, which step
-/// one.
+/// Returns whether `controller` is one of MIDI 1.0's parameter-number
+/// controllers.
+///
+/// These are data entry, its low byte and the four address bytes, which
+/// [`Upgrade`](crate::Upgrade) assembles into an RPN or NRPN, and increment
+/// and decrement, which step one.
 ///
 /// # Examples
 ///
@@ -51,7 +54,7 @@ pub(crate) const RESET_ALL_CONTROLLERS: u8 = 121;
 /// use hapto_ump::controller::{NRPN_LSB, is_parameter_number};
 ///
 /// assert!(is_parameter_number(NRPN_LSB));
-/// // Bank select passes to the next program change instead.
+/// // Bank select goes to the next program change instead.
 /// assert!(!is_parameter_number(0));
 /// ```
 pub const fn is_parameter_number(controller: u8) -> bool {
