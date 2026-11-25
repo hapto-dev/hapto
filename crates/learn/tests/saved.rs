@@ -1,5 +1,7 @@
 //! The saved mappings: the `midiLearn` section, restore, and session wiring.
 
+mod common;
+
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -329,16 +331,8 @@ fn a_restore_ends_the_arm_drops_old_held_entries_and_closes_bursts() {
     learn
         .map(zoom, Mapping::new(Source::any(Control::Cc(7))))
         .expect("legal");
-    let mut events = hapto_ump::EventList::with_capacity(1);
-    let cc = |value| hapto_ump::ChannelVoice {
-        group: 0,
-        channel: 0,
-        voice: hapto_ump::Voice::Midi1ControlChange {
-            controller: 7,
-            value,
-        },
-    };
-    events.push(cc(127).event(0));
+    // Controller 7 at full value, upgraded to MIDI 2.0.
+    let events = common::upgraded(&mut hapto_ump::Upgrade::new(), &[common::cc(7, 127)]);
     audio.process(&events);
     learn.poll();
     assert_eq!(*log.borrow(), ["begin", "apply"]);

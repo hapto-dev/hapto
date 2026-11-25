@@ -8,9 +8,9 @@
 //!   new [snapshot][glossary-snapshot] for the audio thread on every mapping
 //!   change. [`Learn::save`] and [`Learn::restore`] read and write the
 //!   session's `midiLearn` section.
-//! - [`LearnAudio`], on the audio thread, parses each block's Universal MIDI
-//!   Packets (MIDI 1.0 and 2.0), looks them up in the snapshot, and writes
-//!   each mapped parameter as a [learned write][glossary-learned-write].
+//! - [`LearnAudio`], on the audio thread, parses each block's MIDI 2.0
+//!   packets (MIDI 1.0 is upgraded first), looks them up in the snapshot, and
+//!   writes each mapped parameter as a [learned write][glossary-learned-write].
 //! - [`Learn::poll`], once per UI [tick][glossary-tick], commits a captured
 //!   controller and writes every other [`Target`] the plugin registers, one
 //!   gesture per [burst][glossary-burst].
@@ -46,7 +46,7 @@
 //! use hapto_learn::{Config, Control, Learn, Mapping, Source};
 //! use hapto_params::{Kind, ParamDecl, ParamSet};
 //! use hapto_session::Session;
-//! use hapto_ump::{ChannelVoice, EventList, Voice};
+//! use hapto_ump::{EventList, Midi1Message, Midi1Voice, Upgrade};
 //!
 //! let decl = ParamDecl::new("gain", "Gain", Kind::continuous(0.0, 1.0, 0.0, None), 0.0);
 //! let set = ParamSet::from_decls([decl])?;
@@ -64,10 +64,13 @@
 //! // On each activation: a fresh audio side that starts from the mappings so far.
 //! let mut audio = learn.borrow_mut().replace_audio();
 //!
-//! // In each block, on the audio thread: controller 7 at full writes the gain.
-//! let voice = Voice::Midi1ControlChange { controller: 7, value: 127 };
+//! // In each block, on the audio thread, controller 7 at full writes the
+//! // gain. `Upgrade` converts it to MIDI 2.0 first, as an exporter does.
+//! let message = Midi1Message::ControlChange { controller: 7, value: 127 };
+//! let sent = Midi1Voice { group: 0, channel: 0, message }.event(0);
+//! let mut upgrade = Upgrade::new();
 //! let mut midi = EventList::with_capacity(1);
-//! midi.push(ChannelVoice { group: 0, channel: 0, voice }.event(0));
+//! upgrade.block(&[sent], &mut midi);
 //! audio.process(&midi);
 //! assert_eq!(set.value(gain), 1.0);
 //!

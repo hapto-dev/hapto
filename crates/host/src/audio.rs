@@ -196,10 +196,7 @@ mod tests {
 
         let mut events = EventList::with_capacity(2);
         // The first packet of a MIDI-CI Discovery inquiry, as SysEx7.
-        events.push(Event {
-            offset: 3,
-            words: [0x3016_7E7F, 0x0D70_0201, 0, 0],
-        });
+        events.push(Event::new(3, [0x3016_7E7F, 0x0D70_0201, 0, 0]));
         let mut out = EventList::with_capacity(1);
         let mut left = [1.0_f32; 4];
         let mut channels = [&mut left[..]];

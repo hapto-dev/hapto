@@ -383,8 +383,10 @@ block through `save` and `load`.
 Learn and undo are driven on the plugin itself, since a host cannot reach
 them, nor yet send MIDI. The test builds the plugin as an exporter does,
 keeping a [`Driver`](../crates/host/src/parts.rs) to do what the exporter's
-engine would: tick the parts, and run learn's audio side before each block.
-It keeps the saved state a host would save and load through too:
+engine would: tick the parts, and run learn's audio side before each block,
+on MIDI 1.0 upgraded to MIDI 2.0 through
+[`Upgrade`](../crates/ump/src/upgrade.rs) first, since learn reads MIDI 2.0
+alone. It keeps the saved state a host would save and load through too:
 
 ```rust
 fn built() -> (Gain, Driver, Arc<SavedState>) {

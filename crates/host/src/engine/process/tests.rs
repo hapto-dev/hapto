@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use hapto_learn::{Config, Control, Learn, Learned, Mapping, Source, Takes};
 use hapto_params::{Kind, ParamDecl, ParamId, ParamSet};
-use hapto_ump::{ChannelVoice, Voice};
+use hapto_ump::{EventList, Midi1Message, Midi1Voice, Upgrade};
 
 use super::{Active, pieces};
 use crate::layout::{AnyLayout, Width};
@@ -44,10 +44,7 @@ impl Processor for Echo {
 
 /// A note-on at `offset` whose velocity is `tag`, so a test can follow it.
 fn note(offset: u32, tag: u32) -> Event {
-    Event {
-        offset,
-        words: [0x2090_3C00 | tag, 0, 0, 0],
-    }
+    Event::new(offset, [0x2090_3C00 | tag, 0, 0, 0])
 }
 
 fn tagged(event: &Event) -> (u32, u32) {
@@ -152,17 +149,6 @@ impl Processor for Reads {
     }
 }
 
-/// A MIDI 1.0 control change at `offset`.
-fn control_change(offset: u32, controller: u8, value: u8) -> Event {
-    let voice = Voice::Midi1ControlChange { controller, value };
-    ChannelVoice {
-        group: 0,
-        channel: 0,
-        voice,
-    }
-    .event(offset)
-}
-
 /// A gain from 0 to 1 that starts at 0, learn over it, and block state whose
 /// processor reads the gain, with learn's audio side in it, in pieces of up
 /// to 64 frames.
@@ -182,13 +168,31 @@ fn learning() -> (Learn, Active<Reads>, ParamId) {
     (learn, audio, gain)
 }
 
+/// Returns a MIDI 1.0 control change on group 0, channel 0, at `offset`,
+/// upgraded to the MIDI 2.0 that learn reads.
+pub(in crate::engine) fn upgraded_cc(offset: u32, controller: u8, value: u8) -> Event {
+    let message = Midi1Message::ControlChange { controller, value };
+    let sent = Midi1Voice {
+        group: 0,
+        channel: 0,
+        message,
+    }
+    .event(offset);
+    let mut upgraded = EventList::with_capacity(1);
+    Upgrade::new().block(&[sent], &mut upgraded);
+    *upgraded
+        .as_slice()
+        .first()
+        .expect("one controller upgrades to one")
+}
+
 #[test]
 fn a_learned_controller_is_written_before_the_processor_reads_in_its_own_block() {
     let (mut learn, mut audio, gain) = learning();
     learn
         .map(gain, Mapping::new(Source::any(Control::Cc(7))))
         .expect("mapped");
-    audio.events.push(control_change(10, 7, 127));
+    audio.events.push(upgraded_cc(10, 7, 127));
     // SAFETY: a layout of no channels, so no buffer is read or written.
     unsafe { pieces(&mut audio, 32, &[], &[]) };
 
@@ -205,7 +209,7 @@ fn a_controller_in_a_later_piece_is_read_by_every_piece_of_its_block() {
     learn
         .map(gain, Mapping::new(Source::any(Control::Cc(7))))
         .expect("mapped");
-    audio.events.push(control_change(100, 7, 127));
+    audio.events.push(upgraded_cc(100, 7, 127));
     // SAFETY: as above.
     unsafe { pieces(&mut audio, 150, &[], &[]) };
 
@@ -221,7 +225,7 @@ fn a_controller_in_a_later_piece_is_read_by_every_piece_of_its_block() {
 fn a_controller_a_block_brings_while_a_target_is_armed_is_learned_at_the_next_poll() {
     let (mut learn, mut audio, gain) = learning();
     learn.arm(gain, Takes::CONTROLLER).expect("a target");
-    audio.events.push(control_change(0, 74, 64));
+    audio.events.push(upgraded_cc(0, 74, 64));
     // SAFETY: as above.
     unsafe { pieces(&mut audio, 16, &[], &[]) };
 

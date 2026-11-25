@@ -171,8 +171,9 @@ Several senses:
   [`Learn::detach`](../crates/learn/src/mappings.rs). It is saved back unchanged
   and applied when such a target registers
   ([mappings/session.rs](../crates/learn/src/mappings/session.rs)).
-- **Held address bytes**: the NRPN address bytes learn's parser keeps, per group
-  and channel, until an address change or a reset forgets them ([the
+- **Held address bytes**: the RPN and NRPN address bytes the upgrade to MIDI
+  2.0 keeps, per group and channel, until an address change or a reset forgets
+  them ([upgrade.rs](../crates/ump/src/upgrade.rs), [the
   decision](decisions.md#d70-learns-reading-of-midi-10-pairs)).
 - **Held by the page**: a page holds its writes and calls until the native
   side's snapshot arrives, then sends them in the order it made them
@@ -227,10 +228,17 @@ plugin that is not `Send`, and any thread, on [loan](#loan), for one that is
 
 ### Origin
 
-Who wrote a value: the host, a restore, a learned controller, a user, the
-plugin's own code, or an undo replay. Every write names one, and the origin
-alone decides the write's side effects
-([`Origin`](../crates/params/src/origin.rs)).
+Two senses:
+
+- **A write's origin**: who wrote a value: the host, a restore, a learned
+  controller, a user, the plugin's own code, or an undo replay. Every write
+  names one, and the origin alone decides the write's side effects
+  ([`Origin`](../crates/params/src/origin.rs)).
+- **A packet's origin**: where a MIDI packet came from before it reached a
+  block: sent as MIDI 2.0, or sent as MIDI 1.0 and upgraded on the way in, a
+  data entry high byte sent alone marked apart. A reader narrows a value back
+  to the width it was sent at by it
+  ([`hapto_ump::Origin`](../crates/ump/src/lib.rs)).
 
 ### Parameter made at run time
 

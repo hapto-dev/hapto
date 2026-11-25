@@ -13,7 +13,7 @@ use hapto_host::vst3::TestHost;
 use hapto_host::{Audio, Block, Driver, EventList, Parts, Plugin, ProcessSetup, Processor};
 use hapto_params::host_id;
 use hapto_testkit::alloc::assert_no_allocations;
-use hapto_ump::{ChannelVoice, Voice};
+use hapto_ump::{Midi1Message, Midi1Voice, Upgrade};
 
 const GAIN: &str = "gain";
 const MODE: &str = "mode";
@@ -22,15 +22,14 @@ const BYPASS: &str = "bypass";
 /// Makes `events` hold one control change, at the block's first frame.
 fn control_change(events: &mut EventList, controller: u8, value: u8) {
     events.clear();
-    let voice = Voice::Midi1ControlChange { controller, value };
-    events.push(
-        ChannelVoice {
-            group: 0,
-            channel: 0,
-            voice,
-        }
-        .event(0),
-    );
+    let message = Midi1Message::ControlChange { controller, value };
+    let sent = Midi1Voice {
+        group: 0,
+        channel: 0,
+        message,
+    }
+    .event(0);
+    Upgrade::new().block(&[sent], events);
 }
 
 #[test]

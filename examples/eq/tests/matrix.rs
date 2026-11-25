@@ -157,10 +157,10 @@ impl Direct {
         self.events.clear();
         self.out_events.clear();
         for offset in 0..=EVENT_ROOM {
-            self.events.push(Event {
-                offset: u32::try_from(offset % frames).expect("a block size"),
-                words: [0x2090_3C00, 0, 0, 0],
-            });
+            self.events.push(Event::new(
+                u32::try_from(offset % frames).expect("a block size"),
+                [0x2090_3C00, 0, 0, 0],
+            ));
         }
         let _audio_thread = audio_thread::enter();
         let processor = self.processor.as_mut().expect("active");

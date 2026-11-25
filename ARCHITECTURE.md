@@ -40,7 +40,13 @@ reading how Hapto works inside, start with
   capture and dispatch words are packed by `field.rs`, the controllers a plugin
   reserves are in `reservation.rs`, and the section it saves is
   `mappings/session.rs`.
-- `crates/ump`: Universal MIDI Packets, the event list MIDI travels in.
+- `crates/ump`: Universal MIDI Packets, the event list MIDI travels in, and
+  MIDI 2.0's channel voice messages, which everything above the exporters
+  reads (`voice.rs`). An exporter is to translate MIDI 1.0's (`midi1.rs`) up
+  on the way in (`upgrade.rs`) and down on the way out (`downgrade.rs`), though
+  no exporter passes MIDI yet, and `scale.rs` moves values between the two
+  protocols' widths. A device's MIDI 1.0 byte stream becomes packets, and
+  packets bytes, in `bytes.rs`.
 - `crates/audio`: a block's audio as a processor sees it: the layouts, the
   channels a main bus has as a type (`layout.rs`); `Audio`, the channels a
   block lends, walked by frame or by channel (`audio.rs`, `frame.rs`); and
@@ -242,6 +248,11 @@ with `cargo doc -p hapto-host --features vst3,cabi,test-host
 - The audio thread never lets a store go. A typed parameter's drop asserts it
   is off the audio thread in a debug build, and a learn table that routes to
   a store drops on the UI thread.
+- Where a host cuts its blocks never changes what a plugin hears. A stage that
+  carries MIDI from one block to the next sends each message at its own frame
+  and keeps nothing back for a block's end, so a stream cut anywhere gives the
+  same messages at the same frames as one block does
+  ([`streams.rs`](crates/ump/tests/streams.rs) checks it for the upgrade).
 - Generated files (the page's protocol types, its test parameter map, `hapto.h`,
   the example EQ's JUCE settings) are committed and compared byte for byte in
   CI ([what runs the generator][generator], [keeping the header true][header]).

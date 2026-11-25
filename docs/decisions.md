@@ -46,7 +46,7 @@ comments never cite an id: they state the reason in words, and
 | D7 | [Restore neutrality for undo: a time window, or an origin on each write? (S12, U16)](#d7-restore-neutrality-for-undo) | Parameters restore with `Origin::Restore`, and undo reads the `RestoreClock`'s counts on every operation and clears when either has moved. Every history is neutral to restores; there is no opt-in. | decided |
 | D8 | [History bound default. (U19)](#d8-the-history-bound) | Same unit, defined: the bytes a step's stored values keep alive plus a fixed overhead of 32 units, booked once, when it is recorded. 30,000 units and a floor of 30 entries. | decided |
 | D9 | [How the learn dispatch table gets sequential consistency. (L4)](#d9-sequential-consistency-of-the-learn-dispatch-table) | A `triple_buffer` holds the published table: the audio thread takes the newest without waiting, locking or freeing, so Hapto writes no `unsafe` there. | decided |
-| D10 | [Learn over MIDI 2.0. (L2, L6)](#d10-learn-over-midi-20) | The UMP group and channel join the source. MIDI 1.0 values normalise centre-anchored and MIDI 2.0 values linear; native MIDI 2.0 assignable controllers are learnable, and the four-controller parser stays for MIDI 1.0 input. | decided |
+| D10 | [Learn over MIDI 2.0. (L2, L6)](#d10-learn-over-midi-20) | The UMP group and channel join the source. MIDI 1.0 values normalise centre-anchored and MIDI 2.0 values linear; native MIDI 2.0 assignable controllers are learnable, and MIDI 1.0 arrives upgraded, read at the width it was sent at (D114). | decided |
 | D11 | [At a gesture's close, does the drag's value overwrite a restore or host write that landed during the drag? (U1, U11, U15, U16, H3)](#d11-a-drags-close-and-a-restore-that-landed-during-it) | The restored or host value stands. The close records its step and writes nothing, so enrollment never changes how a value behaves. | decided |
 | D12 | [Host step metadata for a stepped continuous range. (P17)](#d12-host-step-metadata-for-a-stepped-range) | Continuous to every host: VST3's step count and CLAP's stepped flag are set for bool and choice only. The JUCE adapter reports the range as not discrete with its real count. Not built yet: the C interface passes no step count for a continuous range, so through the adapter a stepped range has JUCE's default count. | decided |
 | D13 | [When does a session restore apply to participants? (S5)](#d13-when-a-session-restore-applies) | Always on a later UI tick, whatever thread the restore came from. A change from C++. | decided |
@@ -66,7 +66,7 @@ comments never cite an id: they state the reason in words, and
 | D27 | [What runs the generator? (B3)](#d27-what-runs-the-generator) | An xtask: `cargo xtask gen` writes every file the repository generates. A plugin's own page map is its own test's, which `cargo hapto` runs (D109). | decided |
 | D28 | [Which threads may make a program write? (P6, P11)](#d28-threads-that-may-make-a-program-write) | An edit runs on the UI thread only and joins the parameter's gesture count. A sync runs on any thread but audio. | decided |
 | D29 | [Do plain values have gestures? (U3, U4, U5, U16, L7)](#d29-gestures-on-plain-values) | Yes. A plain value has its own gesture count and token, so one drag on any control is one undo step. | decided |
-| D30 | [An NRPN data entry sent with only its high byte. (L2)](#d30-an-nrpn-data-entry-with-only-its-high-byte) | A new high byte dispatches the 14-bit value with the low byte at 0, and a low byte that follows refines it. A binding whose capture saw no low byte scales the high byte as 7-bit instead. | decided |
+| D30 | [An NRPN data entry sent with only its high byte. (L2)](#d30-an-nrpn-data-entry-with-only-its-high-byte) | A binding whose capture saw a low byte reads 14 bits, moves only with a low byte, and skips a high byte sent alone; one whose capture saw none scales the high byte as 7-bit. | decided |
 | D31 | [What identifies a parameter to VST3, CLAP and AU hosts: its declaration index or a hash of its key? (P10, H5)](#d31-what-identifies-a-parameter-to-hosts) | A hash of the key, so a later version of a plugin can insert, reorder, regroup or remove parameters without orphaning automation. The hash function is fixed forever. | decided |
 | D32 | [When does the host hear that a user's gesture began? (P6, P11)](#d32-when-the-host-hears-a-gesture-begin) | When it opens, so a touch held still reaches the host and Touch and Latch modes hold the value. A program edit and a replay open only on a changing write. | decided |
 | D33 | [Undo or redo requested while a user gesture is open? (U8, U11, U12)](#d33-undo-during-a-user-gesture) | Refused with `HistoryError::GestureOpen` until the gesture closes. | decided |
@@ -106,7 +106,7 @@ comments never cite an id: they state the reason in words, and
 | D67 | [How are the rules checked that keep locking types off the audio thread? (P6, D39)](#d67-checking-the-audio-thread-locking-rule) | By a debug-build mark, `hapto_params::audio_thread`: a per-thread depth an exporter raises around everything its `process` call runs, and every call that locks asserts the mark is absent. | decided |
 | D68 | [Which of the 2026-11-05 audits' items wait until their code exists?](#d68-audit-items-that-wait-for-their-code) | Those whose code has not started: the CLAP exporter, automation smoothing and splitting, and semver checks. | decided |
 | D69 | [Where is a continuous range checked, and how does a declaration that is a constant build one? (P2, P10, D57)](#d69-where-a-continuous-range-is-checked) | When it is made. `Range::new`, a `const fn`, returns a `RangeError` for an invalid range, and `Kind::continuous`, a public `const fn`, panics on what it refuses. A typed declaration's range is checked by `Range::new` too: by `FloatDecl::checked` while compiling, and when it is added. | decided |
-| D70 | [How does learn read MIDI 1.0's paired controllers and parameter numbers where MIDI 1.0 leaves room? (L2, L3, D30)](#d70-learns-reading-of-midi-10-pairs) | Per group and channel, the two NRPN address bytes pair in either order, 127 with 127 selects nothing, and data increment and decrement are never learned. A controller 32 to 63 right after the controller 32 below it learns that one as a 7-bit controller. A learned pair plays at 7 bits: 14-bit controller playback is open, to be built when an exporter delivers MIDI. | decided |
+| D70 | [How does learn read MIDI 1.0's paired controllers and parameter numbers where MIDI 1.0 leaves room? (L2, L3, D30)](#d70-learns-reading-of-midi-10-pairs) | Per group and channel, each NRPN address byte replaces its own and keeps the other, so the two come in either order or one at a time, 127 with 127 selects nothing, and data increment and decrement are never learned. A controller 32 to 63 right after the controller 32 below it learns that one as a 7-bit controller. A learned pair plays at 7 bits: 14-bit controller playback is open, to be built when an exporter delivers MIDI. | decided |
 | D71 | [What does learn route after a restore whose `midiLearn` section it cannot read? (L9, D14, H2)](#d71-learn-after-an-unreadable-midilearn-section) | Nothing from before it. Learn ends the arm, clears every mapping and held entry and publishes the empty table, then closes open bursts (D82) and fails the apply, so the session keeps the section. | decided |
 | D72 | [How much may a host ask of an instance? (H2, D59, D62)](#d72-how-much-a-host-may-ask) | Fixed limits: a processor is built for at most 65,536 frames a block, a setup that promises more being built for that many, a saved block is at most 64 MiB, and a block's automation has room for 8 points per parameter on average, shared by its queues. | decided |
 | D73 | [What does an activation make of what the host's setup leaves open? (D58, D59, D62)](#d73-what-an-activation-makes-of-an-open-setup) | An activation while active builds a fresh processor and hands the old one back to the plugin, in both exporters. A setup whose block size is 0, or negative in VST3, takes 1,024 frames. | decided |
@@ -150,6 +150,7 @@ comments never cite an id: they state the reason in words, and
 | D111 | [How does a plugin's author see it through a plugin format while working on it, with no real host? (D109, D110)](#d111-the-dev-host) | The standalone app's dev host: the plugin through Hapto's own VST3 and C interface test hosts, in process, its editor as the exporter's view below a bar that names the format, with a settings window of what the host sees, a tab each. It changes the sample rate, of those the device takes, and the most frames a block holds by reactivating the plugin as a host does, cuts blocks by a plan, and logs what the plugin tells the host. A switch of format starts the app again with the saved block, and a block the plugin refused is kept for the next run. It stands in for no real host. | to confirm |
 | D112 | [How does a processor see its block's audio, and the widths it runs at? (D23, D97)](#d112-the-blocks-audio-and-the-layout-as-a-type) | As a type: `Processor::Layout` names the main bus's channels, a `Bus<IN, OUT>` at one width, with `Mono`, `Stereo` and the like for the common ones, or `AnyLayout` at each width `PluginInfo::layouts` lists. `Block::audio` lends the channels as `Audio`, walked by frame or by channel with no index or frame count, and in a `Bus` both are arrays that destructure. `Width` counts channels at run time, and `AudioBuf` owns audio for tests. | decided |
 | D113 | [Where do the audio types live? (D112)](#d113-the-audio-types-crate) | In `hapto-audio`, a core crate of layer 1 beside `hapto-params` and `hapto-ump`, which `hapto-host` re-exports, so code that only writes audio, such as a voice, needs no host. | decided |
+| D114 | [Which MIDI does Hapto pass inside, and how does MIDI 1.0 reach it? (D10, D23, D70)](#d114-midi-20-inside) | MIDI 2.0: `ChannelVoice` reads and writes MIDI 2.0's channel voice messages alone. An exporter is to upgrade MIDI 1.0 on the way in with `Upgrade`, and to downgrade with `Downgrade` only for a destination that takes MIDI 1.0 alone, both by the specification's Default Translation; no exporter passes MIDI yet. Each packet keeps its `Origin`, so learn reads a value upgraded from MIDI 1.0 at the width it was sent at. | to confirm |
 
 **Open.** D25 is held until `hapto-ci` needs it. It keeps its recommendation
 until decided, and no rule depends on it.
@@ -314,10 +315,11 @@ exactly on 0, 0.5 and 1, and a controller reads the same, within 1.3e-5, whether
 it arrives as MIDI 1.0 or in a host's MIDI 2.0 translation.
 
 MIDI 2.0 values are linear, `v / max`, within 1e-5 of centre-anchoring at 16
-bits and 1.2e-10 at 32. Native MIDI 2.0 assignable controllers are learnable,
-and the four-controller parser stays for MIDI 1.0 input. Pitch bend is not
-learnable; if it becomes learnable, it is centre-anchored at every width, since
-its centre is its rest position.
+bits and 1.2e-10 at 32. Native MIDI 2.0 assignable controllers are learnable.
+MIDI 1.0 reaches learn upgraded to MIDI 2.0, an NRPN as an assignable
+controller, and learn narrows each value back to the 7 or 14 bits it was sent
+at (D114). Pitch bend is not learnable; if it becomes learnable, it is
+centre-anchored at every width, since its centre is its rest position.
 
 [History](decision-history.md#d10-learn-over-midi-20)
 
@@ -595,12 +597,19 @@ control is one undo step.
 `msb << 7`, as MIDI 1.0 specifies (a new high byte sets the low byte to 0), so a
 sender that never sends the low byte tops out at 0.99225.
 
-**Rust.** Follow MIDI 1.0: a new high byte dispatches the 14-bit value with the
-low byte at 0, and a low byte that follows refines it, possibly a block later. A
-low byte sent before its high byte since the address changed waits, and the high
-byte then dispatches with it (D70). A binding whose capture saw no low byte
-scales the high byte as 7-bit instead, so such a sender reaches 1.0. The binding
-records which, and the `midiLearn` section saves it from schema 1.
+**Rust.** A binding whose capture saw a low byte reads the 14-bit value when
+the low byte comes: with its high byte when the two share a frame, and as a
+refinement of it at a later frame (D114). It skips a high byte sent alone,
+which the upgrade sends at once with its low byte at 0, so a pair that a block
+cuts never dips to `msb << 7` between its halves; a sender that sends high
+bytes alone never moves it. A low byte sent before its number's high byte
+waits until the next address byte, and that high byte then dispatches with it
+(D70). Once a number has had a pair, the upgrade keeps its high byte, so a
+sender that sends each move's low byte before its high byte moves the binding
+one high byte behind: each low byte refines the high byte before it, and the
+high byte that follows comes alone. A binding whose capture saw no low byte
+scales the high byte as 7-bit instead, so such a sender reaches 1.0. The
+binding records which, and the `midiLearn` section saves it from schema 1.
 
 [History](decision-history.md#d30-an-nrpn-data-entry-with-only-its-high-byte)
 
@@ -1570,21 +1579,27 @@ parameter numbers where MIDI 1.0 leaves room? (L2, L3, D30) Assembled NRPNs from
 controllers 99, 98, 6 and 38 and treated every other controller as plain (L2);
 the rest was not checked against C++.
 
-**Rust.** Per group and channel. The two address bytes pair in either order, as
-MIDI 1.0 allows and JUCE's `MidiRPNGenerator` sends them (98 first): a byte
-completes the address with the other one when that one arrived since the last
-data entry, RPN address or completed address.
+**Rust.** The upgrade to MIDI 2.0 reads the address (D114), per group and
+channel, and learn reads the assignable controller it sends. Each address byte
+replaces the one it names and keeps the other, as the specification's Default
+Translation holds the latest of 98 to 101 and a MIDI 1.0 receiver does: the two
+bytes come in either order, as MIDI 1.0 allows and JUCE's `MidiRPNGenerator`
+sends them (98 first), and a sender that sends only the byte that changed, a
+lone 99 or 98, selects the number a receiver of it selects.
 
-A 99 with nothing to pair with forgets the 98 held, so a lone 99 never completes
-from a stale low byte; a 98 alone changes the low byte under the 99 held; 127
-with 127 is the null number and selects nothing, so stray data entry drives no
-mapping. An RPN address (101, 100) selects RPN and leaves the NRPN bytes held,
-so a later 98 alone selects that NRPN again.
+127 with 127 is the null number and selects nothing, so stray data entry drives
+no mapping. An RPN address (101, 100) selects RPN and leaves the NRPN bytes
+held, so a later 98 alone selects that NRPN again.
 
 Reset All Controllers (121) forgets both address bytes and the selection, where
 its recommended response (RP-015) sets the number to null, and still passes on
-as controller 121. A data entry low byte sent before its high byte waits, and
-the high byte takes it; an address change drops it.
+as controller 121. Data entry belongs to the number it was sent under. A high
+byte stays held when its address is sent again, so a low byte after it refines
+it, as the specification's Default Translation holds the latest high byte. The
+upgrade departs from that translation twice, so that one parameter's high byte
+never lands on another: a low byte never takes another number's high byte, and
+one sent before its own number's high byte waits for it, until the next address
+byte drops it, so it never pairs with a high byte a later address sends.
 
 A controller 32 to 63 that comes right after the controller 32 below it on the
 same group and channel, with no other capture between, learns that one, the
@@ -1600,9 +1615,8 @@ bytes open. `Learn::poll` (`crates/learn/src/mappings.rs`) states the rule and
 the open question in full.
 
 A mapping then reads only the high byte: there is no 14-bit controller source,
-and a learned pair plays at 7 bits. Data increment and decrement (96, 97) belong
-to the parser, never learned or bound, and end the stretch in which address
-bytes pair, as data entry does.
+and a learned pair plays at 7 bits. Data increment and decrement (96, 97) are
+never learned or bound, and leave the address bytes held.
 
 **Alternatives.** The alternatives were a 14-bit controller source that reads
 both bytes, as an NRPN's data entry does; RPN selection that clears the NRPN
@@ -3510,6 +3524,87 @@ nothing, beside `hapto-params` and `hapto-ump`. `hapto-host` re-exports its
 Code that only writes audio, such as a voice MIDI is to drive, depends on it
 with no host below it.
 
+### D114. MIDI 2.0 inside
+
+**Question and C++ Seam.** Which MIDI does Hapto pass inside, and how does MIDI
+1.0 reach it? (D10, D23, D70) JUCE hands a processor MIDI 1.0 bytes in a
+`MidiBuffer`, and the C++ Seam read MIDI 1.0 alone.
+
+**Rust.** MIDI 2.0. Everything above the exporters reads MIDI 2.0's channel
+voice messages, a `ChannelMessage` per status at MIDI 2.0's widths, so a
+processor and learn read one protocol. An exporter is to upgrade MIDI 1.0 on
+the way in with `Upgrade`, by the Default Translation in appendix D of the UMP
+and MIDI 2.0 Protocol specification. Not built yet: no exporter passes MIDI
+(D59, D62). Values scale Min-Center-Max, a note-on at velocity 0 becomes a
+note-off at the centre velocity, controllers 0 and 32 wait for the program
+change that carries their bank, and an RPN or NRPN becomes one registered or
+assignable controller.
+
+Controllers 0 and 32 also pass on as controllers when they come. That departs
+from appendix D.3.4, which carries them in the program change alone, and from
+section 7.4.6, which tells a MIDI 2.0 receiver to ignore them: common
+controllers send a fader or a button on them, which a plugin learns as any
+other. The downgrade still sends every program change on a bank after its bank
+select, so MIDI 1.0 sent through both repeats its bank select before the
+program: a receiver ends on the same bank, and a processor that drops
+controllers 0 and 32 still sends the bank.
+
+The upgrade sends a data entry high byte (6) at once, at its own frame, with
+its low byte at 0, so no later message overtakes it and a MIDI 1.0 receiver of
+the downgrade steps the value it set. A low byte (38) at the same frame joins
+it into one message, as the upgrade rewrites the packet it just sent, and one
+at a later frame refines it as a second. Nothing waits for a later message, so
+where a host cuts its blocks changes nothing: any stream, cut anywhere,
+upgrades to the same packets at the same frames. The null number (127, 127)
+translates to nothing, increment and decrement pass on as controllers, which
+name no number, so a MIDI 1.0 destination of the downgrade steps the number it
+last saw, and the address and the departures from the Default Translation read
+as D70 states. A bank byte sent alone selects a bank with its partner at 0,
+since a program change carries the bank select values current.
+
+An exporter is to downgrade with `Downgrade` only for a destination that takes
+MIDI 1.0 alone, by the same appendix. Values cut their low bits, a note-on that
+would cut to velocity 0 goes out at 1, a registered or assignable controller
+becomes its four controllers, and a program change with a bank goes out after
+bank select. What MIDI 1.0 cannot carry is dropped and counted: relative and
+per-note controllers, per-note pitch bend and management, a note's attribute,
+whose note still goes out, and a MIDI 2.0 packet of a status the specification
+reserves. Packets of the other types pass, since a destination that takes
+MIDI 1.0 in UMP may take each of them.
+
+A device or port that carries MIDI 1.0's byte stream meets UMP at the same
+edge. `ByteStream` reads its bytes into MIDI 1.0 packets as MIDI 1.0 says:
+running status, real-time bytes that go out at once wherever they fall, and a
+SysEx sent as 7-bit SysEx packets six bytes at a time, across as many reads as
+the device's buffers cut it into. `Bytes` writes a MIDI 1.0 packet back as
+bytes, each message in full.
+
+Each `Event` keeps its `Origin`. The translation gives back what MIDI 1.0 sent,
+so learn narrows a value upgraded from MIDI 1.0 to the 7 or 14 bits it was sent
+at and scales it as D10 says, and a MIDI 1.0 controller learns and plays as it
+did when learn read MIDI 1.0 itself, but for four rules of NRPN data entry that
+D30 and D70 state: a low byte refines its number's high byte across a re-sent
+address, an address byte sent alone keeps the other one held, a binding that is
+not coarse skips a high byte sent alone, and a coarse one reads the high byte of
+a data entry that carries its low byte. The upgrade sends a high byte with no
+low byte as if its low byte were 0, and marks it `Origin::Midi1HighByte`, so
+learn tells a low byte that never came from one of 0 (D47). A coarse binding
+reads the high byte of every data entry, so its target lands where it did when
+a pair's high byte arrived as a message of its own; one that is not coarse
+skips a high byte sent alone and waits for its low byte (D30).
+
+**Alternatives.** The alternatives were both protocols inside, each in messages
+of its own, which leaves every reader two protocols to handle; MIDI 1.0 inside,
+which loses MIDI 2.0's widths and per-note messages; an upgrade that holds a
+high byte until its low byte, another parameter-number message or the end of
+the block, the short timeout the specification allows, which lets the
+channel's later notes and bends overtake the parameter its sender set first
+and makes what a plugin hears depend on the host's block size; and a hold
+counted in frames across blocks, flushed before the group's next channel voice
+message, which keeps a pair spread over frames one message at about three
+times the code. Sending the high byte at once costs two messages for such a
+pair, as a MIDI 1.0 receiver of the sender sees it too.
+
 ## How to read this
 
 Each rule has an id, the **invariant**, **why** it exists, and its **Rust**
@@ -4648,25 +4743,26 @@ changes 6, 38 and 98 to 101 mean nothing and are dropped, as JUCE's translator
 never emits them; 96 and 97, which it passes through, are dropped too, since a
 MIDI 2.0 stream selects no number for them to step. A reserved NRPN is blocked
 by refusing any mapping whose group and channel could hear it, so an any-channel
-mapping of a number reserved on one channel is refused (D35). The parser keeps
-each group and channel's MIDI 1.0 address, data entry and controller pairs as
-D70 states. Data increment and decrement (96, 97) belong to the parser too,
-unlike C++, and drive nothing, since their value is a step for the selected
-number rather than a position, so a binding would jump its target and follow
-every RPN's increments; learn does not apply the step, which needs the value the
-receiver holds. Reserved controllers block capture only, as in C++: `Config`'s
+mapping of a number reserved on one channel is refused (D35). MIDI 1.0
+arrives upgraded (D114): the upgrade keeps each group and channel's address and
+data entry as D70 states, and learn keeps no MIDI 1.0 state of its own. Data
+increment and decrement (96, 97) are never bound, unlike C++, and drive
+nothing, since their value is a step for the selected number rather than a
+position, so a binding would jump its target and follow every RPN's
+increments; learn does not apply the step, which needs the value the receiver
+holds. Reserved controllers block capture only, as in C++: `Config`'s
 `reserved_ccs`, and the channel mode messages 120 to 127 unless
 `reserve_channel_mode` is turned off, so a panic button pressed while armed is
 not learned; a mapping made by hand still dispatches. VST3 delivers controllers
 only as parameter changes; the VST3 exporter routes them to learn through hidden
-proxy parameters (D22). The parser owns 101 and 100 as well. Fix while porting:
-RPN data entry was dispatched as the last NRPN's value; an NRPN sent with only
-its high byte topped out at 0.9922, never 1.0 (D30 settles it); the NRPN parser
-stopped running while nothing was mapped or armed, so its address went stale.
-The Rust crate also learns notes to parameters (`Source::Note`), for instruments
-that map keys to parameters, though the C++ Seam never learned notes (D17). A
-note-on writes its velocity and a note-off writes nothing; an arm states whether
-it takes a note.
+proxy parameters (D22). 101 and 100, the RPN address, are never bound either.
+Fix while porting: RPN data entry was dispatched as the last NRPN's value; an
+NRPN sent with only its high byte topped out at 0.9922, never 1.0 (D30 settles
+it); the NRPN parser stopped running while nothing was mapped or armed, so its
+address went stale. The Rust crate also learns notes to parameters
+(`Source::Note`), for instruments that map keys to parameters, though the C++
+Seam never learned notes (D17). A note-on writes its velocity and a note-off
+writes nothing; an arm states whether it takes a note.
 
 Pinned by: `midi_source_test` "midi: a reserved CC range blocks capture only, on
 the configured channel", "midi: a reserved NRPN range blocks capture AND

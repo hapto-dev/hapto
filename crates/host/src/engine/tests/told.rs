@@ -8,7 +8,7 @@ use std::rc::Rc;
 use hapto_learn::{Config, Control, LearnAudio, Mapping, Source};
 use hapto_params::{Float, FloatDecl, Value};
 use hapto_session::{ApplyError, Participant, Registration, Section};
-use hapto_ump::{ChannelVoice, EventList, Voice};
+use hapto_ump::EventList;
 use hapto_undo::{Bound, History};
 use serde_json::Value as Json;
 
@@ -140,18 +140,7 @@ fn cc(number: u8) -> Mapping {
 /// learn's audio side.
 fn controller(number: u8, value: u8) {
     let mut events = EventList::with_capacity(1);
-    let voice = Voice::Midi1ControlChange {
-        controller: number,
-        value,
-    };
-    events.push(
-        ChannelVoice {
-            group: 0,
-            channel: 0,
-            voice,
-        }
-        .event(0),
-    );
+    events.push(super::upgraded_cc(0, number, value));
     kit(|kit| kit.learn.process(&events));
 }
 

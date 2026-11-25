@@ -12,7 +12,7 @@ use hapto_host::{
     Processor, SavedState,
 };
 use hapto_params::host_id;
-use hapto_ump::{ChannelVoice, Voice};
+use hapto_ump::{Midi1Message, Midi1Voice, Upgrade};
 
 const GAIN: &str = "gain";
 const MODE: &str = "mode";
@@ -186,15 +186,14 @@ fn a_learned_controller_drives_the_gain() {
     let mut learn = driver.learn_audio().expect("learn is on");
     let cc = |controller, value| {
         let mut events = EventList::with_capacity(1);
-        let voice = Voice::Midi1ControlChange { controller, value };
-        events.push(
-            ChannelVoice {
-                group: 0,
-                channel: 0,
-                voice,
-            }
-            .event(0),
-        );
+        let message = Midi1Message::ControlChange { controller, value };
+        let sent = Midi1Voice {
+            group: 0,
+            channel: 0,
+            message,
+        }
+        .event(0);
+        Upgrade::new().block(&[sent], &mut events);
         events
     };
     let mut run = |processor: &mut _, events: &EventList| {

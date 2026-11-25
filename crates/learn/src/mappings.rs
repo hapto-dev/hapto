@@ -49,17 +49,24 @@ pub struct Mapping {
     /// For a MIDI 1.0 NRPN: whether the capture saw no low byte (controller
     /// 38).
     ///
-    /// A coarse binding reads the high byte as 7-bit and ignores low bytes,
-    /// so a sender that never sends the low byte reaches 1.0. Otherwise the
-    /// value is 14-bit, and a high byte alone reads as `high << 7`, as MIDI
-    /// 1.0 says. Ignored by every other source, MIDI 2.0's assignable
-    /// controllers included.
+    /// A coarse binding reads the high byte of every data entry as 7-bit,
+    /// whatever its low byte, so a sender that never sends the low byte
+    /// reaches 1.0. Otherwise the value is 14-bit and moves only when a low
+    /// byte comes: a high byte sent alone, which a 14-bit sender follows with
+    /// its low byte, moves it not at all, so a pair a block cuts never dips
+    /// to `high << 7`. A sender that sends high bytes alone never moves a
+    /// binding that is not coarse, and one that sends each move's low byte
+    /// before its high byte moves it one high byte behind: after the first
+    /// pair, each low byte refines the high byte before it, and the high byte
+    /// that follows comes alone. Ignored by every other source, MIDI 2.0's
+    /// assignable controllers included.
     pub coarse: bool,
 }
 
 impl Mapping {
     /// Creates a mapping of `source` through the identity curve, 14-bit for an
-    /// NRPN, as the [`Mapping`] example shows.
+    /// NRPN, as the [`Mapping`] example shows: such a binding waits for each
+    /// low byte, as [`coarse`](Self::coarse) says.
     pub const fn new(source: Source) -> Self {
         Mapping {
             source,
@@ -82,7 +89,7 @@ impl Mapping {
     /// ```
     /// use hapto_learn::{Control, Mapping, Source};
     ///
-    /// // A sender that never sends the low byte still reaches the top.
+    /// // A sender that never sends the low byte moves a coarse binding alone.
     /// let mapping = Mapping::new(Source::any(Control::Nrpn(300)));
     /// assert!(!mapping.coarse);
     /// assert!(mapping.as_coarse().coarse);
@@ -151,9 +158,9 @@ impl Default for Config {
 #[doc = include_str!("../doc/setup.rs")]
 /// let (mut learn, _audio) = Learn::new(&set, Config::default());
 ///
-/// // Controller 6 belongs to the NRPN parser; 200 is no controller at all.
-/// let parser_owned = Mapping::new(Source::any(Control::Cc(6)));
-/// let blocked = learn.map(gain, parser_owned);
+/// // The upgrade consumes data entry (6), and 200 is not a controller.
+/// let data_entry = Mapping::new(Source::any(Control::Cc(6)));
+/// let blocked = learn.map(gain, data_entry);
 /// assert!(matches!(blocked, Err(LearnError::Blocked(_))));
 /// let out_of_range = Mapping::new(Source::any(Control::Cc(200)));
 /// let bad = learn.map(gain, out_of_range);
@@ -174,9 +181,9 @@ pub enum LearnError {
     UnknownTarget(TargetId),
     /// A number in the source is out of range for its kind.
     BadSource(Source),
-    /// The source can never be bound: a controller the parser owns, as
-    /// [`Control::Cc`](crate::Control::Cc) lists them, or an NRPN the plugin
-    /// reserved.
+    /// The source can never be bound, because it is a controller that sets
+    /// or steps a parameter number, or an NRPN that the plugin reserved.
+    /// [`Control::Cc`](crate::Control::Cc) lists those controllers.
     Blocked(Source),
     /// The table holds [`Config::max_mappings`] mappings and the target has
     /// none to re-point.
@@ -284,7 +291,7 @@ impl Custom {
 /// ```
 /// use hapto_learn::{Config, Learn, Learned, Takes};
 /// use hapto_params::{Kind, ParamDecl, ParamSetBuilder, Range};
-/// use hapto_ump::{ChannelVoice, EventList, Voice};
+/// use hapto_ump::{EventList, Midi1Message, Midi1Voice, Upgrade};
 ///
 /// let mut builder = ParamSetBuilder::new();
 /// builder.add(ParamDecl::new("gain", "Gain", Kind::continuous(0.0, 1.0, 0.0, None), 0.0))?;
@@ -292,13 +299,17 @@ impl Custom {
 /// let gain = set.ids().next().expect("one parameter");
 /// let (mut learn, mut audio) = Learn::new(&set, Config::default());
 ///
-/// // One block of MIDI 1.0 control changes, as (controller, value) pairs.
-/// let block = |changes: &[(u8, u8)]| {
-///     let mut events = EventList::with_capacity(changes.len());
+/// // One block of MIDI 1.0 control changes from (controller, value) pairs,
+/// // upgraded as an exporter does.
+/// let mut upgrade = Upgrade::new();
+/// let mut block = |changes: &[(u8, u8)]| {
+///     let mut sent = EventList::with_capacity(changes.len());
 ///     for &(controller, value) in changes {
-///         let voice = Voice::Midi1ControlChange { controller, value };
-///         events.push(ChannelVoice { group: 0, channel: 0, voice }.event(0));
+///         let message = Midi1Message::ControlChange { controller, value };
+///         sent.push(Midi1Voice { group: 0, channel: 0, message }.event(0));
 ///     }
+///     let mut events = EventList::with_capacity(changes.len());
+///     upgrade.block(sent.as_slice(), &mut events);
 ///     events
 /// };
 ///
@@ -597,13 +608,25 @@ impl Learn {
     /// let (mut learn, mut audio) = Learn::new(&set, Config::default());
     /// learn.arm(gain, Takes::CONTROLLER)?;
     ///
+    /// // An exporter runs one upgrade over every block, before learn: it
+    /// // keeps the address and the high byte for a low byte that comes later.
+    /// let mut upgrade = Upgrade::new();
+    /// let mut upgraded = |changes: &[(u8, u8)]| {
+    ///     let mut events = EventList::with_capacity(changes.len());
+    ///     for &(controller, value) in changes {
+    ///         let message = Midi1Message::ControlChange { controller, value };
+    ///         upgrade.event(&Midi1Voice { group: 0, channel: 0, message }.event(0), &mut events);
+    ///     }
+    ///     events
+    /// };
+    ///
     /// // NRPN 300's address (controllers 99 and 98), then its high byte (6).
-    /// audio.process(&block(&[(99, 2), (98, 44), (6, 64)]));
+    /// audio.process(&upgraded(&[(99, 2), (98, 44), (6, 64)]));
     /// assert!(learn.poll().is_none(), "the high byte waits for its low byte");
     /// assert!(learn.poll().is_none(), "no block ran since the last poll");
     ///
     /// // The low byte (38) comes in the next block: a 14-bit mapping.
-    /// audio.process(&block(&[(38, 5)]));
+    /// audio.process(&upgraded(&[(38, 5)]));
     /// match learn.poll() {
     ///     Some(Learned::Mapped { mapping, .. }) => {
     ///         assert_eq!(mapping.source.control, Control::Nrpn(300));
@@ -855,7 +878,7 @@ impl Learn {
             .reserved_nrpns
             .iter()
             .any(|r| r.overlaps(&source));
-        if source.control.parser_owned() || reserved {
+        if source.control.selects_a_number() || reserved {
             return Err(LearnError::Blocked(source));
         }
         let full = self.mappings.len() >= self.config.max_mappings;

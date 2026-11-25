@@ -35,6 +35,29 @@ exporter.
 - **Breaking.** `ProcessSetup` is made with `ProcessSetup::new`, with room for
   no MIDI until a test sets `max_events` or `max_out_events`, so the buses
   beyond the main one can join it later without breaking a caller.
+- **Breaking.** MIDI is MIDI 2.0 inside. `ChannelVoice` reads and writes MIDI
+  2.0's channel voice messages alone, a `ChannelMessage` for each status MIDI
+  2.0 has, and `Voice` with its MIDI 1.0 variants is gone. MIDI 1.0 becomes
+  MIDI 2.0 through `Upgrade`, by the specification's Default Translation, and
+  `Midi1Voice` reads and writes the MIDI 1.0 messages it translates;
+  `Downgrade` translates back for a destination that takes MIDI 1.0 alone.
+  Each `Event` keeps its `Origin`, and `scale` moves values between the
+  widths. An RPN or NRPN's data entry high byte goes out at its own frame, and
+  its low byte joins it there or refines it later, so where a host cuts its
+  blocks changes nothing. Controllers 0 and 32 pass on as controllers as well
+  as riding the next program change, so a fader on them learns, and MIDI 1.0
+  sent back through `Downgrade` repeats its bank select before the program.
+  Learn reads MIDI 2.0 alone: a MIDI 1.0 controller learns and plays as before
+  once upgraded, but for four rules of NRPN data entry. A low byte refines its
+  number's high byte when the address is sent again between them, where learn
+  dropped the entry; an address byte sent alone keeps the other one held, as a
+  MIDI 1.0 receiver does, where learn forgot the low byte at a lone 99; a
+  binding that is not coarse skips a high byte sent alone and moves when its
+  low byte comes, so a pair a block cuts never dips; and a coarse binding
+  reads the high byte of a data entry that carries its low byte too, where
+  learn wrote nothing. A packet's message type is a `MessageType`, whose
+  constants name the UMP table's types and whose `words` replaces
+  `packet_words`.
 
 ### Added
 
@@ -95,18 +118,21 @@ exporter.
   faulted until an apply succeeds. A capture nested too deep, or too large for
   the saved block to load back, is refused and the previous one kept, whether
   the participant registered before the saved state was made or after.
-- `hapto-learn`: MIDI learn over MIDI 1.0 and 2.0 packets. Arm a target, move a
-  controller, and the mapping drives the target from the audio thread through a
-  published snapshot that never waits, locks or frees. Notes, NRPNs, 14-bit
-  controller pairs, curves, reservations and a saved `midiLearn` section. Half
-  of a 14-bit pair waits at least a UI tick and a whole audio block for its
-  other half. `Mapping` and `Config` are `non_exhaustive`, built with
-  `Mapping::new`, `with_curve` and `as_coarse`. `arm`, `map`, `unmap`,
-  `mapping` and `key` take anything `Learnable`: a `TargetId`, a `ParamId`, a
-  `CustomId` or a typed parameter. A parameter made at run time is a target of
-  its own, `TargetId::RunTime`, named by an opaque `RunTimeId`.
+- `hapto-learn`: MIDI learn over MIDI 2.0 packets, with MIDI 1.0 upgraded to
+  them. Arm a target, move a controller, and the mapping drives the target from
+  the audio thread through a published snapshot that never waits, locks or
+  frees. Notes, NRPNs, 14-bit controller pairs, curves, reservations and a saved
+  `midiLearn` section. Half of a 14-bit pair waits at least a UI tick and a
+  whole audio block for its other half. `Mapping` and `Config` are
+  `non_exhaustive`, built with `Mapping::new`, `with_curve` and `as_coarse`.
+  `arm`, `map`, `unmap`, `mapping` and `key` take anything `Learnable`: a
+  `TargetId`, a `ParamId`, a `CustomId` or a typed parameter. A parameter made
+  at run time is a target of its own, `TargetId::RunTime`, named by an opaque
+  `RunTimeId`.
 - `hapto-ump`: Universal MIDI Packets: a fixed-capacity event list per block,
-  and the channel voice messages read from it and written back.
+  the channel voice messages and 7-bit SysEx read from it and written back,
+  the translation between MIDI 1.0 and MIDI 2.0, and MIDI 1.0's byte stream
+  read into packets and written back.
 - `hapto-host`: the `Plugin` and `Processor` traits and `PluginInfo`, and
   `SavedState`, the saved block as JSON, which names Hapto's frame version and
   the plugin's own schema version apart. A load keeps unknown parameter ids and

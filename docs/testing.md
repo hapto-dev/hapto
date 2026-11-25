@@ -102,7 +102,7 @@ real-time sanitizer, which needs Linux.
 | `JUCE adapter` (Windows, started by hand) | The example EQ's VST3 build through the adapter passes the Steinberg validator, built from the VST3 SDK at the pinned commit, as the native `plugin validators (windows)` lane passes Hapto's own. |
 | Nightly: `miri` | `hapto-host`'s tests, on Linux and on Windows, the core crates' unit tests and some integration tests find no undefined behaviour under Stacked Borrows and Tree Borrows (see [Miri](#miri)). |
 | Nightly: `rtsan` (Linux) | A canary that allocates inside a marked call aborts, and the allocation gates and the gate matrix pass under RealtimeSanitizer. See [Real-time sanitizer](#real-time-sanitizer). |
-| Nightly: `fuzz` | Each of four `cargo-fuzz` targets ran ten minutes with no crash, no panic and no broken fixpoint (see [Fuzzing](#fuzzing)). |
+| Nightly: `fuzz` | Each of six `cargo-fuzz` targets ran ten minutes with no crash, no panic and no broken fixpoint (see [Fuzzing](#fuzzing)). |
 | Nightly: `soak` (Linux, Windows) | The matrix's conditions, drawn at random for 30 minutes, with random parameter moves, produced no allocation, fault, NaN, denormal or drift from the processor driven directly. |
 | Weekly: `soak` | The same for 3 hours. |
 
@@ -665,11 +665,15 @@ exporter's save and load.
 
 ## Fuzzing
 
-`fuzz/` (outside the Cargo workspace; it needs a nightly compiler) holds four
+`fuzz/` (outside the Cargo workspace; it needs a nightly compiler) holds six
 `cargo-fuzz` targets, one per input boundary:
 
 - `ump_packets`: splitting a stream, decoding each voice message, and encoding
   it back;
+- `midi1_bytes`: a MIDI 1.0 device's byte stream read into packets, cut into
+  reads anywhere, and written back as bytes that read the same;
+- `midi1_translation`: a host's MIDI 1.0 cut into blocks anywhere, upgraded,
+  downgraded and upgraded again to the same packets at the same frames;
 - `page_message`: the page's JSON;
 - `saved_block`: a load of arbitrary bytes, then a save that must load back and
   save the same bytes;

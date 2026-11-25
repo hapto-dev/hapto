@@ -1,5 +1,7 @@
 //! The plugin trait: a plugin with main-thread state that is not `Send`.
 
+mod common;
+
 use std::cell::Cell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -121,7 +123,6 @@ fn a_mapping_learned_after_the_session_ticks_waits_a_tick_for_the_save() {
     use std::cell::RefCell;
 
     use hapto_learn::{Config, Learn, SESSION_KEY, Takes};
-    use hapto_ump::{ChannelVoice, EventList, Voice};
 
     let set = ParamSet::from_decls(PARAMS.iter().copied()).expect("valid");
     let session = Session::new(&set);
@@ -134,20 +135,7 @@ fn a_mapping_learned_after_the_session_ticks_waits_a_tick_for_the_save() {
         .borrow_mut()
         .arm(on, Takes::CONTROLLER)
         .expect("a target");
-    let voice = Voice::Midi1ControlChange {
-        controller: 74,
-        value: 64,
-    };
-    let mut events = EventList::with_capacity(1);
-    events.push(
-        ChannelVoice {
-            group: 0,
-            channel: 0,
-            voice,
-        }
-        .event(0),
-    );
-    audio.process(&events);
+    audio.process(&common::upgraded_cc(74, 64));
     // The first mapping's target, as the next save would write it.
     let saved = || {
         session.save().and_then(|saved| {
@@ -209,7 +197,6 @@ fn one_tick_applies_a_restore_saves_a_learned_mapping_and_records_a_gesture() {
     use std::cell::RefCell;
 
     use hapto_learn::{Config, SESSION_KEY, Takes};
-    use hapto_ump::{ChannelVoice, EventList, Voice};
     use hapto_undo::Bound;
 
     let (params, mut parts) = Parts::for_plugin::<Listening>().expect("valid declarations");
@@ -238,20 +225,7 @@ fn one_tick_applies_a_restore_saves_a_learned_mapping_and_records_a_gesture() {
     parts.ui().write(on, 0.0);
     let mut audio = driver.learn_audio().expect("learn is on");
     parts.learn().arm(on, Takes::CONTROLLER).expect("a target");
-    let voice = Voice::Midi1ControlChange {
-        controller: 74,
-        value: 64,
-    };
-    let mut events = EventList::with_capacity(1);
-    events.push(
-        ChannelVoice {
-            group: 0,
-            channel: 0,
-            voice,
-        }
-        .event(0),
-    );
-    audio.process(&events);
+    audio.process(&common::upgraded_cc(74, 64));
     driver.tick();
     assert!(
         parts.learn().mapping(on).is_some(),
@@ -268,7 +242,6 @@ fn one_tick_applies_a_restore_saves_a_learned_mapping_and_records_a_gesture() {
 #[test]
 fn the_driver_hands_out_learn_s_audio_side_only_while_learn_is_on_and_the_parts_live() {
     use hapto_learn::{Config, Control, Mapping, Source};
-    use hapto_ump::{ChannelVoice, EventList, Voice};
 
     let (params, mut parts) = Parts::for_plugin::<Listening>().expect("valid declarations");
     let driver = Driver::of(&parts);
@@ -282,20 +255,7 @@ fn the_driver_hands_out_learn_s_audio_side_only_while_learn_is_on_and_the_parts_
         .expect("mapped");
     // Taken after the mapping was made, as a later activation takes it.
     let mut audio = driver.learn_audio().expect("learn is on");
-    let voice = Voice::Midi1ControlChange {
-        controller: 74,
-        value: 0,
-    };
-    let mut events = EventList::with_capacity(1);
-    events.push(
-        ChannelVoice {
-            group: 0,
-            channel: 0,
-            voice,
-        }
-        .event(0),
-    );
-    audio.process(&events);
+    audio.process(&common::upgraded_cc(74, 0));
     assert!(!params.on.get(), "its first block read the mapping");
 
     drop(parts);

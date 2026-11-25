@@ -109,6 +109,14 @@ listed through both. Recorded 2026-11-12.
 Decided on 2026-11-03; amended after the 2026-11-05 audits, which found a low
 byte sent first dropped (MD-5); confirmed by the owner on 2026-11-07.
 
+Until 2026-11-24 a binding that is not coarse read a high byte sent alone with
+its low byte at 0, so a 14-bit knob whose pair a block cut dipped to
+`msb << 7` for a block; a review of the MIDI branches found it that day. Since
+then such a binding skips a high byte sent alone, which the owner kept when the
+upgrade came to send one at once (D114). The review of that change found that
+it reads a sender of each low byte before its high byte one high byte behind,
+and the owner accepted that the same day.
+
 ### D33. Undo during a user gesture
 
 [The decision](decisions.md#d33-undo-during-a-user-gesture)
@@ -499,6 +507,27 @@ Controllers that only deselects, keeping the bytes, was the first form.
 A lone controller 32 to 63 first waited one poll, and two polls with no block
 between learned it as itself before its high byte's block ran; it now waits as
 a lone NRPN high byte does, under D47's amended rule.
+
+Until 2026-11-23 any address byte dropped the data entry held, so a sender that
+names the address before every data byte played at 7 bits and its low byte
+never went out; an audit of the MIDI branches found it. The specification's
+Default Translation holds the latest high byte across addresses. The owner
+decided on 2026-11-23 to follow it for a number sent again and to keep the two
+departures that keep one parameter's high byte off another.
+
+From 2026-11-23 to 2026-11-24 a low byte sent before its high byte waited
+across any number of blocks and addresses, so it could join a high byte sent
+long after under the same number, a value its sender never set. A review of
+the MIDI branches found it; the owner took its audit's recommendations on
+2026-11-24, and an address byte drops it again, as before 2026-11-23.
+
+Until 2026-11-24 a 99 or 101 with nothing to pair with forgot the low byte
+held, so a sender that sends only the address byte that changed lost its next
+data entry, uncounted. The rule came from learn's own parser and guarded
+against a stale low byte, which needs a data entry between an address's two
+bytes. The same review found it a third departure from the Default
+Translation, whose appendix D.3.3 holds the latest of 98 to 101, and the owner
+followed the specification that day.
 
 ### D71. Learn after an unreadable midiLearn section
 
@@ -1277,6 +1306,48 @@ alone, and the same gain takes 1,481.
 The owner's decision, on 2026-11-21, with D112: `hapto-midi` is to sit in the
 core, below `hapto-host`, and its voices take `Audio`, so the audio types sit
 below both.
+
+### D114. MIDI 2.0 inside
+
+[The decision](decisions.md#d114-midi-20-inside)
+
+An audit of the MIDI branches on 2026-11-23, checked against the UMP and MIDI
+2.0 Protocol specification v1.1.2, found that increment and decrement went out
+before a high byte held, so a receiver of the downgrade stepped the value
+before it, and that a bank select LSB sent alone was lost, where appendix D.3.4
+carries the bank select values current. Both were fixed that day, and the
+record named the upgrade's departures from the Default Translation, the
+owner's decision.
+
+Until 2026-11-23 learn read a low byte of 0 as no low byte, since the upgrade
+sent a high byte alone as if its low byte were 0. A 14-bit sender whose high
+byte's block ended before its low byte of 0 came learned as coarse, which the
+same audit found; the owner chose to mark the high byte sent alone by its
+origin.
+
+A last review before the pull request, on 2026-11-23, found that the downgrade
+passed a MIDI 2.0 packet of a reserved status on to a MIDI 1.0 destination,
+uncounted, though section 3.2.1.2 of the specification keeps message type 4
+from a MIDI 1.0 device. It is dropped and counted since.
+
+Until 2026-11-24 the upgrade held a high byte sent alone until its low byte,
+another parameter-number message or the end of the block. A review of the MIDI
+branches that day found that the channel's later notes and bends overtook it,
+an MPE zone's configuration among them, and that the host's block size moved
+it. Its audit recommended sending the high byte at once, the alternative the
+record had turned down, and the owner took it; the record holds it "to
+confirm".
+
+Until 2026-11-24 the upgrade held MIDI 1.0's controllers 0 and 32 for the
+next program change alone, as the Default Translation does, so a binding on
+them could be made and never fired, and a fader on controller 0 could not be
+learned. The review recommended refusing such bindings; its audit recommended
+passing the two on as well, since common controllers send a fader or a button
+on them, and the owner took the audit's. The implementer first had the
+downgrade send a program change upgraded from MIDI 1.0 without its bank,
+which kept the round trip exact; the owner turned that down the same day,
+since a processor that drops controllers 0 and 32 would then lose the bank,
+and a receiver sent the bank select twice ends on the same bank.
 
 ## Rules
 

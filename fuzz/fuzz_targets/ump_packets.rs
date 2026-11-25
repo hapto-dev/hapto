@@ -1,11 +1,11 @@
-//! The UMP packet stream a host hands a plugin: split into packets, and
-//! decode each as a channel voice message. Nothing panics, a decoded
-//! message encodes to a packet that decodes to itself, and the packets
-//! consume the stream exactly.
+//! Fuzzes splitting the UMP stream that a host passes a plugin into packets
+//! and decoding each as a MIDI 2.0 or MIDI 1.0 channel voice message. It
+//! checks that nothing panics, that a decoded message round-trips through its
+//! packet, and that the packets use up the stream exactly.
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use hapto_ump::{ChannelVoice, Packets, packet_words};
+use hapto_ump::{ChannelVoice, Midi1Voice, Packets};
 
 fuzz_target!(|data: &[u8]| {
     let words: Vec<u32> = data
@@ -20,10 +20,13 @@ fuzz_target!(|data: &[u8]| {
         match packet {
             Ok(event) => {
                 assert_eq!(event.offset, offset);
-                let size = packet_words((event.words[0] >> 28) as u8).expect("a four-bit type");
+                let size = event.message_type().words();
                 consumed += size;
                 if let Some(voice) = ChannelVoice::decode(event.words) {
                     assert_eq!(ChannelVoice::decode(voice.words()), Some(voice));
+                }
+                if let Some(voice) = Midi1Voice::decode(event.words) {
+                    assert_eq!(Midi1Voice::decode(voice.words()), Some(voice));
                 }
             }
             Err(_) => consumed = words.len(),

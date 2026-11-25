@@ -1,0 +1,216 @@
+//! Defines 7-bit System Exclusive packets, which carry a SysEx message six
+//! bytes at a time.
+
+use crate::buf::Buf;
+use crate::head::Head;
+use crate::{Event, MessageType};
+
+/// Where a [`SysEx7`] packet's bytes fall in their message.
+///
+/// # Examples
+///
+/// ```
+/// use hapto_ump::SysExForm;
+///
+/// assert!(SysExForm::Complete.begins() && SysExForm::Complete.ends());
+/// assert!(SysExForm::Start.begins() && !SysExForm::Start.ends());
+/// assert!(!SysExForm::Continue.begins() && !SysExForm::Continue.ends());
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SysExForm {
+    /// The whole message.
+    Complete,
+    /// The first packet, with more to follow.
+    Start,
+    /// A middle packet.
+    Continue,
+    /// The last packet.
+    End,
+}
+
+impl SysExForm {
+    /// Returns whether this form begins a message, as `Complete` and `Start`
+    /// do.
+    pub const fn begins(self) -> bool {
+        matches!(self, SysExForm::Complete | SysExForm::Start)
+    }
+
+    /// Returns whether this form ends a message, as `Complete` and `End` do.
+    pub const fn ends(self) -> bool {
+        matches!(self, SysExForm::Complete | SysExForm::End)
+    }
+
+    /// Returns the form of packet `index`, from 0, in a message of `count`
+    /// packets.
+    const fn of(index: usize, count: usize) -> SysExForm {
+        if count <= 1 {
+            SysExForm::Complete
+        } else if index == 0 {
+            SysExForm::Start
+        } else if index.saturating_add(1) >= count {
+            SysExForm::End
+        } else {
+            SysExForm::Continue
+        }
+    }
+
+    const fn status(self) -> u8 {
+        match self {
+            SysExForm::Complete => 0x0,
+            SysExForm::Start => 0x1,
+            SysExForm::Continue => 0x2,
+            SysExForm::End => 0x3,
+        }
+    }
+
+    /// Returns the form that a status names, or `None` for the reserved 4 to
+    /// 15.
+    const fn from_status(status: u8) -> Option<SysExForm> {
+        match status {
+            0x0 => Some(SysExForm::Complete),
+            0x1 => Some(SysExForm::Start),
+            0x2 => Some(SysExForm::Continue),
+            0x3 => Some(SysExForm::End),
+            _ => None,
+        }
+    }
+}
+
+/// One 7-bit System Exclusive packet, message type 3.
+///
+/// A packet carries up to six bytes of a SysEx message, its group and its
+/// [`SysExForm`]. The bytes are 7-bit data only, without the 0xF0 and 0xF7
+/// that frame a SysEx in the MIDI 1.0 byte stream. Both protocols carry
+/// SysEx this way.
+///
+/// # Examples
+///
+/// ```
+/// use hapto_ump::{SysEx7, SysExForm};
+///
+/// // An identity request fits in one packet on group 0.
+/// let packet = SysEx7::new(0, SysExForm::Complete, &[0x7E, 0x7F, 0x06, 0x01]);
+/// assert_eq!(packet.words(), [0x3004_7E7F, 0x0601_0000, 0, 0]);
+/// assert_eq!(SysEx7::decode(packet.words()), Some(packet));
+/// assert_eq!(packet.data(), [0x7E, 0x7F, 0x06, 0x01]);
+///
+/// // Twenty bytes take a start, two continues and an end.
+/// let mut forms = Vec::new();
+/// SysEx7::packets(0, &[0x11; 20], |words| {
+///     forms.push(SysEx7::decode(words).map(|packet| packet.form));
+/// });
+/// assert_eq!(forms.len(), SysEx7::count(20));
+/// assert_eq!(forms[0], Some(SysExForm::Start));
+/// assert_eq!(forms[3], Some(SysExForm::End));
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SysEx7 {
+    /// The group, 0 to 15.
+    pub group: u8,
+    /// Where the bytes fall in their message.
+    pub form: SysExForm,
+    data: Buf<6>,
+}
+
+impl SysEx7 {
+    /// The most bytes that one packet carries.
+    pub const MAX_DATA: usize = 6;
+
+    /// Returns a packet on `group`, 0 to 15, with the first six bytes of
+    /// `data`, each masked to 7 bits.
+    pub fn new(group: u8, form: SysExForm, data: &[u8]) -> Self {
+        let mut held = Buf::new();
+        for &byte in data {
+            if !held.push(byte & 0x7F) {
+                break;
+            }
+        }
+        SysEx7 {
+            group: group & 0xF,
+            form,
+            data: held,
+        }
+    }
+
+    /// Returns the packet that `words` carries, or `None` for another
+    /// message type or a reserved status.
+    ///
+    /// A byte count above six is read as six.
+    ///
+    /// Thread: any. Allocates nothing.
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
+    pub fn decode(words: [u32; 4]) -> Option<Self> {
+        let [first, second, ..] = words;
+        let head = Head::read(first);
+        if head.kind != MessageType::SYSEX7 {
+            return None;
+        }
+        // The status byte holds the form and then the byte count.
+        let form = SysExForm::from_status(head.status >> 4)?;
+        let count = usize::from(head.status & 0xF).min(Self::MAX_DATA);
+        let [b3, b4, b5, b6] = second.to_be_bytes();
+        let bytes = [head.byte3, head.byte4, b3, b4, b5, b6];
+        let data = bytes.get(..count).unwrap_or(&[]);
+        Some(SysEx7::new(head.group, form, data))
+    }
+
+    /// Returns the bytes, at most six.
+    pub fn data(&self) -> &[u8] {
+        self.data.as_slice()
+    }
+
+    /// Returns the packet's words.
+    pub fn words(&self) -> [u32; 4] {
+        let mut bytes = [0_u8; 6];
+        for (slot, &byte) in bytes.iter_mut().zip(self.data()) {
+            *slot = byte;
+        }
+        let [b1, b2, b3, b4, b5, b6] = bytes;
+        let count = self.data().len() as u8;
+        let head = Head {
+            kind: MessageType::SYSEX7,
+            group: self.group,
+            status: self.form.status() << 4 | count,
+            byte3: b1,
+            byte4: b2,
+        };
+        [head.word(), u32::from_be_bytes([b3, b4, b5, b6]), 0, 0]
+    }
+
+    /// Returns the packet as an event at frame `offset`.
+    pub fn event(&self, offset: u32) -> Event {
+        Event::new(offset, self.words())
+    }
+
+    /// Splits a whole message's `data` into packets on `group` and calls
+    /// `send` with each one's words in order.
+    ///
+    /// Up to six bytes, including none, make one complete packet, and more
+    /// make a start, continues and an end. Each byte is masked to 7 bits.
+    ///
+    /// Thread: any. Allocates nothing.
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
+    pub fn packets(group: u8, data: &[u8], mut send: impl FnMut([u32; 4])) {
+        let count = Self::count(data.len());
+        let mut chunks = data.chunks(Self::MAX_DATA);
+        for index in 0..count {
+            let chunk = chunks.next().unwrap_or(&[]);
+            send(SysEx7::new(group, SysExForm::of(index, count), chunk).words());
+        }
+    }
+
+    /// Returns the number of packets that `len` bytes take, which is one for
+    /// up to six bytes, including none.
+    pub const fn count(len: usize) -> usize {
+        let count = len.div_ceil(Self::MAX_DATA);
+        if count == 0 { 1 } else { count }
+    }
+}
+
+impl Event {
+    /// Returns the event's SysEx7 packet, as [`SysEx7::decode`] reads it.
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
+    pub fn sysex7(&self) -> Option<SysEx7> {
+        SysEx7::decode(self.words)
+    }
+}

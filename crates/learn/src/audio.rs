@@ -18,7 +18,7 @@ use hapto_params::{AudioParams, audio_thread};
 use hapto_ump::EventList;
 
 use crate::capture::Stager;
-use crate::parse::Parser;
+use crate::parse;
 use crate::snapshot::Reader;
 use crate::table::Route;
 
@@ -53,7 +53,6 @@ use crate::table::Route;
 pub struct LearnAudio {
     params: AudioParams,
     reader: Reader,
-    parser: Parser,
     stager: Stager,
 }
 
@@ -68,30 +67,48 @@ impl LearnAudio {
         LearnAudio {
             params,
             reader,
-            parser: Parser::new(),
             stager,
         }
     }
 
-    /// Runs learn over one block's MIDI, in order, so a target that several
-    /// messages reach ends the block on the last one.
+    /// Runs learn over one block's MIDI in order, so a target that several
+    /// messages reach ends the block at the last one's value.
     ///
-    /// It takes the newest table the UI side published, without waiting,
-    /// locking, allocating or freeing. Each mapped parameter is written in
-    /// the block its message arrived in, as a learned write: no gesture, no
-    /// undo step, nothing told to the host. A mapped UI-tier target gets the
-    /// newest value staged for [`Learn::poll`](crate::Learn::poll), and while
-    /// a target is armed the newest legal message is staged for the poll to
-    /// learn. The list is read and never changed, so a processor gets every
-    /// packet as the host sent it. The [`LearnAudio`] example shows a block.
+    /// - Takes the newest table that the UI side published, without waiting,
+    ///   locking, allocating or freeing.
+    /// - Writes each mapped parameter in the block that its message arrived
+    ///   in, as a learned write, with no gesture, no undo step and no notice
+    ///   to the host.
+    /// - Stages a mapped UI-tier target's newest value for
+    ///   [`Learn::poll`](crate::Learn::poll), and while a target is armed,
+    ///   the newest legal message for the poll to learn.
+    /// - Never changes the list, so a processor gets every packet as the
+    ///   exporter delivered it.
+    ///
+    /// Learn reads only MIDI 2.0, so MIDI 1.0 must go through
+    /// [`Upgrade`](hapto_ump::Upgrade) first, as the exporters' engine does.
+    /// The [`LearnAudio`] example shows a block.
     ///
     /// Thread: audio.
+    ///
+    /// # Panics
+    ///
+    /// In a build with `debug_assertions`, when a packet is a MIDI 1.0
+    /// channel voice message, which learn would skip without a sign.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn process(&mut self, events: &EventList) {
+        debug_assert!(
+            events
+                .as_slice()
+                .iter()
+                .all(|event| event.midi1_voice().is_none()),
+            "learn reads MIDI 2.0 alone: upgrade MIDI 1.0 with hapto_ump::Upgrade \
+             before LearnAudio::process"
+        );
         let table = self.reader.read();
         self.stager.block(|offers| {
             for event in events.as_slice() {
-                let Some(message) = self.parser.parse(event) else {
+                let Some(message) = parse::parse(event) else {
                     continue;
                 };
                 offers.offer(&message);

@@ -1,70 +1,27 @@
 //! The learn flow: arming, capture reservations, and when a capture commits.
 
-use std::sync::Arc;
+mod common;
 
 use hapto_learn::{
-    CcReservation, Config, Control, Learn, LearnAudio, LearnError, Learned, Mapping,
-    NrpnReservation, Source, Takes,
+    CcReservation, Config, Control, Learn, LearnError, Learned, Mapping, NrpnReservation, Source,
+    Takes,
 };
-use hapto_params::{Kind, ParamDecl, ParamId, ParamSet, ParamSetBuilder};
-use hapto_ump::{ChannelVoice, EventList, Voice};
+use hapto_params::ParamId;
+use hapto_ump::{ChannelMessage, Event, Midi1Message, Upgrade};
 
-fn set_of(count: usize) -> Arc<ParamSet> {
-    let mut builder = ParamSetBuilder::new();
-    for index in 0..count {
-        let key: &'static str = Box::leak(format!("p{index}").into_boxed_str());
-        builder
-            .add(ParamDecl::new(
-                key,
-                key,
-                Kind::continuous(0.0, 1.0, 0.0, None),
-                0.5,
-            ))
-            .expect("valid");
-    }
-    builder.build()
+use common::{Rig, cc, midi2, on, upgraded};
+
+fn set_of(count: usize) -> std::sync::Arc<hapto_params::ParamSet> {
+    common::set_of(count, 0.5)
 }
 
-struct Rig {
-    learn: Learn,
-    audio: LearnAudio,
-    ids: Vec<ParamId>,
-}
-
+/// Returns a rig with three parameters at 0.5.
 fn rig_with(config: Config) -> Rig {
-    let set = set_of(3);
-    let (learn, audio) = Learn::new(&set, config);
-    Rig {
-        learn,
-        audio,
-        ids: set.ids().collect(),
-    }
+    Rig::new(3, 0.5, config)
 }
 
 fn rig() -> Rig {
     rig_with(Config::default())
-}
-
-impl Rig {
-    fn block(&mut self, voices: &[ChannelVoice]) {
-        let mut events = EventList::with_capacity(voices.len());
-        for (offset, voice) in voices.iter().enumerate() {
-            events.push(voice.event(offset as u32));
-        }
-        self.audio.process(&events);
-    }
-}
-
-fn on(group: u8, channel: u8, voice: Voice) -> ChannelVoice {
-    ChannelVoice {
-        group,
-        channel,
-        voice,
-    }
-}
-
-fn cc(controller: u8, value: u8) -> ChannelVoice {
-    on(0, 0, Voice::Midi1ControlChange { controller, value })
 }
 
 fn exact(control: Control, group: u8, channel: u8) -> Source {
@@ -85,7 +42,7 @@ fn learned(target: ParamId, source: Source, coarse: bool) -> Option<Learned> {
 }
 
 /// An NRPN's address on group 0, channel 0.
-fn nrpn_address(number: u16) -> [ChannelVoice; 2] {
+fn nrpn_address(number: u16) -> [Event; 2] {
     [cc(99, (number >> 7) as u8), cc(98, (number & 0x7F) as u8)]
 }
 
@@ -102,7 +59,7 @@ fn arming_captures_the_next_message_and_the_poll_commits_it() {
     rig.block(&[on(
         3,
         9,
-        Voice::Midi1ControlChange {
+        Midi1Message::ControlChange {
             controller: 7,
             value: 64,
         },
@@ -114,6 +71,22 @@ fn arming_captures_the_next_message_and_the_poll_commits_it() {
     rig.block(&[cc(8, 1)]);
     assert_eq!(rig.learn.poll(), None, "disarmed");
     assert_eq!(rig.learn.mapping(target).map(|m| m.source), Some(source));
+}
+
+#[test]
+fn controllers_0_and_32_from_midi_1_learn() {
+    let mut rig = rig();
+    let target = rig.ids[0];
+    rig.learn.arm(target, Takes::CONTROLLER).expect("known");
+    rig.block(&[cc(0, 100)]);
+    let fader = exact(Control::Cc(0), 0, 0);
+    assert_eq!(rig.learn.poll(), learned(target, fader, false));
+    // 32 alone is the low byte of no pair sent: it learns itself once its
+    // wait for a high byte is over, as any controller 32 to 63 does.
+    rig.learn.arm(target, Takes::CONTROLLER).expect("known");
+    rig.block(&[cc(32, 100)]);
+    let button = exact(Control::Cc(32), 0, 0);
+    assert_eq!(after_its_wait(&mut rig), learned(target, button, false));
 }
 
 #[test]
@@ -133,7 +106,7 @@ fn several_captures_before_a_poll_commit_only_the_newest_legal_one() {
         on(
             0,
             0,
-            Voice::Midi1NoteOn {
+            Midi1Message::NoteOn {
                 note: 60,
                 velocity: 100,
             },
@@ -171,7 +144,7 @@ fn a_refused_message_leaves_the_target_armed() {
     rig.block(&[on(
         0,
         0,
-        Voice::Midi1NoteOn {
+        Midi1Message::NoteOn {
             note: 60,
             velocity: 100,
         },
@@ -184,7 +157,7 @@ fn a_refused_message_leaves_the_target_armed() {
     rig.block(&[on(
         0,
         1,
-        Voice::Midi1ControlChange {
+        Midi1Message::ControlChange {
             controller: 25,
             value: 1,
         },
@@ -217,9 +190,7 @@ fn a_reserved_controller_can_still_be_mapped_by_hand_and_dispatches() {
     learn
         .map(target, Mapping::new(Source::any(Control::Cc(120))))
         .expect("allowed by hand");
-    let mut events = EventList::with_capacity(1);
-    events.push(cc(120, 127).event(0));
-    audio.process(&events);
+    audio.process(&upgraded(&mut Upgrade::new(), &[cc(120, 127)]));
     assert_eq!(set.value(target), 1.0);
 }
 
@@ -350,6 +321,23 @@ fn an_nrpn_high_byte_waits_for_its_low_byte_through_polls_with_no_block_between(
     }
 }
 
+#[test]
+fn a_low_byte_of_0_a_block_after_its_high_byte_learns_14_bit() {
+    // Over DIN with a small buffer, a block can end between the bytes of a
+    // value whose low byte is 0, such as 8192. The upgrade then sends the
+    // high byte alone, before the low byte comes.
+    let mut rig = rig();
+    let target = rig.ids[0];
+    rig.learn.arm(target, Takes::CONTROLLER).expect("known");
+    let [high, low] = nrpn_address(300);
+    rig.block(&[high, low, cc(6, 64)]);
+    rig.block(&[cc(38, 0)]);
+    assert_eq!(
+        rig.learn.poll(),
+        learned(target, exact(Control::Nrpn(300), 0, 0), false)
+    );
+}
+
 /// Polls until `polls` polls in all have run since the last block, each
 /// finding nothing settled, since no block ran between them.
 fn after_more_polls(rig: &mut Rig, polls: usize) {
@@ -410,10 +398,10 @@ fn a_midi_2_assignable_controller_learns_as_an_nrpn() {
     // The number is bank × 128 + index, always at full width.
     let mut rig = rig();
     rig.learn.arm(rig.ids[0], Takes::CONTROLLER).expect("known");
-    rig.block(&[on(
+    rig.block(&[midi2(
         2,
         4,
-        Voice::Midi2AssignableController {
+        ChannelMessage::AssignableController {
             bank: 3,
             index: 7,
             value: u32::MAX,
@@ -434,7 +422,7 @@ fn a_note_arm_learns_a_note_on_and_never_a_note_off() {
         on(
             0,
             0,
-            Voice::Midi1NoteOn {
+            Midi1Message::NoteOn {
                 note: 60,
                 velocity: 0,
             },
@@ -442,7 +430,7 @@ fn a_note_arm_learns_a_note_on_and_never_a_note_off() {
         on(
             0,
             0,
-            Voice::Midi1NoteOff {
+            Midi1Message::NoteOff {
                 note: 61,
                 velocity: 9,
             },
@@ -452,7 +440,7 @@ fn a_note_arm_learns_a_note_on_and_never_a_note_off() {
     rig.block(&[on(
         0,
         0,
-        Voice::Midi1NoteOn {
+        Midi1Message::NoteOn {
             note: 62,
             velocity: 1,
         },
@@ -503,7 +491,7 @@ fn a_controller_reservation_on_one_group_leaves_the_others_free() {
     rig.block(&[on(
         1,
         0,
-        Voice::Midi1ControlChange {
+        Midi1Message::ControlChange {
             controller: 25,
             value: 1,
         },
@@ -512,7 +500,7 @@ fn a_controller_reservation_on_one_group_leaves_the_others_free() {
     rig.block(&[on(
         0,
         0,
-        Voice::Midi1ControlChange {
+        Midi1Message::ControlChange {
             controller: 25,
             value: 1,
         },
@@ -597,7 +585,7 @@ fn a_controller_32_to_63_learns_itself_a_tick_later_unless_its_high_byte_came_ju
         on(
             0,
             channel,
-            Voice::Midi1ControlChange {
+            Midi1Message::ControlChange {
                 controller: 39,
                 value: 33,
             },
@@ -607,7 +595,7 @@ fn a_controller_32_to_63_learns_itself_a_tick_later_unless_its_high_byte_came_ju
         on(
             0,
             channel,
-            Voice::Midi1ControlChange {
+            Midi1Message::ControlChange {
                 controller: 7,
                 value: 100,
             },
@@ -653,7 +641,7 @@ fn a_controller_32_to_63_learns_itself_a_tick_later_unless_its_high_byte_came_ju
         on(
             1,
             0,
-            Voice::Midi1ControlChange {
+            Midi1Message::ControlChange {
                 controller: 7,
                 value: 100,
             },

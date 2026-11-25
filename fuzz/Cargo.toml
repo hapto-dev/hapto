@@ -37,6 +37,20 @@ doc = false
 bench = false
 
 [[bin]]
+name = "midi1_bytes"
+path = "fuzz_targets/midi1_bytes.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "midi1_translation"
+path = "fuzz_targets/midi1_translation.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "page_message"
 path = "fuzz_targets/page_message.rs"
 test = false

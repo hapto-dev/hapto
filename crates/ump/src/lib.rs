@@ -1,42 +1,55 @@
 //! Universal MIDI Packets, as every Hapto crate passes MIDI.
 //!
-//! An [`EventList`] is one [block]'s MIDI, in or out: a
-//! fixed-capacity list of [`Event`]s. Each is one packet at a frame of the
-//! block, so a processor and MIDI learn read MIDI 1.0 and 2.0 in one format.
-//! Open: no exporter fills the list from the host's MIDI yet, so a
+//! An [`EventList`] is a fixed-capacity list of [`Event`]s that holds one
+//! [block]'s MIDI, in or out. Each event is one packet at a frame of the
+//! block.
+//!
+//! Everything above the exporters reads MIDI 2.0. An exporter upgrades
+//! incoming MIDI 1.0 with [`Upgrade`], and uses [`Downgrade`] only for a
+//! destination that accepts only MIDI 1.0. Both follow the specification's
+//! Default Translation. Each packet keeps its [`Origin`], so [`scale`] can
+//! narrow an upgraded value back to what was sent.
+//!
+//! Every packet carries its own status, so Hapto parses only UMP. These types
+//! read and write it:
+//!
+//! - [`ChannelVoice`] for MIDI 2.0 channel voice messages.
+//! - [`Midi1Voice`] for MIDI 1.0 ones, which an exporter translates.
+//! - [`SysEx7`] for System Exclusive, which both protocols share.
+//! - [`MessageType`] for a packet's kind and length, and [`Packets`] to split
+//!   a stream of words into events.
+//! - [`ByteStream`] and [`Bytes`] for a MIDI 1.0 device's bytes, at the edge.
+//!
+//! Open: no exporter fills a block's list from the host's MIDI yet, so a
 //! processor's list stays empty.
 //!
-//! [`ChannelVoice`] reads the channel voice messages Hapto acts on, from MIDI
-//! 1.0 (UMP message type 2) and MIDI 2.0 (type 4) packets, and writes them
-//! back as packets. [`packet_words`] says how long a packet of any message
-//! type is, and [`Packets`] splits a stream of words into events. Every
-//! packet carries its own status, so MIDI 1.0 byte-stream running status
-//! never applies: Hapto parses UMP only.
-//!
-//! The crate is in the core tier and depends on nothing. Every call but
-//! [`EventList::with_capacity`] is fit for the audio thread, and none of them
-//! panics.
+//! The crate is in the core tier and depends on nothing. Every call except
+//! those that make a list or an [`Upgrade`] can run on the audio thread, and
+//! none panics.
 //!
 //! [block]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#block
 //!
 //! # Examples
 //!
-//! Build a control change, put it in a block's list, and read it back:
+//! Upgrade a MIDI 1.0 control change, then read it back as MIDI 2.0:
 //!
 //! ```
-//! use hapto_ump::{ChannelVoice, EventList, Voice};
+//! use hapto_ump::{ChannelMessage, ChannelVoice, EventList, Midi1Message, Midi1Voice, Upgrade, scale};
 //!
+//! let message = Midi1Message::ControlChange { controller: 7, value: 100 };
+//! let sent = Midi1Voice { group: 0, channel: 2, message }.event(32);
 //! let mut block = EventList::with_capacity(64);
-//! let voice = Voice::Midi1ControlChange { controller: 7, value: 100 };
-//! block.push(ChannelVoice { group: 0, channel: 2, voice }.event(32));
+//! Upgrade::new().block(&[sent], &mut block);
 //!
 //! for event in block.as_slice() {
 //!     // A packet Hapto does not read gives `None`: skip it.
-//!     let Some(ChannelVoice { channel, voice, .. }) = event.channel_voice() else {
+//!     let Some(ChannelVoice { channel, message, .. }) = event.channel_voice() else {
 //!         continue;
 //!     };
-//!     if let Voice::Midi1ControlChange { controller, value } = voice {
-//!         assert_eq!((event.offset, channel, controller, value), (32, 2, 7, 100));
+//!     if let ChannelMessage::ControlChange { controller, value } = message {
+//!         assert_eq!((event.offset, channel, controller), (32, 2, 7));
+//!         // `scale` narrows the upgraded value back to what was sent.
+//!         assert_eq!(scale::down_32_to_7(value), 100);
 //!     }
 //! }
 //! ```
@@ -56,49 +69,125 @@
     )
 )]
 
+mod buf;
+mod bytes;
+pub mod controller;
+mod downgrade;
+mod head;
+mod midi1;
 mod packets;
+pub mod scale;
+mod sysex;
+mod upgrade;
 mod voice;
 
-pub use packets::{Packets, Truncated, packet_words};
-pub use voice::{ChannelVoice, Voice};
+pub use bytes::{ByteStream, Bytes};
+pub use downgrade::Downgrade;
+pub use midi1::{Midi1Message, Midi1Voice};
+pub use packets::{MessageType, Packets, Truncated};
+pub use sysex::{SysEx7, SysExForm};
+pub use upgrade::Upgrade;
+pub use voice::{Attribute, Bank, ChannelMessage, ChannelVoice};
 
 /// One Universal MIDI Packet at a frame of the block.
 ///
 /// # Examples
 ///
 /// ```
-/// use hapto_ump::{ChannelVoice, Event, Voice};
+/// use hapto_ump::{Attribute, ChannelMessage, ChannelVoice, Event};
 ///
-/// // A MIDI 1.0 note-on at frame 16: note 60, velocity 127.
-/// let event = Event { offset: 16, words: [0x2090_3C7F, 0, 0, 0] };
-/// let voice = Voice::Midi1NoteOn { note: 60, velocity: 127 };
-/// assert_eq!(event.channel_voice(), Some(ChannelVoice { group: 0, channel: 0, voice }));
+/// // A MIDI 2.0 note-on for note 60 at full velocity, at frame 16.
+/// let event = Event::new(16, [0x4090_3C00, 0xFFFF_0000, 0, 0]);
+/// let message = ChannelMessage::NoteOn { note: 60, velocity: u16::MAX, attribute: Attribute::NONE };
+/// assert_eq!(event.channel_voice(), Some(ChannelVoice { group: 0, channel: 0, message }));
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct Event {
     /// The frame it happens at, from the start of the block.
     pub offset: u32,
     /// The packet: one to four words, unused words zero.
     pub words: [u32; 4],
+    /// Where the packet came from before it reached the block.
+    pub origin: Origin,
+}
+
+/// Where a packet came from before it reached a block.
+///
+/// An upgraded packet's words don't show which protocol sent it, so the origin
+/// records it for a reader that needs a value as it was sent. See [`scale`].
+///
+/// # Examples
+///
+/// ```
+/// use hapto_ump::{Event, Origin};
+///
+/// // A note-on that a MIDI 2.0 source sent.
+/// let event = Event::new(0, [0x4090_3C00, 0xFFFF_0000, 0, 0]);
+/// assert_eq!(event.origin, Origin::Midi2);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[non_exhaustive]
+pub enum Origin {
+    /// Sent unchanged, as a MIDI 2.0 packet or one that both protocols
+    /// share, such as SysEx7 or a system message.
+    #[default]
+    Midi2,
+    /// Sent as MIDI 1.0 and upgraded on the way in.
+    Midi1,
+    /// Sent as an RPN or NRPN whose data entry high byte came without a low
+    /// byte at its frame, and upgraded as if the low byte were 0. A low byte
+    /// at a later frame arrives as a separate controller marked
+    /// [`Midi1`](Self::Midi1), so a reader can tell a sent low byte of 0 from
+    /// a missing one.
+    Midi1HighByte,
 }
 
 impl Event {
-    /// The packet's message type, 0 to 15: 2 for a MIDI 1.0 channel voice
-    /// message, 3 for SysEx7, 4 for a MIDI 2.0 channel voice message.
+    /// Returns an event for the packet `words` at frame `offset`, with origin
+    /// [`Origin::Midi2`].
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
+    pub const fn new(offset: u32, words: [u32; 4]) -> Self {
+        Event {
+            offset,
+            words,
+            origin: Origin::Midi2,
+        }
+    }
+
+    /// Returns the packet's message type.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hapto_ump::{Event, MessageType};
+    ///
+    /// let note_on = Event::new(0, [0x2090_3C7F, 0, 0, 0]);
+    /// let sysex = Event::new(0, [0x3516_7E7F, 0x0D70_0201, 0, 0]);
+    /// assert_eq!(note_on.message_type(), MessageType::MIDI1);
+    /// assert_eq!(sysex.message_type(), MessageType::SYSEX7);
+    /// ```
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
+    pub fn message_type(&self) -> MessageType {
+        MessageType::of(self.words[0])
+    }
+
+    /// Returns whether the packet is a System Real Time message (status 0xF8
+    /// to 0xFF).
+    ///
+    /// Such a message can arrive anywhere, even inside a SysEx.
     ///
     /// # Examples
     ///
     /// ```
     /// use hapto_ump::Event;
     ///
-    /// let note_on = Event { offset: 0, words: [0x2090_3C7F, 0, 0, 0] };
-    /// let sysex = Event { offset: 0, words: [0x3516_7E7F, 0x0D70_0201, 0, 0] };
-    /// assert_eq!(note_on.message_type(), 2);
-    /// assert_eq!(sysex.message_type(), 3);
+    /// assert!(Event::new(0, [0x10F8_0000, 0, 0, 0]).is_real_time()); // the clock
+    /// assert!(!Event::new(0, [0x10F2_0000, 0, 0, 0]).is_real_time()); // song position
     /// ```
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
-    pub fn message_type(&self) -> u8 {
-        (self.words[0] >> 28) as u8
+    pub fn is_real_time(&self) -> bool {
+        let head = head::Head::read(self.words[0]);
+        head.kind == MessageType::SYSTEM && head.status >= 0xF8
     }
 
     /// The packet's group, 0 to 15. Meaningless for the message types that
@@ -110,19 +199,26 @@ impl Event {
     /// use hapto_ump::Event;
     ///
     /// // A MIDI 1.0 note-on on group 5.
-    /// let event = Event { offset: 0, words: [0x2590_3C7F, 0, 0, 0] };
+    /// let event = Event::new(0, [0x2590_3C7F, 0, 0, 0]);
     /// assert_eq!(event.group(), 5);
     /// ```
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn group(&self) -> u8 {
-        ((self.words[0] >> 24) & 0xF) as u8
+        head::Head::read(self.words[0]).group
     }
 
-    /// The channel voice message this packet carries, as
-    /// [`ChannelVoice::decode`] reads it.
+    /// Returns the packet's MIDI 2.0 channel voice message, decoded with
+    /// [`ChannelVoice::decode`].
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn channel_voice(&self) -> Option<ChannelVoice> {
         ChannelVoice::decode(self.words)
+    }
+
+    /// Returns the packet's MIDI 1.0 channel voice message, decoded with
+    /// [`Midi1Voice::decode`], for an exporter to translate.
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
+    pub fn midi1_voice(&self) -> Option<Midi1Voice> {
+        Midi1Voice::decode(self.words)
     }
 }
 
@@ -136,14 +232,14 @@ impl Event {
 /// # Examples
 ///
 /// ```
-/// use hapto_ump::{Event, EventList};
+/// use hapto_ump::{Event, EventList, MessageType};
 ///
 /// let mut list = EventList::with_capacity(8);
 /// // A MIDI 1.0 note-on at frame 16.
-/// list.push(Event { offset: 16, words: [0x2090_3C7F, 0, 0, 0] });
+/// list.push(Event::new(16, [0x2090_3C7F, 0, 0, 0]));
 ///
 /// for event in list.as_slice() {
-///     assert_eq!((event.offset, event.message_type()), (16, 2));
+///     assert_eq!((event.offset, event.message_type()), (16, MessageType::MIDI1));
 /// }
 /// assert_eq!(list.dropped(), 0);
 /// ```
@@ -176,7 +272,7 @@ impl EventList {
     /// use hapto_ump::{Event, EventList};
     ///
     /// let mut list = EventList::with_capacity(1);
-    /// let event = Event { offset: 0, words: [0x2090_3C7F, 0, 0, 0] };
+    /// let event = Event::new(0, [0x2090_3C7F, 0, 0, 0]);
     /// list.push(event);
     /// list.push(event); // full: dropped and counted
     /// assert_eq!(list.dropped(), 1);
@@ -200,8 +296,8 @@ impl EventList {
     /// use hapto_ump::{Event, EventList};
     ///
     /// let mut list = EventList::with_capacity(1);
-    /// list.push(Event { offset: 0, words: [0x2090_3C7F, 0, 0, 0] });
-    /// list.push(Event { offset: 8, words: [0x2080_3C00, 0, 0, 0] });
+    /// list.push(Event::new(0, [0x2090_3C7F, 0, 0, 0]));
+    /// list.push(Event::new(8, [0x2080_3C00, 0, 0, 0]));
     /// assert_eq!(list.as_slice().len(), 1);
     /// assert_eq!(list.dropped(), 1);
     /// ```
@@ -237,7 +333,7 @@ impl EventList {
     ///
     /// let mut out = EventList::with_capacity(4);
     /// // The second piece starts at frame 64 and sends a note-on at its 3rd.
-    /// out.push(Event { offset: 3, words: [0x2090_3C7F, 0, 0, 0] });
+    /// out.push(Event::new(3, [0x2090_3C7F, 0, 0, 0]));
     /// for event in out.as_mut_slice() {
     ///     event.offset += 64;
     /// }
@@ -266,8 +362,8 @@ impl EventList {
     ///
     /// // The host's block had room for one event and was sent two.
     /// let mut block = EventList::with_capacity(1);
-    /// block.push(Event { offset: 0, words: [0x2090_3C7F, 0, 0, 0] });
-    /// block.push(Event { offset: 8, words: [0x2080_3C00, 0, 0, 0] });
+    /// block.push(Event::new(0, [0x2090_3C7F, 0, 0, 0]));
+    /// block.push(Event::new(8, [0x2080_3C00, 0, 0, 0]));
     ///
     /// // A copy of it reports the note-off the block lost.
     /// let mut copy = EventList::with_capacity(1);
@@ -296,10 +392,7 @@ mod tests {
     fn a_full_list_drops_and_counts_instead_of_growing() {
         let mut list = EventList::with_capacity(2);
         for offset in 0..3 {
-            list.push(Event {
-                offset,
-                words: [0x2090_3C7F, 0, 0, 0],
-            });
+            list.push(Event::new(offset, [0x2090_3C7F, 0, 0, 0]));
         }
         assert_eq!(list.as_slice().len(), 2);
         assert_eq!(list.dropped(), 1);
@@ -313,10 +406,7 @@ mod tests {
     fn events_changed_in_place_keep_the_list_s_length_and_drops() {
         let mut list = EventList::with_capacity(2);
         for offset in [1, 2, 3] {
-            list.push(Event {
-                offset,
-                words: [0x2090_3C7F, 0, 0, 0],
-            });
+            list.push(Event::new(offset, [0x2090_3C7F, 0, 0, 0]));
         }
         for event in list.as_mut_slice() {
             event.offset += 10;
@@ -341,11 +431,8 @@ mod tests {
 
     #[test]
     fn the_header_names_the_type_and_group() {
-        let sysex = Event {
-            offset: 0,
-            words: [0x3516_7E7F, 0x0D70_0201, 0, 0],
-        };
-        assert_eq!(sysex.message_type(), 3);
+        let sysex = Event::new(0, [0x3516_7E7F, 0x0D70_0201, 0, 0]);
+        assert_eq!(sysex.message_type(), MessageType::SYSEX7);
         assert_eq!(sysex.group(), 5);
         assert_eq!(sysex.channel_voice(), None);
     }

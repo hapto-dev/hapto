@@ -1,94 +1,35 @@
 //! The audio path of learn: parsing, lookup, scaling and curves.
 
-use std::sync::Arc;
+mod common;
 
 use hapto_learn::{
-    Config, Control, Curve, CurveError, Learn, LearnAudio, LearnError, Mapping, NrpnReservation,
-    ReservationError, Source,
+    Config, Control, Curve, CurveError, LearnError, Mapping, NrpnReservation, ReservationError,
+    Source,
 };
-use hapto_params::{Kind, ParamDecl, ParamId, ParamSet, ParamSetBuilder};
-use hapto_ump::{ChannelVoice, Event, EventList, Voice};
+use hapto_ump::{Attribute, ChannelMessage, Event, EventList, Midi1Message};
 
 /// A value no message in these tests writes.
 const UNTOUCHED: f32 = 0.37;
 
-fn set_of(count: usize) -> Arc<ParamSet> {
-    let mut builder = ParamSetBuilder::new();
-    for index in 0..count {
-        let key: &'static str = Box::leak(format!("p{index}").into_boxed_str());
-        builder
-            .add(ParamDecl::new(
-                key,
-                key,
-                Kind::continuous(0.0, 1.0, 0.0, None),
-                UNTOUCHED,
-            ))
-            .expect("valid");
-    }
-    builder.build()
-}
+use common::{Rig, cc, midi2, on, upgraded};
 
-struct Rig {
-    set: Arc<ParamSet>,
-    learn: Learn,
-    audio: LearnAudio,
-    ids: Vec<ParamId>,
+fn set_of(count: usize) -> std::sync::Arc<hapto_params::ParamSet> {
+    common::set_of(count, UNTOUCHED)
 }
 
 fn rig(count: usize) -> Rig {
     rig_with(count, Config::default())
 }
 
+/// Returns a rig with `count` parameters at a value that no message writes.
 fn rig_with(count: usize, config: Config) -> Rig {
-    let set = set_of(count);
-    let (learn, audio) = Learn::new(&set, config);
-    let ids = set.ids().collect();
-    Rig {
-        set,
-        learn,
-        audio,
-        ids,
-    }
-}
-
-impl Rig {
-    /// Runs one block of `voices` on group 0, channel 0 unless they say
-    /// otherwise.
-    fn block(&mut self, voices: &[ChannelVoice]) {
-        let mut events = EventList::with_capacity(voices.len());
-        for (offset, voice) in voices.iter().enumerate() {
-            events.push(voice.event(offset as u32));
-        }
-        self.audio.process(&events);
-    }
-
-    fn value(&self, index: usize) -> f32 {
-        self.set.value(self.ids[index])
-    }
-
-    fn map(&mut self, index: usize, source: Source) {
-        self.learn
-            .map(self.ids[index], Mapping::new(source))
-            .expect("a legal mapping");
-    }
+    Rig::new(count, UNTOUCHED, config)
 }
 
 /// What a learned write of `normalized` leaves in a parameter that runs 0 to
 /// 1 with no step: the same number, as the `f32` the store holds.
 fn stored(normalized: f64) -> f32 {
     normalized.clamp(0.0, 1.0) as f32
-}
-
-fn on(group: u8, channel: u8, voice: Voice) -> ChannelVoice {
-    ChannelVoice {
-        group,
-        channel,
-        voice,
-    }
-}
-
-fn cc(controller: u8, value: u8) -> ChannelVoice {
-    on(0, 0, Voice::Midi1ControlChange { controller, value })
 }
 
 /// MIDI 1.0 values scale centre-anchored.
@@ -110,8 +51,16 @@ fn fourteen(value: u16) -> f64 {
     }
 }
 
+/// Runs `sent` through the rig's upgrade and learn as one block, every
+/// message at frame 0, so a data entry's two bytes join into one message.
+fn at_one_frame(rig: &mut Rig, sent: &[Event]) {
+    let mut events = EventList::with_capacity(sent.len());
+    rig.upgrade.block(sent, &mut events);
+    rig.audio.process(&events);
+}
+
 /// The two controllers of MIDI 1.0 NRPN `number`'s address, 99 and 98.
-fn nrpn_address(number: u16) -> [ChannelVoice; 2] {
+fn nrpn_address(number: u16) -> [Event; 2] {
     [cc(99, (number >> 7) as u8), cc(98, (number & 0x7F) as u8)]
 }
 
@@ -184,33 +133,26 @@ fn every_packet_reaches_the_processor_untouched_and_in_order() {
     let mut rig = rig(2);
     rig.map(0, Source::any(Control::Cc(7)));
     rig.map(1, Source::any(Control::Nrpn(300)));
-    let mut events = EventList::with_capacity(8);
+    let [high, low] = nrpn_address(300);
     let packets = [
-        cc(7, 100).event(0),
-        Event {
-            offset: 1,
-            words: [0x3016_7E7F, 0x0D70_0201, 0, 0],
-        },
-        nrpn_address(300)[0].event(2),
-        nrpn_address(300)[1].event(2),
-        cc(6, 9).event(3),
-        on(
+        cc(7, 100),
+        Event::new(0, [0x3016_7E7F, 0x0D70_0201, 0, 0]),
+        high,
+        low,
+        cc(6, 9),
+        cc(38, 0),
+        midi2(
             3,
             2,
-            Voice::Midi2NoteOn {
+            ChannelMessage::NoteOn {
                 note: 60,
                 velocity: 1,
+                attribute: Attribute::NONE,
             },
-        )
-        .event(4),
-        Event {
-            offset: 5,
-            words: [0x3036_0102, 0x0304_0506, 0, 0],
-        },
+        ),
+        Event::new(0, [0x3036_0102, 0x0304_0506, 0, 0]),
     ];
-    for packet in packets {
-        events.push(packet);
-    }
+    let events = upgraded(&mut rig.upgrade, &packets);
     let before = events.as_slice().to_vec();
     rig.audio.process(&events);
     assert_eq!(events.as_slice(), &before[..]);
@@ -241,7 +183,7 @@ fn groups_and_channels_stay_apart_and_any_matches_every_one() {
     rig.block(&[on(
         1,
         0,
-        Voice::Midi1ControlChange {
+        Midi1Message::ControlChange {
             controller: 7,
             value: 127,
         },
@@ -252,7 +194,7 @@ fn groups_and_channels_stay_apart_and_any_matches_every_one() {
     rig.block(&[on(
         0,
         5,
-        Voice::Midi1ControlChange {
+        Midi1Message::ControlChange {
             controller: 7,
             value: 0,
         },
@@ -262,27 +204,22 @@ fn groups_and_channels_stay_apart_and_any_matches_every_one() {
 }
 
 #[test]
-fn an_nrpn_assembles_and_a_high_byte_alone_reads_as_midi_1_says() {
-    // A high byte resets the low byte and dispatches at once, as `msb << 7`;
-    // a low byte refines it, here a block later.
+fn a_fine_binding_reads_each_pair_and_waits_out_a_high_byte_alone() {
+    // A binding that is not coarse reads 14 bits once the low byte comes,
+    // here a block later, and a high byte alone moves it not at all.
     let mut rig = rig(1);
     rig.map(0, Source::any(Control::Nrpn(300)));
     let [high, low] = nrpn_address(300);
     rig.block(&[high, low, cc(6, 127)]);
-    assert_eq!(rig.value(0), stored(fourteen(127 << 7)));
-    assert!(
-        rig.value(0) < 1.0,
-        "a 14-bit binding tops out below 1 on high bytes alone"
-    );
+    assert_eq!(rig.value(0), UNTOUCHED, "waiting for its low byte");
     rig.block(&[cc(38, 127)]);
     assert_eq!(rig.value(0), 1.0);
-    // A new high byte resets the low byte.
-    rig.block(&[cc(6, 64)]);
+    rig.block(&[cc(6, 64), cc(38, 0)]);
     assert_eq!(rig.value(0), 0.5);
 }
 
 #[test]
-fn a_coarse_binding_reads_a_high_byte_as_seven_bit_and_ignores_low_bytes() {
+fn a_coarse_binding_reads_the_high_byte_of_every_data_entry_as_seven_bit() {
     let mut rig = rig(1);
     let mapping = Mapping::new(Source::any(Control::Nrpn(300))).as_coarse();
     rig.learn.map(rig.ids[0], mapping).expect("legal");
@@ -290,9 +227,47 @@ fn a_coarse_binding_reads_a_high_byte_as_seven_bit_and_ignores_low_bytes() {
     rig.block(&[high, low, cc(6, 127)]);
     assert_eq!(rig.value(0), 1.0);
     rig.block(&[cc(38, 0)]);
-    assert_eq!(rig.value(0), 1.0, "the low byte is ignored");
+    assert_eq!(rig.value(0), 1.0, "a low byte moves it no further");
     rig.block(&[cc(6, 64)]);
     assert_eq!(rig.value(0), 0.5);
+    // A pair sent at one frame is one message, with its low byte: a coarse
+    // binding still reads its high byte, in either order.
+    at_one_frame(&mut rig, &[high, low, cc(6, 100), cc(38, 5)]);
+    assert_eq!(rig.value(0), stored(seven(100)));
+    at_one_frame(&mut rig, &[high, low, cc(38, 5), cc(6, 90)]);
+    assert_eq!(rig.value(0), stored(seven(90)));
+}
+
+#[test]
+fn a_fourteen_bit_knob_never_dips_however_the_blocks_cut_its_move() {
+    // A knob at 10/100 turned down to 10/50, each move its address and both
+    // data bytes, as senders send them even when the high byte holds. A
+    // block may end anywhere in the second move.
+    let mut moves = Vec::new();
+    for low in [100, 50] {
+        moves.extend(nrpn_address(300));
+        moves.extend([cc(6, 10), cc(38, low)]);
+    }
+    let (first, second) = (
+        stored(fourteen(10 << 7 | 100)),
+        stored(fourteen(10 << 7 | 50)),
+    );
+    assert_eq!((first, second), (0.084228516, 0.08117676));
+    for cut in 4..=moves.len() {
+        let mut rig = rig(1);
+        rig.map(0, Source::any(Control::Nrpn(300)));
+        let mut written = Vec::new();
+        for block in [&moves[..4], &moves[4..cut], &moves[cut..]] {
+            rig.block(block);
+            written.push(rig.value(0));
+        }
+        let ends_on_the_low_byte = if cut == moves.len() { second } else { first };
+        assert_eq!(
+            written,
+            [first, ends_on_the_low_byte, second],
+            "blocks cut at {cut}"
+        );
+    }
 }
 
 #[test]
@@ -305,12 +280,30 @@ fn a_partial_nrpn_sequence_is_dropped() {
     assert_eq!([rig.value(0), rig.value(1)], [UNTOUCHED, UNTOUCHED]);
 
     let [high, low] = nrpn_address(300);
-    rig.block(&[high, low, cc(6, 100)]);
+    rig.block(&[high, low, cc(6, 100), cc(38, 0)]);
     assert_eq!(rig.value(1), stored(fourteen(100 << 7)));
-    // A new address clears the data entry, so a low byte alone is partial.
-    let [high, low] = nrpn_address(300);
+    // Another number's lone low byte is partial, because it never takes
+    // this number's high byte.
+    let [high, low] = nrpn_address(44);
     rig.block(&[high, low, cc(38, 5)]);
-    assert_eq!(rig.value(1), stored(fourteen(100 << 7)));
+    assert_eq!(
+        [rig.value(0), rig.value(1)],
+        [UNTOUCHED, stored(fourteen(100 << 7))]
+    );
+}
+
+#[test]
+fn an_address_sent_again_keeps_its_high_byte_and_forgets_a_low_byte_sent_first() {
+    let mut rig = rig(1);
+    rig.map(0, Source::any(Control::Nrpn(300)));
+    let [high, low] = nrpn_address(300);
+    // A sender that names the address before every data byte. A low byte
+    // sent first pairs only with the high byte right after its address.
+    rig.block(&[high, low, cc(38, 5)]);
+    rig.block(&[high, low, cc(6, 100)]);
+    assert_eq!(rig.value(0), UNTOUCHED, "5 is forgotten at the address");
+    rig.block(&[high, low, cc(38, 7)]);
+    assert_eq!(rig.value(0), stored(fourteen(100 << 7 | 7)));
 }
 
 #[test]
@@ -319,8 +312,9 @@ fn rpn_data_entry_never_dispatches_as_the_last_nrpn() {
     let mut rig = rig(1);
     rig.map(0, Source::any(Control::Nrpn(300)));
     let [high, low] = nrpn_address(300);
-    rig.block(&[high, low, cc(6, 10)]);
+    rig.block(&[high, low, cc(6, 10), cc(38, 0)]);
     let before = rig.value(0);
+    assert_ne!(before, UNTOUCHED);
     // RPN 0, pitch bend range, then its data entry.
     rig.block(&[cc(101, 0), cc(100, 0), cc(6, 2), cc(38, 0)]);
     assert_eq!(rig.value(0), before);
@@ -330,8 +324,9 @@ fn rpn_data_entry_never_dispatches_as_the_last_nrpn() {
 }
 
 #[test]
-fn the_parser_runs_while_nothing_is_mapped() {
-    // An address sent while nothing is mapped is still current later.
+fn the_upgrade_keeps_an_address_sent_while_nothing_is_mapped() {
+    // The upgrade an exporter runs before learn holds the address, so one
+    // sent before the mapping is made is still current after it.
     let mut rig = rig(1);
     let [high, low] = nrpn_address(300);
     rig.block(&[high, low]);
@@ -341,9 +336,10 @@ fn the_parser_runs_while_nothing_is_mapped() {
 }
 
 #[test]
-fn the_parser_owned_controllers_never_bind() {
-    // The parser owns the NRPN and RPN address, data entry, and data
-    // increment and decrement controllers.
+fn the_parameter_number_controllers_never_bind() {
+    // The upgrade assembles an NRPN or RPN from its address and data entry
+    // controllers, and increment and decrement step a value rather than
+    // set one, so none of them binds.
     let mut rig = rig(1);
     for controller in [6, 38, 96, 97, 98, 99, 100, 101] {
         let source = Source::any(Control::Cc(controller));
@@ -359,7 +355,8 @@ fn the_parser_owned_controllers_never_bind() {
     let mut rig = self::rig(2);
     rig.map(0, Source::any(Control::Cc(7)));
     rig.map(1, Source::any(Control::Nrpn(300)));
-    let midi2 = |controller, value| on(0, 0, Voice::Midi2ControlChange { controller, value });
+    let midi2 =
+        |controller, value| midi2(0, 0, ChannelMessage::ControlChange { controller, value });
     rig.block(&[
         midi2(99, 2 << 25),
         midi2(98, 44 << 25),
@@ -373,7 +370,7 @@ fn the_parser_owned_controllers_never_bind() {
 
 #[test]
 fn each_group_and_channel_keeps_its_own_nrpn_state() {
-    // The parser keeps a fixed state per group and channel, so two
+    // The upgrade keeps a fixed state per group and channel, so two
     // controllers sending NRPNs at once never mix addresses.
     let mut rig = rig(3);
     let on_channel = |channel| Source {
@@ -395,7 +392,7 @@ fn each_group_and_channel_keeps_its_own_nrpn_state() {
         on(
             group,
             channel,
-            Voice::Midi1ControlChange { controller, value },
+            Midi1Message::ControlChange { controller, value },
         )
     };
     rig.block(&[
@@ -536,18 +533,18 @@ fn midi_2_values_read_linearly_and_assignable_controllers_are_nrpns() {
     for value in [u32::MAX, 0x8000_0000, 0, 12_345_678] {
         let normalized = f64::from(value) / f64::from(u32::MAX);
         rig.block(&[
-            on(
+            midi2(
                 0,
                 0,
-                Voice::Midi2ControlChange {
+                ChannelMessage::ControlChange {
                     controller: 7,
                     value,
                 },
             ),
-            on(
+            midi2(
                 0,
                 0,
-                Voice::Midi2AssignableController {
+                ChannelMessage::AssignableController {
                     bank: 2,
                     index: 44,
                     value,
@@ -562,10 +559,10 @@ fn midi_2_values_read_linearly_and_assignable_controllers_are_nrpns() {
         );
     }
     // A registered controller is RPN: never an NRPN.
-    rig.block(&[on(
+    rig.block(&[midi2(
         0,
         0,
-        Voice::Midi2RegisteredController {
+        ChannelMessage::RegisteredController {
             bank: 2,
             index: 44,
             value: u32::MAX,
@@ -578,15 +575,25 @@ fn midi_2_values_read_linearly_and_assignable_controllers_are_nrpns() {
 fn a_note_on_writes_its_velocity_and_a_note_off_writes_nothing() {
     let mut rig = rig(1);
     rig.map(0, Source::any(Control::Note(60)));
-    let midi1_on = |velocity| on(0, 0, Voice::Midi1NoteOn { note: 60, velocity });
-    let midi2_on = |velocity| on(0, 0, Voice::Midi2NoteOn { note: 60, velocity });
+    let midi1_on = |velocity| on(0, 0, Midi1Message::NoteOn { note: 60, velocity });
+    let midi2_on = |velocity| {
+        midi2(
+            0,
+            0,
+            ChannelMessage::NoteOn {
+                note: 60,
+                velocity,
+                attribute: Attribute::NONE,
+            },
+        )
+    };
 
     rig.block(&[midi1_on(127)]);
     assert_eq!(rig.value(0), 1.0);
     rig.block(&[on(
         0,
         0,
-        Voice::Midi1NoteOff {
+        Midi1Message::NoteOff {
             note: 60,
             velocity: 0,
         },
@@ -598,12 +605,13 @@ fn a_note_on_writes_its_velocity_and_a_note_off_writes_nothing() {
 
     rig.block(&[midi2_on(0x8000)]);
     assert_eq!(rig.value(0), stored(f64::from(0x8000_u16) / 65535.0));
-    rig.block(&[on(
+    rig.block(&[midi2(
         0,
         0,
-        Voice::Midi2NoteOff {
+        ChannelMessage::NoteOff {
             note: 60,
             velocity: 0xFFFF,
+            attribute: Attribute::NONE,
         },
     )]);
     assert_eq!(rig.value(0), stored(f64::from(0x8000_u16) / 65535.0));
@@ -612,7 +620,7 @@ fn a_note_on_writes_its_velocity_and_a_note_off_writes_nothing() {
     rig.block(&[on(
         0,
         0,
-        Voice::Midi1NoteOn {
+        Midi1Message::NoteOn {
             note: 61,
             velocity: 99,
         },
@@ -744,21 +752,22 @@ fn the_table_at_the_ceiling_still_finds_every_mapping() {
         let group = source.group.unwrap_or(15);
         let channel = source.channel.unwrap_or(15);
         let voice = match source.control {
-            Control::Cc(controller) => Voice::Midi2ControlChange {
+            Control::Cc(controller) => ChannelMessage::ControlChange {
                 controller,
                 value: u32::MAX,
             },
-            Control::Nrpn(number) => Voice::Midi2AssignableController {
+            Control::Nrpn(number) => ChannelMessage::AssignableController {
                 bank: (number >> 7) as u8,
                 index: (number & 0x7F) as u8,
                 value: u32::MAX,
             },
-            Control::Note(note) => Voice::Midi2NoteOn {
+            Control::Note(note) => ChannelMessage::NoteOn {
                 note,
                 velocity: u16::MAX,
+                attribute: Attribute::NONE,
             },
         };
-        rig.block(&[on(group, channel, voice)]);
+        rig.block(&[midi2(group, channel, voice)]);
         assert_eq!(rig.value(index), 1.0, "{source:?}");
     }
     let moved = (0..count).filter(|&index| rig.value(index) == 1.0).count();
@@ -778,8 +787,9 @@ fn the_null_parameter_number_selects_nothing() {
     rig.map(0, Source::any(Control::Nrpn(16383)));
     rig.map(1, Source::any(Control::Nrpn(300)));
     let [high, low] = nrpn_address(300);
-    rig.block(&[high, low, cc(6, 50)]);
+    rig.block(&[high, low, cc(6, 50), cc(38, 0)]);
     let before = rig.value(1);
+    assert_ne!(before, UNTOUCHED);
     // NRPN 127, 127 deselects, so the data entry after it drives nothing.
     rig.block(&[cc(99, 127), cc(98, 127), cc(6, 100), cc(38, 5)]);
     assert_eq!(rig.value(0), UNTOUCHED);
@@ -795,32 +805,68 @@ fn a_data_entry_low_byte_sent_first_waits_for_its_high_byte() {
     assert_eq!(rig.value(0), UNTOUCHED, "nothing to refine yet");
     rig.block(&[cc(6, 100)]);
     assert_eq!(rig.value(0), stored(fourteen(100 << 7 | 5)));
-    // The low byte is spent: a high byte alone is coarse again.
+    // The low byte is spent: the next high byte alone waits for a low byte
+    // of its own.
     rig.block(&[cc(6, 101)]);
-    assert_eq!(rig.value(0), stored(fourteen(101 << 7)));
+    assert_eq!(rig.value(0), stored(fourteen(100 << 7 | 5)));
+    rig.block(&[cc(38, 6)]);
+    assert_eq!(rig.value(0), stored(fourteen(101 << 7 | 6)));
 }
 
 #[test]
-fn a_new_address_drops_a_waiting_low_byte() {
+fn a_fine_binding_reads_a_sender_of_low_bytes_first_one_high_byte_behind() {
+    // Three moves, 10/5, 100/6 and 127/127, each low byte sent before its
+    // high byte. After the first pair each low byte refines the high byte
+    // before it, and the high byte that follows comes alone, which a binding
+    // that is not coarse skips until the next move.
     let mut rig = rig(1);
     rig.map(0, Source::any(Control::Nrpn(300)));
     let [high, low] = nrpn_address(300);
-    rig.block(&[high, low, cc(38, 5)]);
-    rig.block(&[high, low, cc(6, 100)]);
-    assert_eq!(rig.value(0), stored(fourteen(100 << 7)));
+    let mut written = Vec::new();
+    for block in [
+        &[high, low, cc(38, 5), cc(6, 10)][..],
+        &[cc(38, 6), cc(6, 100)],
+        &[cc(38, 127), cc(6, 127)],
+    ] {
+        rig.block(block);
+        written.push(rig.value(0));
+    }
+    let behind = [
+        stored(fourteen(10 << 7 | 5)),
+        stored(fourteen(10 << 7 | 6)),
+        stored(fourteen(100 << 7 | 127)),
+    ];
+    assert_eq!(behind, [0.078430176, 0.07849121, 0.78903675]);
+    assert_eq!(written, behind);
 }
 
 #[test]
-fn a_new_address_high_byte_forgets_the_old_low_byte() {
+fn a_waiting_low_byte_waits_for_its_own_numbers_high_byte() {
+    let mut rig = rig(1);
+    rig.map(0, Source::any(Control::Nrpn(300)));
+    let [high, low] = nrpn_address(44);
+    rig.block(&[high, low, cc(38, 5)]);
+    let [high, low] = nrpn_address(300);
+    rig.block(&[high, low, cc(6, 100)]);
+    assert_eq!(rig.value(0), UNTOUCHED, "44's low byte stays 44's");
+    rig.block(&[cc(38, 9)]);
+    assert_eq!(rig.value(0), stored(fourteen(100 << 7 | 9)));
+}
+
+#[test]
+fn an_address_byte_alone_keeps_the_other_byte_held() {
     let mut rig = rig(2);
     rig.map(0, Source::any(Control::Nrpn(300)));
     rig.map(1, Source::any(Control::Nrpn(2 << 7)));
     let [high, low] = nrpn_address(300);
-    // 300 is 2 << 7 | 44. A high byte alone selects no number: it does not
-    // pair with the low byte of the address before it.
+    // 300 is 2 << 7 | 44. Each address byte replaces its own and keeps the
+    // other, as a MIDI 1.0 receiver holds them, so 99 alone keeps 44.
     rig.block(&[high, low, cc(99, 2), cc(6, 100), cc(38, 5)]);
-    assert_eq!([rig.value(0), rig.value(1)], [UNTOUCHED, UNTOUCHED]);
-    rig.block(&[cc(98, 0), cc(6, 100)]);
+    assert_eq!(
+        [rig.value(0), rig.value(1)],
+        [stored(fourteen(100 << 7 | 5)), UNTOUCHED]
+    );
+    rig.block(&[cc(98, 0), cc(6, 100), cc(38, 0)]);
     assert_eq!(rig.value(1), stored(fourteen(100 << 7)));
 }
 
@@ -829,7 +875,7 @@ fn reset_all_controllers_forgets_the_address() {
     let mut rig = rig(1);
     rig.map(0, Source::any(Control::Nrpn(300)));
     let [high, low] = nrpn_address(300);
-    rig.block(&[high, low, cc(121, 0), cc(98, 44), cc(6, 100)]);
+    rig.block(&[high, low, cc(121, 0), cc(98, 44), cc(6, 100), cc(38, 0)]);
     assert_eq!(
         rig.value(0),
         UNTOUCHED,
@@ -843,10 +889,10 @@ fn an_nrpn_address_selects_its_number_whichever_byte_comes_first() {
     for address in [[cc(99, 2), cc(98, 44)], [cc(98, 44), cc(99, 2)]] {
         let mut rig = rig(1);
         rig.map(0, Source::any(Control::Nrpn(300)));
-        rig.block(&[address[0], address[1], cc(6, 100)]);
+        rig.block(&[address[0], address[1], cc(6, 100), cc(38, 0)]);
         assert_eq!(rig.value(0), stored(fourteen(100 << 7)), "{address:?}");
         // The same address again, in the same order, after the first was used.
-        rig.block(&[address[0], address[1], cc(6, 101)]);
+        rig.block(&[address[0], address[1], cc(6, 101), cc(38, 0)]);
         assert_eq!(rig.value(0), stored(fourteen(101 << 7)), "{address:?}");
     }
 }
@@ -854,7 +900,7 @@ fn an_nrpn_address_selects_its_number_whichever_byte_comes_first() {
 /// What `juce::MidiRPNGenerator::generate` sends for an NRPN on channel 1:
 /// the address low byte first (98, then 99), the value's high byte (6), and
 /// its low byte (38) only for a 14-bit value. A 7-bit value goes in 6 alone.
-fn juce_nrpn(number: u16, value: u16, fourteen_bit: bool) -> Vec<ChannelVoice> {
+fn juce_nrpn(number: u16, value: u16, fourteen_bit: bool) -> Vec<Event> {
     let mut sent = vec![cc(98, (number & 0x7F) as u8), cc(99, (number >> 7) as u8)];
     if fourteen_bit {
         sent.extend([cc(6, (value >> 7) as u8), cc(38, (value & 0x7F) as u8)]);
@@ -868,36 +914,44 @@ fn juce_nrpn(number: u16, value: u16, fourteen_bit: bool) -> Vec<ChannelVoice> {
 fn juces_rpn_generator_reaches_its_nrpn_with_or_without_the_low_byte() {
     let mut rig = rig(2);
     rig.map(0, Source::any(Control::Nrpn(300)));
-    rig.map(1, Source::any(Control::Nrpn(5)));
+    // Coarse, as learn captures a sender that sends no low byte.
+    let seven_bit = Mapping::new(Source::any(Control::Nrpn(5))).as_coarse();
+    rig.learn.map(rig.ids[1], seven_bit).expect("legal");
     rig.block(&juce_nrpn(300, 100 << 7 | 5, true));
     assert_eq!(rig.value(0), stored(fourteen(100 << 7 | 5)));
     // The next message names another number while 300's bytes are held.
     rig.block(&juce_nrpn(5, 64, false));
-    assert_eq!(rig.value(1), stored(fourteen(64 << 7)));
+    assert_eq!(rig.value(1), 0.5);
     assert_eq!(rig.value(0), stored(fourteen(100 << 7 | 5)), "5's alone");
     rig.block(&juce_nrpn(300, 16383, true));
     assert_eq!(rig.value(0), 1.0);
-    assert_eq!(rig.value(1), stored(fourteen(64 << 7)), "300's alone");
+    assert_eq!(rig.value(1), 0.5, "300's alone");
 }
 
 #[test]
-fn a_lone_high_byte_never_pairs_with_a_low_byte_from_before_a_data_entry() {
+fn an_address_byte_held_across_a_data_entry_completes_a_later_address() {
     let mut rig = rig(2);
     rig.map(0, Source::any(Control::Nrpn(300)));
     rig.map(1, Source::any(Control::Nrpn(3 << 7 | 44)));
     let [high, low] = nrpn_address(300);
-    rig.block(&[high, low, cc(6, 10)]);
+    rig.block(&[high, low, cc(6, 10), cc(38, 0)]);
     let before = rig.value(0);
-    // 44 belongs to the address that data entry used.
+    assert_ne!(before, UNTOUCHED);
+    // A sender that sends only the address byte that changed: 44 stays.
     rig.block(&[cc(99, 3), cc(6, 20), cc(38, 5)]);
-    assert_eq!([rig.value(0), rig.value(1)], [before, UNTOUCHED]);
+    assert_eq!(
+        [rig.value(0), rig.value(1)],
+        [before, stored(fourteen(20 << 7 | 5))]
+    );
 
-    // A low byte sent first is spent by a data entry too, even one that
-    // selected nothing.
+    // Data entry while the address is half sent selects nothing, and the
+    // byte sent stays for the other one.
     let mut rig = self::rig(1);
     rig.map(0, Source::any(Control::Nrpn(300)));
-    rig.block(&[cc(98, 44), cc(6, 10), cc(99, 2), cc(6, 20)]);
+    rig.block(&[cc(98, 44), cc(6, 10), cc(38, 0)]);
     assert_eq!(rig.value(0), UNTOUCHED);
+    rig.block(&[cc(99, 2), cc(6, 20), cc(38, 0)]);
+    assert_eq!(rig.value(0), stored(fourteen(20 << 7)));
 }
 
 #[test]
@@ -905,15 +959,81 @@ fn data_increment_and_decrement_use_the_address_and_drive_nothing() {
     let mut rig = rig(1);
     rig.map(0, Source::any(Control::Nrpn(300)));
     let [high, low] = nrpn_address(300);
-    rig.block(&[high, low, cc(6, 10)]);
+    rig.block(&[high, low, cc(6, 10), cc(38, 0)]);
     let before = rig.value(0);
+    assert_ne!(before, UNTOUCHED);
     // Learn does not step a parameter number's value.
     rig.block(&[cc(96, 1), cc(97, 1)]);
     assert_eq!(rig.value(0), before);
 
-    // A low byte the increment used does not pair with a high byte after it.
+    // An increment leaves the address bytes held.
     let mut rig = self::rig(1);
     rig.map(0, Source::any(Control::Nrpn(300)));
-    rig.block(&[cc(98, 44), cc(96, 1), cc(99, 2), cc(6, 20)]);
-    assert_eq!(rig.value(0), UNTOUCHED);
+    rig.block(&[cc(98, 44), cc(96, 1), cc(99, 2), cc(6, 20), cc(38, 0)]);
+    assert_eq!(rig.value(0), stored(fourteen(20 << 7)));
+}
+
+#[test]
+fn controllers_0_and_32_from_midi_1_drive_their_bindings() {
+    // A fader on 0 and a button on 32, as common controllers send them: the
+    // upgrade passes them on as well as holding them for a program change.
+    let mut rig = rig(2);
+    rig.map(0, Source::any(Control::Cc(0)));
+    rig.map(1, Source::any(Control::Cc(32)));
+    rig.block(&[cc(0, 127), cc(32, 64)]);
+    assert_eq!([rig.value(0), rig.value(1)], [1.0, 0.5]);
+}
+
+#[cfg(debug_assertions)]
+#[test]
+fn midi_1_handed_to_learn_unupgraded_is_a_contract_panic() {
+    // Learn reads MIDI 2.0 alone, so a MIDI 1.0 controller handed to it as
+    // it came would move nothing and say nothing.
+    let mut rig = rig(1);
+    rig.map(0, Source::any(Control::Cc(7)));
+    let mut raw = hapto_ump::EventList::with_capacity(1);
+    raw.push(cc(7, 127));
+    hapto_testkit::contract::expect_contract_panic("hapto_ump::Upgrade", || {
+        rig.audio.process(&raw);
+    });
+}
+
+#[test]
+fn every_seven_bit_controller_value_reads_centre_anchored() {
+    let mut rig = rig(1);
+    rig.map(0, Source::any(Control::Cc(1)));
+    for value in 0..=127 {
+        rig.block(&[cc(1, value)]);
+        assert_eq!(rig.value(0), stored(seven(value)), "CC 1 = {value}");
+    }
+}
+
+#[test]
+fn every_note_on_velocity_reads_centre_anchored() {
+    let mut rig = rig(1);
+    rig.map(0, Source::any(Control::Note(60)));
+    for velocity in 1..=127 {
+        rig.block(&[on(0, 0, Midi1Message::NoteOn { note: 60, velocity })]);
+        assert_eq!(rig.value(0), stored(seven(velocity)), "velocity {velocity}");
+    }
+}
+
+#[test]
+fn every_fourteen_bit_nrpn_value_reads_centre_anchored_fine_or_coarse() {
+    let mut fine = rig(1);
+    fine.map(0, Source::any(Control::Nrpn(300)));
+    let mut coarse = rig(1);
+    let mapping = Mapping::new(Source::any(Control::Nrpn(300))).as_coarse();
+    coarse.learn.map(coarse.ids[0], mapping).expect("legal");
+    let address = nrpn_address(300);
+    for value in 0..=16383_u16 {
+        let (high, low) = ((value >> 7) as u8, (value & 0x7F) as u8);
+        let mut sent = address.to_vec();
+        sent.extend([cc(6, high), cc(38, low)]);
+        fine.block(&sent);
+        assert_eq!(fine.value(0), stored(fourteen(value)), "NRPN 300 = {value}");
+        // A coarse binding reads the high byte alone, as a 7-bit value.
+        coarse.block(&sent[..3]);
+        assert_eq!(coarse.value(0), stored(seven(high)), "high byte {high}");
+    }
 }

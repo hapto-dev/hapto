@@ -3,6 +3,8 @@
 
 hapto_testkit::install_alloc_gate!();
 
+mod common;
+
 use std::sync::Arc;
 
 use hapto_learn::{
@@ -12,7 +14,9 @@ use hapto_params::{
     Declarer, Float, FloatDecl, Kind, ParamDecl, ParamSet, ParamSetBuilder, Range, audio_thread,
 };
 use hapto_testkit::alloc::assert_no_allocations;
-use hapto_ump::{ChannelVoice, Event, EventList, Voice};
+use hapto_ump::{
+    Attribute, ChannelMessage, ChannelVoice, Event, EventList, Midi1Message, Midi1Voice, Upgrade,
+};
 
 const TARGETS: usize = 256;
 
@@ -47,70 +51,59 @@ fn source(index: usize) -> Source {
     }
 }
 
-/// One block of everything learn reads, and some it does not.
+/// Returns one block of everything that learn reads and some that it doesn't,
+/// upgraded to MIDI 2.0 as an exporter does.
 fn events() -> EventList {
-    let voice = |group, channel, voice| ChannelVoice {
-        group,
-        channel,
-        voice,
+    let on = |message| {
+        Midi1Voice {
+            group: 0,
+            channel: 1,
+            message,
+        }
+        .event(0)
     };
-    let cc = |controller, value| voice(0, 1, Voice::Midi1ControlChange { controller, value });
-    let mut voices = Vec::new();
+    let midi2 = |message| {
+        ChannelVoice {
+            group: 0,
+            channel: 1,
+            message,
+        }
+        .event(0)
+    };
+    let cc = |controller, value| on(Midi1Message::ControlChange { controller, value });
+    let mut sent = Vec::new();
     for value in [0, 64, 127] {
-        voices.extend((1..=5).map(|controller| cc(controller, value)));
-        voices.extend([cc(99, 2), cc(98, 44), cc(6, value), cc(38, value)]);
-        voices.extend([cc(101, 0), cc(100, 0), cc(6, value)]);
-        voices.push(voice(
-            0,
-            1,
-            Voice::Midi1NoteOn {
-                note: 60,
-                velocity: value,
-            },
-        ));
-        voices.push(voice(
-            0,
-            1,
-            Voice::Midi1NoteOff {
-                note: 60,
-                velocity: 0,
-            },
-        ));
-    }
-    voices.push(voice(
-        0,
-        1,
-        Voice::Midi2ControlChange {
-            controller: 2,
-            value: u32::MAX,
-        },
-    ));
-    voices.push(voice(
-        0,
-        1,
-        Voice::Midi2AssignableController {
-            bank: 2,
-            index: 45,
-            value: 1 << 30,
-        },
-    ));
-    voices.push(voice(
-        0,
-        1,
-        Voice::Midi2NoteOn {
-            note: 61,
+        sent.extend((1..=5).map(|controller| cc(controller, value)));
+        sent.extend([cc(99, 2), cc(98, 44), cc(6, value), cc(38, value)]);
+        // NRPN 301's high byte alone: a binding that is not coarse skips
+        // it, and an armed capture stages it as waiting for its low byte.
+        sent.extend([cc(99, 2), cc(98, 45), cc(6, value)]);
+        sent.extend([cc(101, 0), cc(100, 0), cc(6, value)]);
+        sent.push(on(Midi1Message::NoteOn {
+            note: 60,
+            velocity: value,
+        }));
+        sent.push(on(Midi1Message::NoteOff {
+            note: 60,
             velocity: 0,
-        },
-    ));
-    let mut events = EventList::with_capacity(voices.len() + 1);
-    for (offset, voice) in voices.iter().enumerate() {
-        events.push(voice.event(offset as u32));
+        }));
     }
-    events.push(Event {
-        offset: 0,
-        words: [0x3016_7E7F, 0x0D70_0201, 0, 0],
-    });
-    events
+    sent.push(midi2(ChannelMessage::ControlChange {
+        controller: 2,
+        value: u32::MAX,
+    }));
+    sent.push(midi2(ChannelMessage::AssignableController {
+        bank: 2,
+        index: 45,
+        value: 1 << 30,
+    }));
+    sent.push(midi2(ChannelMessage::NoteOn {
+        note: 61,
+        velocity: 0,
+        attribute: Attribute::NONE,
+    }));
+    sent.push(Event::new(0, [0x3016_7E7F, 0x0D70_0201, 0, 0]));
+    common::upgraded(&mut Upgrade::new(), &sent)
 }
 
 #[test]

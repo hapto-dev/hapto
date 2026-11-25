@@ -1,112 +1,121 @@
-//! Channel voice messages, read from and written to packets.
+//! Reads and writes MIDI 2.0 channel voice messages (message type 4) in
+//! packets.
 
-use crate::Event;
+use crate::head::{
+    CHANNEL_PRESSURE, CONTROL_CHANGE, Head, NOTE_OFF, NOTE_ON, PITCH_BEND, POLY_PRESSURE,
+    PROGRAM_CHANGE,
+};
+use crate::{Event, MessageType};
 
-/// MIDI 1.0 channel voice messages, one word.
-const MIDI1: u32 = 0x2;
-/// MIDI 2.0 channel voice messages, two words.
-const MIDI2: u32 = 0x4;
+// These statuses exist only in MIDI 2.0.
+const REGISTERED_PER_NOTE: u8 = 0x0;
+const ASSIGNABLE_PER_NOTE: u8 = 0x1;
+const REGISTERED_CONTROLLER: u8 = 0x2;
+const ASSIGNABLE_CONTROLLER: u8 = 0x3;
+const RELATIVE_REGISTERED: u8 = 0x4;
+const RELATIVE_ASSIGNABLE: u8 = 0x5;
+const PER_NOTE_PITCH_BEND: u8 = 0x6;
+const PER_NOTE_MANAGEMENT: u8 = 0xF;
 
-const NOTE_OFF: u32 = 0x8;
-const NOTE_ON: u32 = 0x9;
-const CONTROL_CHANGE: u32 = 0xB;
-const REGISTERED_CONTROLLER: u32 = 0x2;
-const ASSIGNABLE_CONTROLLER: u32 = 0x3;
-
-/// A channel voice message Hapto reads, with the group and channel it came
+/// A MIDI 2.0 channel voice message, with the group and channel that it came
 /// on.
 ///
 /// # Examples
 ///
 /// ```
-/// use hapto_ump::{ChannelVoice, Voice};
+/// use hapto_ump::{Attribute, ChannelMessage, ChannelVoice};
 ///
-/// // Group 2, channel 5: a MIDI 2.0 note-on at full velocity.
+/// // A note-on at full velocity on group 2, channel 5.
 /// let voice = ChannelVoice {
 ///     group: 2,
 ///     channel: 5,
-///     voice: Voice::Midi2NoteOn { note: 64, velocity: u16::MAX },
+///     message: ChannelMessage::NoteOn { note: 64, velocity: u16::MAX, attribute: Attribute::NONE },
 /// };
-/// assert_eq!(voice.words()[0], 0x4295_4000);
+/// assert_eq!(voice.words(), [0x4295_4000, 0xFFFF_0000, 0, 0]);
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ChannelVoice {
     /// The UMP group, 0 to 15.
     pub group: u8,
     /// The channel, 0 to 15.
     pub channel: u8,
-    /// What it says.
-    pub voice: Voice,
+    /// The message.
+    pub message: ChannelMessage,
 }
 
-/// The channel voice messages Hapto reads. Each carries its values at
-/// the width its protocol sends them; nothing here rescales.
+/// A MIDI 2.0 channel voice message, with each value at its MIDI 2.0 width.
+///
+/// Nothing here rescales a value. Everything above the exporters reads this
+/// form, as the [crate](crate) docs describe.
+///
+/// Note, controller, bank and index fields are 7 bits, except a per-note
+/// controller's index, which is 8.
 ///
 /// # Examples
 ///
 /// ```
-/// use hapto_ump::Voice;
+/// use hapto_ump::{Attribute, ChannelMessage};
 ///
-/// // MIDI 1.0 sends a velocity of 0 as a note-off; MIDI 2.0 does not.
-/// fn sounds(voice: Voice) -> bool {
-///     match voice {
-///         Voice::Midi1NoteOn { velocity, .. } => velocity > 0,
-///         Voice::Midi2NoteOn { .. } => true,
-///         _ => false,
-///     }
+/// // Unlike in MIDI 1.0, a note-on at velocity 0 is still a note-on.
+/// fn sounds(message: ChannelMessage) -> bool {
+///     matches!(message, ChannelMessage::NoteOn { .. })
 /// }
-/// assert!(!sounds(Voice::Midi1NoteOn { note: 60, velocity: 0 }));
-/// assert!(sounds(Voice::Midi2NoteOn { note: 60, velocity: 0 }));
+/// assert!(sounds(ChannelMessage::NoteOn { note: 60, velocity: 0, attribute: Attribute::NONE }));
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
-pub enum Voice {
-    /// A MIDI 1.0 note-off.
-    Midi1NoteOff {
-        /// The note, 0 to 127.
-        note: u8,
-        /// Its release velocity, 0 to 127.
-        velocity: u8,
-    },
-    /// A MIDI 1.0 note-on, as sent: MIDI 1.0 reads a velocity of 0 as a
-    /// note-off, and that is the reader's call.
-    Midi1NoteOn {
-        /// The note, 0 to 127.
-        note: u8,
-        /// Its velocity, 0 to 127.
-        velocity: u8,
-    },
-    /// A MIDI 1.0 control change.
-    Midi1ControlChange {
-        /// The controller, 0 to 127.
-        controller: u8,
-        /// Its value, 0 to 127.
-        value: u8,
-    },
-    /// A MIDI 2.0 note-off. Its attribute is not read.
-    Midi2NoteOff {
+pub enum ChannelMessage {
+    /// A note ends.
+    NoteOff {
         /// The note, 0 to 127.
         note: u8,
         /// Its release velocity, 0 to 65535.
         velocity: u16,
+        /// Its attribute, if any.
+        attribute: Attribute,
     },
-    /// A MIDI 2.0 note-on: a velocity of 0 is a note-on too. Its attribute
-    /// is not read.
-    Midi2NoteOn {
+    /// A note starts, even at velocity 0.
+    NoteOn {
         /// The note, 0 to 127.
         note: u8,
         /// Its velocity, 0 to 65535.
         velocity: u16,
+        /// Its attribute, if any.
+        attribute: Attribute,
     },
-    /// A MIDI 2.0 control change.
-    Midi2ControlChange {
+    /// One note's pressure.
+    PolyPressure {
+        /// The note, 0 to 127.
+        note: u8,
+        /// The pressure, 0 to `u32::MAX`.
+        value: u32,
+    },
+    /// A control change.
+    ControlChange {
         /// The controller, 0 to 127.
         controller: u8,
         /// Its value, 0 to `u32::MAX`.
         value: u32,
     },
-    /// A MIDI 2.0 registered controller: MIDI 1.0's RPN as one message.
-    Midi2RegisteredController {
+    /// A program change, with the bank to select first when there is one.
+    ProgramChange {
+        /// The program, 0 to 127.
+        program: u8,
+        /// The bank, when the sender selects one with the program.
+        bank: Option<Bank>,
+    },
+    /// The channel's pressure.
+    ChannelPressure {
+        /// The pressure, 0 to `u32::MAX`.
+        value: u32,
+    },
+    /// The channel's pitch bend, centred at `0x8000_0000`.
+    PitchBend {
+        /// The bend, 0 to `u32::MAX`.
+        value: u32,
+    },
+    /// A registered controller, which is MIDI 1.0's RPN as one message.
+    RegisteredController {
         /// The bank, 0 to 127.
         bank: u8,
         /// The index in the bank, 0 to 127.
@@ -114,164 +123,334 @@ pub enum Voice {
         /// Its value, 0 to `u32::MAX`.
         value: u32,
     },
-    /// A MIDI 2.0 assignable controller: MIDI 1.0's NRPN as one message.
-    Midi2AssignableController {
+    /// An assignable controller, which is MIDI 1.0's NRPN as one message.
+    AssignableController {
         /// The bank, 0 to 127.
         bank: u8,
         /// The index in the bank, 0 to 127.
         index: u8,
         /// Its value, 0 to `u32::MAX`.
         value: u32,
+    },
+    /// A relative change to a registered controller's value.
+    RelativeRegisteredController {
+        /// The bank, 0 to 127.
+        bank: u8,
+        /// The index in the bank, 0 to 127.
+        index: u8,
+        /// The change.
+        change: i32,
+    },
+    /// A relative change to an assignable controller's value.
+    RelativeAssignableController {
+        /// The bank, 0 to 127.
+        bank: u8,
+        /// The index in the bank, 0 to 127.
+        index: u8,
+        /// The change.
+        change: i32,
+    },
+    /// One note's registered controller.
+    RegisteredPerNoteController {
+        /// The note, 0 to 127.
+        note: u8,
+        /// The controller, 0 to 255.
+        index: u8,
+        /// Its value, 0 to `u32::MAX`.
+        value: u32,
+    },
+    /// One note's assignable controller.
+    AssignablePerNoteController {
+        /// The note, 0 to 127.
+        note: u8,
+        /// The controller, 0 to 255.
+        index: u8,
+        /// Its value, 0 to `u32::MAX`.
+        value: u32,
+    },
+    /// One note's pitch bend, centred at `0x8000_0000`.
+    PerNotePitchBend {
+        /// The note, 0 to 127.
+        note: u8,
+        /// The bend, 0 to `u32::MAX`.
+        value: u32,
+    },
+    /// What happens to the per-note controllers of the notes on a key.
+    PerNoteManagement {
+        /// The note, 0 to 127.
+        note: u8,
+        /// Whether notes already sounding on the key stop receiving per-note
+        /// controllers.
+        detach: bool,
+        /// Whether the key's per-note controllers reset to their defaults.
+        reset: bool,
     },
 }
 
+/// A note-on's or note-off's attribute, whose type says what the data means.
+///
+/// Type 0 means no attribute.
+///
+/// # Examples
+///
+/// ```
+/// use hapto_ump::Attribute;
+///
+/// // Type 3 is pitch 7.9, and this data is a quarter tone above A4.
+/// let pitch = Attribute { kind: 3, data: 69 << 9 | 0x100 };
+/// assert_ne!(pitch, Attribute::NONE);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct Attribute {
+    /// The attribute type, 0 for none.
+    pub kind: u8,
+    /// The attribute data, whose meaning depends on the type.
+    pub data: u16,
+}
+
+impl Attribute {
+    /// No attribute.
+    pub const NONE: Attribute = Attribute { kind: 0, data: 0 };
+}
+
+/// The bank that a program change selects first.
+///
+/// # Examples
+///
+/// ```
+/// use hapto_ump::{Bank, ChannelMessage, ChannelVoice};
+///
+/// // Program 5 of bank 1, 0, which MIDI 1.0 sends as controllers 0 and 32,
+/// // then the program.
+/// let message = ChannelMessage::ProgramChange { program: 5, bank: Some(Bank { msb: 1, lsb: 0 }) };
+/// let voice = ChannelVoice { group: 0, channel: 0, message };
+/// assert_eq!(voice.words(), [0x40C0_0001, 0x0500_0100, 0, 0]);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Bank {
+    /// Bank select's most significant 7 bits, sent as controller 0 in MIDI
+    /// 1.0.
+    pub msb: u8,
+    /// Its least significant 7 bits, sent as controller 32 in MIDI 1.0.
+    pub lsb: u8,
+}
+
 impl ChannelVoice {
-    /// Reads a packet. `None` for any other message, including the channel
-    /// voice messages not listed in [`Voice`].
+    /// Reads a channel voice message from a packet, or returns `None` for any
+    /// other message type.
     ///
     /// # Examples
     ///
     /// ```
-    /// use hapto_ump::{ChannelVoice, Voice};
+    /// use hapto_ump::{ChannelMessage, ChannelVoice};
     ///
-    /// // A MIDI 2.0 registered controller: bank 0, index 2, half of full scale.
-    /// let message = ChannelVoice::decode([0x4020_0002, 0x8000_0000, 0, 0]);
+    /// // A registered controller at bank 0, index 2, at half scale.
+    /// let voice = ChannelVoice::decode([0x4020_0002, 0x8000_0000, 0, 0]);
     /// assert_eq!(
-    ///     message.map(|message| message.voice),
-    ///     Some(Voice::Midi2RegisteredController { bank: 0, index: 2, value: 0x8000_0000 })
+    ///     voice.map(|voice| voice.message),
+    ///     Some(ChannelMessage::RegisteredController { bank: 0, index: 2, value: 0x8000_0000 })
     /// );
     ///
-    /// // A pitch bend (status 0xE) is not one Hapto reads.
-    /// assert_eq!(ChannelVoice::decode([0x20E0_0000, 0, 0, 0]), None);
+    /// // A MIDI 1.0 packet returns `None`, so an exporter must upgrade it
+    /// // first.
+    /// assert_eq!(ChannelVoice::decode([0x2090_3C7F, 0, 0, 0]), None);
     /// ```
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn decode(words: [u32; 4]) -> Option<Self> {
-        let head = words[0];
-        let status = (head >> 20) & 0xF;
-        let byte3 = ((head >> 8) & 0x7F) as u8;
-        let byte4 = (head & 0x7F) as u8;
-        let voice = match head >> 28 {
-            MIDI1 => match status {
-                NOTE_OFF => Voice::Midi1NoteOff {
-                    note: byte3,
-                    velocity: byte4,
-                },
-                NOTE_ON => Voice::Midi1NoteOn {
-                    note: byte3,
-                    velocity: byte4,
-                },
-                CONTROL_CHANGE => Voice::Midi1ControlChange {
-                    controller: byte3,
-                    value: byte4,
-                },
-                _ => return None,
+        let [first, data, ..] = words;
+        let head = Head::read(first);
+        if head.kind != MessageType::MIDI2 {
+            return None;
+        }
+        let (byte3, byte4) = (head.byte3, head.byte4);
+        let (seven3, seven4) = (byte3 & 0x7F, byte4 & 0x7F);
+        let attribute = Attribute {
+            kind: byte4,
+            data: (data & 0xFFFF) as u16,
+        };
+        let velocity = (data >> 16) as u16;
+        let message = match head.voice_status() {
+            NOTE_OFF => ChannelMessage::NoteOff {
+                note: seven3,
+                velocity,
+                attribute,
             },
-            MIDI2 => {
-                let data = words[1];
-                match status {
-                    NOTE_OFF => Voice::Midi2NoteOff {
-                        note: byte3,
-                        velocity: (data >> 16) as u16,
-                    },
-                    NOTE_ON => Voice::Midi2NoteOn {
-                        note: byte3,
-                        velocity: (data >> 16) as u16,
-                    },
-                    CONTROL_CHANGE => Voice::Midi2ControlChange {
-                        controller: byte3,
-                        value: data,
-                    },
-                    REGISTERED_CONTROLLER => Voice::Midi2RegisteredController {
-                        bank: byte3,
-                        index: byte4,
-                        value: data,
-                    },
-                    ASSIGNABLE_CONTROLLER => Voice::Midi2AssignableController {
-                        bank: byte3,
-                        index: byte4,
-                        value: data,
-                    },
-                    _ => return None,
-                }
-            }
+            NOTE_ON => ChannelMessage::NoteOn {
+                note: seven3,
+                velocity,
+                attribute,
+            },
+            POLY_PRESSURE => ChannelMessage::PolyPressure {
+                note: seven3,
+                value: data,
+            },
+            CONTROL_CHANGE => ChannelMessage::ControlChange {
+                controller: seven3,
+                value: data,
+            },
+            PROGRAM_CHANGE => ChannelMessage::ProgramChange {
+                program: ((data >> 24) & 0x7F) as u8,
+                bank: (byte4 & 0x01 != 0).then_some(Bank {
+                    msb: ((data >> 8) & 0x7F) as u8,
+                    lsb: (data & 0x7F) as u8,
+                }),
+            },
+            CHANNEL_PRESSURE => ChannelMessage::ChannelPressure { value: data },
+            PITCH_BEND => ChannelMessage::PitchBend { value: data },
+            REGISTERED_CONTROLLER => ChannelMessage::RegisteredController {
+                bank: seven3,
+                index: seven4,
+                value: data,
+            },
+            ASSIGNABLE_CONTROLLER => ChannelMessage::AssignableController {
+                bank: seven3,
+                index: seven4,
+                value: data,
+            },
+            RELATIVE_REGISTERED => ChannelMessage::RelativeRegisteredController {
+                bank: seven3,
+                index: seven4,
+                change: data.cast_signed(),
+            },
+            RELATIVE_ASSIGNABLE => ChannelMessage::RelativeAssignableController {
+                bank: seven3,
+                index: seven4,
+                change: data.cast_signed(),
+            },
+            REGISTERED_PER_NOTE => ChannelMessage::RegisteredPerNoteController {
+                note: seven3,
+                index: byte4,
+                value: data,
+            },
+            ASSIGNABLE_PER_NOTE => ChannelMessage::AssignablePerNoteController {
+                note: seven3,
+                index: byte4,
+                value: data,
+            },
+            PER_NOTE_PITCH_BEND => ChannelMessage::PerNotePitchBend {
+                note: seven3,
+                value: data,
+            },
+            PER_NOTE_MANAGEMENT => ChannelMessage::PerNoteManagement {
+                note: seven3,
+                detach: byte4 & 0x02 != 0,
+                reset: byte4 & 0x01 != 0,
+            },
             _ => return None,
         };
         Some(ChannelVoice {
-            group: ((head >> 24) & 0xF) as u8,
-            channel: ((head >> 16) & 0xF) as u8,
-            voice,
+            group: head.group,
+            channel: head.channel(),
+            message,
         })
     }
 
-    /// The packet, with every field masked to its width and a MIDI 2.0
-    /// note's attribute left empty.
+    /// Returns the packet, with every field masked to its width.
     ///
     /// # Examples
     ///
     /// ```
-    /// use hapto_ump::{ChannelVoice, Voice};
+    /// use hapto_ump::{ChannelMessage, ChannelVoice};
     ///
-    /// // A value past its width is masked: 200 becomes 72 in a 7-bit field.
-    /// let message = ChannelVoice {
+    /// // A controller number wider than 7 bits is masked, so 200 becomes 72.
+    /// let voice = ChannelVoice {
     ///     group: 0,
     ///     channel: 0,
-    ///     voice: Voice::Midi1ControlChange { controller: 7, value: 200 },
+    ///     message: ChannelMessage::ControlChange { controller: 200, value: 1 },
     /// };
-    /// assert_eq!(message.words(), [0x20B0_0748, 0, 0, 0]);
+    /// assert_eq!(voice.words(), [0x40B0_4800, 1, 0, 0]);
     /// ```
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn words(&self) -> [u32; 4] {
-        let seven = |byte: u8| u32::from(byte & 0x7F);
-        let head = |kind: u32, status: u32, byte3: u8, byte4: u8| {
-            kind << 28
-                | u32::from(self.group & 0xF) << 24
-                | status << 20
-                | u32::from(self.channel & 0xF) << 16
-                | seven(byte3) << 8
-                | seven(byte4)
+        let seven = |byte: u8| byte & 0x7F;
+        let head = |status: u8, byte3: u8, byte4: u8| {
+            let (group, channel) = (self.group, self.channel);
+            Head::voice(MessageType::MIDI2, group, status, channel, byte3, byte4).word()
         };
-        match self.voice {
-            Voice::Midi1NoteOff { note, velocity } => {
-                [head(MIDI1, NOTE_OFF, note, velocity), 0, 0, 0]
+        let note = |status: u8, note: u8, velocity: u16, attribute: Attribute| {
+            (
+                head(status, seven(note), attribute.kind),
+                u32::from(velocity) << 16 | u32::from(attribute.data),
+            )
+        };
+        let controller = |status: u8, bank: u8, index: u8| head(status, seven(bank), seven(index));
+        let (head, data) = match self.message {
+            ChannelMessage::NoteOff {
+                note: key,
+                velocity,
+                attribute,
+            } => note(NOTE_OFF, key, velocity, attribute),
+            ChannelMessage::NoteOn {
+                note: key,
+                velocity,
+                attribute,
+            } => note(NOTE_ON, key, velocity, attribute),
+            ChannelMessage::PolyPressure { note, value } => {
+                (head(POLY_PRESSURE, seven(note), 0), value)
             }
-            Voice::Midi1NoteOn { note, velocity } => {
-                [head(MIDI1, NOTE_ON, note, velocity), 0, 0, 0]
+            ChannelMessage::ControlChange { controller, value } => {
+                (head(CONTROL_CHANGE, seven(controller), 0), value)
             }
-            Voice::Midi1ControlChange { controller, value } => {
-                [head(MIDI1, CONTROL_CHANGE, controller, value), 0, 0, 0]
+            ChannelMessage::ProgramChange { program, bank } => {
+                let (valid, banks) = match bank {
+                    Some(Bank { msb, lsb }) => {
+                        (1, u32::from(seven(msb)) << 8 | u32::from(seven(lsb)))
+                    }
+                    None => (0, 0),
+                };
+                let data = u32::from(seven(program)) << 24 | banks;
+                (head(PROGRAM_CHANGE, 0, valid), data)
             }
-            Voice::Midi2NoteOff { note, velocity } => [
-                head(MIDI2, NOTE_OFF, note, 0),
-                u32::from(velocity) << 16,
-                0,
-                0,
-            ],
-            Voice::Midi2NoteOn { note, velocity } => [
-                head(MIDI2, NOTE_ON, note, 0),
-                u32::from(velocity) << 16,
-                0,
-                0,
-            ],
-            Voice::Midi2ControlChange { controller, value } => {
-                [head(MIDI2, CONTROL_CHANGE, controller, 0), value, 0, 0]
+            ChannelMessage::ChannelPressure { value } => (head(CHANNEL_PRESSURE, 0, 0), value),
+            ChannelMessage::PitchBend { value } => (head(PITCH_BEND, 0, 0), value),
+            ChannelMessage::RegisteredController { bank, index, value } => {
+                (controller(REGISTERED_CONTROLLER, bank, index), value)
             }
-            Voice::Midi2RegisteredController { bank, index, value } => {
-                [head(MIDI2, REGISTERED_CONTROLLER, bank, index), value, 0, 0]
+            ChannelMessage::AssignableController { bank, index, value } => {
+                (controller(ASSIGNABLE_CONTROLLER, bank, index), value)
             }
-            Voice::Midi2AssignableController { bank, index, value } => {
-                [head(MIDI2, ASSIGNABLE_CONTROLLER, bank, index), value, 0, 0]
+            ChannelMessage::RelativeRegisteredController {
+                bank,
+                index,
+                change,
+            } => (
+                controller(RELATIVE_REGISTERED, bank, index),
+                change.cast_unsigned(),
+            ),
+            ChannelMessage::RelativeAssignableController {
+                bank,
+                index,
+                change,
+            } => (
+                controller(RELATIVE_ASSIGNABLE, bank, index),
+                change.cast_unsigned(),
+            ),
+            ChannelMessage::RegisteredPerNoteController { note, index, value } => {
+                (head(REGISTERED_PER_NOTE, seven(note), index), value)
             }
-        }
+            ChannelMessage::AssignablePerNoteController { note, index, value } => {
+                (head(ASSIGNABLE_PER_NOTE, seven(note), index), value)
+            }
+            ChannelMessage::PerNotePitchBend { note, value } => {
+                (head(PER_NOTE_PITCH_BEND, seven(note), 0), value)
+            }
+            ChannelMessage::PerNoteManagement {
+                note,
+                detach,
+                reset,
+            } => {
+                let flags = u8::from(detach) << 1 | u8::from(reset);
+                (head(PER_NOTE_MANAGEMENT, seven(note), flags), 0)
+            }
+        };
+        [head, data, 0, 0]
     }
 
-    /// The packet as an event at `offset`, ready to push on an
-    /// [`EventList`](crate::EventList). The [crate overview](crate#examples)
-    /// shows one pushed and read back.
+    /// Returns the packet as an event at `offset` with origin
+    /// [`Origin::Midi2`](crate::Origin::Midi2), ready to push onto an
+    /// [`EventList`](crate::EventList).
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn event(&self, offset: u32) -> Event {
-        Event {
-            offset,
-            words: self.words(),
-        }
+        Event::new(offset, self.words())
     }
 }

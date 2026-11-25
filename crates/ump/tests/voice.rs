@@ -1,254 +1,373 @@
-//! Reading and writing channel voice packets.
+//! Tests reading and writing MIDI 2.0 channel voice packets, which everything
+//! above the exporters reads, and MIDI 1.0's, which the exporters translate.
 
-use hapto_ump::{ChannelVoice, Event, Voice};
+use hapto_ump::{Attribute, Bank, ChannelMessage, ChannelVoice, Event, Midi1Message, Midi1Voice};
 use proptest::prelude::*;
 use proptest::test_runner::FileFailurePersistence;
 
-#[test]
-fn known_packets_read_as_their_messages() {
-    let cases = [
-        (
-            [0x2BB3_077F, 0, 0, 0],
-            11,
-            3,
-            Voice::Midi1ControlChange {
-                controller: 7,
-                value: 127,
-            },
-        ),
-        (
-            [0x2090_3C00, 0, 0, 0],
-            0,
-            0,
-            Voice::Midi1NoteOn {
-                note: 60,
-                velocity: 0,
-            },
-        ),
-        (
-            [0x2081_3C40, 0, 0, 0],
-            0,
-            1,
-            Voice::Midi1NoteOff {
-                note: 60,
-                velocity: 64,
-            },
-        ),
-        (
-            [0x4F9F_4003, 0x8000_1234, 0, 0],
-            15,
-            15,
-            Voice::Midi2NoteOn {
-                note: 64,
-                velocity: 0x8000,
-            },
-        ),
-        (
-            [0x4180_4000, 0xFFFF_0000, 0, 0],
-            1,
-            0,
-            Voice::Midi2NoteOff {
-                note: 64,
-                velocity: 0xFFFF,
-            },
-        ),
-        (
-            [0x40B2_0100, 0x8000_0000, 0, 0],
-            0,
-            2,
-            Voice::Midi2ControlChange {
-                controller: 1,
-                value: 0x8000_0000,
-            },
-        ),
-        (
-            [0x4020_0006, 0x1000_0000, 0, 0],
-            0,
-            0,
-            Voice::Midi2RegisteredController {
-                bank: 0,
-                index: 6,
-                value: 0x1000_0000,
-            },
-        ),
-        (
-            [0x4235_027F, 0xFFFF_FFFF, 0, 0],
-            2,
-            5,
-            Voice::Midi2AssignableController {
-                bank: 2,
-                index: 127,
-                value: u32::MAX,
-            },
-        ),
-    ];
-    for (words, group, channel, voice) in cases {
-        let expected = ChannelVoice {
-            group,
-            channel,
-            voice,
-        };
-        let event = Event { offset: 9, words };
-        assert_eq!(event.channel_voice(), Some(expected), "{words:08X?}");
-        assert_eq!(event.group(), group);
-    }
+/// Checks that `words` reads as `message` on group 0, channel 0, and that
+/// the message writes back to the same words.
+fn reads_back(words: [u32; 4], message: ChannelMessage) {
+    reads_back_on(0, 0, words, message);
+}
+
+/// Checks that `words` reads as `message` on `group` and `channel`, and that
+/// the message writes back to the same words.
+fn reads_back_on(group: u8, channel: u8, words: [u32; 4], message: ChannelMessage) {
+    let expected = ChannelVoice {
+        group,
+        channel,
+        message,
+    };
+    assert_eq!(ChannelVoice::decode(words), Some(expected), "{words:08x?}");
+    assert_eq!(expected.words(), words, "{expected:?}");
+    assert_eq!(Event::new(0, words).channel_voice(), Some(expected));
 }
 
 #[test]
-fn spec_vectors_encode_and_decode() {
-    // Words laid out by hand from the UMP field tables, not produced by the
-    // encoder: message type, group, status, channel and two data bytes in the
-    // first word; MIDI 2.0's data in the second.
-    let vectors = [
-        // MIDI 1.0 note-on, group 0, channel 0, note 60, velocity 127.
-        (
-            0,
-            0,
-            Voice::Midi1NoteOn {
-                note: 60,
-                velocity: 127,
-            },
-            [0x2090_3C7F, 0],
-        ),
-        // MIDI 1.0 note-off, group 1, channel 2, note 0x40, velocity 0x10.
-        (
-            1,
-            2,
-            Voice::Midi1NoteOff {
-                note: 0x40,
-                velocity: 0x10,
-            },
-            [0x2182_4010, 0],
-        ),
-        // MIDI 1.0 control change, group 15, channel 15, controller 127,
-        // value 127.
-        (
-            15,
-            15,
-            Voice::Midi1ControlChange {
-                controller: 127,
-                value: 127,
-            },
-            [0x2FBF_7F7F, 0],
-        ),
-        // MIDI 2.0 note-on, group 0, channel 0, note 60, velocity 0xC000,
-        // attribute type 0 with no attribute data.
-        (
-            0,
-            0,
-            Voice::Midi2NoteOn {
-                note: 60,
-                velocity: 0xC000,
-            },
-            [0x4090_3C00, 0xC000_0000],
-        ),
-        // MIDI 2.0 note-off, group 3, channel 4, note 0x30, velocity 0x1234.
-        (
-            3,
-            4,
-            Voice::Midi2NoteOff {
-                note: 0x30,
-                velocity: 0x1234,
-            },
-            [0x4384_3000, 0x1234_0000],
-        ),
-        // MIDI 2.0 control change, group 0, channel 1, controller 7,
-        // value 0x80000000.
-        (
-            0,
-            1,
-            Voice::Midi2ControlChange {
-                controller: 7,
-                value: 0x8000_0000,
-            },
-            [0x40B1_0700, 0x8000_0000],
-        ),
-        // MIDI 2.0 registered controller, group 2, channel 3, bank 0, index 2.
-        (
-            2,
-            3,
-            Voice::Midi2RegisteredController {
-                bank: 0,
-                index: 2,
-                value: 0x1234_5678,
-            },
-            [0x4223_0002, 0x1234_5678],
-        ),
-        // MIDI 2.0 assignable controller, group 0, channel 0, bank 1,
-        // index 0x23.
-        (
-            0,
-            0,
-            Voice::Midi2AssignableController {
-                bank: 1,
-                index: 0x23,
-                value: u32::MAX,
-            },
-            [0x4030_0123, 0xFFFF_FFFF],
-        ),
-    ];
-    for (group, channel, voice, [first, second]) in vectors {
-        let message = ChannelVoice {
-            group,
-            channel,
-            voice,
-        };
-        assert_eq!(message.words(), [first, second, 0, 0], "{voice:?}");
-        assert_eq!(ChannelVoice::decode([first, second, 0, 0]), Some(message));
-    }
-    // The data bytes' top bits are not data: a reader masks them.
+fn known_midi_2_note_and_channel_packets_read_as_their_messages() {
+    use ChannelMessage::{
+        ChannelPressure, NoteOff, NoteOn, PitchBend, PolyPressure, ProgramChange,
+    };
+    // Note 64 at full velocity on group 2, channel 5.
+    let on = NoteOn {
+        note: 64,
+        velocity: 0xFFFF,
+        attribute: Attribute::NONE,
+    };
+    reads_back_on(2, 5, [0x4295_4000, 0xFFFF_0000, 0, 0], on);
+    // A pitch 7.9 attribute is type 3.
+    let pitch = Attribute {
+        kind: 3,
+        data: 0x8A00,
+    };
+    reads_back(
+        [0x4080_3C03, 0x8000_8A00, 0, 0],
+        NoteOff {
+            note: 60,
+            velocity: 0x8000,
+            attribute: pitch,
+        },
+    );
+    reads_back([0x40A0_3C00, 7, 0, 0], PolyPressure { note: 60, value: 7 });
+    let bank = Some(Bank { msb: 1, lsb: 2 });
+    reads_back(
+        [0x40C0_0001, 0x0500_0102, 0, 0],
+        ProgramChange { program: 5, bank },
+    );
+    reads_back([0x40D0_0000, 9, 0, 0], ChannelPressure { value: 9 });
+    reads_back(
+        [0x40E0_0000, 0x8000_0000, 0, 0],
+        PitchBend { value: 0x8000_0000 },
+    );
+    // With the bank-valid bit clear there is no bank, whatever the bank
+    // fields hold, and the packet writes back with them cleared.
+    let program = ChannelVoice {
+        group: 0,
+        channel: 0,
+        message: ProgramChange {
+            program: 5,
+            bank: None,
+        },
+    };
     assert_eq!(
-        ChannelVoice::decode([0x2090_BCFF, 0, 0, 0]).map(|message| message.voice),
-        Some(Voice::Midi1NoteOn {
-            note: 0x3C,
-            velocity: 0x7F
-        })
+        ChannelVoice::decode([0x40C0_0000, 0x0500_0102, 0, 0]),
+        Some(program)
+    );
+    assert_eq!(program.words(), [0x40C0_0000, 0x0500_0000, 0, 0]);
+}
+
+#[test]
+fn known_midi_2_controller_packets_read_as_their_messages() {
+    use ChannelMessage::{
+        AssignableController, ControlChange, RegisteredController, RelativeAssignableController,
+        RelativeRegisteredController,
+    };
+    reads_back(
+        [0x40B0_0700, u32::MAX, 0, 0],
+        ControlChange {
+            controller: 7,
+            value: u32::MAX,
+        },
+    );
+    reads_back(
+        [0x4020_0002, 0x8000_0000, 0, 0],
+        RegisteredController {
+            bank: 0,
+            index: 2,
+            value: 0x8000_0000,
+        },
+    );
+    reads_back(
+        [0x4030_0205, 1, 0, 0],
+        AssignableController {
+            bank: 2,
+            index: 5,
+            value: 1,
+        },
+    );
+    // A relative change of -1, in two's complement.
+    reads_back(
+        [0x4040_0001, u32::MAX, 0, 0],
+        RelativeRegisteredController {
+            bank: 0,
+            index: 1,
+            change: -1,
+        },
+    );
+    reads_back(
+        [0x4050_0001, 3, 0, 0],
+        RelativeAssignableController {
+            bank: 0,
+            index: 1,
+            change: 3,
+        },
     );
 }
 
 #[test]
-fn other_messages_read_as_nothing() {
-    let others = [
-        [0x0000_0000, 0, 0, 0],           // utility: no-op
-        [0x1000_F800, 0, 0, 0],           // system real time: clock
-        [0x20E0_0040, 0, 0, 0],           // MIDI 1.0 pitch bend
-        [0x20C0_0500, 0, 0, 0],           // MIDI 1.0 program change
-        [0x3016_7E7F, 0x0D70_0201, 0, 0], // SysEx7
-        [0x40E0_0000, 0x8000_0000, 0, 0], // MIDI 2.0 pitch bend
-        // MIDI 2.0 relative registered controller
-        [0x4040_0001, 0x0000_0001, 0, 0],
-        // MIDI 2.0 relative assignable controller
-        [0x4050_0001, 0x0000_0001, 0, 0],
-        // MIDI 2.0 registered per-note controller
-        [0x4000_3C01, 0x8000_0000, 0, 0],
+fn known_midi_2_per_note_packets_read_as_their_messages() {
+    use ChannelMessage::{
+        AssignablePerNoteController, PerNoteManagement, PerNotePitchBend,
+        RegisteredPerNoteController,
+    };
+    // A per-note controller's index goes up to 255.
+    reads_back(
+        [0x4000_3CFF, 4, 0, 0],
+        RegisteredPerNoteController {
+            note: 60,
+            index: 255,
+            value: 4,
+        },
+    );
+    reads_back(
+        [0x4010_3C01, 4, 0, 0],
+        AssignablePerNoteController {
+            note: 60,
+            index: 1,
+            value: 4,
+        },
+    );
+    reads_back(
+        [0x4060_3C00, 0x8000_0000, 0, 0],
+        PerNotePitchBend {
+            note: 60,
+            value: 0x8000_0000,
+        },
+    );
+    // Detach is bit 1 of the flags, and reset is bit 0.
+    reads_back(
+        [0x40F0_3C02, 0, 0, 0],
+        PerNoteManagement {
+            note: 60,
+            detach: true,
+            reset: false,
+        },
+    );
+}
+
+#[test]
+fn known_midi_1_packets_read_as_their_messages() {
+    let one = |group, channel, message| Midi1Voice {
+        group,
+        channel,
+        message,
+    };
+    let cases = [
+        (
+            [0x2BB3_077F, 0, 0, 0],
+            one(
+                11,
+                3,
+                Midi1Message::ControlChange {
+                    controller: 7,
+                    value: 127,
+                },
+            ),
+        ),
+        (
+            [0x2090_3C00, 0, 0, 0],
+            one(
+                0,
+                0,
+                Midi1Message::NoteOn {
+                    note: 60,
+                    velocity: 0,
+                },
+            ),
+        ),
+        (
+            [0x2081_3C40, 0, 0, 0],
+            one(
+                0,
+                1,
+                Midi1Message::NoteOff {
+                    note: 60,
+                    velocity: 64,
+                },
+            ),
+        ),
+        (
+            [0x20A0_3C10, 0, 0, 0],
+            one(
+                0,
+                0,
+                Midi1Message::PolyPressure {
+                    note: 60,
+                    value: 16,
+                },
+            ),
+        ),
+        (
+            [0x20C0_0500, 0, 0, 0],
+            one(0, 0, Midi1Message::ProgramChange { program: 5 }),
+        ),
+        (
+            [0x20D0_2000, 0, 0, 0],
+            one(0, 0, Midi1Message::ChannelPressure { value: 32 }),
+        ),
+        // Pitch bend sends its low 7 bits first, and 0x2000 is the centre.
+        (
+            [0x20E0_0040, 0, 0, 0],
+            one(0, 0, Midi1Message::PitchBend { value: 0x2000 }),
+        ),
+        (
+            [0x20E0_7F7F, 0, 0, 0],
+            one(0, 0, Midi1Message::PitchBend { value: 0x3FFF }),
+        ),
     ];
-    for words in others {
-        assert_eq!(ChannelVoice::decode(words), None, "{words:08X?}");
+    for (words, expected) in cases {
+        assert_eq!(Midi1Voice::decode(words), Some(expected), "{words:08x?}");
+        assert_eq!(expected.words(), words, "{expected:?}");
+        assert_eq!(Event::new(0, words).midi1_voice(), Some(expected));
     }
 }
 
-fn voice() -> impl Strategy<Value = Voice> {
-    let seven = 0_u8..=127;
+#[test]
+fn each_reader_reads_its_own_protocol_alone() {
+    let midi1 = [0x2090_3C7F, 0, 0, 0];
+    let midi2 = [0x4090_3C00, 0xFFFF_0000, 0, 0];
+    assert_eq!(ChannelVoice::decode(midi1), None);
+    assert_eq!(Midi1Voice::decode(midi2), None);
+    // Neither reader reads SysEx7, a system message or a utility message.
+    for words in [
+        [0x3016_7E7F, 0x0D70_0201, 0, 0],
+        [0x10F8_0000, 0, 0, 0],
+        [0, 0, 0, 0],
+    ] {
+        assert_eq!(ChannelVoice::decode(words), None);
+        assert_eq!(Midi1Voice::decode(words), None);
+    }
+    // MIDI 2.0 status 0x7 is reserved.
+    assert_eq!(ChannelVoice::decode([0x4070_0000, 0, 0, 0]), None);
+}
+
+#[test]
+fn fields_past_their_width_are_masked() {
+    let voice = ChannelVoice {
+        group: 0x1F,
+        channel: 0x1F,
+        message: ChannelMessage::ControlChange {
+            controller: 200,
+            value: 1,
+        },
+    };
+    assert_eq!(voice.words(), [0x4FBF_4800, 1, 0, 0]);
+    let one = Midi1Voice {
+        group: 0,
+        channel: 0,
+        message: Midi1Message::PitchBend { value: 0xFFFF },
+    };
+    assert_eq!(one.words(), [0x20E0_7F7F, 0, 0, 0]);
+}
+
+fn seven() -> impl Strategy<Value = u8> {
+    0_u8..128
+}
+
+fn midi2_message() -> impl Strategy<Value = ChannelMessage> {
+    let attribute = (any::<u8>(), any::<u16>()).prop_map(|(kind, data)| Attribute { kind, data });
+    let bank = prop::option::of((seven(), seven()).prop_map(|(msb, lsb)| Bank { msb, lsb }));
     prop_oneof![
-        (seven.clone(), seven.clone())
-            .prop_map(|(note, velocity)| Voice::Midi1NoteOff { note, velocity }),
-        (seven.clone(), seven.clone())
-            .prop_map(|(note, velocity)| Voice::Midi1NoteOn { note, velocity }),
-        (seven.clone(), seven.clone())
-            .prop_map(|(controller, value)| Voice::Midi1ControlChange { controller, value }),
-        (seven.clone(), any::<u16>())
-            .prop_map(|(note, velocity)| Voice::Midi2NoteOff { note, velocity }),
-        (seven.clone(), any::<u16>())
-            .prop_map(|(note, velocity)| Voice::Midi2NoteOn { note, velocity }),
-        (seven.clone(), any::<u32>())
-            .prop_map(|(controller, value)| Voice::Midi2ControlChange { controller, value }),
-        (seven.clone(), seven.clone(), any::<u32>()).prop_map(|(bank, index, value)| {
-            Voice::Midi2RegisteredController { bank, index, value }
+        (seven(), any::<u16>(), attribute.clone()).prop_map(|(note, velocity, attribute)| {
+            ChannelMessage::NoteOff {
+                note,
+                velocity,
+                attribute,
+            }
         }),
-        (seven.clone(), seven, any::<u32>()).prop_map(|(bank, index, value)| {
-            Voice::Midi2AssignableController { bank, index, value }
+        (seven(), any::<u16>(), attribute).prop_map(|(note, velocity, attribute)| {
+            ChannelMessage::NoteOn {
+                note,
+                velocity,
+                attribute,
+            }
+        }),
+        (seven(), any::<u32>())
+            .prop_map(|(note, value)| ChannelMessage::PolyPressure { note, value }),
+        (seven(), any::<u32>())
+            .prop_map(|(controller, value)| ChannelMessage::ControlChange { controller, value }),
+        (seven(), bank).prop_map(|(program, bank)| ChannelMessage::ProgramChange { program, bank }),
+        any::<u32>().prop_map(|value| ChannelMessage::ChannelPressure { value }),
+        any::<u32>().prop_map(|value| ChannelMessage::PitchBend { value }),
+        (seven(), seven(), any::<u32>()).prop_map(|(bank, index, value)| {
+            ChannelMessage::RegisteredController { bank, index, value }
+        }),
+        (seven(), seven(), any::<u32>()).prop_map(|(bank, index, value)| {
+            ChannelMessage::AssignableController { bank, index, value }
+        }),
+        (seven(), seven(), any::<i32>()).prop_map(|(bank, index, change)| {
+            ChannelMessage::RelativeRegisteredController {
+                bank,
+                index,
+                change,
+            }
+        }),
+        (seven(), seven(), any::<i32>()).prop_map(|(bank, index, change)| {
+            ChannelMessage::RelativeAssignableController {
+                bank,
+                index,
+                change,
+            }
+        }),
+        (seven(), any::<u8>(), any::<u32>()).prop_map(|(note, index, value)| {
+            ChannelMessage::RegisteredPerNoteController { note, index, value }
+        }),
+        (seven(), any::<u8>(), any::<u32>()).prop_map(|(note, index, value)| {
+            ChannelMessage::AssignablePerNoteController { note, index, value }
+        }),
+        (seven(), any::<u32>())
+            .prop_map(|(note, value)| ChannelMessage::PerNotePitchBend { note, value }),
+        (seven(), any::<bool>(), any::<bool>()).prop_map(|(note, detach, reset)| {
+            ChannelMessage::PerNoteManagement {
+                note,
+                detach,
+                reset,
+            }
         }),
     ]
+}
+
+fn midi1_message() -> impl Strategy<Value = Midi1Message> {
+    prop_oneof![
+        (seven(), seven()).prop_map(|(note, velocity)| Midi1Message::NoteOff { note, velocity }),
+        (seven(), seven()).prop_map(|(note, velocity)| Midi1Message::NoteOn { note, velocity }),
+        (seven(), seven()).prop_map(|(note, value)| Midi1Message::PolyPressure { note, value }),
+        (seven(), seven())
+            .prop_map(|(controller, value)| Midi1Message::ControlChange { controller, value }),
+        seven().prop_map(|program| Midi1Message::ProgramChange { program }),
+        seven().prop_map(|value| Midi1Message::ChannelPressure { value }),
+        (0_u16..0x4000).prop_map(|value| Midi1Message::PitchBend { value }),
+    ]
+}
+
+/// Generates a packet of message type `kind` with every other bit random, so
+/// that a reader meets bits that no writer sets.
+fn words_of(kind: u32) -> impl Strategy<Value = [u32; 4]> {
+    any::<[u32; 4]>().prop_map(move |mut words| {
+        words[0] = (words[0] & 0x0FFF_FFFF) | (kind << 28);
+        words
+    })
 }
 
 proptest! {
@@ -256,23 +375,42 @@ proptest! {
         failure_persistence: Some(Box::new(FileFailurePersistence::Direct(
             "tests/voice.proptest-regressions",
         ))),
+        cases: 2048,
         ..ProptestConfig::default()
     })]
 
-    /// Every message Hapto reads survives writing and reading back.
+    /// Checks that every MIDI 2.0 message reads back unchanged from its packet.
     #[test]
-    fn a_written_message_reads_back(group in 0_u8..16, channel in 0_u8..16, voice in voice()) {
-        let message = ChannelVoice { group, channel, voice };
-        prop_assert_eq!(ChannelVoice::decode(message.words()), Some(message));
-        prop_assert_eq!(message.event(4).offset, 4);
+    fn a_midi_2_message_reads_back_from_its_packet(
+        group in 0_u8..16, channel in 0_u8..16, message in midi2_message(),
+    ) {
+        let voice = ChannelVoice { group, channel, message };
+        prop_assert_eq!(ChannelVoice::decode(voice.words()), Some(voice));
     }
 
-    /// Reading any packet never panics, and whatever it reads writes back
-    /// as a packet that reads the same.
+    /// Checks that every MIDI 1.0 message reads back unchanged from its packet.
     #[test]
-    fn any_packet_reads_without_panicking(words in any::<[u32; 4]>()) {
-        if let Some(message) = ChannelVoice::decode(words) {
-            prop_assert_eq!(ChannelVoice::decode(message.words()), Some(message));
+    fn a_midi_1_message_reads_back_from_its_packet(
+        group in 0_u8..16, channel in 0_u8..16, message in midi1_message(),
+    ) {
+        let voice = Midi1Voice { group, channel, message };
+        prop_assert_eq!(Midi1Voice::decode(voice.words()), Some(voice));
+    }
+
+    /// Checks that a MIDI 2.0 packet that reads as a message writes back as
+    /// words that read the same, whatever its unused and reserved bits hold.
+    #[test]
+    fn any_midi_2_packet_reads_as_a_message_that_writes_back(words in words_of(4)) {
+        if let Some(voice) = ChannelVoice::decode(words) {
+            prop_assert_eq!(ChannelVoice::decode(voice.words()), Some(voice));
+        }
+    }
+
+    /// Checks the same for any MIDI 1.0 packet.
+    #[test]
+    fn any_midi_1_packet_reads_as_a_message_that_writes_back(words in words_of(2)) {
+        if let Some(voice) = Midi1Voice::decode(words) {
+            prop_assert_eq!(Midi1Voice::decode(voice.words()), Some(voice));
         }
     }
 }
