@@ -3169,7 +3169,7 @@ lockfile pins the crates it builds.
 - **`dev`** runs the plugin while its author edits it (D110): its standalone
   binary, a `bin` target that needs the crate's `standalone` feature, in debug
   by default. Off Windows, where the app does not run yet, it refuses at once,
-  as `build` does. It serves the page from Vite on the loopback address, on a
+  before any build. It serves the page from Vite on the loopback address, on a
   port nothing else listens on there, writes the page's parameter map through
   the crate's `page_params` test, with Cargo's progress shown, since a new
   crate's first run compiles hundreds of crates there, and builds; with
@@ -3209,13 +3209,15 @@ lockfile pins the crates it builds.
   and builds it, then builds the crate, and lays out its VST3 bundle under
   `target/bundle/`, installing it per user or for every user when asked. It
   takes the module from where Cargo's messages say it wrote it, whatever target
-  folder and target Cargo was given, and puts it under the folder of the machine
-  its own header names. The bundle takes the plugin's name with each character a
-  Windows file name cannot hold written as `-`, so a name with `/` or `:` names
-  one file in the bundle's folder and never a path out of it. A name Windows
-  keeps for a device, whatever follows it after a dot, is refused before the
-  build, and `init` refuses it too, with a crate whose module's name would be
-  one.
+  folder and target Cargo was given. It reads the module's format and processor
+  from its header, and takes the bundle's layout and install folders from a
+  table with a row for each format. A format with no row is refused before the
+  build, with an error that names it. The bundle takes the plugin's name with
+  each character a Windows file name cannot hold written as `-`, so a name with
+  `/` or `:` names one file in the bundle's folder and never a path out of it. A
+  name Windows keeps for a device, whatever follows it after a dot, is refused
+  before the build, and `init` refuses it too, with a crate whose module's name
+  would be one.
 - **`validate`** builds the release bundle and runs pluginval on it, at
   strictness level 5, in pluginval's own process and without its GUI tests,
   keeping its logs in a folder when asked. CI's validator lane runs it, so
@@ -3224,10 +3226,11 @@ lockfile pins the crates it builds.
   `hapto-host` of another version than its own, and goes on: before 1.0, a
   bundle's layout may change between versions.
 
-This repository runs it through an alias, `cargo hapto`, and `cargo xtask`
-keeps the repository's own tasks: its generated files and its checks of
-source. Open: the command lays out a Windows bundle only, and a real host
-needs the bundle built and the host started again after a change to Rust.
+This repository runs it through an alias, `cargo hapto`, and `cargo xtask` keeps
+the repository's own tasks: its generated files and its checks of source. Open:
+the command lays out bundles only for PE modules, so `build` and `validate` run
+only on Windows, and a real host needs the bundle built and the host started
+again after a change to Rust.
 
 **Alternatives.** The alternatives were a library a plugin's own xtask calls,
 which its lockfile would pin with the crates; xtask's `bundle`, as it was,

@@ -5,17 +5,21 @@
 //! release, or in debug with `--debug`, then lays the bundle out under
 //! `target/bundle/` and prints its path; with `--install` or
 //! `--install-system` it copies the bundle into a VST3 folder the host scans.
-//! Windows only for now: a macOS bundle has another layout.
+//! [`Layout::of`] returns the bundle's layout for the module's file format.
 
+mod format;
+mod layout;
 #[cfg(test)]
 mod tests;
 
 use std::fs;
-use std::io::{self, Read};
+use std::io;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context as _, Result, anyhow, bail, ensure};
+use anyhow::{Context as _, Result, anyhow, bail};
 
+use self::format::Format;
+use self::layout::{Folder, Layout};
 use crate::page::{self, PAGE_DEV_URL};
 use crate::tool::{self, Artifact, cargo};
 use crate::workspace::{Plugin, Workspace};
@@ -100,111 +104,13 @@ impl Profile {
     }
 }
 
-/// A VST3 folder a Windows host scans.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Folder {
-    /// `%LOCALAPPDATA%\Programs\Common\VST3`, which needs no administrator.
-    User,
-    /// `%CommonProgramFiles%\VST3`, which needs an administrator's shell.
-    System,
-}
-
-impl Folder {
-    /// Returns the folder's path, from the environment.
-    ///
-    /// # Errors
-    ///
-    /// Returns which variable is not set.
-    pub(crate) fn path(self) -> Result<PathBuf> {
-        let (variable, under) = match self {
-            Folder::User => ("LOCALAPPDATA", ["Programs", "Common", "VST3"].as_slice()),
-            Folder::System => ("CommonProgramFiles", ["VST3"].as_slice()),
-        };
-        let base = std::env::var_os(variable).with_context(|| format!("{variable} is not set"))?;
-        Ok(under
-            .iter()
-            .fold(PathBuf::from(base), |path, part| path.join(part)))
-    }
-
-    /// Returns the other folder.
-    pub(crate) fn other(self) -> Folder {
-        match self {
-            Folder::User => Folder::System,
-            Folder::System => Folder::User,
-        }
-    }
-}
-
-/// Returns the folder under `Contents` that holds the module, for the
-/// machine the header of `module`, a Windows DLL's first bytes, names: the
-/// one a host of that architecture looks in, whatever this command was built
-/// for.
-///
-/// # Errors
-///
-/// Says the bytes are no DLL, or name a machine no folder is known for.
-pub(crate) fn arch_folder(module: &[u8]) -> Result<&'static str> {
-    let at = module
-        .get(0x3c..0x40)
-        .filter(|_| module.starts_with(b"MZ"))
-        .and_then(|bytes| usize::try_from(u32::from_le_bytes(bytes.try_into().ok()?)).ok());
-    let machine = at
-        .and_then(|at| {
-            let pe = module.get(at..at.checked_add(4)?)?;
-            let machine = module.get(at.checked_add(4)?..at.checked_add(6)?)?;
-            (pe == b"PE\0\0").then(|| u16::from_le_bytes([machine[0], machine[1]]))
-        })
-        .context("the built module is no Windows DLL")?;
-    match machine {
-        0x8664 => Ok("x86_64-win"),
-        0xaa64 => Ok("arm64-win"),
-        other => bail!(
-            "no VST3 bundle folder is known for the machine {other:#06x} the module is \
-             built for"
-        ),
-    }
-}
-
-/// What `build` does, on Windows alone so far: a VST3 bundle has another
-/// layout elsewhere, which is not built yet.
-pub(crate) const BUILD_DOES: &str = "build lays out a VST3 bundle";
-
-/// Refuses any system but Windows, for a command that serves Windows alone
-/// so far, before the work that takes time; `what` says what it does.
-///
-/// # Errors
-///
-/// Says `what` is done on Windows only, not yet on `os`.
-pub(crate) fn windows_only(os: &str, what: &str) -> Result<()> {
-    ensure!(os == "windows", "{what} on Windows only, not yet on {os}");
-    Ok(())
-}
-
-/// Returns the first bytes of the file at `path`, enough to hold a DLL's
-/// headers.
-///
-/// # Errors
-///
-/// Returns why it could not be read.
-pub(crate) fn head(path: &Path) -> Result<Vec<u8>> {
-    let mut head = Vec::new();
-    fs::File::open(path)
-        .and_then(|file| file.take(64 * 1024).read_to_end(&mut head))
-        .with_context(|| path.display().to_string())?;
-    Ok(head)
-}
-
-/// Returns the bundle's folder under `root` and the path of the module in
-/// it, both named by the plugin's [`file_name`].
-///
-/// # Errors
-///
-/// Returns why `name` names no file.
-pub(crate) fn layout(root: &Path, name: &str, arch: &str) -> Result<(PathBuf, PathBuf)> {
-    let file = format!("{}.vst3", file_name(name)?);
-    let bundle = root.join(&file);
-    let module = bundle.join("Contents").join(arch).join(&file);
-    Ok((bundle, module))
+/// A bundle that [`build`] laid out.
+#[derive(Debug)]
+pub(crate) struct Bundle {
+    /// The bundle's folder.
+    pub(crate) path: PathBuf,
+    /// The bundle's layout, which holds the folders that it installs to.
+    layout: &'static Layout,
 }
 
 /// The characters a Windows file name cannot hold, besides control
@@ -314,7 +220,7 @@ pub(crate) fn run(options: &Options) -> Result<()> {
     let (workspace, plugin) = Workspace::find(options.package.as_deref())?;
     let bundle = build(&workspace, &plugin, options.page, options.profile)?;
     if let Some(folder) = options.install {
-        install(&bundle, &plugin.name, folder)?;
+        install(&bundle, folder)?;
     }
     if options.profile == Profile::Debug {
         println!(
@@ -327,7 +233,7 @@ pub(crate) fn run(options: &Options) -> Result<()> {
 
 /// Builds `plugin`'s page, when `page` holds and it has one, and its module
 /// in `profile`, and lays out its bundle under `target/bundle/`. Returns the
-/// bundle's folder.
+/// bundle.
 ///
 /// # Errors
 ///
@@ -337,10 +243,11 @@ pub(crate) fn build(
     plugin: &Plugin,
     page: bool,
     profile: Profile,
-) -> Result<PathBuf> {
-    windows_only(std::env::consts::OS, BUILD_DOES)?;
-    // Before the builds, which take minutes, so a name no file can take is
-    // refused at once.
+) -> Result<Bundle> {
+    // These two checks come before the builds, which take minutes, so the
+    // command fails at once on a system whose modules have no layout, or for a
+    // name that no file can take.
+    Layout::of(Format::of_system(std::env::consts::OS))?;
     let file = file_name(&plugin.name)?;
     match plugin.page() {
         None => println!("{} has no page", plugin.package),
@@ -354,8 +261,9 @@ pub(crate) fn build(
             .current_dir(&workspace.root),
     )?;
     let built = module_of(&artifacts, plugin)?;
-    let arch = arch_folder(&head(&built)?)?;
-    let (bundle, module) = layout(&workspace.target.join("bundle"), &plugin.name, arch)?;
+    let (format, arch) = Format::read_file(&built)?;
+    let layout = Layout::of(format)?;
+    let (bundle, module) = layout.paths(&workspace.target.join("bundle"), &file, arch);
     if file != plugin.name {
         println!(
             "the bundle is named {file:?}: a file name cannot hold all of {:?}",
@@ -364,11 +272,14 @@ pub(crate) fn build(
     }
     lay_out(&built, &bundle, &module)?;
     println!("bundled {}", bundle.display());
-    Ok(bundle)
+    Ok(Bundle {
+        path: bundle,
+        layout,
+    })
 }
 
 /// Returns the module `plugin`'s build wrote, as its `artifacts` name it: the
-/// `cdylib`'s DLL, wherever Cargo put it.
+/// `cdylib`'s library, wherever Cargo put it.
 ///
 /// # Errors
 ///
@@ -405,12 +316,21 @@ fn lay_out(built: &Path, bundle: &Path, module: &Path) -> Result<()> {
 /// # Errors
 ///
 /// Returns the copy's failure, worded by [`copy_error`].
-pub(crate) fn install(bundle: &Path, name: &str, folder: Folder) -> Result<()> {
-    let name = file_name(name)?;
-    let into = folder.path()?.join(format!("{name}.vst3"));
-    copy_tree(bundle, &into).map_err(|(path, e)| anyhow!(copy_error(&e, &path, folder)))?;
+pub(crate) fn install(bundle: &Bundle, folder: Folder) -> Result<()> {
+    let name = bundle
+        .path
+        .file_name()
+        .context("a bundle's path has no folder name")?;
+    let into = bundle
+        .layout
+        .install_folder(folder, std::env::var_os)?
+        .join(name);
+    copy_tree(&bundle.path, &into).map_err(|(path, e)| anyhow!(copy_error(&e, &path, folder)))?;
     println!("installed {}", into.display());
-    let other = folder.other().path()?.join(format!("{name}.vst3"));
+    let other = bundle
+        .layout
+        .install_folder(folder.other(), std::env::var_os)?
+        .join(name);
     if other.exists() {
         eprintln!(
             "warning: {} is there too; with two copies the host picks one",

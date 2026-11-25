@@ -4,10 +4,10 @@
 use std::path::{Path, PathBuf};
 
 use super::{
-    App, Build, Copies, DEV_DOES, Ended, Mode, Next, Options, PageSource, RELAUNCH, Seen,
-    after_build, app_command, page_source,
+    App, Build, Copies, Ended, Mode, Next, Options, PageSource, RELAUNCH, Seen, after_build,
+    app_command, page_source, windows_only,
 };
-use crate::bundle::{Profile, windows_only};
+use crate::bundle::Profile;
 use crate::page::{DEV_PORT, PAGE_DEV_URL};
 use crate::workspace::Plugin;
 
@@ -187,9 +187,9 @@ fn source(path: &str) -> String {
 
 #[test]
 fn dev_refuses_any_system_but_windows_before_it_starts_anything() {
-    assert!(windows_only("windows", DEV_DOES).is_ok());
+    assert!(windows_only("windows").is_ok());
     for os in ["macos", "linux"] {
-        let refused = windows_only(os, DEV_DOES).expect_err(os).to_string();
+        let refused = windows_only(os).expect_err(os).to_string();
         assert!(refused.contains("standalone app"), "{refused}");
         assert!(refused.contains(os), "{refused}");
     }
@@ -201,7 +201,7 @@ fn dev_refuses_any_system_but_windows_before_it_starts_anything() {
         .unwrap_or_default();
     assert_eq!(
         first.trim(),
-        "windows_only(std::env::consts::OS, DEV_DOES)?;",
+        "windows_only(std::env::consts::OS)?;",
         "the first thing run does"
     );
 }
