@@ -4086,6 +4086,11 @@ cable's rate.
 Open: the kernel's own queue, which could stamp what comes in and time what goes
 out in place of the threads' clocks.
 
+Open: a SysEx a MIDI 2.0 device sends on two of its groups at once does not
+reach the block whole, since `InputsReader` finds the SysEx it holds by its
+packets' forms alone, whatever their group; holding a SysEx for each group would
+mend it.
+
 **Alternatives.** The alternatives were raw MIDI (`midiC*D*` and `umpC*D*`),
 which one app holds at a time, has no software ports and tells of devices
 through udev alone; one client for the app, letting the kernel translate, which

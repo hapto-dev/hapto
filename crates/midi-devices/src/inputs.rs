@@ -212,6 +212,13 @@ impl OpenDevices for Inputs {
 /// end came, and other devices' messages go on meanwhile without cutting
 /// into it. One longer than its input's room goes out as it comes.
 ///
+/// Open: when a MIDI 2.0 device, which Linux reads with all its groups on
+/// one input, sends SysEx on two groups at once, neither reaches the block
+/// whole. The reader finds the SysEx it holds by the packets' forms alone,
+/// whatever their group: another group's start lets the one held go as far
+/// as it came, and another group's end lets it go early, with that end.
+/// Holding a SysEx for each group would mend it.
+///
 /// # Examples
 ///
 /// ```
@@ -335,11 +342,14 @@ fn sysex_form(words: [u32; 4]) -> Option<SysExForm> {
 /// Returns the time and packet count of the next message that `ring` has
 /// ready for a block that starts at `now`.
 ///
-/// A SysEx is ready once its end has come, as every packet to its end, the
-/// real-time messages among them included, at its end's time. Until then it
-/// waits, unless the ring has less room left than [`BURST`] and is at least
-/// half full. It then goes out a packet at a time as it came, so the
-/// device's next buffer of it still fits.
+/// A SysEx is ready once its end has come, and is every packet to its end,
+/// the real-time messages among them included, at the time its end came.
+/// Until then it waits, unless the ring has less room left than a device
+/// hands over at once, [`BURST`], and is at least half full, when it goes
+/// out a packet at a time as it came: so a device's next buffer of it still
+/// fits.
+///
+/// Open: a SysEx on two groups at once, as [`InputsReader`] says.
 fn ready(ring: &Consumer, now: Instant) -> Option<(Instant, usize)> {
     let (at, words) = ring.peek()?;
     if at >= now {
