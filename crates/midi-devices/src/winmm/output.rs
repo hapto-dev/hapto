@@ -68,7 +68,7 @@ struct Header(MIDIHDR);
 /// with.
 struct Sysex {
     header: Box<Header>,
-    /// The SysEx joined: the driver reads its bytes in place.
+    /// The joined SysEx, whose bytes the driver reads in place.
     outgoing: OutgoingSysex,
 }
 
@@ -175,10 +175,11 @@ impl fmt::Debug for Output {
 }
 
 impl Output {
-    /// Opens `device` to send what `consumer`'s ring holds, which `reading`
-    /// marks read, its thread woken by `signal`. A refusal hands the
-    /// consumer back, except where the sending thread could not start: the
-    /// failed start dropped it.
+    /// Opens `device` to send what `consumer`'s ring holds, with `reading`
+    /// marking the ring as read and `signal` waking its thread.
+    ///
+    /// On an error, the consumer comes back, unless the thread failed to
+    /// start and took it.
     pub(crate) fn open(
         device: &Device,
         consumer: Consumer,
@@ -281,10 +282,11 @@ impl Drop for Output {
     }
 }
 
-/// The output's thread: it sends each packet once its time comes, until
-/// the output stops it, and hands the ring back. It waits for `signal`
-/// while nothing waits to be sent, and on its own timer for a packet due
-/// later, which the signal also ends.
+/// Runs the output's thread, which sends each packet when it is due, and
+/// returns the ring's consumer when the output stops it.
+///
+/// The thread waits for `signal` while nothing is waiting to be sent, and on
+/// its own timer for a packet due later, which the signal also ends.
 fn send(handle: Handle, shared: &Shared, signal: &Signal, mut consumer: Consumer) -> Consumer {
     let timer = Timer::new();
     let mut sysex = Sysex::new();

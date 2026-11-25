@@ -29,19 +29,20 @@ impl Direction {
     }
 }
 
-/// What identifies a device from one look at the system's list to the
-/// next.
+/// A device's id, which survives the system renumbering its devices as
+/// others come and go.
 ///
-/// It survives the system's renumbering, which moves a device's place in
-/// the list when another comes or goes. It is a string that identifies the
-/// device, with the device's place among the devices that share that
-/// string, and its direction. On WinMM the string is the device's interface
-/// path, or its name for a device without one. On ALSA it is, for a card's
-/// port, the card's USB vendor, product and serial number, or where a card
-/// without one sits on its bus, then the port's number; for a software
-/// port, its client's name and the port's own. Compare it, keep it and show
-/// it in a log; read nothing into its text, which only says which device it
-/// identifies.
+/// It is made of the device's direction, a key, and its place among the
+/// devices that share both. The key depends on the backend.
+///
+/// - On WinMM, it is the device's interface path, or its name if it has
+///   none.
+/// - On ALSA, a card's port has the card's key and then the port's number.
+///   A USB card with a serial number is keyed by its device's vendor,
+///   product and serial, and any other card by where it sits on its bus. A
+///   software port has its client's name and its own.
+///
+/// Compare it, keep it and log it, but don't rely on its text.
 ///
 /// # Examples
 ///

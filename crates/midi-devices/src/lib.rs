@@ -1,28 +1,34 @@
 //! The computer's MIDI devices as Universal MIDI Packets, for an app that
 //! runs a plugin in place of a host.
 //!
-//! [`Devices`] is the system's list, on the main thread: each [`Device`] is
-//! identified by a [`DeviceId`] that survives the system's renumbering, and
-//! a [`tick`](Devices::tick) tells what came and went. [`inputs`] makes the
-//! app's MIDI in: [`Inputs`] opens devices on the main thread, and
-//! [`InputsReader`] reads every one into each block on the audio thread, at
-//! frames, stamped on one [`Instant`] clock, with every MIDI 1.0 device's
-//! messages merged on group 1 as a host hands a plugin its MIDI.
-//! [`outputs`] makes the app's MIDI out: [`Outputs`] opens devices on the
-//! main thread, and [`OutputsWriter`] hands each block's MIDI to every one
-//! on the audio thread, sent by a thread of the device's own as soon as its
-//! block has played, or each message at its frame's time, as [`Timing`]
-//! says. A device's messages travel between the system's thread and the
-//! audio thread through a ring that never waits, locks or allocates, either
-//! way.
+//! - [`Devices`] is the system's list, on the main thread. Each [`Device`]
+//!   has a [`DeviceId`] that survives renumbering, and
+//!   [`tick`](Devices::tick) returns what came and went.
+//! - [`inputs`] makes the app's MIDI in. [`Inputs`] opens devices on the main
+//!   thread, and [`InputsReader`] reads them all into each block on the
+//!   audio thread, at frames timed by one [`Instant`] clock. Every MIDI 1.0
+//!   device is merged on group 1, as a host hands a plugin its MIDI.
+//! - [`outputs`] makes the app's MIDI out. [`Outputs`] opens devices on the
+//!   main thread, and [`OutputsWriter`] hands each block's MIDI to them on
+//!   the audio thread. Each device's own thread sends it as soon as the
+//!   block has played, or each message at its frame's time, as [`Timing`]
+//!   says.
 //!
 //! A device's messages pass between the system's thread and the audio thread
 //! through a ring that never waits, locks or allocates, either way.
 //!
-//! The backends are WinMM on Windows, MIDI 1.0 alone, and ALSA's sequencer
-//! on Linux, MIDI 1.0 both ways and MIDI 2.0 in where the kernel and
-//! alsa-lib support UMP. Open: Windows MIDI Services and CoreMIDI. On a
-//! system with no backend the list is empty and no input or output opens.
+//! Every device reads and writes UMP here, whatever the system's API carries.
+//! A MIDI 1.0 device's bytes become packets, upgraded to MIDI 2.0 by the
+//! device's own translation, and what goes out to one is downgraded to MIDI
+//! 1.0. Only an app links this crate, so a plugin in a host never sees a
+//! device.
+//!
+//! The backends are WinMM and ALSA. WinMM, on Windows, carries only MIDI
+//! 1.0. ALSA's sequencer, on Linux, carries MIDI 1.0 both ways, and MIDI 2.0
+//! in where the kernel and alsa-lib support UMP. Elsewhere the list is empty
+//! and no input or output opens.
+//!
+//! Open: backends for Windows MIDI Services and CoreMIDI.
 //!
 //! # Examples
 //!

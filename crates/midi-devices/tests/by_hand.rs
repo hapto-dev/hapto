@@ -1,11 +1,16 @@
 //! By-hand tests of the computer's own MIDI devices, ignored because each
 //! needs a device and a person.
 //!
-//! The tests that replug or unplug a device follow the one whose name holds
-//! `HAPTO_DEVICE`, else the first that is not the system's synth. The long
-//! SysEx coming in needs a loopback port whose name starts with
-//! `HAPTO_LOOPBACK`, or else with `loopMIDI` on Windows, a port loopMIDI
-//! adds, or `Midi Through` on Linux, the kernel's own.
+//! Run them with `cargo test -p hapto-midi-devices --test by_hand --
+//! --ignored --nocapture --test-threads 1`, with a test's name after
+//! `--ignored` to run only that one.
+//!
+//! The replug and unplug tests use the device whose name contains
+//! `HAPTO_DEVICE`, or if that is unset, the first that is not the system's
+//! synth. The long SysEx test needs a loopback port whose name starts with
+//! `HAPTO_LOOPBACK`, or if that is unset, with `loopMIDI` on Windows or
+//! `Midi Through` on Linux. The loopMIDI app adds the first, and the kernel
+//! adds the second.
 
 use std::thread;
 use std::time::Duration;

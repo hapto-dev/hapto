@@ -294,17 +294,19 @@ impl OpenDevices for Outputs {
 /// The audio thread's side of the app's MIDI out, which hands each block's
 /// MIDI to every open output, as the outputs' [`Timing`] says.
 ///
-/// The plugin's MIDI 2.0 is downgraded to MIDI 1.0 here, by the
-/// specification's Default Translation, since every backend sends only
-/// MIDI 1.0 for now; on Linux the kernel upgrades it for a MIDI 2.0 device.
+/// The writer downgrades the plugin's MIDI 2.0 to MIDI 1.0 by the
+/// specification's Default Translation, because every backend sends only
+/// MIDI 1.0 for now. On Linux the kernel upgrades it for a MIDI 2.0 device.
 /// What MIDI 1.0 has no message for is dropped and counted in
-/// [`lost`](Self::lost). A packet goes to every open output in the order
-/// the plugin sent it, and an output's thread sends it once its time comes,
-/// at once if that has passed: never earlier, and never dropped for being
-/// late. On Linux, a burst or a long SysEx goes no faster than a MIDI cable
-/// carries one. Once a block has handed an output its
-/// MIDI, the writer wakes the output's thread, a signal that never blocks:
-/// so the block's first message leaves the moment the block has played.
+/// [`lost`](Self::lost).
+///
+/// Each output gets the packets in the order the plugin sent them, and its
+/// thread sends each when its time comes, or at once if that has passed, so
+/// never early and never dropped for being late. On Linux, a burst or a
+/// long SysEx goes no faster than a MIDI cable carries it. Once a block has
+/// handed an output its MIDI, the writer wakes the output's thread with a
+/// signal that never blocks, so the block's first message leaves the moment
+/// the block has played.
 ///
 /// # Examples
 ///

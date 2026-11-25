@@ -44,12 +44,13 @@ struct Ring {
     head: AtomicUsize,
     /// Packets taken so far, wrapping. Only the consumer stores it.
     tail: AtomicUsize,
-    /// How many packets found no room. Only the producer adds.
+    /// Packets dropped for lack of room, counted only by the producer.
     no_room: AtomicU64,
-    /// How many messages the consumer dropped itself. Only it adds.
+    /// Messages that the consumer dropped itself, counted only by the
+    /// consumer.
     consumer_dropped: AtomicU64,
-    /// Counts the devices that have pushed into the ring: a new one starts
-    /// the stream over.
+    /// How many devices have pushed into the ring. A new device starts the
+    /// stream over.
     generation: AtomicU32,
     /// Whether a device takes from the ring now. An output's producer pushes
     /// only then.
@@ -125,7 +126,7 @@ impl Producer {
         self.0.reading.load(Ordering::Acquire)
     }
 
-    /// How many packets were dropped since the ring was made: see
+    /// Returns how many packets have been dropped, counted as in
     /// [`Consumer::dropped`].
     pub(crate) fn dropped(&self) -> u64 {
         self.0.dropped()
@@ -151,17 +152,17 @@ impl Consumer {
         self.0.reading.store(reading, Ordering::Release);
     }
 
-    /// Marks the ring as read by a device until the returned guard drops.
-    /// A device's thread holds the guard, so the mark ends when the thread
-    /// does, however it ends, and the writer never pushes into a ring that
-    /// nothing reads.
+    /// Marks the ring as read until the returned guard drops. A device's
+    /// thread holds the guard, so the ring is marked as read until the
+    /// thread ends, however it ends, and the writer never pushes into a ring
+    /// that nobody reads.
     pub(crate) fn reading(&self) -> Reading {
         self.set_reading(true);
         Reading(Arc::clone(&self.0))
     }
 
-    /// Takes every packet waiting, unread: what was pushed before a device
-    /// took the ring is not its to send.
+    /// Discards every waiting packet, because a device doesn't send what was
+    /// pushed before it took the ring.
     pub(crate) fn clear(&mut self) {
         let ring = &*self.0;
         // Acquire and release as in `pop`, for every slot at once.
@@ -169,9 +170,9 @@ impl Consumer {
         ring.tail.store(head, Ordering::Release);
     }
 
-    /// Counts a message the consumer dropped itself, a device's refusal or
-    /// a SysEx it could not send whole, among those
-    /// [`dropped`](Self::dropped) counts.
+    /// Counts a message that the consumer dropped itself, such as one that
+    /// the device refused or a SysEx that it couldn't send whole.
+    /// [`dropped`](Self::dropped) includes these.
     #[cfg_attr(
         all(not(hapto_backend), not(test)),
         expect(
@@ -263,8 +264,8 @@ impl Consumer {
         self.0.generation.load(Ordering::Acquire)
     }
 
-    /// How many packets were dropped since the ring was made: those that
-    /// found no room, and the messages the consumer dropped itself.
+    /// Returns how many packets have been dropped. That is the packets that
+    /// found no room, plus the messages that the consumer dropped itself.
     pub(crate) fn dropped(&self) -> u64 {
         self.0.dropped()
     }

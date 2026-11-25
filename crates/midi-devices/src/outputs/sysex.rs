@@ -4,8 +4,8 @@ use hapto_ump::{Event, SysExJoin};
 
 use crate::ring::Consumer;
 
-/// The longest SysEx an output sends whole; a longer one is dropped and
-/// counted.
+/// The longest SysEx that an output sends whole. A longer one is dropped
+/// and counted.
 pub(crate) const SYSEX_BYTES: usize = 64 * 1024;
 
 /// A SysEx being joined from the packets an output's ring hands over.
@@ -128,14 +128,14 @@ mod tests {
         assert!(!join(&mut sysex, &ring, Continue, &[1, 2, 3]));
         assert!(!join(&mut sysex, &ring, End, &[4]));
         assert_eq!(ring.dropped(), 1);
-        // One longer than the room.
+        // A SysEx longer than the join's room.
         assert!(!join(&mut sysex, &ring, Start, &[1; 6]));
         for _ in 0..SYSEX_BYTES / 6 {
             join(&mut sysex, &ring, Continue, &[2; 6]);
         }
         assert!(!join(&mut sysex, &ring, End, &[3]));
         assert_eq!(ring.dropped(), 2);
-        // The next goes whole again.
+        // The next is whole again.
         assert!(join(&mut sysex, &ring, Complete, &[9]));
         assert_eq!(sysex.bytes, [0xF0, 9, 0xF7]);
     }
@@ -161,8 +161,8 @@ mod tests {
         assert!(!join_on(&mut sysex, &ring, 0, Start, &[1; 6]));
         assert!(!join_on(&mut sysex, &ring, 1, Complete, &[7]));
         assert_eq!(ring.dropped(), 1);
-        // The one under way goes on whole: the drop counted on the ring was
-        // this output's own, not a packet lost.
+        // The SysEx in progress is still whole, because the drop on the ring
+        // was this output's own, not a lost packet.
         assert!(join_on(&mut sysex, &ring, 0, End, &[2]));
         let expected: Vec<u8> = [0xF0].into_iter().chain([1; 6]).chain([2, 0xF7]).collect();
         assert_eq!(sysex.bytes, expected);
@@ -185,7 +185,7 @@ mod tests {
         assert!(!join(&mut sysex, &ring, Start, &[1; 6]));
         assert!(!sysex.join(&Event::new(0, [0x2090_3C7F, 0, 0, 0]), &ring));
         assert_eq!(ring.dropped(), 1);
-        // The rest of it passes unread, and the next goes whole.
+        // The rest passes unread, and the next is whole.
         assert!(!join(&mut sysex, &ring, End, &[2]));
         assert!(join(&mut sysex, &ring, Complete, &[9]));
     }

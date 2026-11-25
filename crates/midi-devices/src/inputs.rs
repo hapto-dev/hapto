@@ -1,11 +1,10 @@
-//! The app's MIDI in: devices opened on the main thread, and read into each
-//! block on the audio thread, every MIDI 1.0 device merged on one group as
-//! a host hands a plugin its MIDI.
+//! The app's MIDI in, with devices opened on the main thread and read into
+//! each block on the audio thread. Every MIDI 1.0 device is merged on one
+//! group, as a host hands a plugin its MIDI.
 
-// Audio-path code: the reader runs on the audio thread, where a panic ends
-// the app's audio, so indexing, unwrap, expect, panic and unchecked
-// arithmetic are refused, and a site that is provably safe says why in an
-// `#[expect]`.
+// The reader runs on the audio thread, where a panic ends the app's audio,
+// so indexing, unwrap, expect, panic and unchecked arithmetic are denied. A
+// provably safe site gives its reason in an `#[expect]`.
 #![cfg_attr(
     not(test),
     deny(
@@ -68,12 +67,12 @@ pub fn inputs(room: usize) -> (Inputs, InputsReader) {
 
 /// The main thread's side of the app's MIDI in, with the open devices.
 ///
-/// Every MIDI 1.0 device's messages arrive on group 1, merged, as a host
-/// hands a plugin its MIDI, so a plugin hears in the app what it hears in a
-/// host, and a mapping learned in one plays in the other. On Linux, a
-/// MIDI 2.0 device's messages arrive on the groups the device sends them
-/// on. A device that leaves while open is closed at the next
-/// [`tick`](Self::tick). Every input closes as this drops.
+/// Every MIDI 1.0 device's messages arrive merged on group 1, as a host
+/// hands a plugin its MIDI, so a plugin gets the same MIDI in the app as in
+/// a host, and a mapping learned in one works in the other. On Linux, a
+/// MIDI 2.0 device's messages arrive on the groups that the device sends
+/// them on. A device that leaves while open is closed at the next
+/// [`tick`](Self::tick), and every input closes when this drops.
 ///
 /// Open: how learn tells devices apart, because a packet doesn't name its
 /// device.
@@ -342,14 +341,13 @@ fn sysex_form(words: [u32; 4]) -> Option<SysExForm> {
 /// Returns the time and packet count of the next message that `ring` has
 /// ready for a block that starts at `now`.
 ///
-/// A SysEx is ready once its end has come, and is every packet to its end,
-/// the real-time messages among them included, at the time its end came.
-/// Until then it waits, unless the ring has less room left than a device
-/// hands over at once, [`BURST`], and is at least half full, when it goes
-/// out a packet at a time as it came: so a device's next buffer of it still
-/// fits.
+/// A SysEx is ready once its end has come, as every packet to its end, the
+/// real-time messages among them included, at its end's time. Until then it
+/// waits, unless the ring has less room left than [`BURST`] and is at least
+/// half full. It then goes out a packet at a time as it came, so the
+/// device's next buffer of it still fits.
 ///
-/// Open: a SysEx on two groups at once, as [`InputsReader`] says.
+/// Open: a SysEx on two groups at once, which [`InputsReader`] describes.
 fn ready(ring: &Consumer, now: Instant) -> Option<(Instant, usize)> {
     let (at, words) = ring.peek()?;
     if at >= now {
