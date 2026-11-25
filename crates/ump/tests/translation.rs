@@ -1,7 +1,7 @@
-//! Translating between MIDI 1.0 and MIDI 2.0 by the Default Translation in
-//! appendix D of the UMP and MIDI 2.0 Protocol specification: the upgrade
-//! an exporter makes on the way in, the downgrade on the way out, and the
-//! round trip that must give back what MIDI 1.0 sent.
+//! Tests the Default Translation between MIDI 1.0 and MIDI 2.0 in appendix D
+//! of the UMP and MIDI 2.0 Protocol specification. It covers an exporter's
+//! upgrade on the way in, the downgrade on the way out, and the round trip,
+//! which must give back what MIDI 1.0 sent.
 
 use hapto_ump::{
     Attribute, Bank, ChannelMessage, ChannelVoice, Downgrade, Event, EventList, Midi1Message,
@@ -22,8 +22,7 @@ fn cc(controller: u8, value: u8) -> Midi1Voice {
     one(Midi1Message::ControlChange { controller, value })
 }
 
-/// Upgrades `sent`, each a MIDI 1.0 message at its frame, as one block, and
-/// returns what came out with each one's frame.
+/// Upgrades `sent` as one block and returns the output with its frames.
 fn upgrade(upgrade: &mut Upgrade, sent: &[(u32, Midi1Voice)]) -> Vec<(u32, ChannelMessage)> {
     let input: Vec<Event> = sent
         .iter()
@@ -82,7 +81,7 @@ fn a_note_on_at_velocity_0_is_a_note_off_at_the_centre() {
                     attribute: none
                 }
             ),
-            // D.3.1: a velocity of 1 is 0x0200.
+            // A velocity of 1 becomes 0x0200 (appendix D.3.1).
             (
                 1,
                 ChannelMessage::NoteOn {
@@ -150,8 +149,8 @@ fn a_high_byte_alone_goes_out_at_the_end_of_its_block() {
 
 #[test]
 fn a_high_byte_sent_alone_is_marked_apart_from_a_low_byte_of_0() {
-    // The same value either way, but a reader of the width it was sent at
-    // must tell a low byte that never came from one of 0.
+    // Both have the same value, but a reader at the sent width must tell a
+    // missing low byte apart from a low byte of 0.
     let mut up = Upgrade::new();
     let mut out = EventList::with_capacity(4);
     let high = [cc(99, 2).event(0), cc(98, 5).event(0), cc(6, 64).event(1)];
@@ -176,9 +175,9 @@ fn another_high_byte_or_a_new_address_ends_the_one_held() {
         (0, cc(99, 2)),
         (0, cc(98, 5)),
         (1, cc(6, 10)),
-        // A second high byte sends the first.
+        // A second high byte makes the upgrade send the first.
         (2, cc(6, 20)),
-        // A new address sends the second, under the old address.
+        // A new address makes the upgrade send the second, under the old one.
         (3, cc(99, 7)),
         (3, cc(98, 1)),
         (4, cc(6, 30)),
@@ -201,7 +200,7 @@ fn an_rpn_is_a_registered_controller() {
         (0, cc(6, 12)),
         (0, cc(38, 0)),
     ];
-    // Pitch bend sensitivity, 12 semitones.
+    // Pitch bend sensitivity of 12 semitones.
     assert_eq!(
         upgrade(&mut Upgrade::new(), &sent),
         [(
@@ -246,7 +245,8 @@ fn a_low_byte_sent_first_waits_for_its_high_byte() {
 
 #[test]
 fn an_address_sent_again_keeps_its_high_byte_for_the_low_byte() {
-    // D.3.3 holds the latest high byte, and a low byte goes out with it.
+    // The upgrade holds the latest data entry high byte (6), and a low byte
+    // (38) goes out with it (appendix D.3.3).
     let mut up = Upgrade::new();
     let sent = [
         (0, cc(99, 2)),
@@ -264,7 +264,7 @@ fn an_address_sent_again_keeps_its_high_byte_for_the_low_byte() {
             (3, assignable(2, 5, 100 << 7 | 3)),
         ]
     );
-    // A move of the low byte alone, a block later.
+    // A change of the low byte alone, a block later.
     let fine = [(0, cc(99, 2)), (0, cc(98, 5)), (1, cc(38, 4))];
     assert_eq!(
         upgrade(&mut up, &fine),
@@ -356,8 +356,8 @@ fn increment_and_decrement_are_controllers_of_their_own() {
             ),
         ]
     );
-    // A high byte held goes out first, so a MIDI 1.0 receiver steps the
-    // value it sets rather than the one before.
+    // A held high byte goes out first, so a MIDI 1.0 receiver steps the value
+    // that it sets, not the one before.
     let sent = [
         (0, cc(99, 2)),
         (0, cc(98, 5)),
@@ -393,7 +393,7 @@ fn bank_select_is_held_for_the_program_change_that_carries_it() {
             }
         )]
     );
-    // Controllers 0 and 32 alone translate to nothing.
+    // Bank select (0 and 32) alone translates to nothing.
     assert_eq!(upgrade(&mut up, &[(0, cc(0, 1)), (0, cc(32, 2))]), []);
     let bank = Some(Bank { msb: 1, lsb: 2 });
     assert_eq!(
@@ -409,7 +409,7 @@ fn bank_select_is_held_for_the_program_change_that_carries_it() {
 
 #[test]
 fn a_bank_byte_sent_alone_selects_a_bank_with_its_partner_at_0() {
-    // D.3.4: a program change carries the bank select values current.
+    // A program change carries the current bank (appendix D.3.4).
     let program = one(Midi1Message::ProgramChange { program: 5 });
     for (byte, bank) in [
         (cc(0, 1), Bank { msb: 1, lsb: 0 }),
@@ -460,8 +460,8 @@ fn every_channel_still_holding_a_high_byte_sends_it_at_the_end_of_the_block() {
     for (frame, (group, channel, high)) in (0..).zip([(3, 9, 30), (0, 15, 20), (0, 4, 10)]) {
         sent.extend([cc(99, 2), cc(98, 5), cc(6, high)].map(|cc| (frame, on(group, channel, cc))));
     }
-    // The low byte completes one; the other two go out at the end, group by
-    // group and channel by channel.
+    // The low byte completes one data entry. The other two go out at the end
+    // of the block, ordered by group and then channel.
     sent.push((5, on(0, 15, cc(38, 1))));
     assert_eq!(
         upgrade(&mut Upgrade::new(), &sent),
@@ -482,8 +482,7 @@ fn other_packets_pass_as_they_are() {
     assert_eq!(out.as_slice(), [midi2, sysex]);
 }
 
-/// Downgrades `messages`, each a MIDI 2.0 message at frame 0, and returns
-/// what came out.
+/// Downgrades `messages`, each at frame 0, and returns the output.
 fn downgrade(downgrade: &mut Downgrade, messages: &[ChannelMessage]) -> Vec<Midi1Message> {
     let input: Vec<Event> = messages
         .iter()
@@ -593,7 +592,7 @@ fn what_midi_1_cannot_carry_is_dropped_and_counted() {
     ];
     assert_eq!(downgrade(&mut down, &lost), []);
     assert_eq!(down.lost(), 6);
-    // A note's attribute is lost, and the note still goes out.
+    // A note's attribute is lost, but the note still goes out.
     let pitched = ChannelMessage::NoteOn {
         note: 60,
         velocity: 0xFFFF,
@@ -611,8 +610,8 @@ fn what_midi_1_cannot_carry_is_dropped_and_counted() {
 
 #[test]
 fn a_midi_2_packet_of_a_reserved_status_is_dropped_and_counted() {
-    // Status 0x7, which no MIDI 2.0 channel voice message has, and which a
-    // MIDI 1.0 destination may not be sent.
+    // No MIDI 2.0 channel voice message has status 0x7, and a MIDI 1.0
+    // destination must not be sent one.
     let reserved = Event::new(0, [0x4070_3C00, 0xFFFF_0000, 0, 0]);
     let mut down = Downgrade::new();
     let mut out = EventList::with_capacity(4);
@@ -623,8 +622,8 @@ fn a_midi_2_packet_of_a_reserved_status_is_dropped_and_counted() {
 
 #[test]
 fn the_types_a_midi_1_destination_takes_in_ump_pass_as_they_are() {
-    // Utility, system, MIDI 1.0 channel voice, SysEx, SysEx 8, flex data and
-    // stream packets: a UMP MIDI 1.0 device may use each.
+    // A UMP MIDI 1.0 device may use utility, system, MIDI 1.0 channel
+    // voice, SysEx, SysEx 8, flex data and stream packets.
     let others = [
         Event::new(0, [0x0020_0400, 0, 0, 0]),
         Event::new(0, [0x10F8_0000, 0, 0, 0]),
@@ -641,8 +640,8 @@ fn the_types_a_midi_1_destination_takes_in_ump_pass_as_they_are() {
     assert_eq!(down.lost(), 0);
 }
 
-/// Every MIDI 1.0 message, each data entry with its whole address and both
-/// bytes, one sequence per message.
+/// Returns every MIDI 1.0 message as one sequence each, with each data entry
+/// given its whole address and both bytes.
 fn every_midi_1_message() -> Vec<Vec<Midi1Message>> {
     let cc = |controller, value| Midi1Message::ControlChange { controller, value };
     let mut all = Vec::new();
@@ -677,7 +676,7 @@ fn every_midi_1_message() -> Vec<Vec<Midi1Message>> {
 
 #[test]
 fn midi_1_comes_back_from_midi_2_as_it_was_sent() {
-    // D.1.2: MIDI 1.0 to MIDI 2.0 to MIDI 1.0 gives back the same data.
+    // MIDI 1.0 comes back unchanged from MIDI 2.0 (appendix D.1.2).
     let mut up = Upgrade::new();
     let mut down = Downgrade::new();
     for sent in every_midi_1_message() {
@@ -698,7 +697,7 @@ fn midi_1_comes_back_from_midi_2_as_it_was_sent() {
 
 #[test]
 fn a_note_on_at_velocity_0_comes_back_as_its_equivalent() {
-    // A note-off, which MIDI 1.0 reads the same.
+    // As a note-off, which MIDI 1.0 reads the same way.
     let sent = [one(Midi1Message::NoteOn {
         note: 60,
         velocity: 0,

@@ -15,7 +15,7 @@ fn set_of(count: usize) -> std::sync::Arc<hapto_params::ParamSet> {
     common::set_of(count, 0.5)
 }
 
-/// Learn over three parameters at 0.5, as `config` sets it up.
+/// Returns a rig with three parameters at 0.5.
 fn rig_with(config: Config) -> Rig {
     Rig::new(3, 0.5, config)
 }
@@ -307,9 +307,9 @@ fn an_nrpn_high_byte_waits_for_its_low_byte_through_polls_with_no_block_between(
 
 #[test]
 fn a_low_byte_of_0_a_block_after_its_high_byte_learns_14_bit() {
-    // A value whose low byte is 0, such as 8192, over DIN at a small buffer:
-    // the high byte's block ends, and the upgrade sends it alone, before the
-    // low byte comes.
+    // Over DIN with a small buffer, a block can end between the bytes of a
+    // value whose low byte is 0, such as 8192. The upgrade then sends the
+    // high byte alone, before the low byte comes.
     let mut rig = rig();
     let target = rig.ids[0];
     rig.learn.arm(target, Takes::CONTROLLER).expect("known");

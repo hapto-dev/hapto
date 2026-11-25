@@ -1,8 +1,9 @@
-//! The UMP crate's audio-thread calls neither allocate nor free: a block's
-//! list filled past its capacity, read, changed in place and cleared, words
-//! split into packets, channel voice messages decoded and encoded, a block
-//! upgraded from MIDI 1.0 and downgraded back, and a device's byte stream
-//! read into packets and written back.
+//! Tests that the UMP crate's audio-thread calls neither allocate nor free:
+//! - A block's list filled past capacity, read, changed in place and cleared.
+//! - Words split into packets.
+//! - Channel voice messages decoded and encoded.
+//! - A block upgraded from MIDI 1.0 and downgraded back.
+//! - A device's byte stream read into packets and written back.
 
 hapto_testkit::install_alloc_gate!();
 
@@ -14,10 +15,10 @@ use hapto_ump::{
 
 const CAPACITY: usize = 256;
 
-/// The group and channel pairs every message goes out on.
+/// The group and channel pairs that every message is sent on.
 const PLACES: [(u8, u8); 4] = [(0, 0), (0, 9), (15, 0), (15, 9)];
 
-/// Every MIDI 2.0 channel voice message, on two groups and two channels.
+/// Returns every MIDI 2.0 channel voice message at each of `PLACES`.
 fn voices() -> Vec<ChannelVoice> {
     let attribute = Attribute { kind: 3, data: 1 };
     let messages = [
@@ -91,8 +92,8 @@ fn voices() -> Vec<ChannelVoice> {
         .collect()
 }
 
-/// Every MIDI 1.0 channel voice message, data entries with their address,
-/// on two groups and two channels.
+/// Returns every MIDI 1.0 channel voice message at each of `PLACES`, with an
+/// address before each data entry.
 fn midi1_voices() -> Vec<Midi1Voice> {
     let cc = |controller, value| Midi1Message::ControlChange { controller, value };
     let messages = [
@@ -119,7 +120,7 @@ fn midi1_voices() -> Vec<Midi1Voice> {
         cc(98, 44),
         cc(6, 64),
         cc(38, 1),
-        // A high byte left held until the end of the block.
+        // A high byte held until the end of the block.
         cc(101, 0),
         cc(100, 0),
         cc(6, 12),
@@ -225,7 +226,7 @@ fn upgrading_and_downgrading_a_block_does_not_allocate() {
         .zip(0..)
         .map(|(voice, offset)| voice.event(offset))
         .collect();
-    // Making an upgrade allocates its channels' state; using it does not.
+    // `Upgrade::new` allocates the channels' state, but using it does not.
     let mut upgrade = Upgrade::new();
     let mut downgrade = Downgrade::new();
     let mut upgraded = EventList::with_capacity(CAPACITY);
@@ -246,23 +247,25 @@ fn upgrading_and_downgrading_a_block_does_not_allocate() {
         }
         seen
     });
-    // Each place's 17 messages upgrade to 10: bank select and the
-    // addresses send nothing of their own, and each data entry is one
-    // controller. They downgrade to 18: the bank goes out with its
-    // program, and the held high byte with its low byte.
+    // Each place's 17 messages upgrade to 10, because bank select and the
+    // addresses send nothing alone and each data entry becomes one
+    // controller. They downgrade to 18, because the bank goes out with its
+    // program and the held high byte with its low byte.
     assert_eq!(seen.0, PLACES.len() * 10);
     assert_eq!(seen.1, PLACES.len() * 18);
-    // Of MIDI 2.0's 15 messages, MIDI 1.0 loses the relative and per-note
-    // six, and the other nine are 17: the bank and the two controllers
-    // grow. The note-on's attribute is lost too, on each of four rounds.
+    // Of MIDI 2.0's 15 messages:
+    // - MIDI 1.0 loses the six relative and per-note ones.
+    // - The other nine become 17, because the bank and the two controllers
+    //   each take several messages.
+    // - The note-on's attribute is lost too, in each of the four rounds.
     assert_eq!(seen.2, PLACES.len() * 17);
     assert_eq!(downgrade.lost(), 4 * 7 * PLACES.len() as u64);
 }
 
 #[test]
 fn reading_a_byte_stream_and_writing_it_back_does_not_allocate() {
-    // Running status, a clock inside a note, a system common message, and
-    // a SysEx long enough to take three packets, cut short at the end.
+    // Running status, a clock inside a note, a system common message, a SysEx
+    // of three packets and, at the end, a SysEx cut short.
     let mut stream: Vec<u8> = vec![0x90, 0x3C, 0xF8, 0x7F, 0x3E, 0x7F, 0xF2, 0x10, 0x20, 0xF0];
     stream.extend(1..=15);
     stream.extend([0xF7, 0xF0, 0x01]);
@@ -283,9 +286,9 @@ fn reading_a_byte_stream_and_writing_it_back_does_not_allocate() {
         }
         seen
     });
-    // Two notes, the clock, song position and the SysEx's three packets;
-    // the SysEx cut short is held. Each writes in full: the second note's
-    // status, which running status left out, comes back.
+    // Two notes, the clock, song position and the SysEx's three packets. The
+    // SysEx cut short is held. Each packet writes back in full, so the second
+    // note's status, which running status left out, comes back.
     assert_eq!(packets, 7);
     assert_eq!(written, 3 + 1 + 3 + 3 + 1 + 15 + 1);
 }

@@ -1,5 +1,4 @@
-//! MIDI 1.0's byte stream read into packets and written back, as a device
-//! that speaks it meets Hapto's UMP.
+//! Tests reading MIDI 1.0's byte stream into packets and writing it back.
 
 use hapto_ump::{ByteStream, Bytes};
 use proptest::prelude::*;
@@ -24,7 +23,7 @@ fn running_status_carries_a_channel_status_to_the_data_after_it() {
         read(&sent),
         [note_on(0x3C, 0x7F), note_on(0x3E, 0x7F), note_on(0x3C, 0)]
     );
-    // A program change wants one data byte.
+    // A program change takes one data byte.
     assert_eq!(
         read(&[0xC5, 0x01, 0x02]),
         [[0x20C5_0100, 0, 0, 0], [0x20C5_0200, 0, 0, 0]]
@@ -37,10 +36,10 @@ fn a_real_time_byte_goes_out_at_once_and_leaves_the_message_it_falls_in() {
         read(&[0x90, 0x3C, 0xF8, 0x7F]),
         [CLOCK, note_on(0x3C, 0x7F)]
     );
-    // Inside a SysEx too, which it leaves whole.
+    // Also inside a SysEx, which stays whole.
     let sent = [0xF0, 0x7E, 0xF8, 0x7F, 0x09, 0x01, 0xF7];
     assert_eq!(read(&sent), [CLOCK, [0x3004_7E7F, 0x0901_0000, 0, 0]]);
-    // It does not end running status.
+    // A real-time byte does not end running status.
     assert_eq!(
         read(&[0x90, 0x3C, 0x7F, 0xFE, 0x3E, 0x7F]),
         [
@@ -60,9 +59,10 @@ fn system_common_messages_carry_their_data_and_end_running_status() {
         read(&sent),
         [
             note_on(0x3C, 0x7F),
-            // Song select, then the note's bytes dropped: no status holds.
+            // Song select, which ends running status, so the note's bytes
+            // after it are dropped.
             [0x10F3_0500, 0, 0, 0],
-            // Song position, its low 7 bits first, as MIDI 1.0 sends it.
+            // Song position, low 7 bits first, as MIDI 1.0 sends it.
             [0x10F2_1020, 0, 0, 0],
             [0x10F1_3100, 0, 0, 0],
             [0x10F6_0000, 0, 0, 0],
@@ -84,7 +84,7 @@ fn what_has_no_status_or_no_meaning_is_dropped() {
 fn a_status_that_cuts_a_sysex_short_ends_it_with_what_it_holds() {
     let sent = [0xF0, 0x01, 0x02, 0x90, 0x3C, 0x7F];
     assert_eq!(read(&sent), [[0x3002_0102, 0, 0, 0], note_on(0x3C, 0x7F)]);
-    // A new SysEx ends the old one and begins.
+    // A new SysEx ends the old one and then begins.
     let sent = [0xF0, 0x01, 0xF0, 0x02, 0xF7];
     assert_eq!(
         read(&sent),
@@ -108,9 +108,9 @@ fn the_group_goes_on_every_packet() {
     );
 }
 
-/// The packets a SysEx of `data` is, built from the specification's rule
-/// rather than the stream's: one Complete packet when it fits, otherwise a
-/// Start, Continues and an End of six bytes each but the last.
+/// Returns the packets for a SysEx of `data` by the specification's rule, not
+/// the stream's. Data that fits is one Complete packet, and longer data is a
+/// Start, Continues and an End of six bytes each, except the last.
 fn sysex_packets(data: &[u8]) -> Vec<[u32; 4]> {
     let chunks: Vec<&[u8]> = if data.is_empty() {
         vec![&[]]
@@ -179,8 +179,8 @@ fn known_packets_write_as_their_bytes() {
     for (words, bytes) in cases {
         assert_eq!(Bytes::of(words).as_deref(), Some(bytes), "{words:08X?}");
     }
-    // Nothing MIDI 1.0's byte stream has: MIDI 2.0, a utility message,
-    // 8-bit SysEx, an undefined system status, a SysEx status past End.
+    // MIDI 1.0's byte stream has no form for MIDI 2.0, a utility message,
+    // 8-bit SysEx, an undefined system status or a SysEx status past End.
     for words in [
         [0x4090_3C00, 0xFFFF_0000, 0, 0],
         [0x0000_0000, 0, 0, 0],
@@ -201,8 +201,8 @@ enum Sent {
 }
 
 impl Sent {
-    /// The message's bytes, its status left out when `running` already
-    /// holds it, and the packets it is.
+    /// Returns the message's bytes, without the status when `running`
+    /// already holds it, and the packets that it reads as.
     fn bytes_and_packets(&self, running: &mut Option<u8>) -> (Vec<u8>, Vec<[u32; 4]>) {
         match self {
             Sent::Channel {
@@ -279,8 +279,8 @@ fn sent() -> impl Strategy<Value = Sent> {
     ]
 }
 
-/// A stream of messages, with running status where it applies, and the
-/// packets it reads as.
+/// Returns the bytes of `messages`, with running status where it applies,
+/// and the packets that they read as.
 fn stream(messages: &[Sent]) -> (Vec<u8>, Vec<[u32; 4]>) {
     let mut running = None;
     let mut bytes = Vec::new();
@@ -302,8 +302,8 @@ proptest! {
         ..ProptestConfig::default()
     })]
 
-    /// Messages read back as their packets, however the reads cut them, and
-    /// each packet writes back as its message's bytes.
+    /// Checks that messages read as their packets wherever the reads cut
+    /// them, and that each packet writes back as its message's bytes.
     #[test]
     fn a_stream_reads_as_its_messages_however_it_is_cut(
         messages in prop::collection::vec(sent(), 0..24),
@@ -320,7 +320,7 @@ proptest! {
             from = cut;
         }
         prop_assert_eq!(&packets, &expected);
-        // Written back with no running status, the bytes read the same.
+        // The packets, written back with no running status, read the same.
         let written: Vec<u8> = packets
             .iter()
             .flat_map(|&words| Bytes::of(words).expect("MIDI 1.0").to_vec())
@@ -328,8 +328,8 @@ proptest! {
         prop_assert_eq!(read(&written), expected);
     }
 
-    /// Real-time bytes anywhere in a stream leave every other message as
-    /// it was, and go out themselves in the order they came.
+    /// Checks that real-time bytes anywhere in a stream leave every other
+    /// message as it was, and go out in order.
     #[test]
     fn real_time_bytes_anywhere_leave_the_rest_alone(
         messages in prop::collection::vec(sent(), 0..16),

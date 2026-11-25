@@ -1,5 +1,5 @@
-//! A packet's first word byte by byte, and the statuses both protocols'
-//! channel voice messages share.
+//! Reads and writes a packet's first word byte by byte, and defines the
+//! channel voice statuses that both protocols share.
 
 use crate::MessageType;
 
@@ -11,14 +11,14 @@ pub(crate) const PROGRAM_CHANGE: u8 = 0xC;
 pub(crate) const CHANNEL_PRESSURE: u8 = 0xD;
 pub(crate) const PITCH_BEND: u8 = 0xE;
 
-/// A packet's first word: its message type and group, then a status byte
-/// and the two bytes after it.
+/// A packet's first word, split into its message type, group, status byte and
+/// the two bytes after it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Head {
     pub(crate) kind: MessageType,
     pub(crate) group: u8,
-    /// The status byte. A channel voice message keeps its status in the
-    /// high four bits and its channel in the low four.
+    /// The status byte. For a channel voice message, the high four bits are
+    /// the status and the low four are the channel.
     pub(crate) status: u8,
     pub(crate) byte3: u8,
     pub(crate) byte4: u8,
@@ -36,8 +36,8 @@ impl Head {
         }
     }
 
-    /// A channel voice message's first word, its four-bit `status` and
-    /// `channel` in the status byte.
+    /// Builds a channel voice message's first word, packing the four-bit
+    /// `status` and `channel` into the status byte.
     pub(crate) const fn voice(
         kind: MessageType,
         group: u8,
@@ -64,23 +64,26 @@ impl Head {
         ])
     }
 
-    /// A channel voice message's status: the status byte's high four bits.
+    /// Returns a channel voice message's status, the status byte's high four
+    /// bits.
     pub(crate) const fn voice_status(self) -> u8 {
         self.status >> 4
     }
 
-    /// A channel voice message's channel: the status byte's low four bits.
+    /// Returns a channel voice message's channel, the status byte's low four
+    /// bits.
     pub(crate) const fn channel(self) -> u8 {
         self.status & 0xF
     }
 }
 
-/// A 14-bit value as MIDI 1.0 sends it: its low 7 bits, then its high 7.
+/// Splits a 14-bit value into its low and high 7 bits, in the order that MIDI
+/// 1.0 sends them.
 pub(crate) const fn split_14(value: u16) -> (u8, u8) {
     ((value & 0x7F) as u8, ((value >> 7) & 0x7F) as u8)
 }
 
-/// The 14-bit value whose low and high 7 bits these are.
+/// Returns the 14-bit value with these low and high 7 bits.
 pub(crate) const fn join_14(low: u8, high: u8) -> u16 {
     (high as u16 & 0x7F) << 7 | (low as u16 & 0x7F)
 }

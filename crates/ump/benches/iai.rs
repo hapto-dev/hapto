@@ -1,7 +1,6 @@
-//! Instruction counts for reading UMP: splitting a stream into packets,
-//! decoding a channel voice message, and upgrading a block of MIDI 1.0. Run
-//! by CI with iai-callgrind, which compares them with the pull request's
-//! base.
+//! Measures instruction counts for splitting a UMP stream into packets,
+//! decoding a channel voice message and upgrading a block of MIDI 1.0. CI
+//! runs it with iai-callgrind against the pull request's base.
 
 #![allow(missing_docs, reason = "the benchmark macros generate public items")]
 
@@ -45,8 +44,8 @@ fn decode_a_midi1_voice(words: [u32; 4]) -> Option<Midi1Voice> {
     black_box(Midi1Voice::decode(black_box(words)))
 }
 
-/// A block of MIDI 1.0 as a keyboard sends it: notes, a controller, a pitch
-/// bend and a whole NRPN, 16 times over.
+/// Returns a block of MIDI 1.0 as a keyboard sends it, with notes, a
+/// controller, a pitch bend and a whole NRPN, repeated 16 times.
 fn midi1_block() -> (Upgrade, Vec<Event>, EventList) {
     let packets = [
         0x2090_3C7F,

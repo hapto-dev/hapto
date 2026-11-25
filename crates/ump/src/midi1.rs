@@ -1,6 +1,5 @@
-//! MIDI 1.0 channel voice messages (message type 2), read from and written
-//! to packets: what an exporter upgrades on the way in and downgrades on
-//! the way out.
+//! Reads and writes MIDI 1.0 channel voice packets (message type 2), which an
+//! exporter upgrades on the way in and downgrades on the way out.
 
 use crate::head::{
     CHANNEL_PRESSURE, CONTROL_CHANGE, Head, NOTE_OFF, NOTE_ON, PITCH_BEND, POLY_PRESSURE,
@@ -8,14 +7,14 @@ use crate::head::{
 };
 use crate::{Event, MessageType};
 
-/// A MIDI 1.0 channel voice message, with the group and channel it came on.
+/// A MIDI 1.0 channel voice message, with its group and channel.
 ///
 /// # Examples
 ///
 /// ```
 /// use hapto_ump::{Midi1Message, Midi1Voice};
 ///
-/// // A MIDI 1.0 note-on, as a MIDI 1.0 source sends it.
+/// // A MIDI 1.0 source sends a note-on like this.
 /// let voice = Midi1Voice { group: 0, channel: 0, message: Midi1Message::NoteOn { note: 60, velocity: 127 } };
 /// assert_eq!(voice.words(), [0x2090_3C7F, 0, 0, 0]);
 /// ```
@@ -25,18 +24,19 @@ pub struct Midi1Voice {
     pub group: u8,
     /// The channel, 0 to 15.
     pub channel: u8,
-    /// What it says.
+    /// The message.
     pub message: Midi1Message,
 }
 
-/// The MIDI 1.0 channel voice messages, each value at MIDI 1.0's own width.
+/// A MIDI 1.0 channel voice message, with values at MIDI 1.0 widths.
 ///
 /// # Examples
 ///
 /// ```
 /// use hapto_ump::{ChannelMessage, EventList, Midi1Message, Midi1Voice, Upgrade};
 ///
-/// // MIDI 1.0 reads a velocity of 0 as a note-off, and the upgrade sends one.
+/// // MIDI 1.0 treats a note-on with velocity 0 as a note-off, so `Upgrade`
+/// // sends a note-off.
 /// let message = Midi1Message::NoteOn { note: 60, velocity: 0 };
 /// let quiet = Midi1Voice { group: 0, channel: 0, message };
 /// let mut out = EventList::with_capacity(4);
@@ -61,7 +61,7 @@ pub enum Midi1Message {
         /// Its velocity, 0 to 127.
         velocity: u8,
     },
-    /// One note's pressure.
+    /// The pressure on one note.
     PolyPressure {
         /// The note, 0 to 127.
         note: u8,
@@ -93,14 +93,15 @@ pub enum Midi1Message {
 }
 
 impl Midi1Voice {
-    /// Reads a packet. `None` for any other message type.
+    /// Reads a MIDI 1.0 channel voice packet, or returns `None` for another
+    /// message type.
     ///
     /// # Examples
     ///
     /// ```
     /// use hapto_ump::{Midi1Message, Midi1Voice};
     ///
-    /// // A pitch bend sends its low 7 bits first.
+    /// // The low 7 bits of a pitch bend come first.
     /// let voice = Midi1Voice::decode([0x20E0_0040, 0, 0, 0]);
     /// assert_eq!(voice.map(|voice| voice.message), Some(Midi1Message::PitchBend { value: 0x2000 }));
     /// ```
@@ -143,14 +144,14 @@ impl Midi1Voice {
         })
     }
 
-    /// The packet, with every field masked to its width.
+    /// Returns the packet, with every field masked to its width.
     ///
     /// # Examples
     ///
     /// ```
     /// use hapto_ump::{Midi1Message, Midi1Voice};
     ///
-    /// // A value past its 7 bits is masked: 200 becomes 72.
+    /// // A value wider than 7 bits is masked, so 200 becomes 72.
     /// let voice = Midi1Voice { group: 0, channel: 0, message: Midi1Message::ControlChange { controller: 7, value: 200 } };
     /// assert_eq!(voice.words(), [0x20B0_0748, 0, 0, 0]);
     /// ```
@@ -182,8 +183,8 @@ impl Midi1Voice {
         [head.word(), 0, 0, 0]
     }
 
-    /// The packet as an event at `offset`, as a MIDI 1.0 source sends it,
-    /// before any upgrade.
+    /// Returns the packet as an event at `offset`, as a MIDI 1.0 source sends
+    /// it before any upgrade.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn event(&self, offset: u32) -> Event {
         Event::new(offset, self.words())

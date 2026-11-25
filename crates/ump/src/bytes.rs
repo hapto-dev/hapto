@@ -1,6 +1,5 @@
-//! MIDI 1.0's byte stream, as a MIDI 1.0 device or port carries it, read
-//! into packets and written back: the edge where a device's bytes become
-//! UMP.
+//! Reads a MIDI 1.0 byte stream from a device or port into UMP packets, and
+//! writes packets back as bytes.
 
 use std::fmt;
 use std::ops::Deref;
@@ -12,30 +11,34 @@ use crate::{MessageType, SysEx7, SysExForm};
 const SYSEX_BEGIN: u8 = 0xF0;
 const SYSEX_FINISH: u8 = 0xF7;
 
-/// Reads a MIDI 1.0 byte stream into Universal MIDI Packets on one group:
-/// channel voice messages as MIDI 1.0's (message type 2), system messages
-/// as type 1, and System Exclusive as 7-bit SysEx packets (type 3).
+/// Reads a MIDI 1.0 byte stream into Universal MIDI Packets on one group.
 ///
-/// It reads as MIDI 1.0 says. A channel voice status stays in force for the
-/// data that follows it (running status), until another channel status or
-/// a system common message. A real-time byte (0xF8 to 0xFF) goes out at
-/// once wherever it falls, inside another message or a SysEx included, and
-/// leaves both alone. A data byte with no status before it, an undefined
-/// status and a stray end of SysEx are dropped. A status byte that cuts a
-/// SysEx short ends it with what it holds.
+/// Channel voice messages become message type 2, system messages type 1,
+/// and System Exclusive 7-bit SysEx (type 3).
 ///
-/// A message may arrive across reads, as a device's buffers deliver a long
-/// SysEx, so the stream keeps what it holds of one until the rest comes.
-/// The packets go out as each message is whole, apart from a SysEx, which
-/// goes out six bytes at a time as it arrives.
+/// It reads by MIDI 1.0's rules:
+///
+/// - A channel voice status stays in force for the data bytes after it
+///   (running status), until another channel status or a system common
+///   message.
+/// - A real-time byte (0xF8 to 0xFF) is sent at once, even inside another
+///   message or a SysEx, and doesn't affect either.
+/// - A data byte with no status before it, an undefined status and a stray
+///   end of SysEx are dropped.
+/// - A status byte inside a SysEx ends the SysEx with the bytes read so far.
+///
+/// A message can span several reads, as when a device delivers a long SysEx
+/// in parts, so the stream keeps the partial message until the rest
+/// arrives. Each message is sent once it is complete, except a SysEx, which
+/// is sent six bytes at a time as it arrives.
 ///
 /// # Examples
 ///
 /// ```
 /// use hapto_ump::{ByteStream, Midi1Message, Midi1Voice};
 ///
-/// // Two note-ons, the second under running status, with a clock between
-/// // the first's bytes.
+/// // The bytes are two note-ons, the second with running status, and a clock
+/// // inside the first.
 /// let mut stream = ByteStream::new(0);
 /// let mut packets = Vec::new();
 /// stream.read(&[0x90, 0x3C, 0xF8, 0x7F, 0x40, 0x7F], |words| packets.push(words));
@@ -47,23 +50,22 @@ const SYSEX_FINISH: u8 = 0xF7;
 #[derive(Clone)]
 pub struct ByteStream {
     group: u8,
-    /// The status the next data bytes complete: a channel voice status, in
-    /// force until another status, or a system common one waiting for its
+    /// The status that the next data bytes complete, either a running
+    /// channel voice status or a system common status that waits for its
     /// data.
     status: Option<u8>,
-    /// The data bytes that have come for it.
+    /// The data bytes read for `status`.
     data: Buf<2>,
-    /// A SysEx under way, if one is.
+    /// The SysEx in progress.
     sysex: Option<SysEx>,
 }
 
-/// What a stream holds of a SysEx under way.
+/// A stream's state for a SysEx in progress.
 #[derive(Debug, Clone, Copy)]
 struct SysEx {
-    /// The bytes not yet sent, at most a packet's.
+    /// The unsent bytes, at most one packet's worth.
     held: Buf<{ SysEx7::MAX_DATA }>,
-    /// Whether a packet of this SysEx went out already, so the next is not
-    /// its first.
+    /// Whether the first packet of this SysEx was already sent.
     begun: bool,
 }
 
@@ -78,8 +80,7 @@ impl fmt::Debug for ByteStream {
 }
 
 impl ByteStream {
-    /// A stream whose packets go out on `group`, 0 to 15, with nothing
-    /// under way.
+    /// Returns a stream that sends its packets on `group`, 0 to 15.
     pub const fn new(group: u8) -> Self {
         ByteStream {
             group: group & 0xF,
@@ -89,7 +90,7 @@ impl ByteStream {
         }
     }
 
-    /// Reads `bytes`, handing `send` each packet as it is whole.
+    /// Reads `bytes` and calls `send` with each packet once it is complete.
     ///
     /// Thread: any. Allocates nothing.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
@@ -99,16 +100,16 @@ impl ByteStream {
         }
     }
 
-    /// Forgets a message under way, a SysEx included, and any running
-    /// status, as when the device that sent them closes.
+    /// Discards any partial message or SysEx and the running status, for
+    /// example when the sending device closes.
     pub fn reset(&mut self) {
         *self = ByteStream::new(self.group);
     }
 
     fn byte(&mut self, byte: u8, send: &mut impl FnMut([u32; 4])) {
         match byte {
-            // Real time: at once, wherever it falls. 0xF9 and 0xFD are
-            // undefined.
+            // A real-time byte is sent at once. 0xF9 and 0xFD are undefined
+            // and dropped.
             0xF9 | 0xFD => {}
             0xF8..=0xFF => send(self.system(byte, 0, 0)),
             0x80..=0xF7 => self.status_byte(byte, send),
@@ -119,8 +120,8 @@ impl ByteStream {
     fn status_byte(&mut self, byte: u8, send: &mut impl FnMut([u32; 4])) {
         if let Some(sysex) = self.sysex.take() {
             self.finish(sysex, send);
-            // The end of SysEx it was waiting for, or another status that
-            // cut it short and is read on its own.
+            // An end of SysEx only finishes the SysEx. Any other status cuts
+            // it short and is then read on its own.
             if byte == SYSEX_FINISH {
                 return;
             }
@@ -135,13 +136,13 @@ impl ByteStream {
             return;
         }
         match Bytes::length_of(byte) {
-            // Tune request, which has no data.
+            // A tune request has no data.
             Some(1) => send(self.system(byte, 0, 0)),
-            // A channel voice status, in force until another status, or a
-            // system common one waiting for its data, which holds no
+            // A channel voice status stays in force until another status. A
+            // system common status waits for its data but doesn't become
             // running status.
             Some(_) => self.status = Some(byte),
-            // A stray end of SysEx, and 0xF4 and 0xF5, undefined, only end
+            // A stray end of SysEx and the undefined 0xF4 and 0xF5 only end
             // the status in force.
             None => {}
         }
@@ -150,7 +151,8 @@ impl ByteStream {
     fn data_byte(&mut self, byte: u8, send: &mut impl FnMut([u32; 4])) {
         if let Some(sysex) = &mut self.sysex {
             if sysex.held.is_full() {
-                // A seventh byte: the six held are not the last.
+                // A seventh byte means that the six held bytes aren't the
+                // last.
                 let form = if sysex.begun {
                     SysExForm::Continue
                 } else {
@@ -167,7 +169,7 @@ impl ByteStream {
             return;
         };
         self.data.push(byte);
-        // A status this stream keeps has a length of 2 or 3, itself included.
+        // A kept status is 2 or 3 bytes long, including the status byte.
         let wants = Bytes::length_of(status).map_or(1, |length| length.saturating_sub(1));
         if self.data.len() < wants {
             return;
@@ -180,15 +182,15 @@ impl ByteStream {
         self.data.clear();
         if status >= 0xF0 {
             send(self.system(status, first, second));
-            // A system common message holds no running status.
+            // A system common message does not set running status.
             self.status = None;
         } else {
             send(word(MessageType::MIDI1, self.group, status, first, second));
         }
     }
 
-    /// Sends what `sysex` holds as its last packet: the whole of it if no
-    /// packet of it went out yet.
+    /// Sends the held bytes of `sysex` as its last packet, or as a complete
+    /// packet if none was sent before.
     fn finish(&self, sysex: SysEx, send: &mut impl FnMut([u32; 4])) {
         let form = if sysex.begun {
             SysExForm::End
@@ -203,8 +205,8 @@ impl ByteStream {
     }
 }
 
-/// A one-word packet of message type `kind`: a status byte and two data
-/// bytes after the group.
+/// Returns a one-word packet of type `kind` with a status byte and two data
+/// bytes.
 fn word(kind: MessageType, group: u8, status: u8, first: u8, second: u8) -> [u32; 4] {
     let head = Head {
         kind,
@@ -217,12 +219,13 @@ fn word(kind: MessageType, group: u8, status: u8, first: u8, second: u8) -> [u32
 }
 
 /// One packet as MIDI 1.0 bytes, for a device or port that takes the byte
-/// stream: at most eight, a short SysEx's start and end included.
+/// stream.
 ///
-/// [`of`](Self::of) writes MIDI 1.0's channel voice messages, system
-/// messages and 7-bit SysEx. A SysEx packet writes its part of the message:
-/// the first begins with 0xF0, the last ends with 0xF7, and a whole one in
-/// one packet has both. Each is written in full, with no running status.
+/// It holds at most eight bytes, including a short SysEx's 0xF0 and 0xF7.
+/// [`of`](Self::of) writes channel voice messages, system messages and
+/// 7-bit SysEx, each in full without running status. A SysEx packet becomes
+/// its part of the message, with 0xF0 if it is the first packet and 0xF7 if
+/// it is the last.
 ///
 /// # Examples
 ///
@@ -233,17 +236,18 @@ fn word(kind: MessageType, group: u8, status: u8, first: u8, second: u8) -> [u32
 /// let bytes = Bytes::of([0x2090_3C7F, 0, 0, 0]);
 /// assert_eq!(bytes.as_deref(), Some(&[0x90, 0x3C, 0x7F][..]));
 ///
-/// // A MIDI 2.0 note-on is not MIDI 1.0: downgrade it first.
+/// // A MIDI 2.0 note-on must be downgraded first.
 /// assert_eq!(Bytes::of([0x4090_3C00, 0xFFFF_0000, 0, 0]), None);
 /// ```
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct Bytes(Buf<8>);
 
 impl Bytes {
-    /// `words` as MIDI 1.0 bytes. `None` for a packet MIDI 1.0's byte
-    /// stream has no bytes for: a MIDI 2.0 message, which
-    /// [`Downgrade`](crate::Downgrade) makes MIDI 1.0 first, a utility or
-    /// stream message, 8-bit SysEx, or an undefined status.
+    /// Returns `words` as MIDI 1.0 bytes.
+    ///
+    /// Returns `None` for utility and stream messages, 8-bit SysEx, undefined
+    /// statuses and MIDI 2.0 messages. Convert a MIDI 2.0 message with
+    /// [`Downgrade`](crate::Downgrade) first.
     ///
     /// Thread: any. Allocates nothing.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
@@ -258,11 +262,14 @@ impl Bytes {
         }
     }
 
-    /// How many bytes a MIDI 1.0 message with `status` takes, the status
-    /// included: 3 for a note, a controller or a bend, 2 for a program
-    /// change or channel pressure, 1 for a tune request or a real-time
-    /// message. `None` for a data byte, for a SysEx's start or end, whose
-    /// end decides its length, and for an undefined status.
+    /// Returns the length of a MIDI 1.0 message with `status`, including the
+    /// status byte.
+    ///
+    /// A channel message is 3 bytes, or 2 for a program change or channel
+    /// pressure. A song position pointer is 3 bytes, a time code quarter frame
+    /// or a song select 2, and a tune request or a real-time message 1.
+    /// Returns `None` for a data byte, an undefined status, and a SysEx start
+    /// or end, because a SysEx's end byte sets its length.
     ///
     /// # Examples
     ///
@@ -283,8 +290,8 @@ impl Bytes {
         }
     }
 
-    /// A one-word packet's message: its status and the data bytes its
-    /// length takes.
+    /// Returns a one-word packet's status and the data bytes that its length
+    /// needs.
     fn short(head: Head) -> Option<Bytes> {
         let length = Bytes::length_of(head.status)?;
         let mut out = Bytes::default();
@@ -295,8 +302,8 @@ impl Bytes {
         Some(out)
     }
 
-    /// A SysEx packet's part of its message, with 0xF0 where it begins one
-    /// and 0xF7 where it ends one.
+    /// Returns a SysEx packet's part of its message, with 0xF0 first if the
+    /// packet begins the message and 0xF7 last if it ends it.
     fn sysex(packet: SysEx7) -> Bytes {
         let mut out = Bytes::default();
         if packet.form.begins() {

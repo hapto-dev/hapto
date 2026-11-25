@@ -1,34 +1,37 @@
 //! Universal MIDI Packets, as every Hapto crate passes MIDI.
 //!
-//! An [`EventList`] is one [block]'s MIDI, in or out: a fixed-capacity list
-//! of [`Event`]s. Each is one packet at a frame of the block.
+//! An [`EventList`] is a fixed-capacity list of [`Event`]s that holds one
+//! [block]'s MIDI, in or out. Each event is one packet at a frame of the
+//! block.
 //!
-//! Everything above the exporters reads MIDI 2.0. An exporter upgrades MIDI
-//! 1.0 on the way in with [`Upgrade`], and downgrades on the way out with
-//! [`Downgrade`] only for a destination that takes MIDI 1.0 alone, both by
-//! the specification's Default Translation. A packet keeps its
-//! [`Origin`], so a value upgraded from MIDI 1.0 narrows back to what was
-//! sent through [`scale`]. [`ChannelVoice`] reads and writes the MIDI 2.0
-//! channel voice messages, [`Midi1Voice`] the MIDI 1.0 ones an exporter
-//! translates, and [`SysEx7`] the System Exclusive both share.
-//! [`MessageType`] says what any packet carries and how long it is, and
-//! [`Packets`] splits a stream of words into events. Every packet
-//! carries its own status, so Hapto parses UMP alone. A device that speaks
-//! MIDI 1.0's byte stream meets it at the edge: [`ByteStream`] reads its
-//! bytes into packets, and [`Bytes`] writes a packet back as bytes.
+//! Everything above the exporters reads MIDI 2.0. An exporter upgrades
+//! incoming MIDI 1.0 with [`Upgrade`], and uses [`Downgrade`] only for a
+//! destination that accepts only MIDI 1.0. Both follow the specification's
+//! Default Translation. Each packet keeps its [`Origin`], so [`scale`] can
+//! narrow an upgraded value back to what was sent.
+//!
+//! Every packet carries its own status, so Hapto parses only UMP. These types
+//! read and write it:
+//!
+//! - [`ChannelVoice`] for MIDI 2.0 channel voice messages.
+//! - [`Midi1Voice`] for MIDI 1.0 ones, which an exporter translates.
+//! - [`SysEx7`] for System Exclusive, which both protocols share.
+//! - [`MessageType`] for a packet's kind and length, and [`Packets`] to split
+//!   a stream of words into events.
+//! - [`ByteStream`] and [`Bytes`] for a MIDI 1.0 device's bytes, at the edge.
 //!
 //! Open: no exporter fills a block's list from the host's MIDI yet, so a
 //! processor's list stays empty.
 //!
-//! The crate is in the core tier and depends on nothing. Every call but
-//! those that make a list or an [`Upgrade`] is fit for the audio thread, and
-//! none of them panics.
+//! The crate is in the core tier and depends on nothing. Every call except
+//! those that make a list or an [`Upgrade`] can run on the audio thread, and
+//! none panics.
 //!
 //! [block]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#block
 //!
 //! # Examples
 //!
-//! A MIDI 1.0 control change upgraded, then read back as MIDI 2.0:
+//! Upgrade a MIDI 1.0 control change, then read it back as MIDI 2.0:
 //!
 //! ```
 //! use hapto_ump::{ChannelMessage, ChannelVoice, EventList, Midi1Message, Midi1Voice, Upgrade, scale};
@@ -45,7 +48,7 @@
 //!     };
 //!     if let ChannelMessage::ControlChange { controller, value } = message {
 //!         assert_eq!((event.offset, channel, controller), (32, 2, 7));
-//!         // Upgraded from MIDI 1.0, it narrows back to what was sent.
+//!         // `scale` narrows the upgraded value back to what was sent.
 //!         assert_eq!(scale::down_32_to_7(value), 100);
 //!     }
 //! }
@@ -93,7 +96,7 @@ pub use voice::{Attribute, Bank, ChannelMessage, ChannelVoice};
 /// ```
 /// use hapto_ump::{Attribute, ChannelMessage, ChannelVoice, Event};
 ///
-/// // A MIDI 2.0 note-on at frame 16: note 60, full velocity.
+/// // A MIDI 2.0 note-on for note 60 at full velocity, at frame 16.
 /// let event = Event::new(16, [0x4090_3C00, 0xFFFF_0000, 0, 0]);
 /// let message = ChannelMessage::NoteOn { note: 60, velocity: u16::MAX, attribute: Attribute::NONE };
 /// assert_eq!(event.channel_voice(), Some(ChannelVoice { group: 0, channel: 0, message }));
@@ -110,38 +113,37 @@ pub struct Event {
 
 /// Where a packet came from before it reached a block.
 ///
-/// Once upgraded, a packet's words no longer say which protocol sent it, so
-/// its origin does, for a reader that needs a value as it was sent: see
-/// [`scale`].
+/// An upgraded packet's words don't show which protocol sent it, so the origin
+/// records it for a reader that needs a value as it was sent. See [`scale`].
 ///
 /// # Examples
 ///
 /// ```
 /// use hapto_ump::{Event, Origin};
 ///
-/// // A MIDI 2.0 note-on, as a MIDI 2.0 source sent it.
+/// // A note-on that a MIDI 2.0 source sent.
 /// let event = Event::new(0, [0x4090_3C00, 0xFFFF_0000, 0, 0]);
 /// assert_eq!(event.origin, Origin::Midi2);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[non_exhaustive]
 pub enum Origin {
-    /// Sent as it is: a MIDI 2.0 packet, or one both protocols share, such
-    /// as SysEx7 or a system message.
+    /// Sent unchanged, as a MIDI 2.0 packet or one that both protocols
+    /// share, such as SysEx7 or a system message.
     #[default]
     Midi2,
     /// Sent as MIDI 1.0 and upgraded on the way in.
     Midi1,
-    /// Sent as an RPN or NRPN whose data entry high byte came with no low
-    /// byte, and upgraded on the way in as if its low byte were 0. A low
-    /// byte that follows comes as a controller of its own, marked
-    /// [`Midi1`](Self::Midi1), so a low byte of 0 that was sent reads apart
-    /// from one that never came.
+    /// Sent as an RPN or NRPN whose data entry high byte came without a low
+    /// byte, and upgraded as if the low byte were 0. A later low byte arrives
+    /// as a separate controller marked [`Midi1`](Self::Midi1), so a reader
+    /// can tell a sent low byte of 0 from a missing one.
     Midi1HighByte,
 }
 
 impl Event {
-    /// The packet `words` at frame `offset`, sent as it is.
+    /// Returns an event for the packet `words` at frame `offset`, with origin
+    /// [`Origin::Midi2`].
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub const fn new(offset: u32, words: [u32; 4]) -> Self {
         Event {
@@ -151,7 +153,7 @@ impl Event {
         }
     }
 
-    /// The packet's message type.
+    /// Returns the packet's message type.
     ///
     /// # Examples
     ///
@@ -168,8 +170,10 @@ impl Event {
         MessageType::of(self.words[0])
     }
 
-    /// Whether the packet is a System Real Time message, status 0xF8 to
-    /// 0xFF, which may fall anywhere, inside a SysEx included.
+    /// Returns whether the packet is a System Real Time message (status 0xF8
+    /// to 0xFF).
+    ///
+    /// Such a message can arrive anywhere, even inside a SysEx.
     ///
     /// # Examples
     ///
@@ -202,15 +206,15 @@ impl Event {
         head::Head::read(self.words[0]).group
     }
 
-    /// The MIDI 2.0 channel voice message this packet carries, as
-    /// [`ChannelVoice::decode`] reads it.
+    /// Returns the packet's MIDI 2.0 channel voice message, decoded with
+    /// [`ChannelVoice::decode`].
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn channel_voice(&self) -> Option<ChannelVoice> {
         ChannelVoice::decode(self.words)
     }
 
-    /// The MIDI 1.0 channel voice message this packet carries, as
-    /// [`Midi1Voice::decode`] reads it, for an exporter's translation.
+    /// Returns the packet's MIDI 1.0 channel voice message, decoded with
+    /// [`Midi1Voice::decode`], for an exporter to translate.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn midi1_voice(&self) -> Option<Midi1Voice> {
         Midi1Voice::decode(self.words)

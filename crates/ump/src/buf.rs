@@ -1,9 +1,10 @@
-//! A few bytes held in place.
+//! A small inline byte buffer.
 
 use std::hash::{Hash, Hasher};
 
-/// Up to `N` bytes, held in place: what a message holds until it is whole.
-/// Two compare and hash by the bytes they hold.
+/// Up to `N` bytes stored inline, such as a message that isn't complete yet.
+///
+/// Two buffers compare and hash by the bytes that they hold.
 #[derive(Clone, Copy)]
 pub(crate) struct Buf<const N: usize> {
     bytes: [u8; N],
@@ -18,13 +19,13 @@ impl<const N: usize> Buf<N> {
         }
     }
 
-    /// Adds `byte`, or returns false when it is full.
+    /// Appends `byte`, or returns false if the buffer is full.
     pub(crate) fn push(&mut self, byte: u8) -> bool {
         let Some(slot) = self.bytes.get_mut(self.len) else {
             return false;
         };
         *slot = byte;
-        // Below N, since a slot was found there.
+        // `len` is below N, because `get_mut` found a slot there.
         self.len = self.len.saturating_add(1);
         true
     }

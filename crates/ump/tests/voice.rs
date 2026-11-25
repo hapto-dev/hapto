@@ -1,4 +1,4 @@
-//! Reading and writing channel voice packets: MIDI 2.0's, which everything
+//! Tests reading and writing MIDI 2.0 channel voice packets, which everything
 //! above the exporters reads, and MIDI 1.0's, which the exporters translate.
 
 use hapto_ump::{Attribute, Bank, ChannelMessage, ChannelVoice, Event, Midi1Message, Midi1Voice};
@@ -29,7 +29,7 @@ fn known_midi_2_note_and_channel_packets_read_as_their_messages() {
     use ChannelMessage::{
         ChannelPressure, NoteOff, NoteOn, PitchBend, PolyPressure, ProgramChange,
     };
-    // Group 2, channel 5, note 64, full velocity.
+    // Note 64 at full velocity on group 2, channel 5.
     let on = NoteOn {
         note: 64,
         velocity: 0xFFFF,
@@ -60,8 +60,8 @@ fn known_midi_2_note_and_channel_packets_read_as_their_messages() {
         [0x40E0_0000, 0x8000_0000, 0, 0],
         PitchBend { value: 0x8000_0000 },
     );
-    // With the bank-valid bit clear there is no bank, whatever its fields
-    // hold, and the packet goes back out with them cleared.
+    // With the bank-valid bit clear there is no bank, whatever the bank
+    // fields hold, and the packet writes back with them cleared.
     let program = ChannelVoice {
         group: 0,
         channel: 0,
@@ -106,7 +106,7 @@ fn known_midi_2_controller_packets_read_as_their_messages() {
             value: 1,
         },
     );
-    // A relative change of -1, two's complement.
+    // A relative change of -1, in two's complement.
     reads_back(
         [0x4040_0001, u32::MAX, 0, 0],
         RelativeRegisteredController {
@@ -131,7 +131,7 @@ fn known_midi_2_per_note_packets_read_as_their_messages() {
         AssignablePerNoteController, PerNoteManagement, PerNotePitchBend,
         RegisteredPerNoteController,
     };
-    // A per-note controller's index runs to 255.
+    // A per-note controller's index goes up to 255.
     reads_back(
         [0x4000_3CFF, 4, 0, 0],
         RegisteredPerNoteController {
@@ -155,7 +155,7 @@ fn known_midi_2_per_note_packets_read_as_their_messages() {
             value: 0x8000_0000,
         },
     );
-    // Detach is bit 1 of the flags, reset bit 0.
+    // Detach is bit 1 of the flags, and reset is bit 0.
     reads_back(
         [0x40F0_3C02, 0, 0, 0],
         PerNoteManagement {
@@ -226,7 +226,7 @@ fn known_midi_1_packets_read_as_their_messages() {
             [0x20D0_2000, 0, 0, 0],
             one(0, 0, Midi1Message::ChannelPressure { value: 32 }),
         ),
-        // Pitch bend sends its low 7 bits first: 0x2000 is at rest.
+        // Pitch bend sends its low 7 bits first, and 0x2000 is the centre.
         (
             [0x20E0_0040, 0, 0, 0],
             one(0, 0, Midi1Message::PitchBend { value: 0x2000 }),
@@ -249,7 +249,7 @@ fn each_reader_reads_its_own_protocol_alone() {
     let midi2 = [0x4090_3C00, 0xFFFF_0000, 0, 0];
     assert_eq!(ChannelVoice::decode(midi1), None);
     assert_eq!(Midi1Voice::decode(midi2), None);
-    // SysEx7, a system message and a utility message are neither.
+    // Neither reader reads SysEx7, a system message or a utility message.
     for words in [
         [0x3016_7E7F, 0x0D70_0201, 0, 0],
         [0x10F8_0000, 0, 0, 0],
@@ -361,8 +361,8 @@ fn midi1_message() -> impl Strategy<Value = Midi1Message> {
     ]
 }
 
-/// The words of a packet of message type `kind`, every other bit any, so a
-/// reader meets bits no writer sets.
+/// Generates a packet of message type `kind` with every other bit random, so
+/// that a reader meets bits that no writer sets.
 fn words_of(kind: u32) -> impl Strategy<Value = [u32; 4]> {
     any::<[u32; 4]>().prop_map(move |mut words| {
         words[0] = (words[0] & 0x0FFF_FFFF) | (kind << 28);
@@ -379,7 +379,7 @@ proptest! {
         ..ProptestConfig::default()
     })]
 
-    /// Every MIDI 2.0 message comes back from its packet as it went in.
+    /// Checks that every MIDI 2.0 message reads back unchanged from its packet.
     #[test]
     fn a_midi_2_message_reads_back_from_its_packet(
         group in 0_u8..16, channel in 0_u8..16, message in midi2_message(),
@@ -388,7 +388,7 @@ proptest! {
         prop_assert_eq!(ChannelVoice::decode(voice.words()), Some(voice));
     }
 
-    /// Every MIDI 1.0 message comes back from its packet as it went in.
+    /// Checks that every MIDI 1.0 message reads back unchanged from its packet.
     #[test]
     fn a_midi_1_message_reads_back_from_its_packet(
         group in 0_u8..16, channel in 0_u8..16, message in midi1_message(),
@@ -397,8 +397,8 @@ proptest! {
         prop_assert_eq!(Midi1Voice::decode(voice.words()), Some(voice));
     }
 
-    /// Any MIDI 2.0 packet that reads as a message, whatever its unused and
-    /// reserved bits hold, writes back as words that read the same.
+    /// Checks that a MIDI 2.0 packet that reads as a message writes back as
+    /// words that read the same, whatever its unused and reserved bits hold.
     #[test]
     fn any_midi_2_packet_reads_as_a_message_that_writes_back(words in words_of(4)) {
         if let Some(voice) = ChannelVoice::decode(words) {
@@ -406,7 +406,7 @@ proptest! {
         }
     }
 
-    /// Any MIDI 1.0 packet the same.
+    /// Checks the same for any MIDI 1.0 packet.
     #[test]
     fn any_midi_1_packet_reads_as_a_message_that_writes_back(words in words_of(2)) {
         if let Some(voice) = Midi1Voice::decode(words) {

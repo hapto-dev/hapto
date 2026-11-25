@@ -331,7 +331,7 @@ fn a_restore_ends_the_arm_drops_old_held_entries_and_closes_bursts() {
     learn
         .map(zoom, Mapping::new(Source::any(Control::Cc(7))))
         .expect("legal");
-    // Controller 7 at full, upgraded to the MIDI 2.0 learn reads.
+    // Controller 7 at full value, upgraded to MIDI 2.0.
     let events = common::upgraded(&mut hapto_ump::Upgrade::new(), &[common::cc(7, 127)]);
     audio.process(&events);
     learn.poll();

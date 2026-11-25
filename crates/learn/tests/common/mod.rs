@@ -1,6 +1,5 @@
-//! What learn's tests and its bench share: a parameter set, a rig that runs
-//! blocks of MIDI through learn as an exporter does, and the messages they
-//! send.
+//! Helpers for learn's tests and bench, which build a parameter set, test
+//! messages and a `Rig` that runs MIDI through learn as an exporter does.
 #![allow(dead_code, reason = "each test binary uses only some of it")]
 
 use std::sync::Arc;
@@ -11,7 +10,7 @@ use hapto_ump::{
     ChannelMessage, ChannelVoice, Event, EventList, Midi1Message, Midi1Voice, Upgrade,
 };
 
-/// A set of `count` parameters, `p0` and on, each 0 to 1 and at `default`.
+/// Returns `count` parameters, `p0` onwards, each from 0 to 1 at `default`.
 pub(crate) fn set_of(count: usize, default: f32) -> Arc<ParamSet> {
     let mut builder = ParamSetBuilder::new();
     for index in 0..count {
@@ -28,8 +27,8 @@ pub(crate) fn set_of(count: usize, default: f32) -> Arc<ParamSet> {
     builder.build()
 }
 
-/// Learn over a set of parameters, with the upgrade an exporter runs before
-/// it.
+/// Learn over a parameter set, with the `Upgrade` that an exporter runs
+/// before it.
 pub(crate) struct Rig {
     pub(crate) set: Arc<ParamSet>,
     pub(crate) learn: Learn,
@@ -39,7 +38,7 @@ pub(crate) struct Rig {
 }
 
 impl Rig {
-    /// Learn over `count` parameters at `default`, as `config` sets it up.
+    /// Returns a rig with `count` parameters at `default`.
     pub(crate) fn new(count: usize, default: f32, config: Config) -> Rig {
         let set = set_of(count, default);
         let (learn, audio) = Learn::new(&set, config);
@@ -53,13 +52,13 @@ impl Rig {
         }
     }
 
-    /// Runs one block of `sent`, upgraded as an exporter does.
+    /// Runs `sent` through learn as one block, upgraded as an exporter does.
     pub(crate) fn block(&mut self, sent: &[Event]) {
         let events = upgraded(&mut self.upgrade, sent);
         self.audio.process(&events);
     }
 
-    /// Parameter `index`'s value.
+    /// Returns the value of parameter `index`.
     pub(crate) fn value(&self, index: usize) -> f32 {
         self.set.value(self.ids[index])
     }
@@ -72,8 +71,8 @@ impl Rig {
     }
 }
 
-/// One block of `sent`, each at the next frame, upgraded to the MIDI 2.0
-/// learn reads, as an exporter does.
+/// Upgrades `sent` as one block, as an exporter does, with each event at the
+/// next frame.
 pub(crate) fn upgraded(upgrade: &mut Upgrade, sent: &[Event]) -> EventList {
     let sent: Vec<Event> = sent
         .iter()
@@ -85,7 +84,7 @@ pub(crate) fn upgraded(upgrade: &mut Upgrade, sent: &[Event]) -> EventList {
     events
 }
 
-/// A MIDI 1.0 message, as a MIDI 1.0 sender sends it.
+/// Returns a MIDI 1.0 message as a MIDI 1.0 sender sends it.
 pub(crate) fn on(group: u8, channel: u8, message: Midi1Message) -> Event {
     Midi1Voice {
         group,
@@ -95,7 +94,7 @@ pub(crate) fn on(group: u8, channel: u8, message: Midi1Message) -> Event {
     .event(0)
 }
 
-/// A MIDI 2.0 message, which the upgrade passes as it is.
+/// Returns a MIDI 2.0 message, which the upgrade passes on unchanged.
 pub(crate) fn midi2(group: u8, channel: u8, message: ChannelMessage) -> Event {
     ChannelVoice {
         group,
@@ -105,7 +104,7 @@ pub(crate) fn midi2(group: u8, channel: u8, message: ChannelMessage) -> Event {
     .event(0)
 }
 
-/// A MIDI 1.0 control change on group 0, channel 0.
+/// Returns a MIDI 1.0 control change on group 0, channel 0.
 pub(crate) fn cc(controller: u8, value: u8) -> Event {
     on(0, 0, Midi1Message::ControlChange { controller, value })
 }

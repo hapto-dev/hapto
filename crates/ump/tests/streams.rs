@@ -1,7 +1,7 @@
-//! Whole MIDI 1.0 streams cut into blocks anywhere, through the upgrade and
-//! back through the downgrade: what the downgrade sends upgrades to the same
-//! messages, and a MIDI 1.0 receiver of it ends each block where the sender
-//! put it.
+//! Tests whole MIDI 1.0 streams, cut into blocks anywhere, through the
+//! upgrade and back through the downgrade. What the downgrade sends upgrades
+//! to the same messages, and a MIDI 1.0 receiver of the downgrade ends each
+//! block in the same state as a receiver of the sender.
 
 use std::collections::BTreeMap;
 
@@ -11,19 +11,18 @@ use hapto_ump::{
 use proptest::prelude::*;
 use proptest::test_runner::FileFailurePersistence;
 
-/// The frame a block's held high bytes go out at.
+/// The frame at which a block's held high bytes are sent.
 const LAST_FRAME: u32 = 63;
 
-/// Each block's packets in turn.
+/// Each block's packets, in order.
 type Blocks = Vec<Vec<Event>>;
 
-/// `sent` upgraded a block at a time by one upgrade, as an exporter does.
+/// Upgrades `sent` a block at a time with one `Upgrade`, as an exporter does.
 fn upgrade(sent: &[Vec<Event>]) -> Blocks {
     let mut upgrade = Upgrade::new();
     sent.iter()
         .map(|block| {
-            // Room for every message and a high byte held on every group
-            // and channel.
+            // Room for each message and a held high byte per group and channel.
             let mut out = EventList::with_capacity(block.len() + 256);
             upgrade.block(block, LAST_FRAME, &mut out);
             assert_eq!(out.dropped(), 0);
@@ -32,14 +31,14 @@ fn upgrade(sent: &[Vec<Event>]) -> Blocks {
         .collect()
 }
 
-/// `upgraded` downgraded a block at a time, losing nothing.
+/// Downgrades `upgraded` one block at a time and checks that nothing is lost.
 fn downgrade(upgraded: &[Vec<Event>]) -> Blocks {
     let mut downgrade = Downgrade::new();
     let back = upgraded
         .iter()
         .map(|block| {
-            // A program change with its bank is three messages, a
-            // controller four.
+            // A program change with its bank becomes three messages, and a
+            // controller becomes four.
             let mut out = EventList::with_capacity(block.len() * 4);
             downgrade.block(block, &mut out);
             assert_eq!(out.dropped(), 0);
@@ -50,7 +49,7 @@ fn downgrade(upgraded: &[Vec<Event>]) -> Blocks {
     back
 }
 
-/// Each block's messages at their frames, their origins aside.
+/// Returns each block's messages and frames, without their origins.
 fn messages(blocks: &[Vec<Event>]) -> Vec<Vec<(u32, u8, u8, ChannelMessage)>> {
     blocks
         .iter()
@@ -66,8 +65,8 @@ fn messages(blocks: &[Vec<Event>]) -> Vec<Vec<(u32, u8, u8, ChannelMessage)>> {
         .collect()
 }
 
-/// Blocks of `sent`, each message on its group and channel and after a cut
-/// when its flag says so, at frames that rise through the block.
+/// Builds blocks from `sent` at rising frames, with each message on its group
+/// and channel. A message whose flag is set starts a new block.
 fn blocks(sent: Vec<(bool, u8, u8, Midi1Message)>) -> Blocks {
     let mut blocks: Blocks = vec![Vec::new()];
     for (cut, group, channel, message) in sent {
@@ -86,8 +85,7 @@ fn blocks(sent: Vec<(bool, u8, u8, Midi1Message)>) -> Blocks {
     blocks
 }
 
-/// Any MIDI 1.0 channel voice message, with the controllers that hold state
-/// often.
+/// Generates any MIDI 1.0 voice message, often a controller that holds state.
 fn midi1_message() -> impl Strategy<Value = Midi1Message> {
     let byte = || prop_oneof![Just(0_u8), Just(127_u8), 0_u8..=127];
     let controller = prop::sample::select(vec![
@@ -105,12 +103,12 @@ fn midi1_message() -> impl Strategy<Value = Midi1Message> {
     ]
 }
 
-/// A parameter number as a MIDI 1.0 receiver selects it: registered or
-/// not, and its 14 bits.
+/// A parameter number as a MIDI 1.0 receiver selects it, which is whether it
+/// is registered and its 14 bits.
 type Number = (bool, u16);
 
 /// A MIDI 1.0 receiver's parameter numbers on one channel, as the MIDI 1.0
-/// specification and RP-015 read them.
+/// specification and RP-015 interpret them.
 #[derive(Debug)]
 struct Receiver {
     nrpn: [u8; 2],
@@ -129,7 +127,7 @@ impl Receiver {
         }
     }
 
-    /// The selected number, none while the null number is selected.
+    /// Returns the selected number, or `None` for the null number.
     fn number(&self) -> Option<Number> {
         let registered = self.registered?;
         let [high, low] = if registered { self.rpn } else { self.nrpn };
@@ -197,7 +195,7 @@ enum Step {
 
 fn step() -> impl Strategy<Value = Step> {
     let byte = || prop::sample::select(vec![0_u8, 1, 64, 127]);
-    // Few numbers, so they repeat, and 127 with 127 the null number.
+    // Few numbers, so that they repeat. Both bytes at 127 make the null number.
     let part = || prop::sample::select(vec![0_u8, 1, 127]);
     prop_oneof![
         2 => (any::<bool>(), part(), part(), any::<bool>()).prop_map(
@@ -215,19 +213,18 @@ fn step() -> impl Strategy<Value = Step> {
     ]
 }
 
-/// The blocks a sender sends for `steps`, as MIDI 1.0 control changes on
-/// group 0 and channel 0.
+/// Returns the blocks that a sender sends for `steps`, as MIDI 1.0 control
+/// changes on group 0 and channel 0.
 ///
-/// The sender sends a number's high byte before its low byte: a low byte
-/// goes out only under the number the newest high byte was sent under, as
-/// most senders send them. The upgrade departs from MIDI 1.0 for the rest,
-/// where a low byte refines the receiver's own high byte for its number,
-/// which no translator holds.
+/// Like most senders, it sends a data entry low byte (38) only under the
+/// number that the latest high byte (6) was sent under. Otherwise a MIDI 1.0
+/// receiver applies the low byte to its own high byte for that number, which
+/// no translator holds, so the upgrade departs from MIDI 1.0 there.
 fn sender(steps: Vec<Step>) -> Blocks {
     let mut sent = Vec::new();
     let mut mirror = Receiver::new();
-    // The number the newest high byte since Reset All Controllers was sent
-    // under, if one was.
+    // The number that the latest high byte since Reset All Controllers was
+    // sent under, if any.
     let mut high_under = None;
     let mut cut = false;
     for step in steps {
@@ -281,9 +278,9 @@ proptest! {
         ..ProptestConfig::default()
     })]
 
-    /// Upgraded, downgraded and upgraded again, any stream gives the same
-    /// messages at the same frames: the downgrade sends nothing the upgrade
-    /// reads another way, however the blocks cut the data entry it holds.
+    /// Checks that any stream gives the same messages at the same frames after
+    /// an upgrade, a downgrade and another upgrade, however the blocks split a
+    /// data entry that the upgrade holds.
     #[test]
     fn what_the_downgrade_sends_upgrades_to_the_same_messages(
         sent in proptest::collection::vec(
@@ -299,10 +296,9 @@ proptest! {
         prop_assert_eq!(messages(&again), messages(&upgraded));
     }
 
-    /// A MIDI 1.0 receiver of the downgrade holds, at the end of every block,
-    /// the values a receiver of the sender holds: the upgrade sends every
-    /// data entry it holds by the block's end, and sends each where MIDI 1.0
-    /// puts it.
+    /// Checks that a MIDI 1.0 receiver of the downgrade ends every block with
+    /// the values of a receiver of the sender, so the upgrade must send every
+    /// data entry that it holds by the block's end, where MIDI 1.0 puts it.
     #[test]
     fn a_receiver_of_the_downgrade_ends_each_block_where_the_sender_put_it(
         steps in proptest::collection::vec(step(), 0..48),

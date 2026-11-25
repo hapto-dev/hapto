@@ -1,4 +1,4 @@
-//! SysEx7 packets: a message split six bytes at a time, and read back.
+//! Tests a message split into six-byte SysEx7 packets and read back.
 
 use hapto_ump::{Event, MessageType, SysEx7, SysExForm};
 
@@ -34,17 +34,17 @@ fn a_message_of_every_length_splits_into_its_packets_and_reads_back() {
 
 #[test]
 fn only_a_sysex7_packet_with_a_defined_status_decodes() {
-    // A MIDI 1.0 note-on is no SysEx.
+    // A MIDI 1.0 note-on is not a SysEx message.
     assert_eq!(SysEx7::decode([0x2090_3C7F, 0, 0, 0]), None);
     // Statuses 4 to 15 are reserved.
     for status in 4..16_u32 {
         assert_eq!(SysEx7::decode([0x3002_0102 | status << 20, 0, 0, 0]), None);
     }
-    // A count past six reads as six, and the group comes with it.
+    // A count above six is read as six, and the group is still read.
     let packet = SysEx7::decode([0x3B3F_0102, 0x0304_0506, 0, 0]).expect("whole");
     assert_eq!((packet.group, packet.form), (0xB, SysExForm::End));
     assert_eq!(packet.data(), [1, 2, 3, 4, 5, 6]);
-    // Bytes past the count are not the packet's.
+    // Bytes after the count are not the packet's data.
     let short = SysEx7::decode([0x3002_0102, 0x0304_0506, 0, 0]).expect("whole");
     assert_eq!(short, SysEx7::new(0, SysExForm::Complete, &[1, 2]));
 }

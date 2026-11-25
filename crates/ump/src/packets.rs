@@ -1,17 +1,16 @@
-//! Packet framing: what a Universal MIDI Packet carries, how many words it
-//! takes, and splitting a stream of words into packets.
+//! Defines the UMP message type and splits a stream of words into packets.
 
 use std::fmt;
 use std::iter::FusedIterator;
 
 use crate::Event;
 
-/// A packet's message type: the top four bits of its first word, which say
-/// what the packet carries and how many words it takes.
+/// A packet's message type, which says what the packet carries and how many
+/// words it takes.
 ///
-/// The named types are the ones the UMP 1.1 table defines. The rest are
-/// reserved, and have sizes too, so a reader can skip a packet it does not
-/// know.
+/// It is the top four bits of the first word. The named types are the ones
+/// in the UMP 1.1 table. The reserved types have sizes too, so code can skip
+/// a packet of an unknown type.
 ///
 /// # Examples
 ///
@@ -30,28 +29,28 @@ use crate::Event;
 pub struct MessageType(u8);
 
 impl MessageType {
-    /// Utility messages, such as jitter-reduction timestamps: one word, on
-    /// no group.
+    /// Utility messages, such as jitter-reduction timestamps, in one word
+    /// with no group.
     pub const UTILITY: Self = MessageType(0x0);
-    /// System real-time and system common messages: one word.
+    /// System real-time and system common messages, in one word.
     pub const SYSTEM: Self = MessageType(0x1);
-    /// MIDI 1.0 channel voice messages, [`Midi1Voice`](crate::Midi1Voice):
-    /// one word.
+    /// MIDI 1.0 channel voice messages, [`Midi1Voice`](crate::Midi1Voice),
+    /// in one word.
     pub const MIDI1: Self = MessageType(0x2);
-    /// 7-bit System Exclusive, [`SysEx7`](crate::SysEx7): two words.
+    /// 7-bit System Exclusive, [`SysEx7`](crate::SysEx7), in two words.
     pub const SYSEX7: Self = MessageType(0x3);
     /// MIDI 2.0 channel voice messages,
-    /// [`ChannelVoice`](crate::ChannelVoice): two words.
+    /// [`ChannelVoice`](crate::ChannelVoice), in two words.
     pub const MIDI2: Self = MessageType(0x4);
-    /// 8-bit System Exclusive and mixed data sets: four words.
+    /// 8-bit System Exclusive and mixed data sets, in four words.
     pub const SYSEX8: Self = MessageType(0x5);
-    /// Flex data, such as tempo and lyrics: four words.
+    /// Flex data, such as tempo and lyrics, in four words.
     pub const FLEX_DATA: Self = MessageType(0xD);
-    /// UMP stream messages, which describe the endpoint: four words, on no
-    /// group.
+    /// UMP stream messages, which describe the endpoint, in four words with
+    /// no group.
     pub const STREAM: Self = MessageType(0xF);
 
-    /// The type numbered `value`; `None` above 15, which is no message type.
+    /// Returns the type numbered `value`, or `None` above 15.
     pub const fn new(value: u8) -> Option<Self> {
         if value <= 0xF {
             Some(MessageType(value))
@@ -60,18 +59,18 @@ impl MessageType {
         }
     }
 
-    /// The type of a packet whose first word is `first`.
+    /// Returns the type of a packet whose first word is `first`.
     pub const fn of(first: u32) -> Self {
         MessageType((first >> 28) as u8)
     }
 
-    /// Its number, 0 to 15.
+    /// Returns the type's number, 0 to 15.
     pub const fn get(self) -> u8 {
         self.0
     }
 
-    /// The number of 32-bit words a packet of this type takes, 1 to 4, from
-    /// the UMP 1.1 table.
+    /// Returns the packet length in 32-bit words, 1 to 4, from the UMP 1.1
+    /// table.
     pub const fn words(self) -> usize {
         match self.0 {
             0x0..=0x2 | 0x6 | 0x7 => 1,

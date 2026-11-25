@@ -1,10 +1,13 @@
-//! A MIDI 1.0 device's byte stream, read into packets in reads cut where
-//! the input's first byte says. Nothing panics, the cut changes nothing,
-//! every packet writes back as bytes, and those bytes read as the same
-//! packets. A real-time packet may move across a SysEx packet, since a
-//! SysEx goes out only once the stream knows whether more of it follows,
-//! so the real-time packets and the rest are each compared in order. The
-//! input ends with an end of SysEx, so no SysEx is left part sent.
+//! Fuzzes reading a MIDI 1.0 device's byte stream into packets, in chunks
+//! whose size the first byte sets. It checks these properties:
+//! - Nothing panics.
+//! - The chunk size doesn't change the packets.
+//! - The packets write back as bytes that read as the same packets. A SysEx
+//!   packet goes out only once it is known whether more SysEx follows, so a
+//!   real-time packet can overtake it, and the real-time packets and the rest
+//!   are compared separately, each in order.
+//!
+//! The input ends with an end of SysEx, so no SysEx is left part sent.
 #![no_main]
 
 use hapto_ump::{ByteStream, Bytes};
@@ -34,7 +37,7 @@ fuzz_target!(|data: &[u8]| {
     assert_eq!(apart(&again), apart(&packets), "a fixpoint");
 });
 
-/// The real-time packets, and the rest, each in the order they came.
+/// Splits `packets` into the real-time packets and the rest, each in order.
 fn apart(packets: &[[u32; 4]]) -> (Vec<[u32; 4]>, Vec<[u32; 4]>) {
     packets
         .iter()

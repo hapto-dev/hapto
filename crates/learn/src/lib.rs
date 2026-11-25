@@ -9,9 +9,8 @@
 //!   change. [`Learn::save`] and [`Learn::restore`] read and write the
 //!   session's `midiLearn` section.
 //! - [`LearnAudio`], on the audio thread, parses each block's MIDI 2.0
-//!   packets, MIDI 1.0 upgraded on the way in, looks them up in the
-//!   snapshot, and writes each mapped parameter as a
-//!   [learned write][glossary-learned-write].
+//!   packets (MIDI 1.0 is upgraded first), looks them up in the snapshot, and
+//!   writes each mapped parameter as a [learned write][glossary-learned-write].
 //! - [`Learn::poll`], once per UI [tick][glossary-tick], commits a captured
 //!   controller and writes every other [`Target`] the plugin registers, one
 //!   gesture per [burst][glossary-burst].
@@ -65,8 +64,8 @@
 //! // On each activation: a fresh audio side that starts from the mappings so far.
 //! let mut audio = learn.borrow_mut().replace_audio();
 //!
-//! // In each block, on the audio thread: controller 7 at full writes the
-//! // gain, once an exporter has upgraded it to the MIDI 2.0 learn reads.
+//! // In each block, on the audio thread, controller 7 at full writes the
+//! // gain. `Upgrade` converts it to MIDI 2.0 first, as an exporter does.
 //! let message = Midi1Message::ControlChange { controller: 7, value: 127 };
 //! let sent = Midi1Voice { group: 0, channel: 0, message }.event(0);
 //! let mut upgrade = Upgrade::new();

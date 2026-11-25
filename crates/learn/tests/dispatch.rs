@@ -21,7 +21,7 @@ fn rig(count: usize) -> Rig {
     rig_with(count, Config::default())
 }
 
-/// Learn over `count` parameters at a value no message writes.
+/// Returns a rig with `count` parameters at a value that no message writes.
 fn rig_with(count: usize, config: Config) -> Rig {
     Rig::new(count, UNTOUCHED, config)
 }
@@ -240,8 +240,8 @@ fn a_partial_nrpn_sequence_is_dropped() {
     let [high, low] = nrpn_address(300);
     rig.block(&[high, low, cc(6, 100)]);
     assert_eq!(rig.value(1), stored(fourteen(100 << 7)));
-    // Another number's low byte alone is partial: it never takes this
-    // number's high byte.
+    // Another number's lone low byte is partial, because it never takes
+    // this number's high byte.
     let [high, low] = nrpn_address(44);
     rig.block(&[high, low, cc(38, 5)]);
     assert_eq!(
@@ -916,7 +916,7 @@ fn every_fourteen_bit_nrpn_value_reads_centre_anchored_fine_or_coarse() {
         sent.extend([cc(6, high), cc(38, low)]);
         fine.block(&sent);
         assert_eq!(fine.value(0), stored(fourteen(value)), "NRPN 300 = {value}");
-        // A coarse binding reads the high byte alone, as 7-bit.
+        // A coarse binding reads the high byte alone, as a 7-bit value.
         coarse.block(&sent[..3]);
         assert_eq!(coarse.value(0), stored(seven(high)), "high byte {high}");
     }

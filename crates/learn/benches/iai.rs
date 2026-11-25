@@ -51,8 +51,8 @@ fn mapped() -> (Learn, LearnAudio) {
     (learn, audio)
 }
 
-/// A block of controller moves, an NRPN with its data, and notes, upgraded
-/// to MIDI 2.0 as an exporter does.
+/// Returns a block of controller moves, an NRPN with its data, and notes,
+/// upgraded to MIDI 2.0 as an exporter does.
 fn block() -> EventList {
     let on = |message| {
         Midi1Voice {

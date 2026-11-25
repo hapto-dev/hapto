@@ -1,6 +1,5 @@
-//! MIDI 2.0 downgraded to MIDI 1.0 on the way out, by the Default
-//! Translation in appendix D.2 of the UMP and MIDI 2.0 Protocol
-//! specification.
+//! Downgrades outgoing MIDI 2.0 to MIDI 1.0 with the Default Translation in
+//! appendix D.2 of the UMP and MIDI 2.0 Protocol specification.
 
 use crate::controller::{
     BANK_SELECT, BANK_SELECT_LSB, DATA_ENTRY, DATA_ENTRY_LSB, NRPN_LSB, NRPN_MSB, RPN_LSB, RPN_MSB,
@@ -11,25 +10,31 @@ use crate::{
     Midi1Voice,
 };
 
-/// Downgrades MIDI 2.0 to MIDI 1.0, for a destination that takes only MIDI
-/// 1.0: when someone asks for it, or the other end forces it.
+/// Downgrades MIDI 2.0 to MIDI 1.0 for a destination that accepts only MIDI
+/// 1.0, when someone asks for it or the other end forces it.
 ///
-/// It follows the specification's Default Translation. Values cut their
-/// low bits off. A note-on that would cut to velocity 0, which MIDI 1.0
-/// reads as a note-off, goes out at velocity 1. A registered or assignable
-/// controller becomes its four controllers (101 and 100, or 99 and 98, then
-/// 6 and 38), even one upgraded from a high byte sent alone: a MIDI 1.0
-/// receiver reads its low byte of 0 as it reads none, and one that holds a
-/// high byte for its low byte, as [`Upgrade`](crate::Upgrade) does, takes
-/// it at the frame it was sent. A program change with a bank becomes bank
-/// select (0 and 32) and then the program.
+/// Values drop their low bits, and three messages change form.
 ///
-/// What MIDI 1.0 cannot carry is dropped and counted in
-/// [`lost`](Self::lost): relative controllers, per-note controllers, per-note
-/// pitch bend and per-note management, a note's attribute, whose note still
-/// goes out, and a MIDI 2.0 channel voice packet of a status the
-/// specification reserves. Packets of the other types pass as they are,
-/// since a destination that takes MIDI 1.0 in UMP may take each of them.
+/// - A note-on that would drop to velocity 0, which MIDI 1.0 treats as a
+///   note-off, goes out at velocity 1.
+/// - A registered or assignable controller becomes four controllers (101 and
+///   100, or 99 and 98, then 6 and 38), even one upgraded from a lone high
+///   byte. A MIDI 1.0 receiver treats a low byte of 0 as no low byte, and one
+///   that waits for the low byte, as [`Upgrade`](crate::Upgrade) does, gets
+///   the value without delay.
+/// - A program change with a bank becomes bank select (0 and 32), then the
+///   program.
+///
+/// It drops what MIDI 1.0 can't carry, and counts it in
+/// [`lost`](Self::lost):
+///
+/// - relative controllers, per-note controllers, per-note pitch bend and
+///   per-note management
+/// - a note's attribute, though the note still goes out
+/// - a MIDI 2.0 channel voice packet with a reserved status
+///
+/// Packets of other types pass through unchanged, because a destination that
+/// accepts MIDI 1.0 in UMP may accept any of them.
 ///
 /// # Examples
 ///
@@ -45,7 +50,7 @@ use crate::{
 /// let mut out = EventList::with_capacity(4);
 /// downgrade.block(&[quiet.event(0)], &mut out);
 ///
-/// // Still a note-on in MIDI 1.0: velocity 1, not the 0 that ends a note.
+/// // It stays a note-on, at velocity 1 rather than the 0 that ends a note.
 /// let sent = out.as_slice()[0].midi1_voice().map(|voice| voice.message);
 /// assert_eq!(sent, Some(Midi1Message::NoteOn { note: 60, velocity: 1 }));
 /// assert_eq!(downgrade.lost(), 0);
@@ -56,19 +61,20 @@ pub struct Downgrade {
 }
 
 impl Downgrade {
-    /// A downgrade that has lost nothing yet.
+    /// Returns a downgrade that has lost nothing yet.
     pub const fn new() -> Self {
         Downgrade { lost: 0 }
     }
 
-    /// What it has dropped because MIDI 1.0 cannot carry it, since it was
-    /// made.
+    /// Returns how many messages and attributes were dropped since `new`,
+    /// because MIDI 1.0 can't carry them.
     pub const fn lost(&self) -> u64 {
         self.lost
     }
 
-    /// Downgrades a block's packets, in order, into `out`. A packet past
-    /// `out`'s room is dropped and counted there.
+    /// Downgrades a block's packets, in order, into `out`.
+    ///
+    /// A packet that doesn't fit is dropped, and `out` counts it.
     ///
     /// Thread: audio. Allocates nothing.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
@@ -78,9 +84,10 @@ impl Downgrade {
         }
     }
 
-    /// Downgrades one packet into `out`: a MIDI 2.0 channel voice message
-    /// becomes the MIDI 1.0 messages it translates to, and a packet of
-    /// another type passes as it is.
+    /// Downgrades one packet into `out`.
+    ///
+    /// A MIDI 2.0 channel voice message becomes its MIDI 1.0 translation, and
+    /// a packet of another type passes through unchanged.
     ///
     /// Thread: audio. Allocates nothing.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
@@ -175,7 +182,8 @@ impl Downgrade {
         }
     }
 
-    /// Counts a note's attribute, which MIDI 1.0 has nowhere to carry.
+    /// Counts a note's attribute, if any, as lost because MIDI 1.0 can't carry
+    /// it.
     fn count_attribute(&mut self, attribute: Attribute) {
         if attribute != Attribute::NONE {
             self.lost = self.lost.saturating_add(1);

@@ -319,8 +319,8 @@ fn a_target_panicking_as_a_restore_closes_its_burst_leaves_learn_usable() {
     assert_eq!(rig.audio.refresh_slots(), 1);
 }
 
-/// One block of MIDI 1.0 control changes, as (controller, value) pairs,
-/// upgraded to the MIDI 2.0 learn reads, as an exporter does.
+/// Upgrades `changes`, MIDI 1.0 (controller, value) pairs, to one block of
+/// MIDI 2.0, as an exporter does.
 fn controllers(changes: &[(u8, u8)]) -> EventList {
     let sent: Vec<Event> = changes
         .iter()

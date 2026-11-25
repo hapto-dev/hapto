@@ -168,8 +168,8 @@ fn learning() -> (Learn, Active<Reads>, ParamId) {
     (learn, audio, gain)
 }
 
-/// A MIDI 1.0 control change on group 0, channel 0, at `offset`, upgraded
-/// to the MIDI 2.0 learn reads.
+/// Returns a MIDI 1.0 control change on group 0, channel 0, at `offset`,
+/// upgraded to the MIDI 2.0 that learn reads.
 pub(in crate::engine) fn upgraded_cc(offset: u32, controller: u8, value: u8) -> Event {
     let message = Midi1Message::ControlChange { controller, value };
     let sent = Midi1Voice {

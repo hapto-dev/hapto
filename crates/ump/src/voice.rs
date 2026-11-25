@@ -1,5 +1,5 @@
-//! MIDI 2.0 channel voice messages (message type 4), read from and written
-//! to packets.
+//! Reads and writes MIDI 2.0 channel voice messages (message type 4) in
+//! packets.
 
 use crate::head::{
     CHANNEL_PRESSURE, CONTROL_CHANGE, Head, NOTE_OFF, NOTE_ON, PITCH_BEND, POLY_PRESSURE,
@@ -7,7 +7,7 @@ use crate::head::{
 };
 use crate::{Event, MessageType};
 
-// The statuses MIDI 2.0 alone has.
+// These statuses exist only in MIDI 2.0.
 const REGISTERED_PER_NOTE: u8 = 0x0;
 const ASSIGNABLE_PER_NOTE: u8 = 0x1;
 const REGISTERED_CONTROLLER: u8 = 0x2;
@@ -17,14 +17,15 @@ const RELATIVE_ASSIGNABLE: u8 = 0x5;
 const PER_NOTE_PITCH_BEND: u8 = 0x6;
 const PER_NOTE_MANAGEMENT: u8 = 0xF;
 
-/// A MIDI 2.0 channel voice message, with the group and channel it came on.
+/// A MIDI 2.0 channel voice message, with the group and channel that it came
+/// on.
 ///
 /// # Examples
 ///
 /// ```
 /// use hapto_ump::{Attribute, ChannelMessage, ChannelVoice};
 ///
-/// // Group 2, channel 5: a note-on at full velocity.
+/// // A note-on at full velocity on group 2, channel 5.
 /// let voice = ChannelVoice {
 ///     group: 2,
 ///     channel: 5,
@@ -38,15 +39,16 @@ pub struct ChannelVoice {
     pub group: u8,
     /// The channel, 0 to 15.
     pub channel: u8,
-    /// What it says.
+    /// The message.
     pub message: ChannelMessage,
 }
 
-/// The MIDI 2.0 channel voice messages, each value at the width MIDI 2.0
-/// sends it: nothing here rescales. This is the form the [crate](crate)
-/// says everything above the exporters reads.
+/// A MIDI 2.0 channel voice message, with each value at its MIDI 2.0 width.
 ///
-/// A note, controller, bank or index field is 7 bits, but a per-note
+/// Nothing here rescales a value. Everything above the exporters reads this
+/// form, as the [crate](crate) docs describe.
+///
+/// Note, controller, bank and index fields are 7 bits, except a per-note
 /// controller's index, which is 8.
 ///
 /// # Examples
@@ -54,7 +56,7 @@ pub struct ChannelVoice {
 /// ```
 /// use hapto_ump::{Attribute, ChannelMessage};
 ///
-/// // A velocity of 0 is a note-on in MIDI 2.0, unlike MIDI 1.0.
+/// // Unlike in MIDI 1.0, a note-on at velocity 0 is still a note-on.
 /// fn sounds(message: ChannelMessage) -> bool {
 ///     matches!(message, ChannelMessage::NoteOn { .. })
 /// }
@@ -72,7 +74,7 @@ pub enum ChannelMessage {
         /// Its attribute, if any.
         attribute: Attribute,
     },
-    /// A note starts. A velocity of 0 is a note-on too.
+    /// A note starts, even at velocity 0.
     NoteOn {
         /// The note, 0 to 127.
         note: u8,
@@ -112,7 +114,7 @@ pub enum ChannelMessage {
         /// The bend, 0 to `u32::MAX`.
         value: u32,
     },
-    /// A registered controller: MIDI 1.0's RPN as one message.
+    /// A registered controller, which is MIDI 1.0's RPN as one message.
     RegisteredController {
         /// The bank, 0 to 127.
         bank: u8,
@@ -121,7 +123,7 @@ pub enum ChannelMessage {
         /// Its value, 0 to `u32::MAX`.
         value: u32,
     },
-    /// An assignable controller: MIDI 1.0's NRPN as one message.
+    /// An assignable controller, which is MIDI 1.0's NRPN as one message.
     AssignableController {
         /// The bank, 0 to 127.
         bank: u8,
@@ -130,7 +132,7 @@ pub enum ChannelMessage {
         /// Its value, 0 to `u32::MAX`.
         value: u32,
     },
-    /// A change to a registered controller's value, relative to where it is.
+    /// A relative change to a registered controller's value.
     RelativeRegisteredController {
         /// The bank, 0 to 127.
         bank: u8,
@@ -139,8 +141,7 @@ pub enum ChannelMessage {
         /// The change.
         change: i32,
     },
-    /// A change to an assignable controller's value, relative to where it
-    /// is.
+    /// A relative change to an assignable controller's value.
     RelativeAssignableController {
         /// The bank, 0 to 127.
         bank: u8,
@@ -178,22 +179,24 @@ pub enum ChannelMessage {
     PerNoteManagement {
         /// The note, 0 to 127.
         note: u8,
-        /// Notes already sounding on it stop taking per-note controllers.
+        /// Whether notes already sounding on the key stop receiving per-note
+        /// controllers.
         detach: bool,
-        /// Its per-note controllers go back to their defaults.
+        /// Whether the key's per-note controllers reset to their defaults.
         reset: bool,
     },
 }
 
-/// A note-on's or note-off's attribute: what its type says the data
-/// means. Type 0 is none.
+/// A note-on's or note-off's attribute, whose type says what the data means.
+///
+/// Type 0 means no attribute.
 ///
 /// # Examples
 ///
 /// ```
 /// use hapto_ump::Attribute;
 ///
-/// // Type 3 is pitch 7.9: here a quarter tone above A4.
+/// // Type 3 is pitch 7.9, and this data is a quarter tone above A4.
 /// let pitch = Attribute { kind: 3, data: 69 << 9 | 0x100 };
 /// assert_ne!(pitch, Attribute::NONE);
 /// ```
@@ -201,7 +204,7 @@ pub enum ChannelMessage {
 pub struct Attribute {
     /// The attribute type, 0 for none.
     pub kind: u8,
-    /// The attribute data, as its type reads it.
+    /// The attribute data, whose meaning depends on the type.
     pub data: u16,
 }
 
@@ -210,42 +213,46 @@ impl Attribute {
     pub const NONE: Attribute = Attribute { kind: 0, data: 0 };
 }
 
-/// The bank a program change selects first.
+/// The bank that a program change selects first.
 ///
 /// # Examples
 ///
 /// ```
 /// use hapto_ump::{Bank, ChannelMessage, ChannelVoice};
 ///
-/// // Program 5 of bank 1, 0: MIDI 1.0's controllers 0 and 32, then the program.
+/// // Program 5 of bank 1, 0, which MIDI 1.0 sends as controllers 0 and 32,
+/// // then the program.
 /// let message = ChannelMessage::ProgramChange { program: 5, bank: Some(Bank { msb: 1, lsb: 0 }) };
 /// let voice = ChannelVoice { group: 0, channel: 0, message };
 /// assert_eq!(voice.words(), [0x40C0_0001, 0x0500_0100, 0, 0]);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Bank {
-    /// Bank select's most significant 7 bits: MIDI 1.0's controller 0.
+    /// Bank select's most significant 7 bits, sent as controller 0 in MIDI
+    /// 1.0.
     pub msb: u8,
-    /// Its least significant 7 bits: MIDI 1.0's controller 32.
+    /// Its least significant 7 bits, sent as controller 32 in MIDI 1.0.
     pub lsb: u8,
 }
 
 impl ChannelVoice {
-    /// Reads a packet. `None` for any other message type.
+    /// Reads a channel voice message from a packet, or returns `None` for any
+    /// other message type.
     ///
     /// # Examples
     ///
     /// ```
     /// use hapto_ump::{ChannelMessage, ChannelVoice};
     ///
-    /// // A registered controller: bank 0, index 2, half of full scale.
+    /// // A registered controller at bank 0, index 2, at half scale.
     /// let voice = ChannelVoice::decode([0x4020_0002, 0x8000_0000, 0, 0]);
     /// assert_eq!(
     ///     voice.map(|voice| voice.message),
     ///     Some(ChannelMessage::RegisteredController { bank: 0, index: 2, value: 0x8000_0000 })
     /// );
     ///
-    /// // A MIDI 1.0 packet is not one: an exporter upgrades it first.
+    /// // A MIDI 1.0 packet returns `None`, so an exporter must upgrade it
+    /// // first.
     /// assert_eq!(ChannelVoice::decode([0x2090_3C7F, 0, 0, 0]), None);
     /// ```
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
@@ -338,14 +345,14 @@ impl ChannelVoice {
         })
     }
 
-    /// The packet, with every field masked to its width.
+    /// Returns the packet, with every field masked to its width.
     ///
     /// # Examples
     ///
     /// ```
     /// use hapto_ump::{ChannelMessage, ChannelVoice};
     ///
-    /// // A controller number past its 7 bits is masked: 200 becomes 72.
+    /// // A controller number wider than 7 bits is masked, so 200 becomes 72.
     /// let voice = ChannelVoice {
     ///     group: 0,
     ///     channel: 0,
@@ -439,8 +446,9 @@ impl ChannelVoice {
         [head, data, 0, 0]
     }
 
-    /// The packet as an event at `offset`, sent as it is, ready to push on
-    /// an [`EventList`](crate::EventList).
+    /// Returns the packet as an event at `offset` with origin
+    /// [`Origin::Midi2`](crate::Origin::Midi2), ready to push onto an
+    /// [`EventList`](crate::EventList).
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn event(&self, offset: u32) -> Event {
         Event::new(offset, self.words())

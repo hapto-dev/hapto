@@ -51,8 +51,8 @@ fn source(index: usize) -> Source {
     }
 }
 
-/// One block of everything learn reads, and some it does not, upgraded to
-/// MIDI 2.0 as an exporter does.
+/// Returns one block of everything that learn reads and some that it doesn't,
+/// upgraded to MIDI 2.0 as an exporter does.
 fn events() -> EventList {
     let on = |message| {
         Midi1Voice {

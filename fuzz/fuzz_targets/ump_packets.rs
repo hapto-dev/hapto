@@ -1,7 +1,7 @@
-//! The UMP packet stream a host hands a plugin: split into packets, and
-//! decode each as a MIDI 2.0 or a MIDI 1.0 channel voice message. Nothing
-//! panics, a decoded message encodes to a packet that decodes to itself,
-//! and the packets consume the stream exactly.
+//! Fuzzes splitting the UMP stream that a host passes a plugin into packets
+//! and decoding each as a MIDI 2.0 or MIDI 1.0 channel voice message. It
+//! checks that nothing panics, that a decoded message round-trips through its
+//! packet, and that the packets use up the stream exactly.
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;

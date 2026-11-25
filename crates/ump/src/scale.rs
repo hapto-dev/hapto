@@ -1,27 +1,24 @@
-//! Values between the widths MIDI 1.0 and MIDI 2.0 send them at, by the
-//! Default Translation in appendix D.1 of the UMP and MIDI 2.0 Protocol
-//! specification.
+//! Scales values between the widths of MIDI 1.0 and MIDI 2.0, by the Default
+//! Translation in appendix D.1 of the UMP and MIDI 2.0 Protocol specification.
 //!
-//! Upscaling is Min-Center-Max: the minimum, the centre and the maximum land
-//! on the minimum, the centre and the maximum, values up to the centre shift
-//! left, and values above it fill their low bits by repeating their own.
-//! Downscaling cuts the low bits off. Down after up gives back every value
-//! exactly, so a value upgraded from MIDI 1.0 narrows back to what was sent.
+//! Scaling up uses Min-Center-Max, which keeps the minimum, the centre and the
+//! maximum. A value up to the centre is shifted left, and one above it also
+//! fills its new low bits by repeating its own. Scaling down drops the low
+//! bits, so a value scaled up and back down is unchanged.
 //!
 //! # Examples
 //!
 //! ```
 //! use hapto_ump::scale;
 //!
-//! // A MIDI 1.0 controller at its centre is the 32-bit centre.
+//! // A MIDI 1.0 controller's centre is the 32-bit centre.
 //! assert_eq!(scale::up_7_to_32(64), 0x8000_0000);
-//! // And narrows back to what was sent.
+//! // Scaling back down returns the original.
 //! assert_eq!(scale::down_32_to_7(scale::up_7_to_32(87)), 87);
 //! ```
 
-/// `value`, `from` bits wide, upscaled to `to` bits by Min-Center-Max, the
-/// specification's reference algorithm. `from` is 2 or more and less than
-/// `to`, which is at most 32.
+/// Scales `value` from `from` bits up to `to` bits with Min-Center-Max.
+/// `from` must be at least 2 and less than `to`, which must be at most 32.
 const fn up(value: u32, from: u32, to: u32) -> u32 {
     let scale = to.saturating_sub(from);
     let shifted = value.wrapping_shl(scale);
@@ -29,7 +26,7 @@ const fn up(value: u32, from: u32, to: u32) -> u32 {
     if value <= centre {
         return shifted;
     }
-    // Every bit but the highest repeats, as often as the new width holds.
+    // Every bit except the highest is repeated until the new width is full.
     let repeat_bits = from.saturating_sub(1);
     let mask = 1_u32.wrapping_shl(repeat_bits).wrapping_sub(1);
     let mut repeat = value & mask;
@@ -46,7 +43,7 @@ const fn up(value: u32, from: u32, to: u32) -> u32 {
     scaled
 }
 
-/// A 7-bit value, such as a MIDI 1.0 velocity, as 16 bits.
+/// Scales a 7-bit value, such as a MIDI 1.0 velocity, up to 16 bits.
 ///
 /// # Examples
 ///
@@ -58,7 +55,7 @@ pub const fn up_7_to_16(value: u8) -> u16 {
     up(value as u32 & 0x7F, 7, 16) as u16
 }
 
-/// A 7-bit value, such as a MIDI 1.0 controller, as 32 bits.
+/// Scales a 7-bit value, such as a MIDI 1.0 controller, up to 32 bits.
 ///
 /// # Examples
 ///
@@ -69,20 +66,19 @@ pub const fn up_7_to_32(value: u8) -> u32 {
     up(value as u32 & 0x7F, 7, 32)
 }
 
-/// A 14-bit value, such as a MIDI 1.0 pitch bend or parameter number's
-/// data, as 32 bits.
+/// Scales a 14-bit value, such as a MIDI 1.0 pitch bend, up to 32 bits.
 ///
 /// # Examples
 ///
 /// ```
-/// // A pitch bend at rest stays at rest.
+/// // A pitch bend at its centre stays at the centre.
 /// assert_eq!(hapto_ump::scale::up_14_to_32(0x2000), 0x8000_0000);
 /// ```
 pub const fn up_14_to_32(value: u16) -> u32 {
     up(value as u32 & 0x3FFF, 14, 32)
 }
 
-/// A 16-bit value, such as a MIDI 2.0 velocity, cut to 7 bits.
+/// Scales a 16-bit value, such as a MIDI 2.0 velocity, down to 7 bits.
 ///
 /// # Examples
 ///
@@ -93,7 +89,7 @@ pub const fn down_16_to_7(value: u16) -> u8 {
     (value >> 9) as u8
 }
 
-/// A 32-bit value, such as a MIDI 2.0 controller, cut to 7 bits.
+/// Scales a 32-bit value, such as a MIDI 2.0 controller, down to 7 bits.
 ///
 /// # Examples
 ///
@@ -104,7 +100,7 @@ pub const fn down_32_to_7(value: u32) -> u8 {
     (value >> 25) as u8
 }
 
-/// A 32-bit value, such as a MIDI 2.0 pitch bend, cut to 14 bits.
+/// Scales a 32-bit value, such as a MIDI 2.0 pitch bend, down to 14 bits.
 ///
 /// # Examples
 ///
@@ -121,13 +117,13 @@ mod tests {
 
     #[test]
     fn the_specifications_examples_scale_as_it_says() {
-        // The specification's own, in appendix D.1.3 and D.1.4.
+        // The specification's examples, from appendix D.1.3 and D.1.4.
         let examples = [(10, 0x1400), (64, 0x8000), (87, 0xAEBA), (127, 0xFFFF)];
         for (seven, sixteen) in examples {
             assert_eq!(up_7_to_16(seven), sixteen, "{seven} up");
             assert_eq!(down_16_to_7(sixteen), seven, "{sixteen:#x} down");
         }
-        // D.3.1: a MIDI 1.0 velocity of 1.
+        // Appendix D.3.1's example, a MIDI 1.0 velocity of 1.
         assert_eq!(up_7_to_16(1), 0x0200);
     }
 
