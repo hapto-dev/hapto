@@ -1,16 +1,14 @@
-//! Audio cut into spans: the stretches between its MIDI messages, in which
-//! nothing arrives.
+//! Audio cut into spans, the stretches between its MIDI messages.
 
 use hapto_audio::Audio;
 use hapto_audio::layout::Layout;
 
 use crate::Midi;
 
-/// Part of a block in which nothing arrives but at its first frame: its
-/// audio, and the messages that arrive as it starts.
+/// Part of a block in which messages arrive only at its first frame.
 ///
-/// A span has a block's shape, so it goes to any function written for a
-/// block's audio.
+/// A span's fields match a block's, so any function written for a block's
+/// audio also takes a span's.
 ///
 /// # Examples
 ///
@@ -21,7 +19,7 @@ use crate::Midi;
 ///
 /// let mut buffer = AudioBuf::<Mono>::new(6);
 /// for mut span in Spans::new(buffer.audio(), Midi::default()).at_most(4) {
-///     // The block's frame it starts at, and its own frames.
+///     // The span's start, in the block's frames, and its own audio.
 ///     let level = span.start as f32;
 ///     span.audio.add_to_all(std::iter::repeat(level));
 /// }
@@ -30,25 +28,27 @@ use crate::Midi;
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct Span<'a, L: Layout> {
-    /// The block's frame the span starts at: for sending MIDI at the
+    /// The block's frame that the span starts at, for sending MIDI at the
     /// block's frames from inside it.
     pub start: usize,
     /// The span's frames, in every channel.
     pub audio: Audio<'a, L>,
-    /// What arrives at its first frame, in the order it came: every message
-    /// is at frame 0, so [`Midi::messages`] reads them.
+    /// The messages at the first frame, in the order they came. Each is at
+    /// frame 0, so [`Midi::messages`] reads them.
     pub midi: Midi<'a>,
 }
 
-/// A block's spans, in time order, disjoint, covering it once: a new one at
-/// each frame a message arrives at, so a plugin acts on each message, then
-/// renders until the next. None is empty. A block's `spans` makes them.
+/// A block's spans in time order, which cover each frame once.
 ///
-/// A plugin that never asks for spans keeps its block whole, so a convolver
-/// or an FFT is never cut short.
+/// A new span starts at each frame where a message arrives, so a plugin acts
+/// on each message and then renders until the next. None is empty, and a
+/// block's `spans` method makes them.
 ///
-/// Open: a parameter marked sample-accurate, to split at its automation
-/// too, is to come.
+/// A plugin that never cuts its block into spans keeps it whole, so a
+/// convolver or an FFT is never cut short.
+///
+/// Open: marking a parameter sample-accurate, so spans also split at its
+/// automation, is to come.
 ///
 /// # Examples
 ///
@@ -67,8 +67,8 @@ pub struct Span<'a, L: Layout> {
 /// let mut buffer = AudioBuf::<Mono>::new(8);
 /// buffer.audio().add_to_all(std::iter::repeat(1.0));
 ///
-/// // A gate the pedal opens: each span plays at the pedal's state as it
-/// // starts.
+/// // A gate that the pedal opens, so each span plays with the pedal's
+/// // state at its start.
 /// let mut down = false;
 /// for mut span in Spans::new(buffer.audio(), list.midi()) {
 ///     for message in span.midi.messages() {
@@ -84,17 +84,17 @@ pub struct Span<'a, L: Layout> {
 /// ```
 #[derive(Debug)]
 pub struct Spans<'a, L: Layout> {
-    /// The frames not yet handed out; `None` once all are.
+    /// The frames not yet handed out, or `None` once all are.
     rest: Option<Audio<'a, L>>,
     midi: Midi<'a>,
-    /// The block's frame `rest` starts at.
+    /// The block's frame that `rest` starts at.
     at: usize,
     /// The most frames a span holds.
     most: usize,
 }
 
 impl<'a, L: Layout> Spans<'a, L> {
-    /// The spans of `audio` with `midi`, a block's or a part of one.
+    /// Returns the spans of `audio` with `midi`, a block's or part of one.
     ///
     /// # Examples
     ///
@@ -125,7 +125,7 @@ impl<'a, L: Layout> Spans<'a, L> {
         }
     }
 
-    /// Also splits wherever a span would run past `frames`, at least 1: for
+    /// Also splits wherever a span would run past `frames` (at least 1), for
     /// an effect whose modulation must move at least that often.
     ///
     /// # Examples
@@ -161,8 +161,8 @@ impl<'a, L: Layout> Iterator for Spans<'a, L> {
             .between(self.at.saturating_add(1), usize::MAX)
             .first_frame()
             .map_or(left, |frame| frame.saturating_add(1));
-        // At least a frame, since each bound is: `at_most` keeps the most
-        // above 0, and the rest is never empty. So every span moves on.
+        // Every bound is at least 1 (`at_most` keeps `most` above 0 and
+        // `rest` is never empty), so each span moves `at` forward.
         let length = next.min(self.most).min(left);
         let (audio, later) = rest.split_at(length);
         let start = self.at;

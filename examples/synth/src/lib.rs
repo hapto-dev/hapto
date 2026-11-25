@@ -26,12 +26,12 @@ use hapto_host::{Block, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Stat
 const VOICES: usize = 16;
 /// How long a released note takes to fall 60 dB, in seconds.
 const RELEASE: f32 = 0.2;
-/// The level at which a released note stops: 60 dB down.
+/// The level at which a released note stops, 60 dB down.
 const SILENT: f32 = 1e-3;
 /// The level of a note at velocity 1.
 const LEVEL: f32 = 0.25;
 
-/// The plugin, on the main thread: it holds nothing.
+/// The main-thread half of the plugin, which holds nothing.
 #[derive(Debug)]
 pub struct Synth;
 

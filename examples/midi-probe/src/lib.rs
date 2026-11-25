@@ -1,24 +1,17 @@
 //! The MIDI probe, which makes a host's MIDI audible and sends it back out,
 //! for checking MIDI through a real host by hand.
 //!
-//! Each note plays a sine at its pitch, as loud as its velocity and its
-//! volume, controller 7: its own where MIDI 2.0 or a VST3 host sets one, its
-//! channel's otherwise. Its pressure adds the octave above, and its pan
-//! places it. Every bend reaches its pitch: the note's own, MIDI 2.0's
-//! per-note pitch, a VST3 host's tuning expression, and the channel's pitch
-//! bend times the channel's bend range, two semitones until a host says
-//! otherwise. The sustain pedal holds released notes; all notes off and all
-//! sound off end the channel's. Every message that arrives goes back out at
-//! its frame, as it came, so a host's MIDI monitor, or a track that records
-//! the probe, shows what reached the plugin.
+//! Each note plays a sine at its pitch.
 //!
-//! - A note's own pitch, bend, pressure and volume move it, so a VST3 host's
-//!   note expressions and MIDI 2.0's per-note controllers are heard.
-//!   Pressure adds the octave above.
-//! - A channel's pitch bend moves its notes by its bend range, two semitones
-//!   until a host sets another.
-//! - A channel's volume (controller 7) sets its notes' level.
-//! - All notes off and all sound off release the channel's notes.
+//! - Its level follows its velocity and its volume (controller 7). The
+//!   volume is the note's own where MIDI 2.0 or a VST3 host sets one, and
+//!   otherwise the channel's.
+//! - Its pressure adds the octave above, and its pan places it.
+//! - Its pitch follows the note's own bend, MIDI 2.0's per-note pitch, a
+//!   VST3 host's tuning expression, and the channel's pitch bend, scaled by
+//!   the channel's bend range (two semitones until a host sets another).
+//! - The sustain pedal holds released notes, and all notes off and all sound
+//!   off end the channel's notes.
 //!
 //! Every message goes back out at its frame as it came, so a host's MIDI
 //! monitor, or a track that records the probe, shows what reached the plugin.

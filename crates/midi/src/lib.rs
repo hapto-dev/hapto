@@ -13,13 +13,20 @@
 //! - A [`NoteId`] names a note from its note-on to its note-off, and a
 //!   per-note message names its note with a [`NoteKey`].
 //!
-//! A block's audio cut at each message is its [`Spans`]. An instrument's
-//! notes play on its [`Voice`]s, which [`Poly`] gives them.
+//! The [`controller`] module names MIDI's controllers.
 //!
-//! The crate is in the core tier, on `hapto-ump`, `hapto-audio` and
-//! `hapto-params`, and depends on nothing else. Decoding, reading a block,
-//! cutting it into spans, sending and playing voices are fit for the audio
-//! thread: they allocate nothing and never panic.
+//! A block's MIDI is a [`Midi`], with its messages, each at its frame, and
+//! their packets. It reads them from a [`MidiList`], which the engine
+//! decodes each block into once. A block sends MIDI through its
+//! [`MidiOut`].
+//!
+//! A block's [`Spans`] are its audio cut at each message. An instrument
+//! plays each note on a [`Voice`], which [`Poly`] gives it.
+//!
+//! The crate is in the core tier and depends only on `hapto-ump`,
+//! `hapto-audio` and `hapto-params`. Decoding, reading a block, cutting it
+//! into spans, sending and playing voices are safe on the audio thread,
+//! because they allocate nothing and never panic.
 //!
 //! # Examples
 //!

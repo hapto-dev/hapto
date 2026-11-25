@@ -1,5 +1,5 @@
-//! A block cut into spans, or played by voices: `Spans` and `Poly` are
-//! hapto-midi's, since each is only audio and MIDI, and a block makes them.
+//! The methods that cut a block into spans or play it by voices. `Spans`
+//! and `Poly` are in hapto-midi, because each needs only audio and MIDI.
 
 use hapto_midi::ToPlay;
 
@@ -7,10 +7,11 @@ use crate::layout::Layout;
 use crate::{Block, MidiOut, Spans};
 
 impl<'a, L: Layout> Block<'a, L> {
-    /// Splits the block at each frame a MIDI message arrives at: see
-    /// [`Spans`]. The block's [`midi_out`](Self::midi_out) goes with it; a
-    /// plugin that sends too takes both with
-    /// [`spans_and_out`](Self::spans_and_out).
+    /// Splits the block at each frame where a MIDI message arrives, as
+    /// [`Spans`] describes.
+    ///
+    /// The block's [`midi_out`](Self::midi_out) is dropped, so a plugin that
+    /// sends MIDI calls [`spans_and_out`](Self::spans_and_out) instead.
     ///
     /// # Examples
     ///
@@ -19,8 +20,8 @@ impl<'a, L: Layout> Block<'a, L> {
     /// use hapto_host::midi::controller;
     /// use hapto_host::{Block, Processor, Status};
     ///
-    /// /// A gate the sustain pedal opens: each span plays at the pedal's state
-    /// /// as it starts.
+    /// /// A gate that the sustain pedal opens, so each span plays with the
+    /// /// pedal's state at its start.
     /// struct Pedal {
     ///     down: bool,
     /// }
