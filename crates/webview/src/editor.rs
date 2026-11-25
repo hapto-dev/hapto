@@ -1,12 +1,13 @@
-//! The editor on Windows: a WebView2 child window inside the host's, made
-//! by wry.
+//! The editor: a WebView child window inside the host's, made by wry. What
+//! differs between the systems' web engines is behind
+//! [`WebEngine`](crate::platform::WebEngine).
 //!
-//! wry's start-up runs the thread's message loop until the WebView exists,
-//! so the host's messages, a tick among them, arrive inside `open`; the
+//! On Windows, wry runs the thread's message loop until the WebView exists,
+//! so the host's messages, a tick among them, can arrive inside `open`. The
 //! exporter puts off what they ask of this editor until `open` returns. The
 //! page's messages arrive later, from the message loop, through the IPC
-//! handler, outside any call of the exporter's: a panic there is caught,
-//! since it would unwind into WebView2.
+//! handler, outside any call of the exporter's. A panic there is caught,
+//! because it would otherwise unwind into the WebView.
 //!
 //! The keyboard: the WebView takes it when the page is clicked, and the page
 //! gives it back when nothing there needs keys, with one fixed message,
@@ -17,7 +18,6 @@
 
 use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
-use std::collections::VecDeque;
 use std::error::Error;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::PathBuf;
@@ -29,15 +29,12 @@ use hapto_host::{Editor, ParentWindow, Size};
 use wry::dpi::{PhysicalPosition, PhysicalSize};
 use wry::http::header::{CONTENT_TYPE, HeaderValue};
 use wry::http::{Response, StatusCode};
-use wry::{Rect, WebContext, WebView, WebViewBuilder, WebViewBuilderExtWindows};
+use wry::{Rect, WebContext, WebView, WebViewBuilder};
 
 use crate::Page;
-use crate::assets::{SCHEME, Served, data_folder, dev_url, is_page, page_url, serve};
-
-/// The page's message that gives the keyboard back to the host: nothing in
-/// the page needs keys. It is no protocol message, which is tagged by
-/// `type`, so it never reaches the dispatcher.
-const HAND_BACK: &str = r#"{"shell":"releaseKeys"}"#;
+use crate::assets::{SCHEME, Served, dev_url, is_page, page_url, serve};
+use crate::native::{HAND_BACK, Native, script};
+use crate::platform::{Engine, WebEngine as _};
 
 /// The page's side of the conversation: what the dispatcher posts goes to
 /// the WebView open now, in order, and nowhere while none is.
@@ -69,80 +66,6 @@ impl Outbox for ToPage {
     }
 }
 
-/// The script that hands `message` to the page's transport, which listens
-/// as `window.__hapto`: the message as a JavaScript string, which JSON's
-/// string syntax is.
-fn script(message: &str) -> String {
-    let text = serde_json::Value::String(message.to_owned()).to_string();
-    format!("window.__hapto?.receive({text})")
-}
-
-/// The page's native side, which the editor and its WebView's IPC handler
-/// share: the dispatcher, and what waits while it is in a call.
-///
-/// A command the page calls may run a message loop of its own, such as a
-/// file dialog's, and the page's next messages and the host's close then
-/// arrive inside the call. A message is held and handed over once the call
-/// returns, before any that comes later, and a close's end of the session
-/// is done then.
-struct Native {
-    dispatcher: RefCell<Dispatcher<ToPage>>,
-    /// Messages the page sent while the dispatcher was in a call, in order.
-    held: RefCell<VecDeque<String>>,
-    /// Whether the page's session ended while the dispatcher was in a call.
-    ending: Cell<bool>,
-}
-
-impl Native {
-    /// Hands `message` to the dispatcher after those held before it, or
-    /// holds it while the dispatcher is in a call.
-    fn deliver(&self, message: String) {
-        self.held.borrow_mut().push_back(message);
-        if let Ok(mut dispatcher) = self.dispatcher.try_borrow_mut() {
-            self.catch_up(&mut dispatcher);
-        }
-    }
-
-    /// Whether the dispatcher is in a call: a command the page called is
-    /// running.
-    fn in_call(&self) -> bool {
-        self.dispatcher.try_borrow_mut().is_err()
-    }
-
-    /// Hands over what was held, then tells the page what the tick changed;
-    /// nothing while the dispatcher is in a call.
-    fn tick(&self) {
-        if let Ok(mut dispatcher) = self.dispatcher.try_borrow_mut() {
-            self.catch_up(&mut dispatcher);
-            dispatcher.tick();
-        }
-    }
-
-    /// Ends the page's session and drops what it sent that is still held:
-    /// at once, or as the call the dispatcher is in returns.
-    fn end_session(&self) {
-        self.held.borrow_mut().clear();
-        match self.dispatcher.try_borrow_mut() {
-            Ok(mut dispatcher) => dispatcher.end_session(),
-            Err(_) => self.ending.set(true),
-        }
-    }
-
-    /// Does what waited for the dispatcher, in order: a session's end, then
-    /// each held message, whose call may bring more of either.
-    fn catch_up(&self, dispatcher: &mut Dispatcher<ToPage>) {
-        loop {
-            if self.ending.take() {
-                dispatcher.end_session();
-            }
-            let Some(message) = self.held.borrow_mut().pop_front() else {
-                return;
-            };
-            dispatcher.receive(&message);
-        }
-    }
-}
-
 /// The editor: one WebView at a time, made at each open.
 pub(crate) struct PageEditor {
     name: &'static str,
@@ -150,7 +73,7 @@ pub(crate) struct PageEditor {
     assets: &'static [crate::Asset],
     size: Size,
     scale: f64,
-    native: Rc<Native>,
+    native: Rc<Native<ToPage>>,
     target: Rc<RefCell<Weak<WebView>>>,
     opened: Rc<Cell<Option<Instant>>>,
     webview: Option<Rc<WebView>>,
@@ -165,23 +88,14 @@ impl PageEditor {
             webview: Rc::clone(&target),
             opened: Rc::clone(&opened),
         };
-        let base = std::env::var_os("LOCALAPPDATA").map_or_else(std::env::temp_dir, PathBuf::from);
+        let dispatcher = Dispatcher::new(page.ui, page.commands, page.values, outbox);
         PageEditor {
             name: page.name,
-            folder: data_folder(&base, page.id),
+            folder: Engine::data_folder(page.id),
             assets: page.assets,
             size: page.size,
             scale: 1.0,
-            native: Rc::new(Native {
-                dispatcher: RefCell::new(Dispatcher::new(
-                    page.ui,
-                    page.commands,
-                    page.values,
-                    outbox,
-                )),
-                held: RefCell::new(VecDeque::new()),
-                ending: Cell::new(false),
-            }),
+            native: Rc::new(Native::new(dispatcher)),
             target,
             opened,
             webview: None,
@@ -213,6 +127,7 @@ impl Editor for PageEditor {
     }
 
     fn open(&mut self, parent: &ParentWindow) -> Result<(), Box<dyn Error>> {
+        Engine::prepare()?;
         self.opened.set(Some(Instant::now()));
         let mut context = WebContext::new(Some(self.folder.clone()));
         let (assets, name) = (self.assets, self.name);
@@ -220,7 +135,7 @@ impl Editor for PageEditor {
         let target = Rc::clone(&self.target);
         let dev = dev_url();
         let (navigable, speaks) = (dev.clone(), dev.clone());
-        let built = WebViewBuilder::new_with_web_context(&mut context)
+        let builder = WebViewBuilder::new_with_web_context(&mut context)
             .with_url(page_url(dev))
             .with_custom_protocol(SCHEME.to_owned(), move |_, request| {
                 respond(assets, request.uri().path())
@@ -228,13 +143,17 @@ impl Editor for PageEditor {
             .with_ipc_handler(move |request| {
                 // Only the page speaks for the user: any other document's
                 // message is dropped.
-                if is_page(&request.uri().to_string(), speaks.as_deref()) {
+                if is_page(
+                    &request.uri().to_string(),
+                    Engine::ORIGIN,
+                    speaks.as_deref(),
+                ) {
                     from_page(name, &native, &target, request.into_body());
                 }
             })
             // The WebView shows the page and nothing else: a link or a
             // script cannot take it elsewhere.
-            .with_navigation_handler(move |url| is_page(&url, navigable.as_deref()))
+            .with_navigation_handler(move |url| is_page(&url, Engine::ORIGIN, navigable.as_deref()))
             // WebView2 opens a file dropped on it from outside in the page's
             // place. A drop handler turns that off, and this one takes the
             // files to nothing.
@@ -246,12 +165,8 @@ impl Editor for PageEditor {
             .with_visible(false)
             // The page takes the keyboard when it is clicked, not as the
             // window opens, so the host keeps it until then.
-            .with_focused(false)
-            // A release build shows no browser menu and takes no browser
-            // shortcut, such as a reload.
-            .with_default_context_menus(cfg!(debug_assertions))
-            .with_browser_accelerator_keys(cfg!(debug_assertions))
-            .build_as_child(parent);
+            .with_focused(false);
+        let built = Engine::configure(builder).build_as_child(parent);
         let shown = built
             .map_err(|error| format!("the WebView did not start: {error}"))
             .and_then(|webview| match webview.set_visible(true) {
@@ -292,6 +207,7 @@ impl Editor for PageEditor {
     }
 
     fn tick(&mut self) {
+        Engine::pump();
         self.native.tick();
     }
 }
@@ -300,7 +216,7 @@ impl Editor for PageEditor {
 /// dispatcher.
 fn from_page(
     name: &'static str,
-    native: &Native,
+    native: &Native<ToPage>,
     target: &RefCell<Weak<WebView>>,
     message: String,
 ) {
@@ -333,8 +249,8 @@ enum HandBack {
 
 /// Gives the keyboard to the host's window, the one the WebView was built
 /// in, unless a command is running or no WebView is open. It runs inside
-/// WebView2's callback, so a panic is caught here.
-fn hand_back(native: &Native, target: &RefCell<Weak<WebView>>) -> HandBack {
+/// the WebView's callback, so a panic is caught here.
+fn hand_back(native: &Native<ToPage>, target: &RefCell<Weak<WebView>>) -> HandBack {
     let handed = panic::catch_unwind(AssertUnwindSafe(|| {
         if native.in_call() {
             return HandBack::InCall;
@@ -351,8 +267,8 @@ fn hand_back(native: &Native, target: &RefCell<Weak<WebView>>) -> HandBack {
 }
 
 /// Hands a message the page posted to the native side. It runs inside
-/// WebView2's callback, so a panic is caught here and the message dropped.
-fn deliver(name: &'static str, native: &Native, message: String) {
+/// the WebView's callback, so a panic is caught here and the message dropped.
+fn deliver(name: &'static str, native: &Native<ToPage>, message: String) {
     let handled = panic::catch_unwind(AssertUnwindSafe(|| native.deliver(message)));
     if handled.is_err() {
         hapto_host::report_line(&format!(
@@ -375,7 +291,7 @@ const FAILED: Served = Served {
 };
 
 /// The response for what `serve` gives, or 500 when it panics: it runs
-/// inside WebView2's callback, where a panic must not unwind.
+/// inside the WebView's callback, where a panic must not unwind.
 fn answer(serve: impl FnOnce() -> Served) -> Response<Cow<'static, [u8]>> {
     let served = panic::catch_unwind(AssertUnwindSafe(serve)).unwrap_or(FAILED);
     let mut response = Response::new(Cow::Borrowed(served.body));
@@ -403,9 +319,10 @@ mod tests {
 
     use hapto_bridge::Refusals;
     use hapto_host::{AuCodes, Category, PluginInfo};
-    use hapto_params::{Kind, ParamDecl, ParamId, ParamSet, UiParams};
+    use hapto_params::{Kind, ParamDecl, ParamSet};
 
     use super::*;
+    use crate::native::tests::{DIALOG, READY, dialog, during_dialog};
     use crate::{Asset, Page};
 
     const INFO: PluginInfo = PluginInfo {
@@ -433,31 +350,13 @@ mod tests {
         bytes: b"<!doctype html>",
     }];
 
-    const READY: &str = r#"{"type":"ready","protocol":3}"#;
-    const DIALOG: &str = r#"{"type":"invoke","call":1,"command":"dialog","args":null}"#;
-
-    thread_local! {
-        /// What arrives while the page's `dialog` command runs, as a file
-        /// dialog's message loop would deliver it.
-        static DURING_DIALOG: RefCell<Option<Box<dyn Fn()>>> = const { RefCell::new(None) };
-    }
-
-    /// An editor never opened, over one parameter, with a command that runs
-    /// what `DURING_DIALOG` holds.
-    fn editor() -> (Rc<RefCell<PageEditor>>, UiParams, ParamId) {
+    /// An editor never opened, over one parameter, with the `dialog`
+    /// command.
+    fn editor() -> PageEditor {
         let set = ParamSet::from_decls([ParamDecl::new("bypass", "Bypass", Kind::Bool, 0.0)])
             .expect("valid declarations");
-        let bypass = set.id("bypass").expect("declared");
         let ui = set.take_ui().expect("the first UI handle");
-        let page = Page::new(&INFO, ui.clone(), PAGE).command("dialog", |()| {
-            DURING_DIALOG.with(|during| {
-                if let Some(during) = &*during.borrow() {
-                    during();
-                }
-            });
-            Ok(())
-        });
-        (Rc::new(RefCell::new(PageEditor::new(page))), ui, bypass)
+        PageEditor::new(Page::new(&INFO, ui, PAGE).command("dialog", dialog))
     }
 
     /// Posts as the page does, through the WebView's IPC handler.
@@ -468,26 +367,19 @@ mod tests {
     }
 
     #[test]
-    fn the_hand_back_is_the_fixtures_text() {
-        let fixture = include_str!("../tests/fixtures/shell.json");
-        assert_eq!(HAND_BACK, fixture.trim_end());
-    }
-
-    #[test]
     fn the_hand_back_reaches_no_dispatcher_and_any_other_text_does() {
-        let (editor, _ui, _bypass) = editor();
-        let post = poster(&editor.borrow());
+        let editor = editor();
+        let post = poster(&editor);
         post(READY);
         post(HAND_BACK);
-        let refusals = || editor.borrow().native.dispatcher.borrow().refusals();
         assert_eq!(
-            refusals(),
+            editor.native.refusals(),
             Refusals::default(),
             "the hand-back is not refused as malformed"
         );
         post(r#"{"shell":"releaseKeys","more":1}"#);
         assert_eq!(
-            refusals().malformed,
+            editor.native.refusals().malformed,
             1,
             "only the exact text is the hand-back"
         );
@@ -495,26 +387,18 @@ mod tests {
 
     #[test]
     fn a_hand_back_with_no_webview_open_does_nothing() {
-        let (editor, _ui, _bypass) = editor();
-        let editor = editor.borrow();
+        let editor = editor();
         assert_eq!(hand_back(&editor.native, &editor.target), HandBack::Closed);
     }
 
     #[test]
     fn a_hand_back_while_a_command_runs_is_dropped() {
-        let (editor, _ui, _bypass) = editor();
-        let post = poster(&editor.borrow());
+        let editor = editor();
+        let post = poster(&editor);
         let seen = Rc::new(RefCell::new(None));
-        let (native, target) = {
-            let editor = editor.borrow();
-            (Rc::clone(&editor.native), Rc::clone(&editor.target))
-        };
+        let (native, target) = (Rc::clone(&editor.native), Rc::clone(&editor.target));
         let during = Rc::clone(&seen);
-        DURING_DIALOG.with(|slot| {
-            *slot.borrow_mut() = Some(Box::new(move || {
-                *during.borrow_mut() = Some(hand_back(&native, &target));
-            }));
-        });
+        during_dialog(move || *during.borrow_mut() = Some(hand_back(&native, &target)));
         post(READY);
         post(DIALOG);
         assert_eq!(*seen.borrow(), Some(HandBack::InCall));
@@ -531,41 +415,5 @@ mod tests {
             failed.headers().get(CONTENT_TYPE),
             Some(&HeaderValue::from_static("text/plain; charset=utf-8"))
         );
-    }
-
-    #[test]
-    fn a_message_held_while_a_command_runs_keeps_its_place() {
-        let (editor, ui, bypass) = editor();
-        let post = poster(&editor.borrow());
-        let during = poster(&editor.borrow());
-        DURING_DIALOG.with(|slot| {
-            *slot.borrow_mut() = Some(Box::new(move || {
-                during(r#"{"type":"set","param":"bypass","normalized":1}"#);
-            }));
-        });
-        post(READY);
-        post(DIALOG);
-        post(r#"{"type":"set","param":"bypass","normalized":0}"#);
-        editor.borrow_mut().tick();
-        assert_eq!(ui.value(bypass), 0.0, "the later set lands last");
-    }
-
-    #[test]
-    fn a_close_while_a_command_runs_ends_the_session_as_it_returns() {
-        let (editor, ui, bypass) = editor();
-        let post = poster(&editor.borrow());
-        let closing = Rc::downgrade(&editor);
-        DURING_DIALOG.with(|slot| {
-            *slot.borrow_mut() = Some(Box::new(move || {
-                if let Some(editor) = closing.upgrade() {
-                    editor.borrow_mut().close();
-                }
-            }));
-        });
-        post(READY);
-        post(r#"{"type":"gestureBegin","param":"bypass"}"#);
-        assert!(ui.is_open(bypass));
-        post(DIALOG);
-        assert!(!ui.is_open(bypass), "the page's drag ends for the host");
     }
 }

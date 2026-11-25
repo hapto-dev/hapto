@@ -8,8 +8,10 @@
 //! its browser processes; run it by hand on Windows with `cargo test -p
 //! hapto-webview --test hidden_window -- --ignored`.
 //!
-//! It never shows a window, takes focus or sends input: the page acts by
-//! itself, as its script says.
+//! It never shows a window of its own, takes focus or sends input, because
+//! the page acts by itself, as its script says. One test does make WebView2
+//! show a dialog, which
+//! `a_page_that_cannot_start_leaves_nothing_shown_in_the_window` describes.
 
 #![cfg(windows)]
 
@@ -300,6 +302,10 @@ fn a_page_in_a_hidden_window_is_answered_and_its_set_reaches_the_parameter() {
     drop(view);
 }
 
+/// WebView2 can't create its data folder here, so it shows its own error
+/// dialog, which says that it couldn't create the data directory. The dialog
+/// belongs to WebView2's browser process and stays open after the test ends.
+/// Click OK to dismiss it. The test passes either way.
 #[test]
 #[ignore = "fails to start a real WebView2 in a hidden window: run by hand on Windows"]
 fn a_page_that_cannot_start_leaves_nothing_shown_in_the_window() {

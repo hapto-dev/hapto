@@ -121,12 +121,16 @@
 //! ```
 
 #[cfg_attr(
-    not(windows),
-    expect(dead_code, reason = "only the Windows editor serves the page")
+    not(hapto_webview),
+    expect(dead_code, reason = "only the editor serves the page")
 )]
 mod assets;
-#[cfg(windows)]
-mod windows;
+#[cfg(hapto_webview)]
+mod editor;
+#[cfg(any(hapto_webview, test))]
+mod native;
+#[cfg(hapto_webview)]
+mod platform;
 
 use hapto_bridge::{Commands, Values};
 use hapto_host::{Editor, PluginInfo, Size};
@@ -173,8 +177,8 @@ pub use assets::Asset;
 /// # Ok::<(), hapto_params::DeclError>(())
 /// ```
 #[cfg_attr(
-    not(windows),
-    expect(dead_code, reason = "only the Windows editor reads the page's files")
+    not(hapto_webview),
+    expect(dead_code, reason = "only the editor reads the page's files")
 )]
 pub struct Page {
     name: &'static str,
@@ -263,11 +267,11 @@ impl Page {
         if self.assets.is_empty() && assets::dev_url().is_none() {
             return None;
         }
-        #[cfg(windows)]
+        #[cfg(hapto_webview)]
         {
-            Some(Box::new(windows::PageEditor::new(self)))
+            Some(Box::new(editor::PageEditor::new(self)))
         }
-        #[cfg(not(windows))]
+        #[cfg(not(hapto_webview))]
         {
             drop(self);
             None
@@ -319,7 +323,7 @@ mod tests {
     }];
 
     #[test]
-    fn a_page_is_an_editor_on_windows_alone_at_its_size() {
+    fn a_page_is_an_editor_at_its_size_where_a_web_engine_exists() {
         let set = ParamSet::from_decls([ParamDecl::new("gain", "Gain", Kind::Bool, 0.0)])
             .expect("valid declarations");
         let ui = set.take_ui().expect("the first UI handle");
@@ -333,7 +337,7 @@ mod tests {
             .with_size(size)
             .command("ping", |()| Ok(()))
             .into_editor();
-        assert_eq!(editor.is_some(), cfg!(windows));
+        assert_eq!(editor.is_some(), cfg!(hapto_webview));
         if let Some(editor) = editor {
             assert_eq!(editor.size(), size, "nothing opens until the host attaches");
         }
@@ -347,7 +351,7 @@ mod tests {
         let editor = Page::new(&INFO, ui, &[]).into_editor();
         // A debug build run with `HAPTO_PAGE_DEV_URL` set has a dev server.
         let served = assets::dev_url().is_some();
-        assert_eq!(editor.is_some(), cfg!(windows) && served);
+        assert_eq!(editor.is_some(), cfg!(hapto_webview) && served);
     }
 
     #[test]

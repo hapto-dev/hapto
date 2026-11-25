@@ -23,8 +23,9 @@ hapto-params.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
-# The WebView exists on Windows only here, so Linux and macOS build this crate
-# with no WebView library: a page there offers no editor.
+# The WebView library, on the systems that build.rs sets `hapto_webview` on.
+# Linux and macOS build this crate without it, and a page there offers no
+# editor.
 [target.'cfg(windows)'.dependencies]
 wry.workspace = true
 
