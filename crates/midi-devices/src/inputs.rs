@@ -1,10 +1,11 @@
-//! The app's MIDI in, with devices opened on the main thread and read into
-//! each block on the audio thread, merged on one group as a host hands a
-//! plugin its MIDI.
+//! The app's MIDI in: devices opened on the main thread, and read into each
+//! block on the audio thread, every MIDI 1.0 device merged on one group as
+//! a host hands a plugin its MIDI.
 
-// The reader runs on the audio thread, where a panic ends the app's audio,
-// so indexing, unwrap, expect, panic and unchecked arithmetic are denied. A
-// provably safe site gives its reason in an `#[expect]`.
+// Audio-path code: the reader runs on the audio thread, where a panic ends
+// the app's audio, so indexing, unwrap, expect, panic and unchecked
+// arithmetic are refused, and a site that is provably safe says why in an
+// `#[expect]`.
 #![cfg_attr(
     not(test),
     deny(
@@ -67,11 +68,12 @@ pub fn inputs(room: usize) -> (Inputs, InputsReader) {
 
 /// The main thread's side of the app's MIDI in, with the open devices.
 ///
-/// Every device's messages arrive merged on group 1, as a host hands a
-/// plugin its MIDI, so a plugin gets the same MIDI in the app as in a host,
-/// and a mapping learned in one works in the other. A device that leaves
-/// while open is closed at the next [`tick`](Self::tick), and every input
-/// closes when this drops.
+/// Every MIDI 1.0 device's messages arrive on group 1, merged, as a host
+/// hands a plugin its MIDI, so a plugin hears in the app what it hears in a
+/// host, and a mapping learned in one plays in the other. A MIDI 2.0
+/// device's, which Linux reads, arrive on the groups it sends them on. A
+/// device that leaves while open is closed at the next
+/// [`tick`](Self::tick). Every input closes as this drops.
 ///
 /// Open: how learn tells devices apart, because a packet doesn't name its
 /// device.

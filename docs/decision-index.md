@@ -1442,9 +1442,9 @@ move its line here; when a decision gains code, add one.
 - test `crates/ump/tests/bytes.rs`: `a_cut_ends_a_sysex_that_began_and_drops_one_that_did_not`
 - `crates/midi-devices/src/outputs.rs`: `Timing`, `Outputs`, `Outputs::open`, `OutputsWriter::write`, `MAX_OUTPUTS`
 - `crates/midi-devices/src/winmm/output.rs`: module, `Sysex::send`, `Output::shut`, `send`, `RESET_WAIT`
-- `crates/midi-devices/src/outputs/sysex.rs`: `Sysex`, `Sysex::join`, `SYSEX_BYTES`
+- `crates/midi-devices/src/outputs/sysex.rs`: `Sysex`, `Sysex::join`, `Sysex::count`, `SYSEX_BYTES`
 - `crates/midi-devices/src/ring.rs`: `Consumer::reading`, `Reading`
-- test `crates/midi-devices/src/outputs/sysex.rs`: `a_sysex_that_lost_a_packet_to_a_full_ring_is_dropped`, `another_groups_sysex_while_one_is_under_way_is_dropped_and_the_first_goes_on`
+- test `crates/midi-devices/src/outputs/sysex.rs`: `a_sysex_that_lost_a_packet_to_a_full_ring_is_dropped`, `another_groups_sysex_while_one_is_under_way_is_dropped_and_the_first_goes_on`, `a_drop_the_output_counted_itself_leaves_a_sysex_under_way_whole`
 - test `crates/midi-devices/src/ring.rs`: `a_ring_is_read_while_its_guard_lives_however_its_thread_ends`
 - `crates/midi-devices/src/winmm/signal.rs`: module, `Signal`, `Timer::wait`
 - `crates/standalone/src/midi.rs`: module, `Midi::streams`, `Midi::stop`, `Midi::tick`, `follow`, `Said`, `LEFT_WAIT`
@@ -1496,8 +1496,8 @@ move its line here; when a decision gains code, add one.
 
 - `crates/midi-devices/src/lib.rs`: module
 - `crates/midi-devices/src/alsa/mod.rs`: module, `list`, `find`, `listed`, `is_listed`, `name`, `key`, `usb_key`
-- `crates/midi-devices/src/alsa/seq.rs`: `Client`, `Client::open`, `Client::with_input_room`, `Client::read`, `Client::send_sysex`, `Ump`, `ump`, `Parser`, `classify`, `OVERRUN`
-- `crates/midi-devices/src/alsa/input.rs`: module, `Input`, `subscribe`, `read`
+- `crates/midi-devices/src/alsa/seq.rs`: `Client`, `Client::open`, `Client::with_input_room`, `Client::only_from`, `Client::has_port`, `Client::read`, `Client::send_sysex`, `Ump`, `ump`, `Parser`, `classify`, `OVERRUN`
+- `crates/midi-devices/src/alsa/input.rs`: module, `Input`, `subscribe`, `read`, `UnderWay`
 - `crates/midi-devices/src/alsa/output.rs`: module, `Output`, `Sender`, `Sender::out`, `Pace`, `send`
 - `crates/midi-devices/src/alsa/watch.rs`: `Watch`, `watch`
 - `crates/midi-devices/src/alsa/signal.rs`: `Signal`, `wait`

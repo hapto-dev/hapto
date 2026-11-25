@@ -1,18 +1,19 @@
 //! The computer's MIDI devices as Universal MIDI Packets, for an app that
 //! runs a plugin in place of a host.
 //!
-//! - [`Devices`] is the system's list, on the main thread. Each [`Device`]
-//!   has a [`DeviceId`] that survives renumbering, and
-//!   [`tick`](Devices::tick) returns what came and went.
-//! - [`inputs`] makes the app's MIDI in. [`Inputs`] opens devices on the main
-//!   thread, and [`InputsReader`] reads them all into each block on the
-//!   audio thread, merged on group 1 as a host hands a plugin its MIDI, at
-//!   frames timed by one [`Instant`] clock.
-//! - [`outputs`] makes the app's MIDI out. [`Outputs`] opens devices on the
-//!   main thread, and [`OutputsWriter`] hands each block's MIDI to them on
-//!   the audio thread. Each device's own thread sends it as soon as the
-//!   block has played, or each message at its frame's time, as [`Timing`]
-//!   says.
+//! [`Devices`] is the system's list, on the main thread: each [`Device`] is
+//! named by a [`DeviceId`] that survives the system's renumbering, and a
+//! [`tick`](Devices::tick) tells what came and went. [`inputs`] makes the
+//! app's MIDI in: [`Inputs`] opens devices on the main thread, and
+//! [`InputsReader`] reads every one into each block on the audio thread,
+//! a MIDI 1.0 device's merged on group 1 as a host hands a plugin its MIDI,
+//! at frames, stamped on one [`Instant`] clock. [`outputs`] makes the app's
+//! MIDI out: [`Outputs`] opens devices on the main thread, and
+//! [`OutputsWriter`] hands each block's MIDI to every one on the audio
+//! thread, sent by a thread of the device's own as soon as its block has
+//! played, or each message at its frame's time, as [`Timing`] says. A
+//! device's messages travel between the system's thread and the audio
+//! thread through a ring that never waits, locks or allocates, either way.
 //!
 //! A device's messages pass between the system's thread and the audio thread
 //! through a ring that never waits, locks or allocates, either way.

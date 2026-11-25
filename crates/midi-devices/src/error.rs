@@ -31,7 +31,8 @@ pub enum OpenError {
     /// [`MAX_INPUTS`](crate::MAX_INPUTS) inputs, or
     /// [`MAX_OUTPUTS`](crate::MAX_OUTPUTS) outputs, are already open.
     NoRoom,
-    /// The system ran out of memory.
+    /// The system had no memory for it, or, on ALSA, no client left: the
+    /// sequencer numbers 64 clients of apps, across the system.
     NoMemory,
     /// No backend is built for this system.
     NoBackend,

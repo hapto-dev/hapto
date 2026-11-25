@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use hapto_ump::{Event, EventList, SysEx7, SysExForm, SysExJoin};
 
+use super::input::UnderWay;
 use super::seq::{CAP_READ, CAP_SUBS_READ, CAP_SUBS_WRITE, CAP_WRITE, Client, Incoming, Parser};
 use super::seq::{Streams, Version};
 use crate::{Device, Devices, Direction, InputsReader, Instant, inputs, outputs};
@@ -211,6 +212,52 @@ fn a_sysex_longer_than_a_page_reaches_the_block_whole() {
 }
 
 #[test]
+fn a_sysex_sent_as_one_event_reaches_the_block_whole() {
+    // As RtMidi and midir send one, however long.
+    let mut keys = Fake::keys("one event keys");
+    let (mut inputs, mut reader) = inputs(8192);
+    inputs
+        .open(&listed("one event keys", false))
+        .expect("the test's keys open");
+    let sent = sysex(20_000);
+    keys.client
+        .send_sysex(keys.port, &sent)
+        .expect("the sequencer takes it");
+    let read = read_until(&mut reader, |read| joined(read).is_some());
+    assert_eq!(joined(&read), Some(sent));
+}
+
+#[test]
+fn only_its_device_reaches_an_input() {
+    let mut keys = Fake::keys("guarded keys");
+    let (mut inputs, mut reader) = inputs(1024);
+    inputs
+        .open(&listed("guarded keys", false))
+        .expect("the test's keys open");
+    let mut other = Fake::keys("other keys");
+    // The input's own port, which no list holds.
+    let input = other
+        .client
+        .ports()
+        .into_iter()
+        .find(|entry| entry.name == "in: guarded keys")
+        .expect("the input's port")
+        .address;
+    assert!(
+        other.client.connect_to(other.port, input).is_err(),
+        "no other app subscribes to it"
+    );
+    other
+        .client
+        .send_to(&mut other.parser, other.port, input, &[0x90, 0x40, 100])
+        .expect("the sequencer takes it");
+    keys.play(&[0x90, 0x3C, 100]);
+    let key_60 = |event: &Event| event.words[0] == 0x4090_3C00;
+    let read = read_until(&mut reader, |read| read.iter().any(key_60));
+    assert!(read.iter().all(key_60), "{read:?}");
+}
+
+#[test]
 fn a_midi_2_device_is_read_as_it_sends_on_its_own_group() {
     let Some(mut keys) = Fake::midi2_keys("midi 2 keys") else {
         eprintln!("skipped: this alsa-lib or kernel has no UMP");
@@ -230,6 +277,25 @@ fn a_midi_2_device_is_read_as_it_sends_on_its_own_group() {
         read.iter().map(|event| event.words).collect::<Vec<_>>(),
         [words]
     );
+}
+
+#[test]
+fn an_overrun_ends_a_midi_2_sysex_under_way_and_passes_over_the_rest_of_it() {
+    let packet = |group, form, data: &[u8]| SysEx7::new(group, form, data).words();
+    let mut under_way = UnderWay::default();
+    assert!(under_way.passes(packet(3, SysExForm::Start, &[1; 6])));
+    // A note passes between, on any group.
+    assert!(under_way.passes([0x4390_3C00, 0xC800_0000, 0, 0]));
+    let mut ended = Vec::new();
+    under_way.cut(|words| ended.push(words));
+    assert_eq!(ended, [packet(3, SysExForm::End, &[])]);
+    // What comes of the rest of it is passed over, and the next goes on.
+    assert!(!under_way.passes(packet(3, SysExForm::Continue, &[2; 6])));
+    assert!(!under_way.passes(packet(3, SysExForm::End, &[3])));
+    assert!(under_way.passes(packet(3, SysExForm::Complete, &[4])));
+    // With nothing under way, a cut ends nothing.
+    under_way.cut(|words| ended.push(words));
+    assert_eq!(ended.len(), 1);
 }
 
 #[test]
@@ -291,6 +357,25 @@ fn an_output_sends_a_note_and_a_long_sysex_whole_and_nothing_as_it_closes() {
     // as it is sent, so whatever the close sent the synth has by now.
     assert!(outputs.close(device.id()));
     assert_eq!(synth.taken(), Vec::<u8>::new(), "a close sends nothing");
+}
+
+#[test]
+fn a_message_on_a_sysexs_group_ends_it_as_on_windows() {
+    let mut synth = Fake::synth("cut synth");
+    let device = listed("cut synth", true);
+    let (mut outputs, mut writer) = outputs(1024);
+    outputs.open(&device).expect("the test's synth opens");
+    // A SysEx's start, a note on its group, then its end.
+    let mut sent = packets(&sysex(12));
+    sent.insert(1, Event::new(0, [0x2090_3C64, 0, 0, 0]));
+    writer.write(Instant::now(), 48_000.0, &sent);
+    assert_eq!(synth.heard(|heard| heard.len() >= 3), [0x90, 0x3C, 0x64]);
+    let start = std::time::Instant::now();
+    while writer.dropped() == 0 && start.elapsed() < PATIENCE {
+        thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(writer.dropped(), 1, "the SysEx, dropped and counted");
+    assert_eq!(synth.taken(), Vec::<u8>::new(), "none of it went out");
 }
 
 #[test]

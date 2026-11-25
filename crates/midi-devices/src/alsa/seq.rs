@@ -246,11 +246,18 @@ impl Change {
     }
 }
 
+/// How many events a client with room may hold waiting to be read: the
+/// kernel's most. Each is an event, or 28 bytes of a SysEx.
+const ROOM: usize = 2000;
+
 /// A client of the sequencer, of the app's own. It closes as it drops.
 #[derive(Debug)]
 pub(super) struct Client {
     handle: *mut sys::snd_seq_t,
     version: Version,
+    /// The one port whose events it reads, with the System client's
+    /// announcements, if it was told one.
+    from: Option<Address>,
 }
 
 // SAFETY: alsa-lib's handle may move between threads; each client is used
@@ -271,14 +278,18 @@ impl Client {
         // sequencer in alsa-lib's configuration.
         let opened =
             unsafe { sys::snd_seq_open(&raw mut handle, c"default".as_ptr(), streams, NONBLOCK) };
-        if opened < 0 || handle.is_null() {
-            return Err(OpenError::System(
-                u32::try_from(opened.saturating_neg()).unwrap_or(0),
-            ));
+        // Refused for no memory also where every one of the 64 numbers the
+        // kernel gives apps' clients, across the system, is taken.
+        if opened < 0 {
+            return Err(refused(opened));
+        }
+        if handle.is_null() {
+            return Err(OpenError::NoMemory);
         }
         let mut client = Client {
             handle,
             version: Version::Legacy,
+            from: None,
         };
         let name = app_name();
         // SAFETY: the open handle and a name that lives through the call.
@@ -296,12 +307,55 @@ impl Client {
     /// Gives the client room for as many events waiting to be read as the
     /// kernel allows, 2,000, where it gives 200 unless asked: a SysEx
     /// takes one for each 28 bytes, so a dump that comes at once waits
-    /// while the client's thread wakes, rather than being dropped.
+    /// while the client's thread wakes, rather than being dropped. alsa-lib
+    /// reads through a buffer of its own, which is made to hold as much, so
+    /// a SysEx another app sends as one event, which the room may take
+    /// whole, is never too long to read.
     pub(super) fn with_input_room(self) -> Client {
         // SAFETY: the open handle; a size the kernel refuses changes
         // nothing.
-        unsafe { sys::snd_seq_set_client_pool_input(self.handle, 2000) };
+        unsafe { sys::snd_seq_set_client_pool_input(self.handle, ROOM) };
+        let bytes = ROOM.saturating_mul(size_of::<sys::snd_seq_ump_event_t>());
+        // SAFETY: the open handle; a buffer alsa-lib cannot make leaves the
+        // one it has.
+        unsafe { sys::snd_seq_set_input_buffer_size(self.handle, bytes) };
         self
+    }
+
+    /// Reads, of what comes, only what the port at `from` sends and what
+    /// the System client announces: what another app sends straight to the
+    /// client's port is passed over.
+    pub(super) fn only_from(mut self, from: Address) -> Client {
+        self.from = Some(from);
+        self
+    }
+
+    /// Whether the client reads what came from `source`.
+    fn hears(&self, source: sys::snd_seq_addr) -> bool {
+        let source = Address {
+            client: source.client,
+            port: source.port,
+        };
+        self.from
+            .is_none_or(|from| source == from || source == ANNOUNCE)
+    }
+
+    /// Whether the port at `at` is in the sequencer now.
+    pub(super) fn has_port(&self, at: Address) -> bool {
+        // Without the memory to ask, it is taken to be there.
+        let Some(info) = PortInfo::new() else {
+            return true;
+        };
+        // SAFETY: the open handle and the info the call fills.
+        let found = unsafe {
+            sys::snd_seq_get_any_port_info(
+                self.handle,
+                c_int::from(at.client),
+                c_int::from(at.port),
+                info.0,
+            )
+        };
+        found >= 0
     }
 
     /// Makes a port of the client's own, `name`, with `caps`, and answers
@@ -383,6 +437,10 @@ impl Client {
                     code if code < 0 => return,
                     _ => {}
                 }
+                // SAFETY: alsa-lib's event, if one came, until the next read.
+                if !event.is_null() && !self.hears(unsafe { (*event).source }) {
+                    continue;
+                }
                 event.cast_const()
             } else {
                 let Some(ump) = ump() else { return };
@@ -400,6 +458,9 @@ impl Client {
                 }
                 // SAFETY: alsa-lib's event, until the next read.
                 let ump_event = unsafe { &*event };
+                if !self.hears(ump_event.source) {
+                    continue;
+                }
                 if ump_event.flags & EVENT_UMP != 0 {
                     // SAFETY: a UMP event's data is its packet.
                     each(Incoming::Packet(unsafe { ump_event.__bindgen_anon_1.ump }));
@@ -447,12 +508,41 @@ impl Client {
         self.output(event, port)
     }
 
-    fn output(&mut self, mut event: sys::snd_seq_event_t, port: u8) -> Result<(), c_int> {
+    /// Sends `bytes`, one whole MIDI 1.0 message but a SysEx, from `port`
+    /// to the port at `to` alone, subscribed or not: a test's other app.
+    #[cfg(test)]
+    pub(super) fn send_to(
+        &mut self,
+        parser: &mut Parser,
+        port: u8,
+        to: Address,
+        bytes: &[u8],
+    ) -> Result<(), c_int> {
+        match parser.encode(bytes) {
+            Some(event) => self.output_to(event, port, to),
+            None => Ok(()),
+        }
+    }
+
+    fn output(&mut self, event: sys::snd_seq_event_t, port: u8) -> Result<(), c_int> {
+        let subscribers = Address {
+            client: ADDRESS_SUBSCRIBERS,
+            port: ADDRESS_UNKNOWN,
+        };
+        self.output_to(event, port, subscribers)
+    }
+
+    fn output_to(
+        &mut self,
+        mut event: sys::snd_seq_event_t,
+        port: u8,
+        to: Address,
+    ) -> Result<(), c_int> {
         event.queue = QUEUE_DIRECT;
         event.source.port = port;
         event.dest = sys::snd_seq_addr {
-            client: ADDRESS_SUBSCRIBERS,
-            port: ADDRESS_UNKNOWN,
+            client: to.client,
+            port: to.port,
         };
         // SAFETY: the open handle and an event that lives through the call;
         // a SysEx's points at bytes that do too, which alsa-lib only reads.

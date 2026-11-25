@@ -16,8 +16,9 @@ mod signal;
 mod tests;
 mod watch;
 
+use std::collections::HashMap;
 use std::path::Path;
-use std::sync::{Mutex, OnceLock, PoisonError};
+use std::sync::{Mutex, PoisonError};
 
 pub(crate) use input::Input;
 pub(crate) use output::Output;
@@ -93,28 +94,30 @@ fn devices_of(listed: &[Listed], direction: Direction) -> Vec<(Device, &Listed)>
 
 /// Every port the list holds, in the sequencer's order: read by a client
 /// the app keeps for it, since a client that came and went for each look
-/// would mark the list changed every time.
+/// would mark the list changed every time. One that could not open is
+/// opened again at the next look: the sequencer may come later, once its
+/// module loads or the user's session may open it.
 fn listed() -> Vec<Listed> {
-    static LISTER: OnceLock<Option<Mutex<Client>>> = OnceLock::new();
-    let Some(lister) = LISTER.get_or_init(|| {
-        Client::open(Streams::Input, Version::Legacy)
-            .ok()
-            .map(Mutex::new)
-    }) else {
-        return Vec::new();
+    static LISTER: Mutex<Option<Client>> = Mutex::new(None);
+    let entries = {
+        let mut lister = LISTER.lock().unwrap_or_else(PoisonError::into_inner);
+        if lister.is_none() {
+            *lister = Client::open(Streams::Input, Version::Legacy).ok();
+        }
+        match lister.as_ref() {
+            Some(client) => client.ports(),
+            None => return Vec::new(),
+        }
     };
-    let entries = lister
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .ports();
     let ump = seq::ump().is_some();
+    let mut cards = HashMap::new();
     entries
         .iter()
         .filter(|entry| is_listed(entry, &entries, ump))
         .map(|entry| Listed {
             address: entry.address,
             name: name(entry),
-            key: key(entry),
+            key: key(entry, &mut cards),
             version: if ump { entry.version } else { Version::Legacy },
             caps: entry.caps,
         })
@@ -152,15 +155,17 @@ fn name(entry: &PortEntry) -> String {
 /// so it survives the card's renumbering: a USB card whose device has a
 /// serial number by that device, so it keeps its name in any socket, and
 /// any other card by where it sits on its bus. A software port is named by
-/// its client's name and its own.
-fn key(entry: &PortEntry) -> String {
+/// its client's name and its own. `cards` keeps each card's name, read once
+/// for the look.
+fn key(entry: &PortEntry, cards: &mut HashMap<u32, String>) -> String {
     match entry.card {
         Some(card) => {
-            let place = std::fs::canonicalize(format!("/sys/class/sound/card{card}/device"))
-                .map_or_else(
+            let place = cards.entry(card).or_insert_with(|| {
+                std::fs::canonicalize(format!("/sys/class/sound/card{card}/device")).map_or_else(
                     |_| format!("card{card}"),
                     |path| usb_key(&path).unwrap_or_else(|| path.display().to_string()),
-                );
+                )
+            });
             format!("{place}:{}", entry.address.port)
         }
         None => format!("{}:{}", entry.client_name, entry.name),

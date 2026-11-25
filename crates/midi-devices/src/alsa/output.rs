@@ -26,8 +26,8 @@ use std::time::Duration;
 use hapto_ump::{Bytes, Event, MessageType};
 
 use super::seq::{
-    ANNOUNCE, Address, CAP_NO_EXPORT, CAP_READ, CAP_SUBS_READ, CAP_WRITE, Client, Incoming, Parser,
-    Streams, Version,
+    ANNOUNCE, Address, CAP_NO_EXPORT, CAP_READ, CAP_WRITE, Client, Incoming, Parser, Streams,
+    Version,
 };
 use super::signal::{Signal, wait};
 use crate::Instant;
@@ -161,13 +161,17 @@ fn send(mut sender: Sender, shared: &Shared, signal: &Signal, mut consumer: Cons
     let mut sent: Option<usize> = None;
     let mut fds = sender.client.poll_fds();
     fds.extend(signal.poll_fd());
+    // The System client's word that the device left comes as an event to
+    // read, which only a wake brings: it is looked for once after each.
+    let mut woke = true;
     while !shared.stopping.load(Ordering::Acquire) {
-        if sender.has_left() {
+        if woke && sender.has_left() {
             shared.left.store(true, Ordering::Release);
         }
+        woke = false;
         let now = Instant::now();
         let next = match sent {
-            Some(from) => sender.piece(&sysex, &mut sent, from, now, &mut consumer),
+            Some(from) => sender.piece(&mut sysex, &mut sent, from, now, &mut consumer),
             None => match consumer.peek() {
                 None => Next::Signal,
                 Some((due, _)) if due > now => Next::After(due.since(now)),
@@ -179,6 +183,7 @@ fn send(mut sender: Sender, shared: &Shared, signal: &Signal, mut consumer: Cons
             Next::Signal => wait(&mut fds, None),
             Next::After(timeout) => wait(&mut fds, Some(timeout)),
         }
+        woke = true;
         signal.clear();
     }
     consumer
@@ -194,15 +199,15 @@ struct Sender {
 }
 
 impl Sender {
-    /// A MIDI 1.0 client whose port the device at `device` subscribes to,
-    /// and which hears the System client's announcements, so it hears the
-    /// device leave.
+    /// A MIDI 1.0 client which hears the System client's announcements,
+    /// then has the device at `device` subscribe to its port, so it cannot
+    /// miss the device leave. No other app may subscribe to its port.
     fn subscribe(device: Address, opened: &Device) -> Result<Sender, OpenError> {
-        let client = Client::open(Streams::Duplex, Version::Legacy)?;
+        let client = Client::open(Streams::Duplex, Version::Legacy)?.only_from(ANNOUNCE);
         let name = format!("out: {}", opened.name());
-        let port = client.port(&name, CAP_READ | CAP_SUBS_READ | CAP_WRITE | CAP_NO_EXPORT)?;
-        client.connect_to(port, device)?;
+        let port = client.port(&name, CAP_READ | CAP_WRITE | CAP_NO_EXPORT)?;
         client.connect_from(port, ANNOUNCE)?;
+        client.connect_to(port, device)?;
         let parser = Parser::new().ok_or(OpenError::NoMemory)?;
         Ok(Sender {
             client,
@@ -216,15 +221,15 @@ impl Sender {
     /// Whether the System client said the device went, since the last look.
     fn has_left(&mut self) -> bool {
         let device = self.device;
-        let mut left = false;
-        self.client.read(&mut self.parser, |incoming| {
-            if let Incoming::Announced(change) = incoming
-                && change.ends(device)
-            {
-                left = true;
-            }
-        });
-        left
+        let (mut left, mut overran) = (false, false);
+        self.client
+            .read(&mut self.parser, |incoming| match incoming {
+                Incoming::Announced(change) if change.ends(device) => left = true,
+                Incoming::Overrun => overran = true,
+                _ => {}
+            });
+        // What was dropped may have held the word that the device left.
+        left || (overran && !self.client.has_port(device))
     }
 
     /// Sends the packet `words` at the ring's head, or joins it into
@@ -254,25 +259,29 @@ impl Sender {
             }
             return Next::Now;
         }
-        let next = self.out(&bytes, false, now);
-        match next {
-            Ok(Next::Now) => {
-                consumer.pop();
-                Next::Now
-            }
-            Ok(wait) => wait,
-            Err(()) => {
-                consumer.pop();
-                consumer.count_dropped();
-                Next::Now
-            }
+        let sent = match self.out(&bytes, false, now) {
+            Ok(Next::Now) => true,
+            Ok(wait) => return wait,
+            Err(()) => false,
+        };
+        consumer.pop();
+        // Joined too, as every packet is: a message on a SysEx's group ends
+        // the SysEx under way there.
+        let joined = sysex.join(&event, consumer.dropped());
+        for _ in 0..joined.dropped {
+            consumer.count_dropped();
         }
+        if !sent {
+            consumer.count_dropped();
+            sysex.count();
+        }
+        Next::Now
     }
 
     /// Sends the next piece of the SysEx joined, from `from`.
     fn piece(
         &mut self,
-        sysex: &Sysex,
+        sysex: &mut Sysex,
         sent: &mut Option<usize>,
         from: usize,
         now: Instant,
@@ -289,6 +298,7 @@ impl Sender {
             Ok(wait) => wait,
             Err(()) => {
                 consumer.count_dropped();
+                sysex.count();
                 *sent = None;
                 Next::Now
             }

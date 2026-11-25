@@ -313,6 +313,7 @@ fn send(handle: Handle, shared: &Shared, signal: &Signal, mut consumer: Consumer
         }
         if joined.whole && !sysex.send(handle, shared) {
             consumer.count_dropped();
+            sysex.joining.count();
         }
         if event.message_type() != MessageType::SYSEX7 {
             short(handle, shared, &bytes);

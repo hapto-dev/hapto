@@ -150,8 +150,8 @@ comments never cite an id: they state the reason in words, and
 | D111 | [How does a plugin's author see it through a plugin format while working on it, with no real host? (D109, D110)](#d111-the-dev-host) | The standalone app's dev host: the plugin through Hapto's own VST3 and C interface test hosts, in process, its editor as the exporter's view below a bar that names the format, with a settings window of what the host sees, a tab each. It changes the sample rate, of those the device takes, and the most frames a block holds by reactivating the plugin as a host does, cuts blocks by a plan, and logs what the plugin tells the host. A switch of format starts the app again with the saved block, and a block the plugin refused is kept for the next run. It stands in for no real host. | to confirm |
 | D112 | [How does a processor see its block's audio, and the widths it runs at? (D23, D97)](#d112-the-blocks-audio-and-the-layout-as-a-type) | As a type: `Processor::Layout` names the main bus's channels, a `Bus<IN, OUT>` at one width, with `Mono`, `Stereo` and the like for the common ones, or `AnyLayout` at each width `PluginInfo::layouts` lists. `Block::audio` lends the channels as `Audio`, walked by frame or by channel with no index or frame count, and in a `Bus` both are arrays that destructure. `Width` counts channels at run time, and `AudioBuf` owns audio for tests. | decided |
 | D113 | [Where do the audio types live? (D112)](#d113-the-audio-types-crate) | In `hapto-audio`, a core crate of layer 1 beside `hapto-params` and `hapto-ump`, which `hapto-host` re-exports, so code that only writes audio, such as a voice, needs no host. | decided |
-| D114 | [Which MIDI does Hapto pass inside, and how does MIDI 1.0 reach it? (D10, D23, D70)](#d114-midi-20-inside) | MIDI 2.0: `ChannelVoice` reads and writes MIDI 2.0's channel voice messages alone. The engine upgrades MIDI 1.0 on the way in with `Upgrade`, for every exporter, and an exporter downgrades with `Downgrade` only for a destination that takes MIDI 1.0 alone, both by the specification's Default Translation. Each packet keeps its `Origin`, so learn reads a value upgraded from MIDI 1.0 at the width it was sent at. | to confirm |
-| D115 | [How does the standalone app reach the computer's MIDI devices? (D110, D114)](#d115-the-computers-midi-devices) | Through `hapto-midi-devices`, Hapto's own device layer, which only the app links: UMP alone, a device named by an id that survives the system's renumbering, the list's changes told at the tick, and each input read on the system's thread into a ring that never blocks, its packets placed at frames on the audio thread. Every input is merged on group 1, as a host hands a plugin its MIDI, each upgraded with a translation of its own, and a SysEx reaches a block whole. WinMM is its only backend so far. | decided |
+| D114 | [Which MIDI does Hapto pass inside, and how does MIDI 1.0 reach it? (D10, D23, D70)](#d114-midi-20-inside) | MIDI 2.0: `ChannelVoice` reads and writes MIDI 2.0's channel voice messages alone. The engine upgrades MIDI 1.0 on the way in with `Upgrade`, for every exporter, and an exporter downgrades with `Downgrade` only for a destination that takes MIDI 1.0 alone, both by the specification's Default Translation. Each packet keeps its `Origin`, so learn reads a value upgraded from MIDI 1.0 at the width it was sent at. | decided |
+| D115 | [How does the standalone app reach the computer's MIDI devices? (D110, D114)](#d115-the-computers-midi-devices) | Through `hapto-midi-devices`, Hapto's own device layer, which only the app links: UMP alone, a device named by an id that survives the system's renumbering, the list's changes told at the tick, and each input read on the system's thread into a ring that never blocks, its packets placed at frames on the audio thread. Every MIDI 1.0 input is merged on group 1, as a host hands a plugin its MIDI, each upgraded with a translation of its own, and a SysEx reaches a block whole. WinMM and ALSA's sequencer (D118) are its backends so far. | decided |
 | D116 | [What does a plugin read of MIDI, and in what terms? (D10, D114)](#d116-midi-in-musicians-terms) | `hapto-midi`'s `Message`s, decoded from MIDI 2.0 in its meanings: values from 0 to 1 as `f32`, values with a centre as `Centred`, and keys, channels, groups and programs as types shown as musicians count them. Each note has a `NoteId` from its note-on to its note-off, the host's where it names one, a note's own message names its key and the note its host named or else the newest on it, and a SysEx comes whole. The `Decoder` keeps its tables fixed, so decoding allocates nothing; what overflows them is counted. | decided |
 | D118 | [How does the app reach a Linux computer's MIDI devices? (D114, D115)](#d118-the-computers-midi-devices-on-linux) | Through ALSA's sequencer: each device opens as a client of the app's own, of the device's own MIDI version, so the kernel translates nothing, a MIDI 1.0 device going through D114's `Upgrade` as on Windows and a MIDI 2.0 device's packets as they came. The UMP calls are looked up at run time, a USB card is named by its serial number where it has one and any other card by where it sits on its bus, an output paces what it sends so no device's buffer overflows, and a close sends nothing. | decided |
 
@@ -3754,10 +3754,11 @@ second, one, two and four seconds after, since WinMM's list lags the
 notification.
 
 `Inputs` opens a device on the main thread and closes it there, up to 16 at
-once. Every device's messages arrive on group 1, merged, as a host hands a
-plugin its MIDI: so a plugin hears in the app what it hears in a host, and a
-mapping learned in one plays in the other, whichever device opened first.
-Open: learn telling two devices apart, which a packet does not say.
+once. Every MIDI 1.0 device's messages arrive on group 1, merged, as a host
+hands a plugin its MIDI: so a plugin hears in the app what it hears in a host,
+and a mapping learned in one plays in the other, whichever device opened first.
+A MIDI 2.0 device's, which ALSA reads (D118), arrive on the groups it sends them
+on. Open: learn telling two devices apart, which a packet does not say.
 
 The system's thread reads each message as it arrives with `ByteStream`, stamps
 it on one clock, and pushes its packets into a ring made when `Inputs` was:
@@ -3796,17 +3797,16 @@ A driver that answers that a buffer is still in use holds the close for at most
 ten waits of 20 ms, across all its buffers.
 
 `Outputs` opens a device on the main thread and closes it there, up to 16 at
-once, and `OutputsWriter` hands each block's MIDI to every open one on the
-audio thread. It downgrades the block to MIDI 1.0 by the Default Translation
-(D114), since every device reached now takes MIDI 1.0 alone, and stamps each
-packet with when it is due, as the outputs' `Timing` says. `Immediate`, the
-default, makes a block's MIDI due at once, so it goes out as soon as the block
-has played, as JUCE's standalone sends it. `AtFrames` makes each packet due
-when the block's first frame is, plus its frame at the block's rate. Each
-output has a ring, the inputs' ring the other way, which
-the writer fills only while a device reads it, and every group goes to every
-output, as a MIDI 1.0 device has none. What MIDI 1.0 has no message for is
-counted, and so is what finds no room.
+once, and `OutputsWriter` hands each block's MIDI to every open one on the audio
+thread. It downgrades the block to MIDI 1.0 by the Default Translation (D114),
+since every backend sends MIDI 1.0 alone for now (D118), and stamps each packet
+with when it is due, as the outputs' `Timing` says. `Immediate`, the default,
+makes a block's MIDI due at once, so it goes out as soon as the block has
+played, as JUCE's standalone sends it. `AtFrames` makes each packet due when the
+block's first frame is, plus its frame at the block's rate. Each output has a
+ring, the inputs' ring the other way, which the writer fills only while a device
+reads it, and every group goes to every output, as a MIDI 1.0 device has none.
+What MIDI 1.0 has no message for is counted, and so is what finds no room.
 
 A thread of each output's own sends each packet once its time comes, at once if
 that has passed: never earlier, and never dropped for being late. Once a block
@@ -3997,17 +3997,19 @@ that comes, goes or changes.
 
 Each open device is a sequencer client of the app's own, named after it, with
 one port subscribed to the device's and a thread that waits on it, so each
-device owns what it opened, as a WinMM one does. The client speaks the device's
-own MIDI version, so the kernel translates nothing. A MIDI 1.0 device's events
-become bytes through alsa-lib's MIDI event decoder and are read with
-`ByteStream` onto group 1, as WinMM's are, and each input's `Upgrade` translates
-them by D114, so a keyboard plays the same here, on Windows and in a host. A
-MIDI 2.0 device's packets go into the ring as they came, on their own groups, as
-D114 keeps every group a source has. Where the kernel refuses a MIDI 2.0 client,
-the input opens as MIDI 1.0 and the kernel translates. The UMP calls are looked
-up when first needed rather than linked, since Rust links a Linux binary to
-resolve every function as it loads: so the app starts on an alsa-lib older than
-1.2.10, and reads MIDI 1.0 there.
+device owns what it opened, as a WinMM one does. The kernel numbers 64 clients
+of apps across the system, so an app with all 16 of its inputs and 16 of its
+outputs open holds half of them, and an open that finds none left is refused for
+no memory. The client speaks the device's own MIDI version, so the kernel
+translates nothing. A MIDI 1.0 device's events become bytes through alsa-lib's
+MIDI event decoder and are read with `ByteStream` onto group 1, as WinMM's are,
+and each input's `Upgrade` translates them by D114, so a keyboard plays the same
+here, on Windows and in a host. A MIDI 2.0 device's packets go into the ring as
+they came, on their own groups, as D114 keeps every group a source has. Where
+the kernel refuses a MIDI 2.0 client, the input opens as MIDI 1.0 and the kernel
+translates. The UMP calls are looked up when first needed rather than linked,
+since Rust links a Linux binary to resolve every function as it loads: so the
+app starts on an alsa-lib older than 1.2.10, and reads MIDI 1.0 there.
 
 A device's `DeviceId` names a port. A card's port is named by the card, read
 from sysfs so it survives the card's renumbering, and by the port's number: a
@@ -4020,9 +4022,12 @@ and one for each group: the endpoint's port is listed where the app's clients
 can speak UMP, so the device opens once with all its groups, and the groups'
 where they cannot. Every port another app may subscribe to is listed, in each
 direction it allows, but the System client's. The app's own ports allow no other
-app to subscribe, so no list holds one, and the client that reads the list is
-kept for the app's life, since one that came and went for each look would mark
-the list changed every time.
+app to subscribe, so no list holds one, and each reads only what its device
+sends and what the System client announces, so what another app sends to one
+straight is passed over. The client that reads the list is kept for the app's
+life, since one that came and went for each look would mark the list changed
+every time, and one that could not open is opened again at the next look, as
+once the sequencer's module loads.
 
 A client of the app's own subscribes to the System client's announcements, and
 one about a client or a port marks the list for the next tick, as WinMM's notice
@@ -4032,22 +4037,28 @@ changed the list.
 An input's thread wakes as events come and stamps them then. Its client asks for
 2,000 events of room, the kernel's most, where it gives 200 unless asked: a
 SysEx takes one for each 28 bytes, so a dump that comes at once waits while the
-thread wakes. An overrun ends a SysEx under way, so the reader does not hold one
-with a hole, as a WinMM driver's error does. The System client's announcement
-that the device's client or port went marks the input left, and the next tick
-closes it.
+thread wakes, and alsa-lib reads through a buffer as long, so a SysEx another
+app sends as one event, as RtMidi and midir do, is never too long to read. An
+overrun ends a SysEx under way on any group with what came of it, and passes
+over the rest of it, so the reader does not hold one with a hole, as a WinMM
+driver's error does. The input hears the System client's announcements before
+the device, so their word that the device's client or port went cannot be
+missed, and marks the input left, and the next tick closes it; after an overrun,
+which may have dropped that word, the input asks whether the port is still
+there.
 
-An output's client is MIDI 1.0, since `OutputsWriter` downgrades every block.
-Its thread sends each packet as it falls due, woken by a non-blocking eventfd
-the audio thread writes, and for a packet due later by its wait's timeout, to
-within the system's timer slack. The kernel hands a card's port each event whole
-and drops one that does not fit the room left in the device's buffer, a page by
-default, so a SysEx goes out in pieces of 256 bytes, and everything goes out no
-more than half a page ahead of a MIDI cable's 3,125 bytes a second; a device
-that says it is full is given time to drain. A close sends nothing: the
-sequencer shares a device among apps, so turning its notes off would cut another
-app's too, and the notes an app leaves on are its own to end, as through midir
-and RtMidi.
+An output's client is MIDI 1.0, since `OutputsWriter` downgrades every block. It
+joins every packet, as WinMM's output does, so a message on a SysEx's group ends
+the SysEx under way there. Its thread sends each packet as it falls due, woken
+by a non-blocking eventfd the audio thread writes, and for a packet due later by
+its wait's timeout, to within the system's timer slack. The kernel hands a
+card's port each event whole and drops one that does not fit the room left in
+the device's buffer, a page by default, so a SysEx goes out in pieces of 256
+bytes, and everything goes out no more than half a page ahead of a MIDI cable's
+3,125 bytes a second; a device that says it is full is given time to drain. A
+close sends nothing: the sequencer shares a device among apps, so turning its
+notes off would cut another app's too, and the notes an app leaves on are its
+own to end, as through midir and RtMidi.
 
 The app runs on Windows alone for now: until its audio device and window run on
 Linux, the backend is reached through the crate's own API. Its tests make

@@ -75,6 +75,12 @@ impl Sysex {
         self.counted = self.counted.saturating_add(u64::from(dropped));
         Joined { whole, dropped }
     }
+
+    /// Notes a drop the output counted on the ring itself, for a message
+    /// its device refused, so it is not taken for a packet the ring lost.
+    pub(crate) fn count(&mut self) {
+        self.counted = self.counted.saturating_add(1);
+    }
 }
 
 #[cfg(test)]
@@ -165,6 +171,15 @@ mod tests {
         assert_eq!(join_on(&mut sysex, 0, End, &[2], 1), WHOLE);
         let expected: Vec<u8> = [0xF0].into_iter().chain([1; 6]).chain([2, 0xF7]).collect();
         assert_eq!(sysex.bytes, expected);
+    }
+
+    #[test]
+    fn a_drop_the_output_counted_itself_leaves_a_sysex_under_way_whole() {
+        let mut sysex = Sysex::new();
+        assert_eq!(join_on(&mut sysex, 0, Start, &[1; 6], 0), PART);
+        // A note on another group, which the device refused.
+        sysex.count();
+        assert_eq!(join_on(&mut sysex, 0, End, &[2], 1), WHOLE);
     }
 
     #[test]
