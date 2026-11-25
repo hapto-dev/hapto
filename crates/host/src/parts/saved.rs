@@ -21,9 +21,9 @@ pub(super) trait Synced: fmt::Debug {
 struct ValueSection<T> {
     value: Value<T>,
     default: T,
-    /// The change count its last apply's write left, which the session's
-    /// apply pass captured; `None` before one, or when a write from another
-    /// thread came after it.
+    /// The change count after the last apply, which the apply pass already
+    /// captured. It's `None` before any apply, or if another thread wrote the
+    /// value since.
     applied: Option<u64>,
 }
 
@@ -102,10 +102,10 @@ where
             return;
         }
         self.seen = changes;
-        // The session's apply pass captured what this value's own apply
-        // wrote, so a load is captured once. Any other write is captured,
-        // one another participant's apply made after it included. The
-        // section is borrowed only while it applies, which never syncs.
+        // The apply pass already captured this value's own apply, so only
+        // other writes mark the section as changed, including a later one
+        // from another participant's apply. `try_borrow` can't fail, because
+        // `sync` never runs during an apply.
         let applied = self
             .section
             .try_borrow()
