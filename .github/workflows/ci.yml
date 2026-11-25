@@ -470,14 +470,18 @@ jobs:
       # coverage back into the target directory the report reads.
       - name: Measure
         run: |
-          source <(cargo llvm-cov show-env --export-prefix)
+          source <(cargo llvm-cov show-env --sh)
           cargo llvm-cov clean --workspace
           cargo test $PACKAGES $FEATURES --locked -- --skip alsa::tests
           scripts/run-sequencer-tests.sh
           cargo llvm-cov report --ignore-filename-regex "$EXCLUDE" --fail-under-lines "$COVERAGE_LINES" --lcov --output-path lcov.info
+      # In Measure's environment, which says where the coverage was written.
       - name: Summary
         if: always()
-        run: cargo llvm-cov report --ignore-filename-regex "$EXCLUDE" | tail -40
+        run: |
+          set -o pipefail
+          source <(cargo llvm-cov show-env --sh)
+          cargo llvm-cov report --ignore-filename-regex "$EXCLUDE" | tail -40
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
