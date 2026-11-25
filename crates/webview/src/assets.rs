@@ -1,19 +1,16 @@
-//! The page's files, built into the plugin, and how the WebView is served
-//! them; the URL it loads, and the folder it keeps its data in.
+//! The page's files, which are built into the plugin, and how the WebView is
+//! served them. It also holds the URL that the WebView loads and the plugin's
+//! own folder, which each engine keeps its data below.
 
 use std::path::{Path, PathBuf};
 
-/// The scheme the page is served from. WebView2 cannot register a scheme of
-/// its own, so on Windows `hapto://localhost/` reaches the page as
-/// `http://hapto.localhost/`.
+/// The scheme that serves the page built into the plugin. The origin that the
+/// page then has differs between engines, and each engine's `ORIGIN` names
+/// it.
 pub(crate) const SCHEME: &str = "hapto";
 
 /// The URL of the page built into the plugin.
 const EMBEDDED: &str = "hapto://localhost/index.html";
-
-/// The origin the page built into the plugin is loaded from, as WebView2
-/// names it.
-const EMBEDDED_ORIGIN: &str = "http://hapto.localhost";
 
 /// One file of a page built into the plugin: its path below the page's
 /// root, as the page's HTML names it, and its bytes, as `include_bytes!`
@@ -91,14 +88,15 @@ pub(crate) fn page_url(dev: Option<String>) -> String {
     dev.unwrap_or_else(|| EMBEDDED.to_owned())
 }
 
-/// Whether a document at `url` is the page: the one built into the plugin,
-/// or, when `dev` names a dev server, one from that server's origin. The
+/// Whether a document at `url` is the page. That is either the page built
+/// into the plugin, which the engine loads from the origin `embedded`, or,
+/// when `dev` names a dev server, a page from that server's origin. The
 /// WebView goes nowhere else, and takes no message from anywhere else.
-pub(crate) fn is_page(url: &str, dev: Option<&str>) -> bool {
+pub(crate) fn is_page(url: &str, embedded: &str, dev: Option<&str>) -> bool {
     let Some(origin) = origin(url) else {
         return false;
     };
-    origin == EMBEDDED_ORIGIN || dev.and_then(self::origin) == Some(origin)
+    origin == embedded || dev.and_then(self::origin) == Some(origin)
 }
 
 /// The scheme, host and port of `url`, the part before its path; `None`
@@ -125,13 +123,9 @@ pub(crate) fn dev_url() -> Option<String> {
     None
 }
 
-/// The folder the WebView keeps its data in, below `base`, the user's local
-/// application data, for the plugin whose id is `id`. A character a folder's
-/// name may not hold becomes `_`.
-///
-/// The WebView's own default is a folder beside the host's executable,
-/// which a host installed below `Program Files` cannot write.
-pub(crate) fn data_folder(base: &Path, id: &str) -> PathBuf {
+/// Returns the plugin's own folder below `base`, named after the plugin's id
+/// `id`. A character that a folder's name can't hold becomes `_`.
+pub(crate) fn plugin_folder(base: &Path, id: &str) -> PathBuf {
     let name: String = id
         .chars()
         .map(|c| {
@@ -147,12 +141,15 @@ pub(crate) fn data_folder(base: &Path, id: &str) -> PathBuf {
     } else {
         name
     };
-    base.join(name).join("WebView2")
+    base.join(name)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The origin that WebView2 loads the page built into the plugin from.
+    const EMBEDDED_ORIGIN: &str = "http://hapto.localhost";
 
     const PAGE: &[Asset] = &[
         Asset {
@@ -225,7 +222,7 @@ mod tests {
             "http://hapto.localhost",
             "http://hapto.localhost/assets/index.js?v=1",
         ] {
-            assert!(is_page(url, None), "{url}");
+            assert!(is_page(url, EMBEDDED_ORIGIN, None), "{url}");
         }
         for url in [
             "file:///C:/Users/me/kick.wav",
@@ -237,24 +234,37 @@ mod tests {
             "about:blank",
             "",
         ] {
-            assert!(!is_page(url, None), "{url}");
+            assert!(!is_page(url, EMBEDDED_ORIGIN, None), "{url}");
         }
     }
 
     #[test]
     fn a_dev_servers_page_is_the_page_only_when_it_is_given() {
         let dev = Some("http://localhost:5173/");
-        assert!(!is_page("http://localhost:5173/", None));
-        assert!(is_page("http://localhost:5173/", dev));
-        assert!(is_page("http://localhost:5173/src/main.tsx", dev));
+        assert!(!is_page("http://localhost:5173/", EMBEDDED_ORIGIN, None));
+        assert!(is_page("http://localhost:5173/", EMBEDDED_ORIGIN, dev));
+        assert!(is_page(
+            "http://localhost:5173/src/main.tsx",
+            EMBEDDED_ORIGIN,
+            dev
+        ));
         assert!(is_page(
             "http://localhost:5173",
+            EMBEDDED_ORIGIN,
             Some("http://localhost:5173")
         ));
-        assert!(!is_page("http://localhost:51730/", dev));
-        assert!(!is_page("http://localhost:5174/", dev));
-        assert!(is_page("http://hapto.localhost/index.html", dev));
-        assert!(!is_page("https://example.com/", Some("not a url")));
+        assert!(!is_page("http://localhost:51730/", EMBEDDED_ORIGIN, dev));
+        assert!(!is_page("http://localhost:5174/", EMBEDDED_ORIGIN, dev));
+        assert!(is_page(
+            "http://hapto.localhost/index.html",
+            EMBEDDED_ORIGIN,
+            dev
+        ));
+        assert!(!is_page(
+            "https://example.com/",
+            EMBEDDED_ORIGIN,
+            Some("not a url")
+        ));
     }
 
     #[test]
@@ -264,19 +274,13 @@ mod tests {
     }
 
     #[test]
-    fn the_data_folder_is_the_plugins_own_below_the_base() {
+    fn the_plugins_folder_is_its_own_below_the_base() {
         let base = Path::new("base");
         assert_eq!(
-            data_folder(base, "dev.hapto.example-gain"),
-            base.join("dev.hapto.example-gain").join("WebView2")
+            plugin_folder(base, "dev.hapto.example-gain"),
+            base.join("dev.hapto.example-gain")
         );
-        assert_eq!(
-            data_folder(base, "a/b\\c:d"),
-            base.join("a_b_c_d").join("WebView2")
-        );
-        assert_eq!(
-            data_folder(base, ".."),
-            base.join("hapto-plugin").join("WebView2")
-        );
+        assert_eq!(plugin_folder(base, "a/b\\c:d"), base.join("a_b_c_d"));
+        assert_eq!(plugin_folder(base, ".."), base.join("hapto-plugin"));
     }
 }

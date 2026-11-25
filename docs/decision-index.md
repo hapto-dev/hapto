@@ -164,6 +164,7 @@ move its line here; when a decision gains code, add one.
 [Record section](decisions.md#d16-where-the-webview-pieces-live)
 
 - `crates/webview/Cargo.toml`: module
+- `crates/webview/build.rs`: module
 - `scripts/check-core-deps.py`: `LAYERS`
 
 ### D17. Learning notes
@@ -1117,12 +1118,14 @@ move its line here; when a decision gains code, add one.
 [Record section](decisions.md#d102-a-pages-files-and-a-build-without-them)
 
 - `crates/webview/src/assets.rs`: `Asset`, `serve`, `content_type`, `page_url`, `dev_url`, `SCHEME`
+- `crates/webview/src/platform/windows.rs`: `WebView2::ORIGIN`
 - `crates/webview/src/lib.rs`: module, `Page`, `Page::into_editor`
 - `examples/gain/build.rs`: `BUILT`, `main`
 - `examples/gain/src/page.rs`: module, `PAGE`, `editor`
 - `.github/workflows/ci.yml`: `page:`
 - test `crates/webview/src/lib.rs`: `a_page_with_no_files_is_an_editor_only_where_a_dev_server_serves_it`
 - test `crates/webview/src/assets.rs`: `the_root_and_each_file_are_served_with_their_content_type`, `anything_else_is_not_found`, `the_embedded_page_unless_a_dev_server_is_given`
+- test `crates/webview/src/platform/windows.rs`: `the_page_built_in_is_the_page_at_webview2s_origin`
 - test `examples/gain/tests/page.rs`: `the_built_page_renders_and_calls_the_plugin_once_answered`
 - test `examples/gain/tests/page_params.rs`: `the_pages_parameter_map_matches_the_gains_declarations`
 
@@ -1130,17 +1133,24 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d103-the-webviews-data-folder)
 
-- `crates/webview/src/assets.rs`: `data_folder`
-- `crates/webview/src/windows.rs`: `PageEditor::new`, `PageEditor::open`
-- test `crates/webview/src/assets.rs`: `the_data_folder_is_the_plugins_own_below_the_base`
+- `crates/webview/src/assets.rs`: `plugin_folder`
+- `crates/webview/src/platform.rs`: `WebEngine::data_folder`
+- `crates/webview/src/platform/windows.rs`: `WebView2::data_folder`
+- `crates/webview/src/editor.rs`: `PageEditor::new`, `PageEditor::open`
+- test `crates/webview/src/assets.rs`: `the_plugins_folder_is_its_own_below_the_base`
+- test `crates/webview/src/platform/windows.rs`: `the_data_folder_is_webview2s_own_below_the_plugins`
 - test `crates/webview/tests/hidden_window.rs`: `sixteen_editors_open_in_one_process`
 
 ### D104. The WebView's messages and what it takes
 
 [Record section](decisions.md#d104-the-webviews-messages-and-what-it-takes)
 
-- `crates/webview/src/windows.rs`: module, `ToPage`, `script`, `deliver`, `respond`, `answer`, `FAILED`, `Native`, `Native::deliver`, `Native::end_session`, `Native::catch_up`, `PageEditor::open`, `PageEditor::close`, `PageEditor::tick`
-- test `crates/webview/src/windows.rs`: `a_file_is_served_and_a_panic_while_serving_answers_500`, `a_message_held_while_a_command_runs_keeps_its_place`, `a_close_while_a_command_runs_ends_the_session_as_it_returns`
+- `crates/webview/src/editor.rs`: module, `ToPage`, `deliver`, `respond`, `answer`, `FAILED`, `PageEditor::open`, `PageEditor::close`, `PageEditor::tick`
+- `crates/webview/src/native.rs`: module, `script`, `Native`, `Native::deliver`, `Native::end_session`, `Native::catch_up`
+- `crates/webview/src/platform.rs`: module, `WebEngine`, `Engine`
+- `crates/webview/src/platform/windows.rs`: `WebView2::ORIGIN`, `WebView2::configure`
+- test `crates/webview/src/editor.rs`: `a_file_is_served_and_a_panic_while_serving_answers_500`, `closing_the_editor_ends_the_pages_session`
+- test `crates/webview/src/native.rs`: `a_message_reaches_the_transport_as_a_javascript_string`, `a_message_held_while_a_command_runs_keeps_its_place`, `a_close_while_a_command_runs_ends_the_session_as_it_returns`
 - `crates/webview/src/assets.rs`: `is_page`, `origin`
 - `page/src/transport.ts`: `webviewTransport`, `WebViewGlobals`
 - test `crates/webview/tests/hidden_window.rs`: module, `a_page_in_a_hidden_window_is_answered_and_its_set_reaches_the_parameter`, `a_page_that_cannot_start_leaves_nothing_shown_in_the_window`
@@ -1181,11 +1191,13 @@ move its line here; when a decision gains code, add one.
 
 - `page/src/keys.ts`: module, `HAND_BACK`, `needsKeys`, `watchKeys`, `KeyScope`, `POINTER_INPUTS`
 - `page/src/transport.ts`: `webviewTransport`, `WebViewGlobals`, `isKeyScope`
-- `crates/webview/src/windows.rs`: module, `HAND_BACK`, `from_page`, `hand_back`, `HandBack`, `Native::in_call`, `PageEditor::open`
+- `crates/webview/src/editor.rs`: module, `from_page`, `hand_back`, `HandBack`, `PageEditor::open`
+- `crates/webview/src/native.rs`: `HAND_BACK`, `Native::in_call`
 - `crates/webview/src/lib.rs`: module
 - `crates/webview/tests/fixtures/shell.json`: module
 - `examples/gain/page/src/main.tsx`: `LabelField`
-- test `crates/webview/src/windows.rs`: `the_hand_back_is_the_fixtures_text`, `the_hand_back_reaches_no_dispatcher_and_any_other_text_does`, `a_hand_back_with_no_webview_open_does_nothing`, `a_hand_back_while_a_command_runs_is_dropped`
+- test `crates/webview/src/editor.rs`: `the_hand_back_reaches_no_dispatcher_and_any_other_text_does`, `a_hand_back_with_no_webview_open_does_nothing`, `a_hand_back_while_a_command_runs_is_dropped`
+- test `crates/webview/src/native.rs`: `the_hand_back_is_the_fixtures_text`, `it_is_in_a_call_while_a_command_runs_and_not_after`
 - test `page/test/keys.test.ts`: module
 - test `page/test/webviewTransport.test.ts`: `the hand-back is the shell fixture's text`, `gives the keyboard back through ipc, before the snapshot too, never held by the client`, `watches nothing outside a plugin's window, with no ipc`, `the memory transport gives nothing back`
 
