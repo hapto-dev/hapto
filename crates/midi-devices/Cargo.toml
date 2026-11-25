@@ -26,6 +26,12 @@ windows = { workspace = true, features = [
     "Win32_System_Threading",
 ] }
 
+# The ALSA backend: the sequencer's clients, ports and events, alsa-lib's
+# MIDI event parser, and the poll and eventfd its threads wait on.
+[target.'cfg(target_os = "linux")'.dependencies]
+alsa-sys.workspace = true
+libc.workspace = true
+
 [target.'cfg(loom)'.dependencies]
 loom.workspace = true
 

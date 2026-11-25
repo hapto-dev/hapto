@@ -32,6 +32,13 @@ use crate::id::{Device, DeviceId, Direction};
 use crate::ports::{OpenDevices, Port, Ports};
 use crate::ring::{Consumer, Producer, ring};
 
+// A system with no backend sends no SysEx.
+#[cfg(any(windows, all(target_os = "linux", not(miri))))]
+mod sysex;
+
+#[cfg(any(windows, all(target_os = "linux", not(miri))))]
+pub(crate) use sysex::Sysex;
+
 /// How many outputs may be open at once.
 pub const MAX_OUTPUTS: usize = 16;
 

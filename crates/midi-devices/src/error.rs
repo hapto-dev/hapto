@@ -25,7 +25,8 @@ pub enum OpenError {
     NotAnOutput,
     /// The device is not in the system's list now.
     Gone,
-    /// Another app has the device open, and WinMM allows one at a time.
+    /// Another app holds it: WinMM lets one app at a time open a device,
+    /// and an ALSA port may take one subscriber alone.
     InUse,
     /// [`MAX_INPUTS`](crate::MAX_INPUTS) inputs, or
     /// [`MAX_OUTPUTS`](crate::MAX_OUTPUTS) outputs, are already open.

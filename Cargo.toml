@@ -62,6 +62,11 @@ windows-sys = "0.61.2"
 # the COM and WinRT runtime a Windows MIDI Services backend is to build on.
 # Already in the lockfile through webview2-com.
 windows = "0.62.2"
+# alsa-lib's sequencer, for the MIDI device layer's ALSA backend
+# (hapto-midi-devices), and libc for its polls, its eventfds and the UMP
+# calls it looks up at run time. Both already in the lockfile through cpal.
+alsa-sys = "0.4.0"
+libc = "0.2.191"
 # The host's window as a toolkit takes it: the editor's parent window in
 # hapto-host.
 raw-window-handle = "0.6.2"

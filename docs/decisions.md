@@ -153,6 +153,7 @@ comments never cite an id: they state the reason in words, and
 | D114 | [Which MIDI does Hapto pass inside, and how does MIDI 1.0 reach it? (D10, D23, D70)](#d114-midi-20-inside) | MIDI 2.0: `ChannelVoice` reads and writes MIDI 2.0's channel voice messages alone. The engine upgrades MIDI 1.0 on the way in with `Upgrade`, for every exporter, and an exporter downgrades with `Downgrade` only for a destination that takes MIDI 1.0 alone, both by the specification's Default Translation. Each packet keeps its `Origin`, so learn reads a value upgraded from MIDI 1.0 at the width it was sent at. | to confirm |
 | D115 | [How does the standalone app reach the computer's MIDI devices? (D110, D114)](#d115-the-computers-midi-devices) | Through `hapto-midi-devices`, Hapto's own device layer, which only the app links: UMP alone, a device named by an id that survives the system's renumbering, the list's changes told at the tick, and each input read on the system's thread into a ring that never blocks, its packets placed at frames on the audio thread. Every input is merged on group 1, as a host hands a plugin its MIDI, each upgraded with a translation of its own, and a SysEx reaches a block whole. WinMM is its only backend so far. | decided |
 | D116 | [What does a plugin read of MIDI, and in what terms? (D10, D114)](#d116-midi-in-musicians-terms) | `hapto-midi`'s `Message`s, decoded from MIDI 2.0 in its meanings: values from 0 to 1 as `f32`, values with a centre as `Centred`, and keys, channels, groups and programs as types shown as musicians count them. Each note has a `NoteId` from its note-on to its note-off, the host's where it names one, a note's own message names its key and the note its host named or else the newest on it, and a SysEx comes whole. The `Decoder` keeps its tables fixed, so decoding allocates nothing; what overflows them is counted. | decided |
+| D118 | [How does the app reach a Linux computer's MIDI devices? (D114, D115)](#d118-the-computers-midi-devices-on-linux) | Through ALSA's sequencer: each device opens as a client of the app's own, of the device's own MIDI version, so the kernel translates nothing, a MIDI 1.0 device going through D114's `Upgrade` as on Windows and a MIDI 2.0 device's packets as they came. The UMP calls are looked up at run time, a USB card is named by its serial number where it has one and any other card by where it sits on its bus, an output paces what it sends so no device's buffer overflows, and a close sends nothing. | decided |
 
 **Open.** D25 is held until `hapto-ci` needs it. It keeps its recommendation
 until decided, and no rule depends on it.
@@ -3735,9 +3736,10 @@ list, which moves when a device comes or goes, and say nothing when one does.
 **Rust.** Through `hapto-midi-devices`, Hapto's own device layer: a crate of
 layer 4 that only the app links, so a plugin in a host never sees a device. It
 speaks UMP alone, whatever the system's API carries, and builds the backends
-Hapto runs on: WinMM, MIDI 1.0 on Windows. Windows MIDI Services, MIDI 2.0 on
-Windows 11 25H2 and later, CoreMIDI and ALSA come when Hapto runs there; until
-then a platform has no backend and lists no devices. Its calls into the system
+Hapto runs on: WinMM, MIDI 1.0 on Windows, and ALSA's sequencer on Linux
+(D118). Windows MIDI Services, MIDI 2.0 on Windows 11 25H2 and later, and
+CoreMIDI come when Hapto runs there; until then a platform has no backend and
+lists no devices. Its calls into the system
 are a boundary of their own: `unsafe` is allowed in the backend's module
 alone, under the exporters' rules.
 
@@ -3969,6 +3971,113 @@ every plugin to scale them and to know which rest at a centre; a note named by
 its key alone, which loses the second note on a key and a host's note ids; and
 a note's own message named by its id alone, which has nowhere to put a
 controller sent before its note.
+
+### D118. The computer's MIDI devices on Linux
+
+**Question and C++ Seam.** How does `hapto-midi-devices` reach the MIDI devices
+of a computer running Linux? (D114, D115) The C++ Seam had no app. midir and
+RtMidi read Linux's MIDI through ALSA's sequencer as MIDI 1.0 bytes, and so does
+JUCE's device layer. Since kernel 6.5 the sequencer also carries UMP, and
+translates between a MIDI 1.0 client and a MIDI 2.0 one itself. Measured on
+kernel 7.0, it scales values as the Default Translation does, but it holds a
+data entry MSB sent alone until a new parameter number comes, through any notes
+and controllers between, where D114 sends it at the block's end; and it makes a
+note-on at velocity 0 a note-off at velocity 0, where D114's is at half. Not
+every kernel has the UMP side: Debian 13's is built without it
+(`CONFIG_SND_SEQ_UMP`) and without USB MIDI 2.0, while Ubuntu's has both from
+24.04 on. alsa-lib added the sequencer's UMP calls in 1.2.10, which Debian 12
+and Ubuntu 22.04 predate.
+
+**Rust.** The backend is ALSA's sequencer, through `alsa-sys`'s bindings, with
+`unsafe` in the backend's module alone, as WinMM's is. The sequencer shares a
+device with every app that subscribes to it, PipeWire's and JACK's bridges among
+them, where a raw MIDI device opens for one app at a time; it carries software
+ports as well as hardware; and its System client announces every client and port
+that comes, goes or changes.
+
+Each open device is a sequencer client of the app's own, named after it, with
+one port subscribed to the device's and a thread that waits on it, so each
+device owns what it opened, as a WinMM one does. The client speaks the device's
+own MIDI version, so the kernel translates nothing. A MIDI 1.0 device's events
+become bytes through alsa-lib's MIDI event decoder and are read with
+`ByteStream` onto group 1, as WinMM's are, and each input's `Upgrade` translates
+them by D114, so a keyboard plays the same here, on Windows and in a host. A
+MIDI 2.0 device's packets go into the ring as they came, on their own groups, as
+D114 keeps every group a source has. Where the kernel refuses a MIDI 2.0 client,
+the input opens as MIDI 1.0 and the kernel translates. The UMP calls are looked
+up when first needed rather than linked, since Rust links a Linux binary to
+resolve every function as it loads: so the app starts on an alsa-lib older than
+1.2.10, and reads MIDI 1.0 there.
+
+A device's `DeviceId` names a port. A card's port is named by the card, read
+from sysfs so it survives the card's renumbering, and by the port's number: a
+USB card whose device has a serial number by its vendor, product and serial, so
+a keyboard keeps its name in any socket, and any other card by where it sits on
+its bus. A software port is named by its client's name and its own. A device's
+name is its port's, or its client's for a MIDI 2.0 device's endpoint. A MIDI 2.0
+device shows in the sequencer as one client with a port for the whole endpoint
+and one for each group: the endpoint's port is listed where the app's clients
+can speak UMP, so the device opens once with all its groups, and the groups'
+where they cannot. Every port another app may subscribe to is listed, in each
+direction it allows, but the System client's. The app's own ports allow no other
+app to subscribe, so no list holds one, and the client that reads the list is
+kept for the app's life, since one that came and went for each look would mark
+the list changed every time.
+
+A client of the app's own subscribes to the System client's announcements, and
+one about a client or a port marks the list for the next tick, as WinMM's notice
+does. So does an overrun of its room, since an announcement dropped may have
+changed the list.
+
+An input's thread wakes as events come and stamps them then. Its client asks for
+2,000 events of room, the kernel's most, where it gives 200 unless asked: a
+SysEx takes one for each 28 bytes, so a dump that comes at once waits while the
+thread wakes. An overrun ends a SysEx under way, so the reader does not hold one
+with a hole, as a WinMM driver's error does. The System client's announcement
+that the device's client or port went marks the input left, and the next tick
+closes it.
+
+An output's client is MIDI 1.0, since `OutputsWriter` downgrades every block.
+Its thread sends each packet as it falls due, woken by a non-blocking eventfd
+the audio thread writes, and for a packet due later by its wait's timeout, to
+within the system's timer slack. The kernel hands a card's port each event whole
+and drops one that does not fit the room left in the device's buffer, a page by
+default, so a SysEx goes out in pieces of 256 bytes, and everything goes out no
+more than half a page ahead of a MIDI cable's 3,125 bytes a second; a device
+that says it is full is given time to drain. A close sends nothing: the
+sequencer shares a device among apps, so turning its notes off would cut another
+app's too, and the notes an app leaves on are its own to end, as through midir
+and RtMidi.
+
+The app runs on Windows alone for now: until its audio device and window run on
+Linux, the backend is reached through the crate's own API. Its tests make
+sequencer clients of their own, MIDI 1.0 and MIDI 2.0 ports that stand in for
+devices, so they need the sequencer, `/dev/snd/seq`, and no hardware: CI's Linux
+lane and its coverage lane load it. Miri cannot call into alsa-lib, so under it
+Linux has no backend.
+
+Open: MIDI 2.0 out. A MIDI 2.0 device takes the writer's MIDI 1.0, which the
+kernel upgrades by its own rules; it could take the block's MIDI 2.0 as it is.
+
+Open: a device faster than a cable, which takes a long SysEx at a cable's rate
+all the same; and the kernel's own queue, which could stamp what comes in and
+time what goes out in place of the threads' clocks.
+
+**Alternatives.** The alternatives were raw MIDI (`midiC*D*` and `umpC*D*`),
+which one app holds at a time, has no software ports and tells of devices
+through udev alone; one client for the app, letting the kernel translate, which
+plays a keyboard differently than D114 does on every other path; one client for
+the app with the kernel's conversion off, which reads a MIDI 1.0 device
+untranslated too, but routes every device's events through a table its threads
+share and sends every output from one pool, which a slow device's SysEx could
+fill; PipeWire's own MIDI, which carries UMP but reaches only a system running
+PipeWire, where the sequencer is under PipeWire, JACK and bare ALSA alike;
+JACK's, MIDI 1.0 bytes while a server runs; midir, for the reasons D115 gives;
+the `alsa` crate's sequencer wrapper, which is safe but has none of the UMP
+calls; naming every card by where it sits, which forgets a keyboard moved to
+another socket; and a close that turns off every channel's notes, as WinMM's
+reset does, which cuts another app's on a device they share, or only the notes
+the app left on, which keeps a record of each.
 
 ## How to read this
 

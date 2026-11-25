@@ -17,16 +17,11 @@
 //! A device's messages pass between the system's thread and the audio thread
 //! through a ring that never waits, locks or allocates, either way.
 //!
-//! Every device reads and writes UMP here, whatever the system's API carries.
-//! A MIDI 1.0 device's bytes become packets, upgraded to MIDI 2.0 by the
-//! device's own translation, and what goes out to one is downgraded to MIDI
-//! 1.0. Only an app links this crate, so a plugin in a host never sees a
-//! device.
-//!
-//! The only backend is WinMM, for MIDI 1.0 on Windows. Elsewhere the list is
-//! empty and no input or output opens.
-//!
-//! Open: backends for Windows MIDI Services, CoreMIDI and ALSA.
+//! The backends are the systems Hapto runs on: WinMM, MIDI 1.0 on Windows,
+//! and ALSA's sequencer on Linux, MIDI 1.0 and, where the kernel and
+//! alsa-lib have it, MIDI 2.0 in. Open: Windows MIDI Services and CoreMIDI;
+//! on a system with no backend the list is empty and no input or output
+//! opens.
 //!
 //! # Examples
 //!
@@ -51,12 +46,19 @@
 // The nightly real-time sanitizer lane marks the audio thread's calls.
 #![cfg_attr(hapto_rtsan, feature(sanitize))]
 
+// Miri cannot call into alsa-lib: under it, Linux has no backend.
+#[cfg(all(target_os = "linux", not(miri)))]
+#[allow(
+    unsafe_code,
+    reason = "a system boundary: every block says why it holds"
+)]
+mod alsa;
 mod clock;
 mod devices;
 mod error;
 mod id;
 mod inputs;
-#[cfg(not(windows))]
+#[cfg(not(any(windows, all(target_os = "linux", not(miri)))))]
 mod none;
 mod outputs;
 mod ports;
@@ -68,7 +70,9 @@ mod ring;
 )]
 mod winmm;
 
-#[cfg(not(windows))]
+#[cfg(all(target_os = "linux", not(miri)))]
+use alsa as backend;
+#[cfg(not(any(windows, all(target_os = "linux", not(miri)))))]
 use none as backend;
 #[cfg(windows)]
 use winmm as backend;

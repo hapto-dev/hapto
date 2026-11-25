@@ -156,6 +156,9 @@ jobs:
           rustup toolchain install
           rustup show active-toolchain
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      # The MIDI device layer's ALSA backend builds against alsa-lib.
+      - name: alsa-lib
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
       # Fails if a core crate or the bridge would link a window, WebView, UI
       # toolkit or plugin-format crate on any platform, with any features.
       - name: No window, WebView or host dependency
@@ -223,6 +226,9 @@ jobs:
           rustup toolchain install
           rustup show active-toolchain
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      # The MIDI device layer's ALSA backend builds against alsa-lib.
+      - name: alsa-lib
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
       # The model checks of the lock-free hand-offs in params, learn, host
       # and midi-devices; docs/testing.md lists what each checks. --cfg loom swaps their
       # atomics for loom's, which work only inside a model, so only the
@@ -310,6 +316,15 @@ jobs:
           rustup toolchain install
           rustup show active-toolchain
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      # The MIDI device layer's ALSA backend builds against alsa-lib, and its
+      # tests stand in for devices with sequencer clients of their own: the
+      # runner's kernel keeps the sequencer among its extra modules.
+      - name: alsa-lib and the ALSA sequencer
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev "linux-modules-extra-$(uname -r)"
+          sudo modprobe snd-seq
+          sudo chmod a+rw /dev/snd/seq
       # Here as well as in `rust`, whose Format step a pull request skips.
       - name: Format
         run: cargo fmt --all --check
@@ -426,6 +441,15 @@ jobs:
           rustup component add llvm-tools
           rustup show active-toolchain
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      # The MIDI device layer's ALSA backend builds against alsa-lib, and its
+      # tests stand in for devices with sequencer clients of their own: the
+      # runner's kernel keeps the sequencer among its extra modules.
+      - name: alsa-lib and the ALSA sequencer
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev "linux-modules-extra-$(uname -r)"
+          sudo modprobe snd-seq
+          sudo chmod a+rw /dev/snd/seq
       - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
         with:
           tool: cargo-llvm-cov@0.8.5
@@ -540,10 +564,12 @@ jobs:
           rustup toolchain install
           rustup show active-toolchain
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      - name: valgrind and the iai-callgrind runner
+      # valgrind, and alsa-lib, which the MIDI device layer's ALSA backend
+      # builds against.
+      - name: valgrind, alsa-lib and the iai-callgrind runner
         run: |
           sudo apt-get update
-          sudo apt-get install -y valgrind
+          sudo apt-get install -y valgrind libasound2-dev
           cargo install iai-callgrind-runner --version 0.16.1 --locked
       - name: Benchmarks
         run: scripts/run-benches.sh "${BASE}"

@@ -33,7 +33,7 @@ cd page && npm ci && npm run typecheck && npm test                   # pull requ
 cd examples/gain/page && npm ci && npm run typecheck && npm run build   # pull request: the gain's page
 cargo test -p hapto-webview --test hidden_window -- --ignored          # by hand, Windows: the page in a real WebView2, in windows never shown (one test leaves a dialog open, as its doc says)
 cargo test -p hapto-example-gain --test page -- --ignored              # by hand, Windows, with the gain's page built: the same, for its page
-cargo test -p hapto-midi-devices --test by_hand -- --ignored --nocapture --test-threads 1   # by hand, Windows: the computer's MIDI devices: their list, a chord on the system's synth at its times, every output, what a keyboard plays, a device replugged past every slot, a SysEx longer than an input's room through a loopback port, and a device unplugged while notes go out to it
+cargo test -p hapto-midi-devices --test by_hand -- --ignored --nocapture --test-threads 1   # by hand, Windows and Linux: the computer's MIDI devices: their list, a chord on the system's synth at its times, every output, what a keyboard plays, a device replugged past every slot, a SysEx longer than an input's room through a loopback port, and a device unplugged while notes go out to it
 cargo hapto build -p hapto-example-midi-probe --install   # by hand, Windows: the MIDI probe in a real host, its notes, expressions and controllers heard and every message echoed back out
 cmake -S .github/juce-adapter -B <folder> -DHAPTO_CHECK_PLUGIN=midi-probe -DHAPTO_CHECK_JUCE_COMMIT=<the commit bench/ pins>   # by hand, Windows: the same probe through the JUCE adapter, built with `cmake --build <folder> --config Release`
 cargo run -p hapto-example-midi-probe --features standalone   # by hand, Windows: the probe as an app on the computer's MIDI devices, its echo sent to the system's synth
@@ -80,11 +80,11 @@ real-time sanitizer, which needs Linux.
 | `rust`: Gate matrix (release) | The example EQ through both exporters allocates nothing and equals the processor driven directly, across block sizes, sample rates and layouts (section 2). |
 | `rust`: Docs | Every doc builds with no warning, broken link included. |
 | `doc examples` (Windows, pinned nightly) | Every struct, enum, trait, function and macro a user can reach has a Rust example, in every library crate under `crates/` (see [Doc examples](#doc-examples)). |
-| `linux` | The code is formatted, and the core, the bridge, the C interface and the example EQ through it build, pass clippy and pass their tests, gates and matrix on Linux, and the VST3 module refuses to compile there, with its message. |
+| `linux` | The code is formatted, and the core, the bridge, the C interface and the example EQ through it build, pass clippy and pass their tests, gates and matrix on Linux, and the VST3 module refuses to compile there, with its message. The MIDI device layer's ALSA backend passes its tests against the sequencer, which the lane loads, with devices of the tests' own. |
 | `hapto.h` | The header compiles as C11 and C++11 for x86_64 and aarch64, so its size and offset assertions hold for both. |
 | `cross check` (aarch64 Linux, aarch64 Android) | The core, the bridge and the C interface type-check for those targets. Nothing is linked or run. |
 | `cargo deny` | Every dependency of the workspace has a licence `deny.toml` lists, no advisory applies (two, in the benchmark harness, are named there), no source is outside crates.io. It does not read `fuzz/`, which is outside the workspace and whose libFuzzer is under NCSA. |
-| `coverage` | Line coverage of the code Linux builds is at least 92 % (see [Coverage](#coverage)). |
+| `coverage` | Line coverage of the code Linux builds is at least 92 % (see [Coverage](#coverage)), with the sequencer loaded as in `linux`. |
 | `plugin validators (windows)`: pluginval | pluginval 1.0.4, pinned by hash, passes the example EQ's VST3 bundle at strictness level 5 without a GUI, run in the validator's own process, through `cargo hapto validate`, which lays the bundle out as an author's is. It does not show what a real host does with it. |
 | `plugin validators (windows)`: The Steinberg validator | The Steinberg validator, built from the VST3 SDK at a pinned commit, passes the same bundle. It runs whether or not pluginval passed. |
 | `cargo hapto init (windows)` | A crate `cargo hapto init` writes, with this checkout's crates, builds and passes its own tests, its page map matching its declarations, so a change to the crates cannot break the template unseen. |
@@ -168,9 +168,9 @@ What keeps that true:
 Code the audio thread runs never allocates, frees, locks or makes a system call,
 but for one: the standalone app's MIDI out sets each output's signal, an event
 whose setting never blocks, once a block has handed it MIDI, and the sanitizer
-lane cannot see it, since Linux builds no signal. Every buffer it touches has a
-fixed capacity, sized when the plugin is activated on the main thread and never
-grown.
+lane never reaches it, since its gates open no device. Every buffer it touches
+has a fixed capacity, sized when the plugin is activated on the main thread and
+never grown.
 
 Allocation is checked by test. Each crate with audio-thread code has a test
 target named `alloc_gate` (`tests/alloc_gate.rs`): `hapto-host`, `hapto-learn`,
@@ -311,9 +311,9 @@ crate's event list and readers (`crates/ump/src/lib.rs`, `packets.rs`,
 `voice.rs`), the MIDI crate's decoder and block lists
 (`crates/midi/src/decoder.rs`, `midi.rs`) and the devices crate's clock, rings,
 reader, writer and output signal (`crates/midi-devices/src/clock.rs`, `ring.rs`,
-`inputs.rs`, `outputs.rs`, `winmm/signal.rs`, `none.rs`) carry marks of their
-own. The lane runs every crate's allocation gate, so the gates of the
-parameters, learn, UMP, MIDI and devices crates check those marks under the
+`inputs.rs`, `outputs.rs`, `winmm/signal.rs`, `alsa/signal.rs`, `none.rs`) carry
+marks of their own. The lane runs every crate's allocation gate, so the gates of
+the parameters, learn, UMP, MIDI and devices crates check those marks under the
 sanitizer too, as well as through the exporters. The plugin's processor runs
 below the exporters' marks in the lane's tests. A processor's `process` is a
 trait method, so a plugin would mark its own impl, as the example EQ's block

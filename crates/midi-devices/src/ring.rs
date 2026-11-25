@@ -140,8 +140,23 @@ impl Consumer {
         self.0.reading.store(reading, Ordering::Release);
     }
 
-    /// Discards every waiting packet, because a device doesn't send what was
-    /// pushed before it took the ring.
+    /// Marks the ring read by a device until the guard this returns drops,
+    /// however the device's thread ends, so the writer pushes into no ring
+    /// nobody reads.
+    #[cfg_attr(
+        all(not(any(windows, all(target_os = "linux", not(miri)))), not(test)),
+        expect(
+            dead_code,
+            reason = "only a backend's output reads its ring, and this system has none"
+        )
+    )]
+    pub(crate) fn reading(&self) -> Reading {
+        self.set_reading(true);
+        Reading(Arc::clone(&self.0))
+    }
+
+    /// Takes every packet waiting, unread: what was pushed before a device
+    /// took the ring is not its to send.
     pub(crate) fn clear(&mut self) {
         let ring = &*self.0;
         // Acquire and release as in `pop`, for every slot at once.
@@ -152,7 +167,7 @@ impl Consumer {
     /// Counts a message that the consumer had no room for, with the packets
     /// that a full ring drops.
     #[cfg_attr(
-        all(not(windows), not(test)),
+        all(not(any(windows, all(target_os = "linux", not(miri)))), not(test)),
         expect(
             dead_code,
             reason = "only a backend's output counts what it drops, and this system has none"
@@ -235,6 +250,23 @@ impl Consumer {
     }
 }
 
+/// A ring marked read by a device while it lives: see
+/// [`Consumer::reading`].
+#[cfg_attr(
+    all(not(any(windows, all(target_os = "linux", not(miri)))), not(test)),
+    expect(
+        dead_code,
+        reason = "only a backend's output reads its ring, and this system has none"
+    )
+)]
+pub(crate) struct Reading(Arc<Ring>);
+
+impl Drop for Reading {
+    fn drop(&mut self) {
+        self.0.reading.store(false, Ordering::Release);
+    }
+}
+
 #[cfg(all(test, not(loom)))]
 mod tests {
     use super::*;
@@ -300,6 +332,25 @@ mod tests {
         assert_eq!(consumer.dropped(), 1);
         producer.push(Instant::from_nanos(9), packet(9));
         assert_eq!(consumer.peek().map(|(at, _)| at.nanos()), Some(9));
+    }
+
+    #[test]
+    fn a_ring_is_read_while_its_guard_lives_however_its_thread_ends() {
+        let (producer, consumer) = ring(2);
+        let reading = consumer.reading();
+        assert!(producer.is_read());
+        drop(reading);
+        assert!(!producer.is_read());
+        let failed = std::thread::scope(|scope| {
+            scope
+                .spawn(|| {
+                    let _reading = consumer.reading();
+                    panic!("the device's thread fails");
+                })
+                .join()
+        });
+        assert!(failed.is_err());
+        assert!(!producer.is_read(), "let go as the thread unwound");
     }
 
     #[test]

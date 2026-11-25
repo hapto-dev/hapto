@@ -1,14 +1,11 @@
 //! By-hand tests of the computer's own MIDI devices, ignored because each
 //! needs a device and a person.
 //!
-//! Run them with `cargo test -p hapto-midi-devices --test by_hand --
-//! --ignored --nocapture --test-threads 1`, with a test's name after
-//! `--ignored` to run only that one.
-//!
-//! The replug and unplug tests use the device whose name contains
-//! `HAPTO_DEVICE`, or if that is unset, the first that is not the system's
-//! synth. The long SysEx test needs a loopback port, such as loopMIDI's,
-//! whose name starts with `HAPTO_LOOPBACK`, or `loopMIDI` if that is unset.
+//! The tests that replug or unplug a device follow the one whose name holds
+//! `HAPTO_DEVICE`, else the first that is not the system's synth. The long
+//! SysEx in needs a loopback port whose name starts with `HAPTO_LOOPBACK`,
+//! else with `loopMIDI` on Windows, a port loopMIDI adds, and with `Midi
+//! Through` on Linux, the kernel's own.
 
 use std::thread;
 use std::time::Duration;
@@ -22,6 +19,13 @@ use hapto_ump::{Event, EventList, SysEx7, SysExJoin};
 /// The system's own synth, which plays what it is sent through the
 /// speakers.
 const SYNTH: &str = "Microsoft GS Wavetable Synth";
+
+/// How a loopback port's name starts unless `HAPTO_LOOPBACK` says.
+const LOOPBACK: &str = if cfg!(windows) {
+    "loopMIDI"
+} else {
+    "Midi Through"
+};
 
 #[test]
 #[ignore = "by hand: lists the computer's MIDI devices"]
@@ -228,11 +232,11 @@ fn a_device_replugged_past_the_slots_opens_every_time_and_still_reads() {
 #[ignore = "by hand: needs a loopback port, which brings a long SysEx sent to it back in"]
 fn a_sysex_longer_than_the_inputs_room_comes_in_whole() {
     let devices = Devices::new();
-    let port = std::env::var("HAPTO_LOOPBACK").unwrap_or_else(|_| "loopMIDI".to_owned());
+    let port = std::env::var("HAPTO_LOOPBACK").unwrap_or_else(|_| LOOPBACK.to_owned());
     let named = |device: &&Device| device.name().starts_with(&port);
     let (Some(out), Some(back)) = (devices.outputs().find(named), devices.inputs().find(named))
     else {
-        println!("no loopback port named {port}* here: add one in loopMIDI");
+        println!("no loopback port named {port}* here: add one, or name one in HAPTO_LOOPBACK");
         return;
     };
     // Room for 1024 packets holds 6 KB of SysEx, and the SysEx is five times
@@ -243,10 +247,11 @@ fn a_sysex_longer_than_the_inputs_room_comes_in_whole() {
     outputs.open(out).expect("the loopback's output opens");
     let (sent, events) = long_sysex(32 * 1024);
     writer.write(Instant::now(), 48_000.0, &events);
-    // Blocks of 10 ms, as an audio thread reads them, for up to 10 s.
+    // Blocks of 10 ms, as an audio thread reads them, for up to 20 s: on
+    // Linux the SysEx goes out at a MIDI cable's pace, which takes ten.
     let mut join = SysExJoin::with_room(64 * 1024);
     let mut came = None;
-    for _ in 0..1000 {
+    for _ in 0..2000 {
         thread::sleep(Duration::from_millis(10));
         let mut block = EventList::with_capacity(8192);
         reader.read(Instant::now(), 480, &mut block);
@@ -261,7 +266,7 @@ fn a_sysex_longer_than_the_inputs_room_comes_in_whole() {
             break;
         }
     }
-    let came = came.expect("the SysEx came back within ten seconds");
+    let came = came.expect("the SysEx came back within twenty seconds");
     assert_eq!(came.len(), sent.len());
     assert!(came == sent, "byte for byte");
     assert_eq!(

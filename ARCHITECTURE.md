@@ -85,7 +85,8 @@ reading how Hapto works inside, start with
   a device (`id.rs`), the inputs open on the main thread and read into each
   block on the audio thread (`inputs.rs`), the outputs each block's MIDI goes
   to, sent by a thread of each output's own (`outputs.rs`), the ring between
-  the threads, either way (`ring.rs`), and the WinMM backend (`winmm/`).
+  the threads, either way (`ring.rs`), and the backends: WinMM (`winmm/`) and
+  ALSA's sequencer (`alsa/`).
 - `crates/standalone`: `hapto-standalone`, the plugin as an app of its own, on
   Windows: the standalone exporter's instance, its editor in a winit window, and
   a test signal through it to the system's audio output through cpal (`app.rs`,
@@ -241,7 +242,7 @@ with `cargo doc -p hapto-host --features vst3,cabi,test-host
   and undoing it writes that value.
 - `unsafe` is denied workspace-wide. Only `host`'s `vst3`, `cabi` and
   `standalone` modules and the `boundary`, `engine` and `faults` modules they
-  share allow it, and `midi-devices`' system backend (`winmm`), with a
+  share allow it, and `midi-devices`' system backends (`winmm`, `alsa`), with a
   `// SAFETY:` comment on every block.
 - A panic never unwinds into a host. An exporter catches it at the entry point,
   counts it as a fault, and a processor that panicked plays silence until the
