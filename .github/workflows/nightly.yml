@@ -45,9 +45,8 @@ jobs:
         run: rustup toolchain install "$NIGHTLY" --profile minimal --component miri,rust-src
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       # The host crate's own tests drive its VST3, C and standalone exporters.
-      # Six of them are ignored under miri: five need a system timer and one
-      # reads 64 MiB. A test leaks an instance on purpose, hence
-      # -Zmiri-ignore-leaks.
+      # docs/testing.md lists the tests that are ignored under miri. A test
+      # leaks an instance on purpose, hence -Zmiri-ignore-leaks.
       - name: hapto-host
         run: cargo +"$NIGHTLY" miri test -p hapto-host --features vst3,cabi,standalone,test-host --lib --locked
         env:

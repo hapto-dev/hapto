@@ -315,6 +315,12 @@ jobs:
         run: cargo test $PACKAGES $FEATURES --release --test alloc_gate --locked
       - name: Gate matrix (release)
         run: cargo test -p hapto-example-eq --no-default-features --features cabi --release --test matrix --test overflow --locked
+      # This step tests the run loop timer, which a Linux VST3 host will drive,
+      # against the test host's run loop. The exporter's other tests need a
+      # thread timer or a window, and Linux has neither yet.
+      - name: The run loop timer
+        run: |
+          cargo test -p hapto-host --no-default-features --features vst3 --lib --locked -- engine::timer:: vst3::tests::run_loop::
       - name: The VST3 module refuses to build
         run: |
           if cargo check -p hapto-example-eq --locked 2> refusal.txt; then

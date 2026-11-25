@@ -560,11 +560,13 @@ move its line here; when a decision gains code, add one.
 - `crates/host/src/cabi/mod.rs`: module
 - `crates/host/src/plugin.rs`: `Plugin::idle`
 - `crates/host/src/parts.rs`: `Driver::tick`
-- `crates/host/src/engine/mod.rs`: `Engine::start_timer`, `Engine::ticker`
-- `crates/host/src/engine/timer.rs`: module, `Timer`, `abandon`
+- `crates/host/src/engine/timer.rs`: module, `Source`, `Timer`, `Handle::detach`
+- `crates/host/src/engine/timer/macos.rs`: module
+- `crates/host/src/engine/timer/windows.rs`: module
 - `crates/host/src/vst3/component.rs`: `Component::initialize`
 - `crates/host/src/vst3/mod.rs`: module, `export_vst3`
-- test `crates/host/src/engine/timer/tests.rs`: `the_timer_ticks_through_the_threads_loop_until_dropped`, `an_abandoned_timer_ticks_no_more`, `an_abandoned_timer_s_window_stops_it_at_its_next_message`
+- `crates/host/src/engine/timer_slot.rs`: module, `Engine::start_timer`, `Engine::ticker`
+- test `crates/host/src/engine/timer/tests.rs`: `a_thread_timer_ticks_through_the_threads_loop_until_dropped`, `a_detached_thread_timer_never_ticks_again`, `a_detached_timer_s_window_stops_it_at_its_next_message`
 - test `crates/host/tests/plugin.rs`: `a_mapping_learned_after_the_session_ticks_waits_a_tick_for_the_save`
 
 ### D54. Detaching a learn target
@@ -615,7 +617,8 @@ move its line here; when a decision gains code, add one.
 - `crates/host/src/boundary.rs`: `MainThread`, `AudioSlot`
 - `crates/host/src/engine/automation.rs`: module, `Point`, `Points::queue`, `Points::apply`
 - `crates/host/src/engine/mod.rs`: module, `Engine`, `Engine::new`, `Engine::release`, `Engine::leave`, `Engine::controller_write`, `Engine::set_processing`, `Engine::tick`
-- `crates/host/src/engine/timer.rs`: `abandon`, `keep_module_loaded`
+- `crates/host/src/engine/module.rs`: `keep_loaded`
+- `crates/host/src/engine/timer.rs`: `Handle::detach`
 - `crates/host/src/vst3/component.rs`: module, `Component`, `Component::initialize`, `read_changes`
 - test `crates/host/src/engine/tests.rs`: module, `a_plugin_created_on_one_thread_runs_on_the_thread_that_calls_it_first`, `a_controller_write_while_processing_is_held_off_only_where_the_host_sends_it_again`, `created_on_one_thread_driven_from_a_second_and_played_on_a_third`
 - test `crates/host/src/vst3/tests.rs`: `the_plugin_is_built_at_initialize_on_the_thread_that_calls_it`, `a_release_on_another_thread_leaks_the_plugin_drops_the_processor_and_counts`, `a_processor_that_panics_as_it_drops_on_another_thread_is_caught_there`, `a_release_inside_a_tick_leaks_what_the_tick_still_uses`, `a_tick_nested_inside_a_tick_does_nothing`, `the_last_point_of_a_queue_wins`, `every_point_keeps_its_offset_and_each_queue_lands_its_last`
@@ -1165,7 +1168,8 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d105-the-module-stays-loaded-once-an-editor-has-opened)
 
-- `crates/host/src/engine/timer.rs`: module, `keep_module_loaded`, `abandon`
+- `crates/host/src/engine/module.rs`: module, `keep_loaded`
+- `crates/host/src/engine/timer/windows.rs`: `Handle::detach`
 - `crates/host/src/engine/editor.rs`: module, `EditorSlot::open`
 - `crates/host/src/editor.rs`: `Editor`
 - `crates/host/src/vst3/mod.rs`: module

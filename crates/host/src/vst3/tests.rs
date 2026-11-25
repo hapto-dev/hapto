@@ -32,7 +32,7 @@ use serde_json::{Map, Value as Json};
 use super::component::Component;
 use super::test_host::{Recorder, Stream};
 use super::{HostCall, RESTART_LATENCY, RESTART_VALUES, Refused, TestHost, plugin_factory};
-use crate::engine::timer::{detached, pump};
+use crate::engine::timer::pump;
 use crate::faults::{thread_faults, written};
 use crate::layout::{AnyLayout, Width};
 use crate::{
@@ -40,6 +40,7 @@ use crate::{
     Tail,
 };
 
+mod run_loop;
 mod told;
 
 const PARAMS: &[ParamDecl] = &[
@@ -1686,7 +1687,7 @@ impl Plugin for WithSession {
 #[test]
 #[cfg_attr(
     any(miri, not(any(windows, target_os = "macos"))),
-    ignore = "no system timer under miri or on this platform"
+    ignore = "no thread timer under Miri or on this system"
 )]
 fn the_timer_ticks_the_plugin_and_a_host_load_reaches_its_session() {
     let host = TestHost::<WithSession>::with_timer();
@@ -1706,7 +1707,7 @@ fn the_timer_ticks_the_plugin_and_a_host_load_reaches_its_session() {
 #[test]
 #[cfg_attr(
     any(miri, not(any(windows, target_os = "macos"))),
-    ignore = "no system timer under miri or on this platform"
+    ignore = "no thread timer under Miri or on this system"
 )]
 fn a_host_on_three_threads_with_real_ticks_and_points_at_offsets() {
     let host = TestHost::<Probe>::with(super::Options {
@@ -1902,7 +1903,7 @@ fn pump_until(mut done: impl FnMut() -> bool) -> bool {
 #[test]
 #[cfg_attr(
     any(miri, not(any(windows, target_os = "macos"))),
-    ignore = "no system timer under miri or on this platform"
+    ignore = "no thread timer under Miri or on this system"
 )]
 fn no_tick_reaches_a_released_instance() {
     let host = TestHost::<Probe>::with_timer();
@@ -1917,7 +1918,7 @@ fn no_tick_reaches_a_released_instance() {
     let handle = host.component().timer_handle().expect("a timer");
     drop(host);
     #[cfg(windows)]
-    assert!(detached(handle), "the timer went with the instance");
+    assert!(handle.is_detached(), "the timer went with the instance");
     let idles = probe(|state| state.idles);
     pump(Duration::from_millis(200));
     assert_eq!(
@@ -1932,7 +1933,7 @@ fn no_tick_reaches_a_released_instance() {
 #[test]
 #[cfg_attr(
     any(miri, not(any(windows, target_os = "macos"))),
-    ignore = "no system timer under miri or on this platform"
+    ignore = "no thread timer under Miri or on this system"
 )]
 fn a_release_inside_a_real_tick_detaches_the_timer() {
     let (component, handle) = ticking();
@@ -1961,10 +1962,7 @@ fn a_release_inside_a_real_tick_detaches_the_timer() {
         pump_until(|| releaser.instance.borrow().is_none()),
         "released inside a tick"
     );
-    assert!(
-        detached(handle),
-        "the leaked timer reaches its tick no more"
-    );
+    assert!(handle.is_detached(), "the leaked timer never ticks again");
     assert_eq!(probe(|state| state.drops), 0, "the plugin leaked");
 }
 
@@ -1973,7 +1971,7 @@ fn a_release_inside_a_real_tick_detaches_the_timer() {
 #[test]
 #[cfg_attr(
     any(miri, not(any(windows, target_os = "macos"))),
-    ignore = "no system timer under miri or on this platform"
+    ignore = "no thread timer under Miri or on this system"
 )]
 fn a_release_on_another_thread_detaches_the_timer() {
     let (component, handle) = ticking();
@@ -1987,10 +1985,7 @@ fn a_release_on_another_thread_detaches_the_timer() {
     .join()
     .expect("released there");
     assert_eq!(faults, 1);
-    assert!(
-        detached(handle),
-        "the leaked timer reaches its tick no more"
-    );
+    assert!(handle.is_detached(), "the leaked timer never ticks again");
     pump(Duration::from_millis(50));
     assert_eq!(probe(|state| state.drops), 0, "the plugin leaked");
 }

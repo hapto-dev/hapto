@@ -49,6 +49,8 @@ use std::ffi::c_void;
 use ::vst3::Steinberg::IPluginFactory;
 use ::vst3::{ComPtr, ComWrapper};
 
+#[cfg(test)]
+pub(crate) use test_host::TestRunLoop;
 #[cfg(any(test, feature = "test-host"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "test-host")))]
 pub use test_host::{

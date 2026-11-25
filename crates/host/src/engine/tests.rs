@@ -15,7 +15,9 @@ use serde_json::{Map, Value as Json};
 
 use super::process::tests::upgraded_cc;
 use crate::faults::written;
-use crate::layout::{Stereo, Width};
+use crate::layout::Stereo;
+#[cfg(feature = "cabi")]
+use crate::layout::Width;
 use crate::{
     AuCodes, Block, Category, Driver, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
     Tail, boundary_faults,
