@@ -90,7 +90,7 @@ impl Processor for Probe {
     }
 }
 
-/// One sine, and where its envelope is.
+/// One sine and its envelope.
 #[derive(Debug)]
 pub struct Tone {
     sample_rate: f32,
@@ -135,7 +135,8 @@ impl Voice for Tone {
         for frame in out.frames_mut() {
             if self.released {
                 self.level *= self.fade;
-                // Silent from the frame it is done, wherever the block ends.
+                // Silent from the frame where it fades out, so the sound
+                // doesn't depend on the block size.
                 if self.level < SILENT {
                     self.level = 0.0;
                 }

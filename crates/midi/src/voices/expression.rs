@@ -1,4 +1,4 @@
-//! What a sounding note plays at, from every source, combined.
+//! What a sounding note plays at, combined from every source.
 
 use hapto_params::Float;
 
@@ -8,22 +8,21 @@ use crate::controller::{self, Address, Controller, ControllerValue};
 use crate::message::NoteOn;
 use crate::values::{Centred, Key, Pitch};
 
-/// What a sounding note plays at now, from every source, combined: what a
-/// [`Voice`](super::Voice) renders by. [`Poly`](super::Poly) works it out
-/// for each span, so it holds until the next message.
+/// What a sounding note plays at now, from every source, for a
+/// [`Voice`](super::Voice) to render.
 ///
-/// A note's own controller, MIDI 2.0's per-note one, takes the place of its
-/// channel's once it has arrived. With MPE on, a note on a zone's member
-/// channel answers its zone's master too: see
-/// [`Poly::with_mpe`](super::Poly::with_mpe). Its fields are public, so a
-/// test sets what it needs on [`Expression::at`].
+/// [`Poly`](super::Poly) computes it for each span, so it holds until the
+/// next message. A MIDI 2.0 per-note controller replaces the channel's once
+/// it arrives. With MPE on, a note on a member channel also follows its zone's
+/// master channel, as [`Poly::with_mpe`](super::Poly::with_mpe) describes. A
+/// test starts from [`Expression::at`] and sets the public fields it needs.
 ///
 /// # Examples
 ///
 /// ```
 /// use hapto_midi::{Expression, Key, controller};
 ///
-/// // A voice's test: A4, pressed halfway.
+/// // A4 pressed halfway, for a test of a voice.
 /// let mut expression = Expression::at(Key::A4);
 /// expression.pressure = 0.5;
 /// assert_eq!(expression.pitch.hz(), 440.0);
@@ -32,32 +31,36 @@ use crate::values::{Centred, Key, Pitch};
 #[derive(Debug, Clone, Copy)]
 #[non_exhaustive]
 pub struct Expression<'a> {
-    /// The pitch to sound: its key's in [`Poly`](super::Poly)'s
-    /// [`Tuning`], or the one its note-on or a message of its own gave it,
-    /// moved by its own bend times its channel's per-note bend range, its
-    /// channel's bend times the bend range, its channel's fine and coarse
-    /// tuning, and with MPE on its zone's master's bend times that one's
-    /// range.
+    /// The pitch to sound.
+    ///
+    /// It starts at the key's pitch in [`Poly`](super::Poly)'s [`Tuning`],
+    /// or at the pitch that its note-on or a per-note pitch message set, and
+    /// adds:
+    ///
+    /// - the note's own bend times its channel's per-note bend range
+    /// - the channel's bend times its bend range
+    /// - the channel's fine and coarse tuning
+    /// - with MPE on, the master channel's bend times its bend range
     pub pitch: Pitch,
-    /// From 0 to 1: the note's own pressure once it has had one, its
-    /// channel's until then.
+    /// The note's own pressure from 0 to 1, or its channel's until the note
+    /// has one.
     pub pressure: f32,
-    /// The note's own brightness, controller 74, once it has had one, its
-    /// channel's until then.
+    /// The note's own brightness (74), or its channel's until the note has
+    /// one.
     pub timbre: Centred,
-    /// From 0, while the key or a pedal holds the damper off the string, to
-    /// 1, with it on the string, and between at half pedal: a voice that
-    /// damps by it gets half pedal and a pedal pressed again.
+    /// The damper, from 0 while the key or a pedal holds it off the string
+    /// to 1 when it rests on the string, with half pedal between. A voice
+    /// that damps by it supports half pedal and a pedal pressed again.
     pub damper: f32,
-    /// Where the note sits, -1 left to 1 right: its own pan, controller 10,
-    /// once it has had one, its channel's until then. A mono voice is placed
-    /// by it already: see [`VoiceAudio`](super::VoiceAudio).
+    /// The note's own pan (10), from -1 left to 1 right, or its channel's
+    /// until the note has one. [`VoiceAudio`](super::VoiceAudio) already
+    /// places a mono voice by it.
     pub pan: Centred,
     sources: Option<Sources<'a>>,
 }
 
-/// Where a note's controllers come from: its own, its channel's, and its
-/// MPE zone's master's.
+/// A note's controller sources: its own, its channel's and its MPE zone
+/// master's.
 #[derive(Debug, Clone, Copy)]
 struct Sources<'a> {
     own: &'a NoteControls,
@@ -66,8 +69,8 @@ struct Sources<'a> {
 }
 
 impl Sources<'_> {
-    /// The value of control change `number`, from the first source that
-    /// has one.
+    /// Returns the value of control change `number` from the first source
+    /// that has one.
     fn control(&self, number: u8) -> Option<f32> {
         let address = Address::Control(number);
         self.own
@@ -78,8 +81,8 @@ impl Sources<'_> {
 }
 
 impl Expression<'static> {
-    /// A note at `key` in equal temperament, its key held and everything at
-    /// rest: for testing a voice on its own.
+    /// Returns a note at `key` in equal temperament, with its key held and
+    /// everything at rest, for testing a voice on its own.
     pub fn at(key: Key) -> Self {
         Expression {
             pitch: Pitch::from(key),
@@ -93,8 +96,8 @@ impl Expression<'static> {
 }
 
 impl<'a> Expression<'a> {
-    /// What `note` plays at, from its own controllers, its channel's, and
-    /// its zone's master's.
+    /// Returns what `note` plays at, from its own controllers, its channel's
+    /// and its zone master's.
     pub(super) fn of(
         note: &NoteOn,
         own: &'a NoteControls,
@@ -133,13 +136,13 @@ impl<'a> Expression<'a> {
         }
     }
 
-    /// The note's value of `controller`: its own where it has one, its
-    /// channel's otherwise, its MPE zone's master's after that, and the
-    /// controller's default before any.
+    /// Returns the note's value of `controller`, which is its own, or else
+    /// its channel's, or else its MPE zone master's, or else the controller's
+    /// default.
     ///
-    /// Open: only control changes are kept. A registered or assignable
-    /// controller reads as its default; the tunings and bend ranges among
-    /// them are in [`pitch`](Self::pitch) already.
+    /// Open: only control changes are kept, so a registered or assignable
+    /// controller reads as its default. The tunings and bend ranges among
+    /// them are already in [`pitch`](Self::pitch).
     ///
     /// # Examples
     ///
@@ -147,7 +150,7 @@ impl<'a> Expression<'a> {
     /// use hapto_midi::controller::{self, Controller};
     /// use hapto_midi::{Expression, Key};
     ///
-    /// // A plugin's own controller, 20, resting at 0.7.
+    /// // A plugin's own controller (20), which rests at 0.7.
     /// const DRIVE: Controller<f32> = Controller::control(20, 0.7);
     /// let expression = Expression::at(Key::A4);
     /// assert_eq!(expression.get(DRIVE), 0.7);
@@ -161,12 +164,12 @@ impl<'a> Expression<'a> {
         value.map_or(controller.default(), T::from_unit)
     }
 
-    /// `param`'s value for this note: the parameter's own, plus whatever
-    /// polyphonic modulation its host sends this note.
+    /// Returns `param`'s own value plus any polyphonic modulation that the
+    /// host sends this note.
     ///
     /// Open: polyphonic modulation comes with the CLAP exporter. Until then
-    /// this is the parameter's own value, so a voice written now needs no
-    /// change when it comes.
+    /// this returns the parameter's own value, so a voice that calls it now
+    /// needs no change later.
     ///
     /// # Examples
     ///

@@ -1,20 +1,21 @@
-//! What a block's processing tells the host about the next ones.
+//! A block's process status.
 
-/// What a block's processing tells the host about the next ones.
+/// The status that a block's processing returns, which the host uses to
+/// decide whether to keep calling the plugin.
 ///
-/// It is CLAP's process status, which a host uses to stop calling a quiet
-/// plugin. VST3 has no such answer, so its exporter ignores it.
+/// It is CLAP's process status. VST3 has no equivalent, so its exporter
+/// ignores it.
 ///
-/// Open: no built exporter acts on it. The C interface answers it from
+/// Open: no built exporter acts on it. The C interface returns it from
 /// `process`, and the JUCE adapter, which calls that, ignores it. A CLAP
-/// exporter is planned, not built.
+/// exporter is planned but not built.
 ///
 /// # Examples
 ///
 /// ```
 /// use hapto_audio::Status;
 ///
-/// // A processor that has nothing left to do tells a host that may stop it.
+/// // A processor with nothing left to do lets the host stop calling it.
 /// fn after(block_was_silent: bool) -> Status {
 ///     if block_was_silent { Status::Sleep } else { Status::Continue }
 /// }

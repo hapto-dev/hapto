@@ -121,9 +121,9 @@ pub trait AddSample {
     /// Adds `sample` to each of the frame's channels.
     fn add(self, sample: f32);
 
-    /// Adds `sample` into each of the frame's channels at that channel's
-    /// gain, the first gain for the first channel: a mono voice placed
-    /// between the speakers. A channel past the last gain gets none of it.
+    /// Adds `sample` to each of the frame's channels, scaled by the gain at
+    /// the channel's index, to place a mono voice between the speakers. A
+    /// channel past the last gain gets nothing.
     ///
     /// # Examples
     ///

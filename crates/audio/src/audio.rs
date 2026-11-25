@@ -325,9 +325,9 @@ impl<'a, L: Layout> Audio<'a, L> {
         Audio::over(self.lend().into_iter().take(count), frames)
     }
 
-    /// The same audio, lent again for as long as `self` is borrowed: to
-    /// hand to a call that takes audio by value, as
-    /// [`split_at`](Self::split_at) does, and keep it after.
+    /// Returns the same audio, lent again for as long as `self` is borrowed,
+    /// to pass to a call that takes audio by value, such as
+    /// [`split_at`](Self::split_at), and still use after.
     ///
     /// # Examples
     ///

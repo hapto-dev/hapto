@@ -8,17 +8,18 @@ use hapto_audio::{AddSample, Audio};
 
 use crate::values::Centred;
 
-/// The audio a [`Voice`](super::Voice) renders into: the span's, in the
-/// processor's own layout, other voices' sound in it already, and a gain for
-/// each channel from its note's [`pan`](super::Expression::pan). Each of its
-/// [frames](Self::frames_mut) adds a mono voice's sample at those gains, so
-/// the voice is placed without a word about it. Its layout defaults as
+/// The audio that a [`Voice`](super::Voice) renders into, with a gain for
+/// each channel from its note's [`pan`](super::Expression::pan).
+///
+/// It is the span's audio in the processor's layout, other voices included.
+/// Each of its [frames](Self::frames_mut) adds a mono voice's sample at those
+/// gains, so the voice needs no code to place it. Its layout defaults as
 /// [`Voice`](super::Voice)'s does.
 ///
-/// The pan law is balanced, as JUCE's default is: at the centre both sides
-/// are at full level, and a side fades as the note moves away from it. A
-/// mono layout, and every channel past the first two, plays at full level.
-/// A voice that places itself, a stereo sampler say, writes
+/// The pan law is balanced, as JUCE's default is. At the centre both sides
+/// are at full level, and a side fades as the note moves away from it. A mono
+/// layout, and every channel past the first two, plays at full level. A voice
+/// that places itself, such as a stereo sampler, writes
 /// [`audio_mut`](Self::audio_mut) instead.
 ///
 /// # Examples
@@ -43,9 +44,8 @@ pub struct VoiceAudio<'a, L: Layout = StereoOut> {
 }
 
 impl<'a, L: Layout> VoiceAudio<'a, L> {
-    /// `audio`, into which a voice at `pan` renders: what
-    /// [`Poly`](super::Poly) hands each voice, and what a voice's own test
-    /// makes.
+    /// Returns `audio` for a voice at `pan` to render into, as
+    /// [`Poly`](super::Poly) gives each voice or a voice's own test makes it.
     pub fn new(audio: Audio<'a, L>, pan: Centred) -> Self {
         let mut gains = [1.0; MAX_CHANNELS];
         if audio.channels().into_iter().count() >= 2
@@ -58,13 +58,13 @@ impl<'a, L: Layout> VoiceAudio<'a, L> {
         VoiceAudio { audio, gains }
     }
 
-    /// How many frames it holds: the span's length.
+    /// Returns the span's length in frames.
     pub fn frames(&self) -> usize {
         self.audio.frames()
     }
 
-    /// Each frame in turn, to add a mono voice's sample into at the note's
-    /// place.
+    /// Returns the frames, each of which adds a mono voice's sample at the
+    /// note's place.
     pub fn frames_mut(&mut self) -> impl ExactSizeIterator<Item = VoiceFrame<'_, L>> {
         let gains = &self.gains;
         self.audio
@@ -72,14 +72,14 @@ impl<'a, L: Layout> VoiceAudio<'a, L> {
             .map(move |frame| VoiceFrame { frame, gains })
     }
 
-    /// The gain of each channel, in order: where the note sits.
+    /// Returns each channel's gain, in order, from the note's pan.
     pub fn gains(&self) -> &[f32] {
         let count = self.audio.channels().into_iter().count();
         self.gains.get(..count).unwrap_or_default()
     }
 
-    /// The audio itself, which knows nothing of the note's place: for a
-    /// voice that places itself.
+    /// Returns the audio itself, without the note's gains, for a voice that
+    /// places itself.
     ///
     /// # Examples
     ///
@@ -102,7 +102,7 @@ impl<'a, L: Layout> VoiceAudio<'a, L> {
 }
 
 /// One frame of a [`VoiceAudio`], which adds a mono voice's sample at its
-/// note's place, or hands out the layout's own frame.
+/// note's place or returns the layout's own frame.
 ///
 /// # Examples
 ///
@@ -115,7 +115,7 @@ impl<'a, L: Layout> VoiceAudio<'a, L> {
 /// {
 ///     let mut out = VoiceAudio::new(buffer.audio(), Centred::new(1.0));
 ///     let mut frames = out.frames_mut();
-///     // The first frame placed, hard right; the second written as it is.
+///     // The first frame placed hard right, and the second written as it is.
 ///     frames.next().expect("two frames").add(1.0);
 ///     let [left, right] = frames.next().expect("two frames").into_frame();
 ///     (*left, *right) = (0.5, 0.5);
@@ -128,12 +128,12 @@ pub struct VoiceFrame<'a, L: Layout = StereoOut> {
 }
 
 impl<'a, L: Layout> VoiceFrame<'a, L> {
-    /// Adds `sample` into each channel at its gain: a mono voice, placed.
+    /// Adds `sample` into each channel at its gain, which places a mono voice.
     pub fn add(self, sample: f32) {
         self.frame.add_scaled(sample, self.gains);
     }
 
-    /// The layout's own frame, which knows nothing of the note's place:
+    /// Returns the layout's own frame without the note's gains, such as
     /// `[left, right]` in a stereo bus.
     pub fn into_frame(self) -> L::Frame<'a> {
         self.frame

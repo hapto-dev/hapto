@@ -1,13 +1,16 @@
-//! The example synth: sine voices a MIDI keyboard plays.
+//! The example synth: sine voices that a MIDI keyboard plays.
 //!
-//! It shows an instrument that plays MIDI through [`Poly`]: `play` cuts the
-//! block at each message, in one form whatever the host sent, and gives each
-//! note one of the synth's voices. A voice is told when its note starts and
-//! when nothing holds it any more, and reads the note's pitch and pressure
-//! from its [`Expression`], however the host sent them: a bend, a note's own
-//! pitch, MPE or a VST3 host's tuning expression all arrive in the pitch.
-//! Each voice renders mono into its [`VoiceAudio`], which places it by the
-//! note's pan.
+//! It shows an instrument that plays MIDI through [`Poly`]:
+//!
+//! - `play` cuts the block at each message, which is in one form whatever
+//!   the host sent, and gives each note one of the synth's voices.
+//! - `Poly` calls a voice when its note starts and when nothing holds it
+//!   any more.
+//! - A voice reads the note's pitch and pressure from its [`Expression`]. A
+//!   bend, a note's own pitch, MPE and a VST3 host's tuning expression all
+//!   arrive in the pitch.
+//! - A voice renders mono into its [`VoiceAudio`], which places it by the
+//!   note's pan.
 //!
 //! Its `cdylib` is a VST3 module through Hapto's exporter (the `vst3`
 //! feature, on by default), and the `standalone` feature makes it an app of
@@ -57,7 +60,7 @@ impl Plugin for Synth {
     }
 }
 
-/// The audio-thread half: the voices, played from the block's MIDI.
+/// The audio-thread half, which plays the voices from the block's MIDI.
 #[derive(Debug)]
 pub struct SynthProcessor {
     voices: Poly<Sine>,
@@ -72,8 +75,8 @@ impl Processor for SynthProcessor {
     }
 }
 
-/// One voice: a sine that fades out once nothing holds its note, with the
-/// octave above it as the key is pressed.
+/// One voice, a sine that fades out once nothing holds its note, with the
+/// octave above added by key pressure.
 #[derive(Debug)]
 pub struct Sine {
     sample_rate: f32,
@@ -116,7 +119,8 @@ impl Voice for Sine {
             self.phase = (self.phase + step).fract();
             if self.released {
                 self.level *= self.fade;
-                // Silent from the frame it is done, wherever the block ends.
+                // Silent from the frame where it fades out, so the sound
+                // doesn't depend on the block size.
                 if self.level < SILENT * LEVEL {
                     self.level = 0.0;
                 }

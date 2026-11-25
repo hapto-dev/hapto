@@ -1,8 +1,9 @@
-//! Instruction counts for a voice's audio: a mono source into a stereo block
-//! through a typed layout's own frames, and the same placed by pan through
-//! a `VoiceAudio`'s. Run by CI with iai-callgrind, which compares them with
-//! the pull request's base; they say whether placing a voice keeps it at a
-//! typed layout's speed.
+//! Instruction counts for a mono source written into a stereo block, through
+//! a typed layout's own frames and placed by pan through a `VoiceAudio`'s.
+//!
+//! CI runs them with iai-callgrind and compares them with the pull request's
+//! base, which shows whether placing a voice keeps it at a typed layout's
+//! speed.
 
 #![allow(missing_docs, reason = "the benchmark macros generate public items")]
 

@@ -1,5 +1,5 @@
-//! The synth played with no host: one phrase in each form a host can send
-//! it, at any block size, and the rule for a key struck twice.
+//! The synth played with no host: one phrase in each form that a host can
+//! send, at any block size, and the rule for a key struck twice.
 
 use hapto_example_synth::Synth;
 use hapto_host::midi::Key;
@@ -85,9 +85,9 @@ fn the_sustain_pedal_holds_a_released_key_until_it_comes_up() {
 
 // One phrase: A4 at full velocity, bent up a whole step at 50 ms, pressed
 // fully at 60 ms, released at 100 ms. Each value is a protocol's maximum, so
-// every form says exactly the same thing.
+// every form carries exactly the same values.
 
-/// In MIDI 1.0, on the channel.
+/// Sends it in MIDI 1.0, on the channel.
 fn in_midi1(play: &mut Play<Synth>) {
     play.midi1(0, &[0x90, A4, 127]);
     play.midi1(2_400, &[0xE0, 0x7F, 0x7F]);
@@ -95,7 +95,7 @@ fn in_midi1(play: &mut Play<Synth>) {
     play.midi1(4_800, &[0x80, A4, 0]);
 }
 
-/// In MIDI 2.0, on the channel.
+/// Sends it in MIDI 2.0, on the channel.
 fn in_midi2(play: &mut Play<Synth>) {
     play.midi2(0, note_on());
     play.midi2(2_400, ChannelMessage::PitchBend { value: u32::MAX });
@@ -103,7 +103,7 @@ fn in_midi2(play: &mut Play<Synth>) {
     play.midi2(4_800, note_off());
 }
 
-/// In MIDI 2.0, on the note alone.
+/// Sends it in MIDI 2.0, on the note alone.
 fn in_midi2_per_note(play: &mut Play<Synth>) {
     play.midi2(0, note_on());
     // Registered per-note controller 3: an absolute pitch, a whole step up.
@@ -125,7 +125,7 @@ fn in_midi2_per_note(play: &mut Play<Synth>) {
     play.midi2(4_800, note_off());
 }
 
-/// As a host that names notes by id sends it, as VST3 does.
+/// Sends it with note ids, as a VST3 host does.
 fn with_note_ids(play: &mut Play<Synth>) {
     let note = play.note_on(0, Key::A4, 1.0);
     play.tuning(2_400, note, 2.0);

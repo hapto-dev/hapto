@@ -2,10 +2,11 @@
 
 use crate::values::{Channel, Group};
 
-/// One group's MPE zones, each named by how many member channels it has; a
-/// zone of none is off. The lower zone's master is channel 1, its members
-/// the channels above; the upper zone's master is channel 16, its members
-/// the channels below.
+/// One group's MPE zones, each a count of member channels.
+///
+/// A zone of none is off. The lower zone's master is channel 1, with its
+/// members above, and the upper zone's master is channel 16, with its
+/// members below.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct Zones {
     lower: u8,
@@ -13,13 +14,14 @@ pub(super) struct Zones {
 }
 
 impl Zones {
-    /// MPE's own default: a lower zone of every other channel.
+    /// MPE's default, a lower zone of all 15 other channels.
     pub(super) const LOWER_15: Zones = Zones {
         lower: 15,
         upper: 0,
     };
 
-    /// The master channel of the zone `channel` is a member of, if any.
+    /// Returns the master channel of the zone that `channel` is a member of,
+    /// if any.
     pub(super) fn master(self, channel: Channel) -> Option<Channel> {
         let index = channel.index();
         if (1..=usize::from(self.lower)).contains(&index) {
@@ -32,10 +34,11 @@ impl Zones {
     }
 
     /// Sets the zone whose master is `channel` to `members` member channels,
-    /// as an MPE Configuration Message does, shrinking the other zone if the
-    /// two would overlap. The channels whose bend ranges return to MPE's
-    /// defaults come back: the master, and its members; `None` for a channel
-    /// that is no zone's master.
+    /// as an MPE Configuration Message does, and shrinks the other zone if
+    /// the two would overlap.
+    ///
+    /// Returns the zone's member channels, whose bend ranges go back to MPE's
+    /// default, or `None` if `channel` is no zone's master.
     pub(super) fn configure(
         &mut self,
         channel: Channel,
@@ -67,8 +70,8 @@ const LAST: Channel = Channel::number(16);
 /// Every group's zones, for a `Poly` playing MPE.
 pub(super) type Mpe = [Zones; 16];
 
-/// The master channel of the zone `channel` of `group` is a member of, when
-/// MPE is on.
+/// Returns the master channel of the zone that `channel` of `group` is a
+/// member of, when MPE is on.
 pub(super) fn master_of(mpe: Option<&Mpe>, group: Group, channel: Channel) -> Option<Channel> {
     mpe?.get(group.index())?.master(channel)
 }

@@ -119,10 +119,12 @@ pub(crate) const INSTRUMENT_FILES: &[(&str, &str)] = &[
 /// makes: its parameters and its processor.
 const MADE: [&str; 3] = ["", "Params", "Processor"];
 
-/// Names none of the types the template makes from a plugin's may take: the
-/// template's imports, which a test reads, the types it defines beside the
-/// plugin's, the names of Rust's prelude it uses, which the type would
-/// shadow, and `Self`.
+/// Names that no type the template names after the plugin may take:
+///
+/// - The template's imports, which a test reads.
+/// - The types it defines beside the plugin's.
+/// - The names from Rust's prelude that it uses, which the type would shadow.
+/// - `Self`.
 const TAKEN: &[&str] = &[
     "AddSample",
     "Asset",

@@ -1,5 +1,7 @@
-//! The methods that cut a block into spans or play it by voices. `Spans`
-//! and `Poly` are in hapto-midi, because each needs only audio and MIDI.
+//! Cutting a block into spans, and playing it with voices.
+//!
+//! `Spans` and `Poly` are in hapto-midi, because each needs only audio and
+//! MIDI.
 
 use hapto_midi::ToPlay;
 
@@ -96,10 +98,11 @@ impl<'a, L: Layout> Block<'a, L> {
     }
 }
 
-/// A block's audio and MIDI, for [`Poly::play`](hapto_midi::Poly::play):
-/// `self.voices.play(block)`. What the block sends is dropped; a plugin that
-/// sends hands the two over itself, `(block.audio, block.midi)`, and keeps
-/// `block.midi_out`.
+/// A block's audio and MIDI for [`Poly::play`](hapto_midi::Poly::play), as
+/// in `self.voices.play(block)`.
+///
+/// The block's `midi_out` is dropped, so a plugin that sends MIDI passes
+/// `(block.audio, block.midi)` instead and keeps `block.midi_out`.
 impl<'a, L: Layout> From<Block<'a, L>> for ToPlay<'a, L> {
     fn from(block: Block<'a, L>) -> Self {
         ToPlay::new(block.audio, block.midi)

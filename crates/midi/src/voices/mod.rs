@@ -1,5 +1,5 @@
-//! An instrument's voices: [`Poly`] gives each note a [`Voice`], works out
-//! what it plays at, its [`Expression`], and hands it its audio as a
+//! An instrument's voices. [`Poly`] gives each note a [`Voice`], computes
+//! what it plays at as an [`Expression`], and gives it its audio as a
 //! [`VoiceAudio`].
 
 mod audio;
@@ -20,15 +20,15 @@ pub use tuning::Tuning;
 
 use crate::message::{NoteOff, NoteOn};
 
-/// One of a plugin's voices, which [`Poly`] gives notes to, rendering into
+/// A plugin's voice, which renders the notes that [`Poly`] gives it into
 /// audio in layout `L`.
 ///
-/// `L` is [`StereoOut`] unless the voice names another, as most instruments
-/// are: a stereo voice is `impl Voice for Sine`, and a mono one `impl
+/// `L` is [`StereoOut`], as in most instruments, unless the voice names
+/// another, so a stereo voice is `impl Voice for Sine` and a mono one `impl
 /// Voice<Mono> for Sine`. [`Poly`] and [`VoiceAudio`] take the same default.
-/// A voice that renders the same in any layout is written once for all:
+/// A voice that renders the same in any layout is written once, as
 /// `impl<L: Layout> Voice<L> for Sine`. One written for a layout reaches its
-/// channels by name, `[left, right]` in a stereo bus.
+/// channels by name, such as `[left, right]` in a stereo bus.
 ///
 /// # Examples
 ///
@@ -63,7 +63,7 @@ use crate::message::{NoteOff, NoteOn};
 ///     }
 /// }
 ///
-/// // A voice's test needs no `Poly`: here, panned hard left.
+/// // A voice's test, panned hard left, needs no `Poly`.
 /// let mut click = Click::default();
 /// let mut buffer = AudioBuf::<StereoOut>::new(3);
 /// let middle_c = Key::C4;
@@ -77,17 +77,20 @@ pub trait Voice<L: Layout = StereoOut> {
     /// another note.
     fn start(&mut self, note: &NoteOn);
 
-    /// Nothing holds the note any more: neither its key nor a pedal.
+    /// Releases the note, which neither its key nor a pedal holds any more.
     fn release(&mut self, note: &NoteOff);
 
     /// Adds the voice's next `out.frames()` frames into `out`, which holds
-    /// the other voices' too. The audio comes cut at each message, and
-    /// `expression` holds the note's values until the next.
+    /// the other voices' too.
+    ///
+    /// The audio is cut at each message, so `expression` holds the note's
+    /// values until the next.
     fn render(&mut self, expression: &Expression<'_>, out: &mut VoiceAudio<'_, L>);
 
-    /// Whether the voice has gone quiet, so `Poly` may free it. A voice
-    /// adds nothing more once it is done: `Poly` frees it after the span it
-    /// rendered, so a voice that went on sounding would sound different as
-    /// the blocks a host sends change size.
+    /// Returns whether the voice has gone quiet, so `Poly` can free it.
+    ///
+    /// Once done, a voice adds nothing more, because `Poly` frees it after
+    /// the span it rendered. A voice that kept sounding would sound different
+    /// as the host's block size changes.
     fn is_done(&self) -> bool;
 }

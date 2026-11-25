@@ -9,7 +9,7 @@ use crate::{
     Centred, Channel, Group, Key, Message, MidiList, NoteId, NoteKey, NoteOff, NoteOn, Pitch,
 };
 
-/// A voice that keeps what it was told and what it last rendered at.
+/// A voice that records its calls and the last expression it rendered.
 #[derive(Debug, Default)]
 struct Probe {
     note: Option<NoteOn>,
@@ -96,7 +96,7 @@ fn render(voices: &mut Poly<Probe, Mono>) {
     voices.render(&mut buffer.audio());
 }
 
-/// The voice playing note `id`.
+/// Returns the voice playing note `id`.
 fn playing(voices: &mut Poly<Probe, Mono>, id: u32) -> &Probe {
     render(voices);
     let mut found = voices
@@ -138,7 +138,7 @@ fn a_full_poly_takes_a_released_voice_then_a_pedal_held_one_then_the_oldest() {
     assert_eq!(sounding(&voices), [60, 65, 64]);
     send(&mut voices, &[on(67, 5)]);
     assert_eq!(sounding(&voices), [60, 65, 67]);
-    // Every key is held now: the oldest goes.
+    // Every key is held now, so the oldest goes.
     send(&mut voices, &[on(69, 6)]);
     assert_eq!(sounding(&voices), [69, 65, 67]);
     assert_eq!(
@@ -178,7 +178,7 @@ fn the_sustain_pedal_holds_until_it_comes_up_and_the_damper_follows_half_pedal()
     send(&mut voices, &[control(number::SUSTAIN, 1.0), off(60, 1)]);
     let voice = playing(&mut voices, 1);
     assert!((voice.released, voice.damper) == (None, 0.0));
-    // Half pedal: still down, the damper halfway to the string.
+    // Half pedal is still down, with the damper halfway to the string.
     send(&mut voices, &[control(number::SUSTAIN, 0.5)]);
     let voice = playing(&mut voices, 1);
     assert!((voice.released, voice.damper) == (None, 0.5));
@@ -217,7 +217,7 @@ fn all_sound_off_frees_the_channel_at_once_and_all_notes_off_leaves_the_pedal_it
     );
     assert!(playing(&mut voices, 3).released.is_some());
     send(&mut voices, &[control(number::SUSTAIN, 1.0), on(62, 4)]);
-    // Mono Mode On ends notes too; the pedal still holds this one.
+    // Mono Mode On (126) ends notes too, but the pedal still holds this one.
     send(&mut voices, &[control(126, 0.0)]);
     assert!(playing(&mut voices, 4).released.is_none());
     send(&mut voices, &[control(number::SUSTAIN, 0.0)]);
@@ -285,8 +285,8 @@ fn a_key_s_per_note_controllers_carry_to_its_next_note_until_it_is_reset() {
     send(&mut voices, &[off(60, 1), on(60, 2)]);
     let voice = playing(&mut voices, 2);
     assert_eq!((voice.pressure, voice.timbre), (0.5, 1.0));
-    // A reset with a detach: the sounding note keeps its values, the next
-    // starts from the defaults.
+    // A reset with a detach keeps the sounding note's values but not the
+    // next note's.
     send(
         &mut voices,
         &[Message::NoteManagement {
@@ -387,7 +387,7 @@ fn the_pitch_adds_the_bends_and_tunings_to_the_key_s_pitch() {
                 channel,
                 value: Centred::new(0.5),
             },
-            // A note's own bend: 24 semitones a full bend.
+            // A note's own full bend moves 24 semitones.
             registered(7, 24.0 / 128.0),
             // Half a semitone sharp, and 2 semitones up.
             registered(1, 0.75),
@@ -513,8 +513,8 @@ fn control_at(channel: u8, controller: u8, value: f32) -> Message<'static> {
     }
 }
 
-/// An MPE Configuration Message on `channel` for `members` member channels,
-/// as a MIDI 1.0 one upgrades.
+/// Returns an MPE Configuration Message on `channel` for `members` member
+/// channels, upgraded from MIDI 1.0.
 fn configuration(channel: u8, members: u8) -> Message<'static> {
     Message::Registered {
         group: Group::FIRST,
@@ -598,8 +598,7 @@ fn a_configuration_message_moves_the_zones_and_resets_their_bend_ranges() {
         semitones,
     };
     send(&mut voices, &[range(2, 12.0), range(9, 12.0)]);
-    // A lower zone of 7: channel 9 is no member now, and channel 2 is back
-    // at 48.
+    // A lower zone of 7 leaves channel 9 out and puts channel 2 back at 48.
     send(&mut voices, &[configuration(1, 7)]);
     send(
         &mut voices,

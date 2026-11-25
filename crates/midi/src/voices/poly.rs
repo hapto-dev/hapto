@@ -1,4 +1,4 @@
-//! Voices for notes: which voice plays which note, and what holds it.
+//! Voices for notes, with which voice plays each note and what holds it.
 
 use std::marker::PhantomData;
 
@@ -19,44 +19,44 @@ use crate::{Midi, Spans};
 /// How many keys' per-note controllers a [`Poly`] keeps at once.
 const KEYS: usize = 256;
 
-/// Voices for notes, as many at once as it was made with.
+/// A fixed number of voices that play notes.
 ///
-/// - **Starting.** A note-on takes an idle voice; with none idle it takes a
-///   released one, then one only a pedal holds, then one whose key is held,
-///   the oldest of each first. A voice taken from a note is started again
-///   with no word to it first.
-/// - **The same key twice.** A second note-on on a key that sounds starts a
-///   second note, and the first keeps sounding: MIDI 2.0 sends a second
-///   note on a key, and a merged track may. A note only a pedal holds is
+/// - **Starting.** A note-on takes an idle voice, else a released one, then
+///   one that only a pedal holds, then one whose key is held, the oldest of
+///   each first. A voice taken from a note starts again without a release.
+/// - **The same key twice.** A second note-on on a sounding key starts a
+///   second note and leaves the first sounding, because MIDI 2.0 and a
+///   merged track can both send one. A note that only a pedal holds is
 ///   released when its key is struck again, so repeated notes under the
-///   pedal do not pile up.
-/// - **Per-note controllers** belong to the key in MIDI 2.0: a note starts
-///   from what its key's last note was left at, until per-note management
-///   resets the key, and one may come before its note. A note its host
-///   names, as VST3's are, starts from the defaults and keeps its own. The
-///   keys of the last 256 written are kept.
-/// - **Pedals.** The sustain pedal is continuous: a voice is released when
-///   nothing holds its note, and [`Expression::damper`] follows half pedal.
-///   The sostenuto pedal holds the notes whose keys are down as it goes
-///   down.
-/// - **Resets and modes.** Controllers 120 to 127 as MIDI 1.0 defines them:
-///   All Sound Off frees the channel's voices at once, Reset All
-///   Controllers resets the bend, the pressures, the modulation wheel,
-///   expression and the pedals, and All Notes Off and the mode messages
-///   release the notes whose keys are held.
-/// - **Groups.** Each group is 16 channels of its own, and `Poly` plays all.
-/// - **Tuning.** Every note's pitch starts from its [`Tuning`], equal
-///   temperament unless the plugin sets one.
+///   pedal don't pile up.
+/// - **Per-note controllers** belong to the key in MIDI 2.0, so a note
+///   starts from the values its key was left at, until per-note management
+///   resets the key. A controller may come before its note. A note that its
+///   host names, as in VST3, starts from the defaults and keeps its own.
+///   Only the 256 keys written last are kept.
+/// - **Pedals.** A voice is released when nothing holds its note. The
+///   sustain pedal is continuous, and [`Expression::damper`] follows half
+///   pedal. The sostenuto pedal holds the notes whose keys are down as it
+///   goes down.
+/// - **Resets and modes** follow MIDI 1.0's controllers 120 to 127:
+///   - All Sound Off frees the channel's voices at once.
+///   - Reset All Controllers resets the bend, the pressures, the modulation
+///     wheel, expression and the pedals.
+///   - All Notes Off and the mode messages release the notes whose keys are
+///     held.
+/// - **Groups.** `Poly` plays every group, each with 16 channels of its own.
+/// - **Tuning.** Every note's pitch starts from the [`Tuning`], which is
+///   equal temperament unless the plugin sets one.
 /// - **MPE** is off unless the plugin turns it on with
 ///   [`with_mpe`](Self::with_mpe).
 ///
-/// Its layout is [`Voice`]'s, [`StereoOut`] unless named, so a stereo
-/// instrument's voices are a `Poly<Sine>`.
+/// Its layout is the [`Voice`]'s, [`StereoOut`] unless the voice names one,
+/// so a stereo instrument's voices are a `Poly<Sine>`.
 ///
-/// It works at two levels, as a block does. [`play`](Self::play) takes a
-/// whole block. Inside a loop over [`Spans`], [`handle`](Self::handle)
-/// takes the span's messages and [`render`](Self::render) its audio, so a
-/// plugin can process the voices' sound, or route messages between several.
+/// [`play`](Self::play) plays a whole block. Inside a loop over [`Spans`],
+/// [`handle`](Self::handle) takes a span's messages and
+/// [`render`](Self::render) its audio, so a plugin can process the voices'
+/// sound or route messages between several `Poly`s.
 ///
 /// # Examples
 ///
@@ -110,7 +110,7 @@ pub struct Poly<V, L = StereoOut> {
     channels: Channels,
     keys: Keys,
     tuning: Tuning,
-    /// Each group's MPE zones; `None` while MPE is off.
+    /// Each group's MPE zones, or `None` while MPE is off.
     mpe: Option<Mpe>,
     /// Counts note-ons, so the oldest note is the one stolen.
     clock: u64,
@@ -129,8 +129,7 @@ struct Slot<V> {
 struct Sounding {
     on: NoteOn,
     hold: Hold,
-    /// Caught by the sostenuto pedal as it went down, so held until it
-    /// comes up.
+    /// Whether the sostenuto pedal caught the note as the pedal went down.
     sostenuto: bool,
     started: u64,
     own: NoteControls,
@@ -141,10 +140,10 @@ struct Sounding {
 enum Hold {
     /// Its key is down.
     Key,
-    /// Its key is up, and a pedal holds it: the note-off, kept for its
+    /// Its key is up and a pedal holds it, with the note-off kept for the
     /// release.
     Pedal(NoteOff),
-    /// Nothing: its voice has been released.
+    /// Nothing, and its voice has been released.
     Released,
 }
 
@@ -153,7 +152,7 @@ impl Sounding {
         self.on.group == group && self.on.channel == channel
     }
 
-    /// Which goes first when a voice must be taken: lowest first.
+    /// Returns the note's rank when a voice must be taken, lowest first.
     fn rank(&self) -> (u8, u64) {
         let hold = match self.hold {
             Hold::Released => 1,
@@ -171,15 +170,15 @@ impl Sounding {
         }
     }
 
-    /// Whether a pedal holds the note once its key is up, `sustain` being
-    /// the sustain pedal it answers to.
+    /// Returns whether a pedal holds the note once its key is up, given its
+    /// `sustain` pedal.
     fn pedal_holds(&self, sustain: Pedal) -> bool {
         self.sostenuto || sustain.is_down()
     }
 }
 
-/// The channels a note answers to: its own, and its zone's master's when it
-/// is a member of an MPE zone.
+/// Returns the state of a note's channel and, in an MPE zone, of the zone's
+/// master.
 fn sources<'c>(
     channels: &'c Channels,
     mpe: Option<&Mpe>,
@@ -192,8 +191,8 @@ fn sources<'c>(
     )
 }
 
-/// The sustain pedal a note answers to: its channel's, or its zone's
-/// master's, whichever is further down.
+/// Returns a note's sustain pedal, its channel's or its zone master's,
+/// whichever is further down.
 fn sustain(channels: &Channels, mpe: Option<&Mpe>, on: &NoteOn) -> Pedal {
     let (own, master) = sources(channels, mpe, on);
     let own = own.read(controller::SUSTAIN);
@@ -203,8 +202,8 @@ fn sustain(channels: &Channels, mpe: Option<&Mpe>, on: &NoteOn) -> Pedal {
     }
 }
 
-/// Whether a message on `channel` of `group` reaches `note`: one on its own
-/// channel does, and with MPE on, so does one on its zone's master.
+/// Returns whether a message on `channel` of `group` reaches `note`, from
+/// the note's own channel or, with MPE on, its zone's master.
 fn reaches(mpe: Option<&Mpe>, group: Group, channel: Channel, note: &Sounding) -> bool {
     note.on.group == group
         && (note.on.channel == channel
@@ -212,7 +211,7 @@ fn reaches(mpe: Option<&Mpe>, group: Group, channel: Channel, note: &Sounding) -
 }
 
 impl<V, L> Poly<V, L> {
-    /// `count` voices, each made by `voice`, all idle.
+    /// Returns `count` idle voices, each made by `voice`.
     ///
     /// Thread: any but audio. It allocates.
     pub fn new(count: usize, mut voice: impl FnMut() -> V) -> Self {
@@ -232,30 +231,32 @@ impl<V, L> Poly<V, L> {
         }
     }
 
-    /// The same voices, playing in `tuning`.
+    /// Returns the same voices, playing in `tuning`.
     #[must_use]
     pub fn with_tuning(mut self, tuning: Tuning) -> Self {
         self.tuning = tuning;
         self
     }
 
-    /// Sets the tuning every note's pitch starts from; notes sounding move
-    /// to it at once.
+    /// Sets the tuning that every note's pitch starts from, including the
+    /// sounding notes'.
     pub fn set_tuning(&mut self, tuning: Tuning) {
         self.tuning = tuning;
     }
 
-    /// The same voices, playing MPE: each group starts with MPE's default
-    /// layout, a lower zone of 15 member channels under channel 1, and an
-    /// MPE Configuration Message changes a group's zones.
+    /// Returns the same voices, playing MPE.
     ///
-    /// A member channel's bend range starts at MPE's 48 semitones, and its
-    /// master's at 2; a configuration message returns a zone's to them. A
-    /// note on a member channel takes its bend, pressure and controllers
-    /// from its own channel, as MPE sends them for each note, adds its
-    /// master's bend to its pitch, answers its master's pedals and its
-    /// notes-off and sound-off messages, and reads a controller its own
-    /// channel has not set from its master's.
+    /// Each group starts with MPE's default layout, a lower zone of 15
+    /// member channels under channel 1, and an MPE Configuration Message
+    /// changes a group's zones. A member channel's bend range starts at
+    /// MPE's 48 semitones and its master's at 2, and a configuration message
+    /// resets a zone's ranges. A note on a member channel:
+    ///
+    /// - takes its bend, pressure and controllers from its own channel,
+    ///   because MPE sends them for each note
+    /// - adds its master's bend to its pitch
+    /// - follows its master's pedals, All Notes Off and All Sound Off
+    /// - reads a controller that its own channel hasn't set from its master.
     ///
     /// # Examples
     ///
@@ -287,8 +288,8 @@ impl<V, L> Poly<V, L> {
     ///     channel: Channel::number(channel),
     ///     value: Centred::new(value),
     /// };
-    /// // A note on member channel 2, bent a quarter of its 48 semitones up,
-    /// // and the whole zone half of its master's 2 down.
+    /// // A note on member channel 2, bent up a quarter of its 48 semitones,
+    /// // and the master bent down half of its 2.
     /// let middle_c = Key::C4;
     /// let mut note = NoteOn::new(middle_c, 1.0);
     /// note.channel = Channel::number(2);
@@ -309,8 +310,8 @@ impl<V, L> Poly<V, L> {
         self
     }
 
-    /// Every voice, idle or not, in order: to set what a parameter changes
-    /// on each.
+    /// Returns every voice, idle or not, in order, to set a parameter's
+    /// value on each.
     ///
     /// # Examples
     ///
@@ -330,29 +331,29 @@ impl<V, L> Poly<V, L> {
     /// # }
     ///
     /// let mut voices: Poly<Pluck, Mono> = Poly::new(4, Pluck::default);
-    /// // The decay parameter moved: every voice takes it.
+    /// // Every voice takes the decay parameter's new value.
     /// voices.voices_mut().for_each(|voice| voice.decay = 0.5);
     /// ```
     pub fn voices_mut(&mut self) -> impl Iterator<Item = &mut V> {
         self.slots.iter_mut().map(|slot| &mut slot.voice)
     }
 
-    /// The notes sounding, each as its note-on came: what a page's keyboard
-    /// lights.
+    /// Returns the sounding notes as their note-ons arrived, such as to light
+    /// a page's keyboard.
     pub fn notes(&self) -> impl Iterator<Item = &NoteOn> {
         self.slots
             .iter()
             .filter_map(|slot| slot.note.as_ref().map(|note| &note.on))
     }
 
-    /// Whether no voice sounds.
+    /// Returns whether no voice sounds.
     pub fn is_silent(&self) -> bool {
         self.slots.iter().all(|slot| slot.note.is_none())
     }
 }
 
 /// Sets the zone of `group` whose master is `channel` to `members` member
-/// channels, and returns its channels' bend ranges to MPE's.
+/// channels, and resets its channels' bend ranges to MPE's.
 fn configure(
     channels: &mut Channels,
     group: Group,
@@ -369,9 +370,10 @@ fn configure(
 }
 
 impl<V: Voice<L>, L: Layout> Poly<V, L> {
-    /// Plays a block: splits it at each message, acts on each, and renders
-    /// the voices between, into its audio. [`Status::Sleep`] once no voice
-    /// sounds.
+    /// Plays a block by splitting it at each message, acting on each, and
+    /// rendering the voices between into its audio.
+    ///
+    /// It returns [`Status::Sleep`] once no voice sounds.
     ///
     /// # Examples
     ///
@@ -387,8 +389,7 @@ impl<V: Voice<L>, L: Layout> Poly<V, L> {
     /// }
     ///
     /// impl Synth {
-    ///     // What `Processor::process` does with its block:
-    ///     // `self.voices.play(block)`.
+    ///     // In `Processor::process`, the call is `self.voices.play(block)`.
     ///     fn process(&mut self, audio: Audio<'_, StereoOut>, midi: Midi<'_>) -> Status {
     ///         self.voices.play((audio, midi))
     ///     }
@@ -420,8 +421,8 @@ impl<V: Voice<L>, L: Layout> Poly<V, L> {
         }
     }
 
-    /// Acts on a message: starts, releases or takes a voice, or changes what
-    /// voices read from their [`Expression`]. Other messages pass.
+    /// Acts on a message that starts, releases or takes a voice, or changes
+    /// what voices read from their [`Expression`], and ignores others.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn handle(&mut self, message: &Message<'_>) {
         match *message {
@@ -484,8 +485,8 @@ impl<V: Voice<L>, L: Layout> Poly<V, L> {
         }
     }
 
-    /// Every sounding voice's next `out.frames()` frames, added into `out`,
-    /// and the voices that are done freed.
+    /// Adds every sounding voice's next `out.frames()` frames into `out`,
+    /// and frees the voices that are done.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn render(&mut self, out: &mut Audio<'_, L>) {
         for slot in self.slots.iter_mut() {
@@ -558,8 +559,10 @@ impl<V: Voice<L>, L: Layout> Poly<V, L> {
         }
     }
 
-    /// Changes the controllers of the note `key` names, and of its key, as
-    /// MIDI 2.0 keeps them; a note its host names keeps its own alone.
+    /// Changes the controllers of the note that `key` names, and of its key
+    /// as MIDI 2.0 keeps them.
+    ///
+    /// For a note that its host names, only the note's change.
     fn each_note(&mut self, key: NoteKey, change: impl Fn(&mut NoteControls)) {
         let named = key.id.is_some_and(NoteId::is_hosts);
         if let Some(id) = key.id {
@@ -577,8 +580,8 @@ impl<V: Voice<L>, L: Layout> Poly<V, L> {
         }
     }
 
-    /// Returns the key's per-note controllers to their defaults: for its
-    /// next note, and for the one sounding unless it was just detached.
+    /// Resets the key's per-note controllers to their defaults for its next
+    /// note, and for the sounding note unless `detach` is set.
     fn reset_key(&mut self, key: NoteKey, detach: bool) {
         self.keys.clear(Place::from(key));
         if detach {
@@ -592,8 +595,8 @@ impl<V: Voice<L>, L: Layout> Poly<V, L> {
     }
 
     fn registered(&mut self, group: Group, channel: Channel, index: u8, value: f32) {
-        // The MPE Configuration Message: its count of member channels is the
-        // data's top 7 bits.
+        // The MPE Configuration Message, whose top 7 data bits are the count
+        // of member channels.
         if index == 6
             && let Some(zones) = self.mpe.as_mut().and_then(|mpe| mpe.get_mut(group.index()))
         {
@@ -607,7 +610,7 @@ impl<V: Voice<L>, L: Layout> Poly<V, L> {
             1 => state.fine = Centred::from_unit(value).get(),
             // Whole semitones, 64 each way.
             2 => state.coarse = (Centred::from_unit(value).get() * 64.0).round(),
-            // Semitones in 7.25 fixed point: the top 7 bits are whole ones.
+            // Semitones in 7.25 fixed point, so the top 7 bits are whole ones.
             7 => state.note_bend_range = value * 128.0,
             _ => {}
         }
@@ -659,7 +662,8 @@ impl<V: Voice<L>, L: Layout> Poly<V, L> {
         }
     }
 
-    /// The sostenuto pedal went down: it holds the notes whose keys are.
+    /// Marks the notes whose keys are down as held, because the sostenuto
+    /// pedal went down.
     fn catch(&mut self, group: Group, channel: Channel) {
         let mpe = self.mpe.as_ref();
         for note in self.slots.iter_mut().filter_map(|slot| slot.note.as_mut()) {
@@ -669,7 +673,7 @@ impl<V: Voice<L>, L: Layout> Poly<V, L> {
         }
     }
 
-    /// The sostenuto pedal came up: it holds nothing.
+    /// Lets go of the notes, because the sostenuto pedal came up.
     fn let_go(&mut self, group: Group, channel: Channel) {
         let mpe = self.mpe.as_ref();
         for note in self.slots.iter_mut().filter_map(|slot| slot.note.as_mut()) {
@@ -680,8 +684,8 @@ impl<V: Voice<L>, L: Layout> Poly<V, L> {
     }
 
     /// Ends every note on the channel whose key is held, as its note-off
-    /// would, at MIDI's default note-off velocity; a pedal still holds what
-    /// it holds.
+    /// would at MIDI's default note-off velocity, but a pedal still holds
+    /// the notes it holds.
     fn all_notes_off(&mut self, group: Group, channel: Channel) {
         let mpe = self.mpe.as_ref();
         for slot in self.slots.iter_mut() {
@@ -700,11 +704,12 @@ impl<V: Voice<L>, L: Layout> Poly<V, L> {
         }
     }
 
-    /// Reset All Controllers, as MIDI 1.0's recommended practice has it:
-    /// the bend, the channel's and its notes' pressure, the modulation
-    /// wheel, expression and the four pedals return to their defaults.
-    /// Volume, pan, the sound controllers, the ranges and the tunings stay,
-    /// and so do MIDI 2.0's per-note controllers but pressure.
+    /// Acts on Reset All Controllers as MIDI 1.0's recommended practice says.
+    ///
+    /// The bend, the channel's and its notes' pressure, the modulation wheel,
+    /// expression and the four pedals return to their defaults. Volume, pan,
+    /// the sound controllers, the ranges and the tunings stay, and so do
+    /// MIDI 2.0's per-note controllers other than pressure.
     fn reset_controllers(&mut self, group: Group, channel: Channel) {
         let state = self.channels.of_mut(group, channel);
         state.bend = Centred::CENTRE;
@@ -732,8 +737,10 @@ impl<V: Voice<L>, L: Layout> Poly<V, L> {
     }
 }
 
-/// What [`Poly::play`] plays: a block's audio and its MIDI. A processor's
-/// block becomes one, and so do the two as a pair.
+/// A block's audio and its MIDI, for [`Poly::play`].
+///
+/// A processor's block converts into one, and so does an `(Audio, Midi)`
+/// pair.
 ///
 /// # Examples
 ///
@@ -756,7 +763,7 @@ pub struct ToPlay<'a, L: Layout> {
 }
 
 impl<'a, L: Layout> ToPlay<'a, L> {
-    /// `audio` with `midi`.
+    /// Returns `audio` with `midi`.
     pub fn new(audio: Audio<'a, L>, midi: Midi<'a>) -> Self {
         ToPlay { audio, midi }
     }

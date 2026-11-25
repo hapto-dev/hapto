@@ -16,12 +16,12 @@ use hapto_host::midi::{Expression, NoteOff, NoteOn, Poly, Voice, VoiceAudio};
 use hapto_host::{Block, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status};
 use hapto_params::{Float, Params};
 
-/// How many notes sound at once. A note past them takes a voice from
-/// another: a released one first, then the oldest.
+/// How many notes sound at once. A further note takes the voice of a
+/// released note, or else of the oldest note.
 const VOICES: usize = 8;
 /// How long a released note takes to fall 60 dB, in seconds.
 const RELEASE: f32 = 0.3;
-/// The level at which a released note stops: 60 dB down.
+/// The level at which a released note stops, 60 dB down.
 const SILENT: f32 = 1e-3;
 
 /// The parameters, in the order hosts list them, each declared where it is
@@ -65,7 +65,7 @@ impl Plugin for {{type}} {
     }
 }
 
-/// The audio thread's half: the voices, which `Poly` gives the block's
+/// The audio thread's half, with the voices that `Poly` gives the block's
 /// notes.
 #[derive(Debug)]
 pub struct {{type}}Processor {
@@ -77,14 +77,15 @@ impl Processor for {{type}}Processor {
     type Layout = StereoOut;
 
     fn process(&mut self, block: Block<'_, StereoOut>) -> Status {
-        // Cut at each message, so each note starts on its own frame, and
-        // asleep once every voice is silent.
+        // Cuts the block at each message, so each note starts on its own
+        // frame, and sleeps once every voice is silent.
         self.voices.play(block)
     }
 }
 
-/// One voice: a sine at its note's pitch, which every bend and tuning a host
-/// sends already moves, fading out once nothing holds the note.
+/// One voice, a sine that fades out once nothing holds its note.
+///
+/// Its pitch already includes every bend and tuning that a host sends.
 #[derive(Debug)]
 pub struct Sine {
     level: Float,
@@ -121,8 +122,8 @@ impl Voice for Sine {
 
     fn render(&mut self, expression: &Expression<'_>, out: &mut VoiceAudio<'_>) {
         let step = expression.pitch.hz() / self.sample_rate;
-        // The level for this note: the parameter's, and once a host
-        // modulates it for each note, this note's.
+        // The level for this note, which is the parameter's plus any
+        // polyphonic modulation that the host sends.
         let gain = 10.0_f32.powf(expression.modulated(&self.level) / 20.0);
         for frame in out.frames_mut() {
             // Into both channels, at the note's pan.
@@ -130,7 +131,8 @@ impl Voice for Sine {
             self.phase = (self.phase + step).fract();
             if self.released {
                 self.envelope *= self.fade;
-                // Silent from the frame it is done, wherever the block ends.
+                // Silent from the frame where it fades out, so the sound
+                // doesn't depend on the block size.
                 if self.envelope < SILENT {
                     self.envelope = 0.0;
                 }

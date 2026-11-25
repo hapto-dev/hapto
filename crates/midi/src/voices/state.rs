@@ -1,5 +1,5 @@
-//! What [`Poly`](super::Poly) keeps of each channel and each key between
-//! messages: the sources a note's [`Expression`](super::Expression) reads.
+//! The state that [`Poly`](super::Poly) keeps for each channel and key
+//! between messages, which a note's [`Expression`](super::Expression) reads.
 
 use crate::channels::slot;
 use crate::controller::{Address, Controller, ControllerValue, number};
@@ -7,11 +7,11 @@ use crate::message::NoteKey;
 use crate::values::{Centred, Channel, Group, Key, Pitch};
 
 /// Controllers by number, each unset until a message sets it, so a reader
-/// falls back to the next source: a note's own to its channel's, a
-/// channel's to the controller's default.
+/// falls back from a note's own to its channel's, and from a channel's to the
+/// controller's default.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) struct Set<const N: usize> {
-    /// Bit `i` says whether `values[i]` was set; `N` is at most 128.
+    /// Bit `i` is set if `values[i]` was set, so `N` is at most 128.
     set: u128,
     values: [f32; N],
 }
@@ -65,10 +65,11 @@ pub(super) struct ChannelState {
 }
 
 impl ChannelState {
-    /// A channel no message has reached. The bend's range is MIDI 1.0's 2
-    /// semitones. MIDI 2.0 gives a note's own bend no default range; 48 is
-    /// MPE's for the notes of a zone, the one a sender of per-note bends
-    /// most likely assumes.
+    /// A channel that no message has reached.
+    ///
+    /// The bend range is MIDI 1.0's 2 semitones. MIDI 2.0 gives a note's own
+    /// bend no default range, so it is MPE's 48 for a zone's notes, which a
+    /// sender of per-note bends most likely assumes.
     pub(super) const NEW: ChannelState = ChannelState {
         bend: Centred::CENTRE,
         bend_range: 2.0,
@@ -79,14 +80,17 @@ impl ChannelState {
         controls: Set::EMPTY,
     };
 
-    /// The channel's value of `controller`, or its default while unset.
+    /// Returns the channel's value of `controller`, or its default while
+    /// unset.
     pub(super) fn read<T: ControllerValue>(&self, controller: Controller<T>) -> T {
         self.control(controller.address())
             .map_or(controller.default(), T::from_unit)
     }
 
-    /// The channel's value of the controller at `address`, from 0 to 1, if
-    /// one has arrived. Only control changes are kept.
+    /// Returns the channel's value of the controller at `address`, from 0 to
+    /// 1, if one has arrived.
+    ///
+    /// Only control changes are kept.
     pub(super) fn control(&self, address: Address) -> Option<f32> {
         match address {
             Address::Control(number) => self.controls.get(usize::from(number)),
@@ -94,8 +98,10 @@ impl ChannelState {
         }
     }
 
-    /// Sets what a control change sets. The channel mode messages, 120 and
-    /// up, are actions, not values, and set nothing.
+    /// Sets what a control change sets.
+    ///
+    /// The channel mode messages (120 and up) are actions, not values, and
+    /// set nothing.
     pub(super) fn set_control(&mut self, controller: u8, value: f32) {
         if controller < number::ALL_SOUND_OFF {
             self.controls.put(usize::from(controller), value);
@@ -103,7 +109,7 @@ impl ChannelState {
     }
 }
 
-/// Every group's channels, boxed: they are too large for a stack.
+/// Every group's channels, boxed because they are too large for a stack.
 #[derive(Debug)]
 pub(super) struct Channels(Box<[ChannelState]>);
 
@@ -135,14 +141,14 @@ impl Channels {
     }
 }
 
-/// The per-note controllers MIDI 2.0 defines a meaning for, by the
-/// registered per-note controller's number: the only ones a note keeps.
+/// The registered per-note controllers that a note keeps, by number, which
+/// are those that MIDI 2.0 defines a meaning for.
 const NOTE_CONTROLS: [u8; 21] = [
     1, 2, 7, 8, 10, 11, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 91, 92, 93, 94, 95,
 ];
 
-/// Where a note keeps controller `number`; `None` for one MIDI 2.0 leaves
-/// undefined, or pitch, which has a place of its own.
+/// Returns where a note keeps controller `number`, or `None` for pitch, which
+/// has its own place, or for a number that MIDI 2.0 leaves undefined.
 pub(super) fn note_slot(number: u8) -> Option<usize> {
     NOTE_CONTROLS.iter().position(|&kept| kept == number)
 }
@@ -165,7 +171,7 @@ impl NoteControls {
         controls: Set::EMPTY,
     };
 
-    /// The note's own value of the control change `number`, if it has one.
+    /// Returns the note's own value of the control change `number`, if any.
     pub(super) fn control(&self, number: u8) -> Option<f32> {
         self.controls.get(note_slot(number)?)
     }
@@ -189,9 +195,10 @@ impl From<NoteKey> for Place {
     }
 }
 
-/// The per-note controllers of the keys that have any: MIDI 2.0 keeps them
-/// for the key, so a note starts from what its key's last note was left at,
-/// and one may come before its note does.
+/// The per-note controllers of the keys that have any.
+///
+/// MIDI 2.0 keeps them for the key, so a note starts from the values its key
+/// was left at, and a controller may come before its note.
 #[derive(Debug)]
 pub(super) struct Keys {
     entries: Box<[KeyEntry]>,
@@ -207,7 +214,7 @@ struct KeyEntry {
 }
 
 impl Keys {
-    /// Room for `count` keys.
+    /// Returns room for `count` keys.
     pub(super) fn new(count: usize) -> Self {
         let free = KeyEntry {
             place: None,
@@ -220,7 +227,7 @@ impl Keys {
         }
     }
 
-    /// What `place` has been set to, if anything.
+    /// Returns the controllers set for `place`, if any.
     pub(super) fn get(&self, place: Place) -> Option<&NoteControls> {
         self.entries
             .iter()
@@ -228,8 +235,8 @@ impl Keys {
             .map(|entry| &entry.controls)
     }
 
-    /// The controllers of `place` to write: its own entry, else a free one,
-    /// else the least recently written, which is forgotten.
+    /// Returns the controllers of `place` to write, from its own entry, else
+    /// a free one, else the least recently written, which is forgotten.
     pub(super) fn write(&mut self, place: Place) -> Option<&mut NoteControls> {
         self.clock = self.clock.wrapping_add(1);
         let index = match self.entries.iter().position(|e| e.place == Some(place)) {
@@ -265,7 +272,7 @@ impl Keys {
         }
     }
 
-    /// The controllers of every key on `channel` of `group`.
+    /// Returns the controllers of every key on `channel` of `group`.
     pub(super) fn on_channel(
         &mut self,
         group: Group,

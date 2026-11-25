@@ -1,5 +1,6 @@
-//! The synth's audio thread never allocates: its voices started, stolen,
-//! bent, pressed, held by the pedal, released and freed, block after block.
+//! The synth's audio thread never allocates while its voices are started,
+//! stolen, bent, pressed, held by the pedal, released and freed, block after
+//! block.
 
 hapto_testkit::install_alloc_gate!();
 
@@ -9,9 +10,9 @@ use hapto_host::midi::MidiList;
 use hapto_host::{Audio, Block, Event, EventList, MidiOut, Parts, Plugin, ProcessSetup, Processor};
 use hapto_testkit::alloc::assert_no_allocations;
 
-/// A block's MIDI 2.0: more notes than the synth has voices, a bend, a
-/// note's own pressure and pitch, the pedal down and up, and each note's
-/// end.
+/// Returns a block's MIDI 2.0, with more notes than the synth has voices, a
+/// bend, a note's own pressure and pitch, the pedal down and up, and each
+/// note's end.
 fn block_midi(round: u32) -> EventList {
     let mut sent = Vec::new();
     for key in 0..20 {

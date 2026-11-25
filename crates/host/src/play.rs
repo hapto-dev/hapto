@@ -1,5 +1,5 @@
-//! A plugin played with no host, for its tests: MIDI in each form a host
-//! sends it, at any block sizes, rendered into a [`Sound`] to check.
+//! A plugin played without a host for its tests, at any block sizes, with
+//! MIDI in each form that a host sends, and rendered into a [`Sound`].
 
 use std::ops::Range;
 
@@ -10,29 +10,28 @@ use crate::layout::Width;
 use crate::standalone::{Standalone, StandaloneAudio, StandaloneBlock};
 use crate::{Event, Plugin, widths};
 
-/// The block size a [`Play`] plays at unless told otherwise.
+/// A [`Play`]'s block size, unless [`Play::with_blocks`] sets the sizes.
 const BLOCK: usize = 512;
 
 /// The level below which a [`Sound`] is silent: -80 dB.
 const SILENT: f32 = 1e-4;
 
-/// A plugin played with no host, as its tests drive it: activated at a
-/// sample rate, sent MIDI at frames of the whole play, and rendered into a
-/// [`Sound`].
+/// A plugin played without a host, so that a test can send it MIDI at
+/// frames from the play's start and render it into a [`Sound`].
 ///
-/// It plays the plugin through the same engine every exporter drives, so
-/// MIDI 1.0 goes through the same upgrade to MIDI 2.0 as a host's, and a
-/// note named as a host names it reaches the plugin as VST3's does. Blocks
-/// are 512 frames unless [`with_blocks`](Self::with_blocks) says otherwise;
-/// how a plugin sounds should not depend on them.
+/// It plays the plugin through the engine that every exporter drives, so
+/// MIDI 1.0 is upgraded to MIDI 2.0 as a host's is, and the notes it names
+/// reach the plugin as VST3's do. Blocks are 512 frames unless
+/// [`with_blocks`](Self::with_blocks) sets other sizes, and a plugin's sound
+/// should not depend on them.
 ///
-/// Thread: the one that makes it, which is the plugin's main thread and its
-/// audio thread both.
+/// Thread: the one that creates it, which is both the plugin's main thread
+/// and its audio thread.
 ///
 /// # Panics
 ///
-/// [`render`](Self::render) panics when the plugin panicked in a block,
-/// which a host would have heard as silence.
+/// [`render`](Self::render) panics if the plugin panicked in a block, which
+/// would have been silent in a host.
 ///
 /// # Examples
 ///
@@ -49,26 +48,26 @@ const SILENT: f32 = 1e-4;
 /// assert!(sound.is_silent(4_800..9_600));
 /// ```
 pub struct Play<P: Plugin> {
-    // Dropped before the app, as the app needs.
+    // Dropped before `app`, which `Standalone` requires.
     audio: StandaloneAudio<P>,
     app: Standalone<P>,
     sample_rate: f64,
     layout: Width,
     blocks: Vec<usize>,
-    /// Where the next block's size comes from in `blocks`.
+    /// The index in `blocks` of the next block's size.
     next_block: usize,
-    /// The packets not yet played, each at a frame of the whole play, in
-    /// the order they were sent.
+    /// The packets not yet played, each at its frame from the play's start,
+    /// in the order sent.
     queue: Vec<(usize, Event)>,
-    /// How many frames have played.
+    /// The number of frames played.
     played: usize,
     bytes: ByteStream,
-    /// The next note a host names.
+    /// The host's name for the next note.
     next_note: u32,
 }
 
-/// A note a host named, as [`Play::note_on`] starts it: to end it, tune it
-/// or press it by its name.
+/// A note that [`Play::note_on`] started and named as a host does, so that a
+/// test can end, tune or press it by its name.
 ///
 /// # Examples
 ///
@@ -95,13 +94,13 @@ pub struct HostNote {
 }
 
 impl<P: Plugin> Play<P> {
-    /// The plugin, activated at `sample_rate` in the first layout it
-    /// lists, with no MIDI sent yet.
+    /// Returns a play of the plugin, activated at `sample_rate` in the first
+    /// layout that it lists, with no MIDI sent yet.
     ///
     /// # Panics
     ///
-    /// When the plugin lists no layout, or refuses to activate: its test
-    /// cannot play it.
+    /// When the plugin lists no layout or refuses to activate, because the
+    /// test can't play it then.
     pub fn new(sample_rate: f64) -> Self {
         let Some(&layout) = widths::<P>().first() else {
             panic!("{} lists no layout to play in", P::INFO.name);
@@ -124,9 +123,9 @@ impl<P: Plugin> Play<P> {
         play
     }
 
-    /// The same plugin played in blocks of `sizes`, in turn and again from
-    /// the first, activated again for the largest: to check that its sound
-    /// does not depend on them.
+    /// Returns the play with blocks of `sizes`, taken in turn and repeated,
+    /// and the plugin activated again for the largest, to check that its
+    /// sound doesn't depend on them.
     ///
     /// # Panics
     ///
@@ -158,8 +157,8 @@ impl<P: Plugin> Play<P> {
         self
     }
 
-    /// The same plugin played in `layout`, one of those it lists, activated
-    /// again for it.
+    /// Returns the play in `layout`, one of those the plugin lists, with the
+    /// plugin activated again for it.
     ///
     /// # Panics
     ///
@@ -179,14 +178,14 @@ impl<P: Plugin> Play<P> {
         }
     }
 
-    /// The plugin as an app holds it: its parameters, its saved state, its
-    /// tick.
+    /// Returns the app that holds the plugin, with its parameters, saved
+    /// state and tick.
     pub fn app(&self) -> &Standalone<P> {
         &self.app
     }
 
-    /// Sends MIDI 1.0's `bytes` at `frame`, read as a device's byte stream
-    /// is, running status and SysEx included, on the first group.
+    /// Sends MIDI 1.0 `bytes` at `frame` on the first group, read as a
+    /// device's byte stream, including running status and SysEx.
     ///
     /// # Panics
     ///
@@ -222,8 +221,8 @@ impl<P: Plugin> Play<P> {
         self.voice(frame, message, Origin::Midi2);
     }
 
-    /// Sends `event`'s packet at `frame`, whatever its offset says, with its
-    /// origin: any group, channel or message.
+    /// Sends `event`, with any group, channel, message and origin, at
+    /// `frame` rather than at its offset.
     ///
     /// # Panics
     ///
@@ -237,9 +236,8 @@ impl<P: Plugin> Play<P> {
         self.queue.push((frame, event));
     }
 
-    /// Starts a note at `frame` on the first group and channel, named as a
-    /// host that names its notes names it, VST3 say, at `velocity` from 0 to
-    /// 1.
+    /// Starts a note at `frame` on the first group and channel, at
+    /// `velocity` from 0 to 1, and names it as a host such as VST3 does.
     ///
     /// # Panics
     ///
@@ -334,8 +332,8 @@ impl<P: Plugin> Play<P> {
         );
     }
 
-    /// Plays the next `frames` frames, in blocks, with the MIDI sent for
-    /// them, and returns what came out, its inputs silent.
+    /// Plays the next `frames` frames in blocks, with silent inputs and the
+    /// MIDI sent for them, and returns the output.
     ///
     /// # Panics
     ///
@@ -378,8 +376,8 @@ impl<P: Plugin> Play<P> {
         Sound { channels, sent }
     }
 
-    /// The packets sent for frames `start` to `end`, each at its frame of
-    /// the block, in the order sent.
+    /// Removes and returns the packets for frames `start` to `end`, each at
+    /// its frame of the block, in the order sent.
     fn take(&mut self, start: usize, end: usize) -> Vec<Event> {
         let mut block = Vec::new();
         self.queue.retain(|&(frame, event)| {
@@ -404,13 +402,12 @@ impl<P: Plugin> std::fmt::Debug for Play<P> {
     }
 }
 
-/// What a [`Play`] rendered: each output channel's samples, and the MIDI
-/// the plugin sent, each packet at a frame of the render.
+/// Each output channel's samples from a [`Play`]'s render, and the MIDI that
+/// the plugin sent, each packet at its frame of the render.
 ///
-/// Two renders are equal when every sample and every packet is: a plugin's
-/// sound in one form against another, bit for bit. Its `Debug` sums it up,
-/// so a failed comparison prints two lines, and
-/// [`difference`](Self::difference) says where two first part.
+/// Two sounds are equal when every sample and packet is, bit for bit.
+/// `Debug` prints a summary, so a failed comparison prints two lines, and
+/// [`difference`](Self::difference) returns where two first differ.
 ///
 /// # Examples
 ///
@@ -431,7 +428,7 @@ pub struct Sound {
     sent: Vec<Event>,
 }
 
-/// Where two [`Sound`]s first part: a channel's sample at a frame.
+/// Where two [`Sound`]s first differ, and each one's sample there.
 ///
 /// # Examples
 ///
@@ -452,25 +449,26 @@ pub struct Difference {
     pub channel: usize,
     /// The frame of the render.
     pub frame: usize,
-    /// The sample in the sound asked.
+    /// The sample in this sound.
     pub this: f32,
-    /// The sample in the other; `None` past its end or its channels.
+    /// The sample in `other`, or `None` past its end or its channels.
     pub other: Option<f32>,
 }
 
 impl Sound {
-    /// Each output channel's samples, in order.
+    /// Returns each output channel's samples, in order.
     pub fn channels(&self) -> &[Vec<f32>] {
         &self.channels
     }
 
-    /// The MIDI the plugin sent, each packet at its frame of the render.
+    /// Returns the MIDI that the plugin sent, each packet at its frame of the
+    /// render.
     pub fn sent(&self) -> &[Event] {
         &self.sent
     }
 
-    /// The largest sample, either way, in any channel, over `frames`, held
-    /// to the render.
+    /// Returns the largest absolute sample in any channel over `frames`,
+    /// clamped to the render's length.
     pub fn peak(&self, frames: Range<usize>) -> f32 {
         self.channels
             .iter()
@@ -481,14 +479,14 @@ impl Sound {
             .fold(0.0, |peak, sample| peak.max(sample.abs()))
     }
 
-    /// Whether every sample over `frames` is below -80 dB.
+    /// Returns whether every sample over `frames` is below -80 dB.
     pub fn is_silent(&self, frames: Range<usize>) -> bool {
         self.peak(frames) < SILENT
     }
 
-    /// The first sample, by channel then frame, at which this sound and
-    /// `other` differ; `None` when every sample is the same. What they sent
-    /// is not compared.
+    /// Returns the first sample, by channel then frame, at which this sound
+    /// and `other` differ, or `None` if every sample is the same. The MIDI
+    /// they sent isn't compared.
     ///
     /// # Examples
     ///
@@ -527,7 +525,7 @@ impl Sound {
 impl std::fmt::Debug for Sound {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // A fingerprint of every sample's bits, so two sounds that differ
-        // print apart.
+        // print differently.
         let fingerprint = self
             .channels
             .iter()
