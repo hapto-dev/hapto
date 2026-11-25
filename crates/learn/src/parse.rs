@@ -139,23 +139,23 @@ mod tests {
 
     use super::*;
 
-    /// What the last of `history`, one channel's control changes in order,
-    /// means: MIDI 1.0's reading, except where Hapto departs from it on
-    /// purpose.
+    /// Returns what the last control change in `history` means under MIDI
+    /// 1.0, except where Hapto departs from it on purpose.
     ///
-    /// The reading goes over the whole history again for each message instead
-    /// of keeping state, so it shares no structure with the upgrade or the
-    /// parser.
+    /// `history` is one channel's control changes in order. The model rereads
+    /// all of it for each message instead of keeping state, so it shares no
+    /// structure with `Upgrade` or the parser. MIDI 1.0 has these rules:
     ///
-    /// MIDI 1.0: controllers 99 and 98 each latch one byte of the NRPN
-    /// number, in either order, and 101 and 100 the RPN's. Data entry is for
-    /// the number the newest of the four selected, and 127 and 127 select
-    /// nothing. Reset All Controllers (121) sets the number to null, as RP-015
-    /// recommends. A data entry high byte (6) sets the low byte to zero, and a
-    /// low byte (38) refines the high byte held.
+    /// - Controllers 99 and 98 each latch one byte of the NRPN number, in
+    ///   either order, and 101 and 100 latch the RPN number.
+    /// - Data entry applies to the number that the newest of the four
+    ///   selected. An address of 127 and 127 selects no number.
+    /// - Reset All Controllers (121) sets the number to null, as RP-015
+    ///   recommends.
+    /// - A data entry high byte (6) sets the low byte to zero, and a low byte
+    ///   (38) refines the held high byte.
     ///
-    /// Hapto's deviations, each the upgrade's or the parser's documented
-    /// choice:
+    /// Hapto's deviations, which `Upgrade` or the parser documents:
     ///
     /// 1. A 38 refines the newest 6 only when that 6 was sent under the same
     ///    number, however often the address was sent between. Otherwise it

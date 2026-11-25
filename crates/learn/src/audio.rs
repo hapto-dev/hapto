@@ -71,8 +71,8 @@ impl LearnAudio {
         }
     }
 
-    /// Runs learn over one block's MIDI, in order, so a target that several
-    /// messages reach ends the block on the last one.
+    /// Runs learn over one block's MIDI in order, so a target that several
+    /// messages reach ends the block at the last one's value.
     ///
     /// It takes the newest table the UI side published, without waiting,
     /// locking, allocating or freeing. Each mapped parameter is written in

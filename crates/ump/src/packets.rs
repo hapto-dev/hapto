@@ -49,7 +49,7 @@ impl MessageType {
     /// no group.
     pub const STREAM: Self = MessageType(0xF);
 
-    /// The type of a packet whose first word is `first`.
+    /// Returns the type of a packet whose first word is `first`.
     pub const fn of(first: u32) -> Self {
         MessageType((first >> 28) as u8)
     }

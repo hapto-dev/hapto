@@ -135,7 +135,7 @@ fn without_bank_select_again(blocks: Vec<Vec<Event>>) -> Vec<Vec<Event>> {
         .collect()
 }
 
-/// Each block's packets at their frames, their origins aside.
+/// Returns each block's packets and frames, without their origins.
 fn packets(blocks: &[Vec<Event>]) -> Vec<Vec<(u32, [u32; 4])>> {
     blocks
         .iter()

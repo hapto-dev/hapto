@@ -48,7 +48,7 @@
 //!     };
 //!     if let ChannelMessage::ControlChange { controller, value } = message {
 //!         assert_eq!((event.offset, channel, controller), (32, 2, 7));
-//!         // Upgraded from MIDI 1.0, it narrows back to what was sent.
+//!         // `scale` narrows the upgraded value back to what was sent.
 //!         assert_eq!(scale::down_32_to_7(value), 100);
 //!     }
 //! }

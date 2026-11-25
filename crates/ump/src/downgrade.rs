@@ -10,8 +10,8 @@ use crate::{
     Midi1Voice,
 };
 
-/// Downgrades MIDI 2.0 to MIDI 1.0, for a destination that takes only MIDI
-/// 1.0: when someone asks for it, or the other end forces it.
+/// Downgrades MIDI 2.0 to MIDI 1.0 for a destination that accepts only MIDI
+/// 1.0, when someone asks for it or the other end forces it.
 ///
 /// It follows the specification's Default Translation. Values cut their
 /// low bits off. A note-on that would cut to velocity 0, which MIDI 1.0
@@ -25,12 +25,16 @@ use crate::{
 /// before the program, which leaves a receiver on the same bank, and a
 /// processor that drops controllers 0 and 32 still sends the bank.
 ///
-/// What MIDI 1.0 cannot carry is dropped and counted in
-/// [`lost`](Self::lost): relative controllers, per-note controllers, per-note
-/// pitch bend and per-note management, a note's attribute, whose note still
-/// goes out, and a MIDI 2.0 channel voice packet of a status the
-/// specification reserves. Packets of the other types pass as they are,
-/// since a destination that takes MIDI 1.0 in UMP may take each of them.
+/// It drops what MIDI 1.0 can't carry, and counts it in
+/// [`lost`](Self::lost):
+///
+/// - relative controllers, per-note controllers, per-note pitch bend and
+///   per-note management
+/// - a note's attribute, though the note still goes out
+/// - a MIDI 2.0 channel voice packet with a reserved status
+///
+/// Packets of other types pass through unchanged, because a destination that
+/// accepts MIDI 1.0 in UMP may accept any of them.
 ///
 /// # Examples
 ///

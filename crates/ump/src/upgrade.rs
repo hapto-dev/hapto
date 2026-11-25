@@ -15,7 +15,7 @@ use crate::{
 /// Both bytes of the null parameter number, which selects nothing.
 const NULL: u8 = 127;
 
-/// Upgrades MIDI 1.0 to MIDI 2.0, as an exporter does on the way in.
+/// Upgrades incoming MIDI 1.0 to MIDI 2.0, as an exporter does.
 ///
 /// It follows the specification's Default Translation. Values upscale as
 /// [`scale`](crate::scale) says, and every packet
@@ -55,9 +55,8 @@ const NULL: u8 = 127;
 /// [`Downgrade`](crate::Downgrade), MIDI 1.0 then repeats its bank select
 /// before each program change, which leaves a receiver on the same bank.
 ///
-/// Other packets pass as they are. State is kept for every group and
-/// channel, made once and never grown, so [`block`](Self::block) allocates
-/// nothing.
+/// Other packets pass through unchanged. State for every group and channel
+/// is allocated once, so [`block`](Self::block) allocates nothing.
 ///
 /// # Examples
 ///
@@ -118,7 +117,7 @@ impl Kind {
         }
     }
 
-    /// The MIDI 2.0 controller it is at `bank` and `index`.
+    /// Returns this kind's MIDI 2.0 controller at `bank` and `index`.
     const fn message(self, bank: u8, index: u8, value: u32) -> ChannelMessage {
         match self {
             Kind::Registered => ChannelMessage::RegisteredController { bank, index, value },
@@ -323,9 +322,10 @@ impl Channel {
             }
             _ if is_parameter_number(controller) || controller == RESET_ALL_CONTROLLERS => {
                 self.numbers.control(controller, value, send);
-                // Increment and decrement are controllers of their own in
-                // MIDI 2.0, with no parameter number to step, and Reset All
-                // Controllers resets the rest.
+                // In MIDI 2.0, increment and decrement are controllers of
+                // their own with no parameter number to step, and Reset All
+                // Controllers resets the other controllers, so all three also
+                // go out as control changes.
                 if matches!(
                     controller,
                     DATA_INCREMENT | DATA_DECREMENT | RESET_ALL_CONTROLLERS

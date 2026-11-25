@@ -106,8 +106,8 @@ fn without_bank_select_again(
         .collect()
 }
 
-/// Blocks of `sent`, each message on its group and channel and after a cut
-/// when its flag says so, at frames that rise through the block.
+/// Builds blocks from `sent` at rising frames, with each message on its group
+/// and channel. A message whose flag is set starts a new block.
 fn blocks(sent: Vec<(bool, u8, u8, Midi1Message)>) -> Blocks {
     let mut blocks: Blocks = vec![Vec::new()];
     for (cut, group, channel, message) in sent {

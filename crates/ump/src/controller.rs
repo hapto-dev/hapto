@@ -18,25 +18,23 @@
 
 /// Bank select's most significant byte.
 pub(crate) const BANK_SELECT: u8 = 0;
-/// Data entry's most significant byte: the high byte of an RPN's or NRPN's
-/// value.
+/// Data entry's most significant byte, the high byte of an RPN or NRPN value.
 pub const DATA_ENTRY: u8 = 6;
 /// Bank select's least significant byte.
 pub(crate) const BANK_SELECT_LSB: u8 = 32;
-/// Data entry's least significant byte: the low byte of an RPN's or NRPN's
-/// value.
+/// Data entry's least significant byte, the low byte of an RPN or NRPN value.
 pub(crate) const DATA_ENTRY_LSB: u8 = 38;
 /// Data increment, which steps the selected parameter up.
 pub(crate) const DATA_INCREMENT: u8 = 96;
-/// Data decrement, which steps it down.
+/// Data decrement, which steps the selected parameter down.
 pub(crate) const DATA_DECREMENT: u8 = 97;
-/// An NRPN's least significant byte: its index.
+/// An NRPN's least significant byte, its index.
 pub const NRPN_LSB: u8 = 98;
-/// An NRPN's most significant byte: its bank.
+/// An NRPN's most significant byte, its bank.
 pub(crate) const NRPN_MSB: u8 = 99;
-/// An RPN's least significant byte: its index.
+/// An RPN's least significant byte, its index.
 pub(crate) const RPN_LSB: u8 = 100;
-/// An RPN's most significant byte: its bank.
+/// An RPN's most significant byte, its bank.
 pub const RPN_MSB: u8 = 101;
 /// Reset All Controllers, which also sets the parameter number to null
 /// (RP-015).
