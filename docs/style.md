@@ -31,8 +31,10 @@ lints are the wider reference.
 Hapto follows the API Guidelines' [documentation chapter][documentation] and the
 standard library's conventions ([RFC 1574][rfc1574]):
 
-- **Summary.** The first paragraph is one sentence in the third person
-  ("Returns", "Writes"). The rest follows in its own paragraphs.
+- **Summary.** The first paragraph is one sentence. A function's starts with
+  a verb in the third person ("Returns", "Writes"), and a type's, a field's
+  or a constant's may be a phrase ("A parameter's id."). The rest follows in
+  its own paragraphs.
 - **Sections.** `# Examples`, then `# Errors`, `# Panics` and `# Safety`
   whenever they apply. A contract line, such as the `Thread:` line, comes
   before `# Examples`.
@@ -58,6 +60,62 @@ standard library's conventions ([RFC 1574][rfc1574]):
 A plain getter or a constant gets a one-line summary. Plumbing public only
 so Hapto's other crates reach it is `#[doc(hidden)]`, and no public doc links
 to it.
+
+## Plain prose
+
+Comments, docs, commit messages and pull requests are written in plain,
+ordinary English, so that a reader understands each sentence on the first
+pass.
+
+- **Sentences.** Write complete sentences in normal word order, and keep
+  "that" and "which".
+- **Labels.** A type, field, variant or constant doc, a heading, a list item
+  and a comment on a line of an example can be a short phrase. Don't pad a
+  label into a sentence with "Holds", "Represents" or "This is".
+- **Verbs.** Say what code does with ordinary technical verbs, such as
+  returns, calls, rejects and checks. Code doesn't ask, answer, know, want or
+  visit.
+- **Terms.** Use the standard term, such as poll, error, lock or callback, and
+  the code's own names, such as `sync` or `try_borrow`, instead of describing
+  them. Name a thing by its role, with its number in parentheses where the
+  reader needs it, so "the data entry low byte (38)" and not "a 38". A word
+  that the [glossary](glossary.md) defines keeps that sense.
+- **Joins.** Join clauses with "because", "so" or "but", not with a colon or a
+  semicolon.
+- **Once.** State each fact once. Cut a clause that repeats the one before it,
+  or that repeats what the item's name or signature already says.
+- **Lists.** Three or more separate rules go in a list, one rule to an item,
+  not in one paragraph.
+- **Detail.** Include numbers and edge cases only when the reader needs them.
+- **Plainness.** Don't write aphorisms. If a sentence needs reading twice,
+  rewrite it.
+
+This comment states three facts, but it takes more than one reading:
+
+```rust
+// The session's apply pass captured what this value's own apply
+// wrote, so a load is captured once. Any other write is captured,
+// one another participant's apply made after it included. The
+// section is borrowed only while it applies, which never syncs.
+```
+
+The plain version states the same facts in normal word order, with the code's
+names:
+
+```rust
+// The apply pass already captured this value's own apply, so only other
+// writes mark the section as changed, including a later one from another
+// participant's apply. `try_borrow` can't fail, because `sync` never runs
+// during an apply.
+```
+
+A field's doc starts with a label:
+
+```rust
+/// The change count after the last apply, which the apply pass already
+/// captured. It's `None` before any apply, or if another thread wrote the
+/// value since.
+```
 
 ## Hapto's own rules
 
