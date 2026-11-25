@@ -4073,9 +4073,10 @@ own job.
 The app runs on Windows alone for now, so until its audio device and window run
 on Linux, only the crate's own API reaches this backend. The backend's tests
 make sequencer clients of their own, MIDI 1.0 and MIDI 2.0 ports that stand in
-for devices, so they need the sequencer (`/dev/snd/seq`) but no hardware; CI's
-Linux and coverage lanes load the sequencer's module. Miri cannot call into
-alsa-lib, so under it Linux has no backend.
+for devices, so they need the sequencer (`/dev/snd/seq`) but no hardware;
+GitHub's runners have a kernel built with no sound, so CI's Linux and coverage
+lanes run them in a VM booted with Ubuntu's generic kernel. Miri cannot call
+into alsa-lib, so under it Linux has no backend.
 
 Open: MIDI 2.0 out. A MIDI 2.0 device takes the writer's MIDI 1.0, which the
 kernel upgrades by its own rules; it could take the block's MIDI 2.0 as it is.
