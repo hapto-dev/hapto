@@ -319,7 +319,8 @@ jobs:
       # against the test host's run loop. The exporter's other tests need a
       # thread timer or a window, and Linux has neither yet.
       - name: The run loop timer
-        run: cargo test -p hapto-host --no-default-features --features vst3 --lib --locked -- engine::timer:: vst3::tests::run_loop::
+        run: |
+          cargo test -p hapto-host --no-default-features --features vst3 --lib --locked -- engine::timer:: vst3::tests::run_loop::
       - name: The VST3 module refuses to build
         run: |
           if cargo check -p hapto-example-eq --locked 2> refusal.txt; then
