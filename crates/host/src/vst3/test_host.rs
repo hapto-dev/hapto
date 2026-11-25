@@ -31,10 +31,14 @@ use crate::layout::Width;
 
 #[cfg(windows)]
 mod child;
+#[cfg(test)]
+mod run_loop;
 mod view;
 
 #[cfg(windows)]
 pub use child::ChildWindow;
+#[cfg(test)]
+pub(crate) use run_loop::TestRunLoop;
 #[cfg(windows)]
 pub use view::HiddenWindow;
 pub use view::TestView;

@@ -22,7 +22,7 @@ use std::cell::{Cell, RefCell};
 use std::error::Error;
 use std::panic::{self, AssertUnwindSafe};
 
-use super::timer::keep_module_loaded;
+use super::module;
 use crate::{Editor, ParentWindow, Size};
 
 /// Where an editor is in its life.
@@ -136,7 +136,7 @@ impl EditorSlot {
         // Before the editor is told anything or opened: an open that fails or
         // panics may still have left the host something that points into the
         // module.
-        keep_module_loaded();
+        module::keep_loaded();
         self.phase.set(Phase::Opening);
         self.closing.set(false);
         let opened = panic::catch_unwind(AssertUnwindSafe(|| {

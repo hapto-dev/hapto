@@ -2244,7 +2244,7 @@ fn an_instance_bound_to_no_thread_starts_no_timer() {
     // `destroy` below.
     let instance = unsafe { super::instance::<Mover>(pointer) }.expect("created");
     let faults = instance.faults();
-    instance.start_timer();
+    instance.start_timer(crate::engine::timer::Source::Thread);
     assert!(
         instance.timer_handle().is_none(),
         "no timer: no thread owns it"

@@ -329,12 +329,16 @@ that something does not happen, or it runs a real timer.
   (`crates/undo/tests/restore.rs`) waits 20 ms to check that a load has not yet
   written while a replay holds loads off. The deterministic pin of that side is
   the unit test in `crates/undo/src/history/tests.rs`.
-- The timer's own tests (`crates/host/src/engine/timer/tests.rs`) and the VST3
-  exporter's timer tests (`crates/host/src/vst3/tests.rs`) run the thread's
-  message loop or run loop for a set time (`pump`), so a real timer ticks, and
-  then check that no tick comes after it stops. On Windows, `stopped`
-  (`engine/timer.rs`) waits four timer periods before it asks whether a
-  message is due.
+- The thread timer's tests (`crates/host/src/engine/timer/tests.rs`) and the
+  VST3 exporter's timer tests (`crates/host/src/vst3/tests.rs`) run the
+  thread's message loop or run loop for a set time (`pump`), so a real timer
+  ticks, and then check that no tick comes after it stops. On Windows,
+  `stopped` (`engine/timer/windows.rs`) waits four timer periods before it
+  asks whether a message is due.
+- `a_run_loop_timer_s_drop_waits_for_a_tick_on_another_thread`
+  (`crates/host/src/engine/timer/tests.rs`) holds a tick on another thread
+  for 50 ms, so a drop that didn't wait for the tick would return first. A
+  barrier orders the tick's start before the drop.
 - `a_host_on_three_threads_with_real_ticks_and_points_at_offsets`
   (`crates/host/src/vst3/tests.rs`) paces its audio thread's blocks 250 µs
   apart while it waits, ten seconds at most, for one to hear the main thread's
@@ -355,8 +359,13 @@ The exporters' test hosts drive an instance as impolitely as real hosts do:
   loop (`with_timer`, `pump_until`).
 
 The rules the exporters share are tested through both test hosts with one body
-each (`crates/host/src/engine/tests.rs`). The run loop timer exists only on
-macOS, so its test runs only in CI's macOS job.
+each (`crates/host/src/engine/tests.rs`). The thread timer on macOS runs only
+in CI's macOS job. The run loop timer, which a Linux VST3 host is to drive,
+runs on every system against the test host's run loop (`TestRunLoop`). A
+test fires that loop by hand, from another thread too, so it waits on no
+clock. Linux runs these tests in a step of their own, by their modules'
+paths (`engine::timer::` and `vst3::tests::run_loop::`), because
+its lane builds no VST3.
 
 Two tools cover what real threads cannot make happen on demand:
 
@@ -432,10 +441,11 @@ MIRIFLAGS="-Zmiri-ignore-leaks -Zmiri-tree-borrows" cargo +nightly miri test -p 
 
 `-Zmiri-ignore-leaks` is needed because some tests leak an instance on purpose.
 A release or destroy on another thread, or from a host callback inside a tick,
-must leak what a tick may still reach. Six tests are ignored there: five need a
-real timer and one reads 64 MiB of stream, too slow to interpret. The channel
-staging's model test, which tries 86,730 ways a host can hand its buffers, runs
-every 863rd of them, about a hundred, under miri.
+must leak what a tick may still reach. Eight tests are ignored on Linux, and
+nine on Windows. Seven need a real timer, one reads 64 MiB of stream, which is
+too slow to interpret, and on Windows one makes real windows. The
+channel staging's model test, which tries 86,730 ways a host can hand its
+buffers, runs every 863rd of them, about a hundred, under miri.
 
 The nightly workflow runs this under both models, on Linux and again on Windows,
 since the VST3 view's tests build on Windows alone: a view attaches to an `HWND`

@@ -39,6 +39,7 @@ use super::view;
 use super::stream::{read_all, write_all};
 use super::text::copy_utf16;
 use crate::boundary::guard;
+use crate::engine::timer::Source;
 use crate::engine::{
     Engine, HostLink, Outcome, Points, Release, Restart, Setup, TAIL_INFINITE, TAIL_NONE,
 };
@@ -198,10 +199,17 @@ impl<P: Plugin> Component<P> {
         self.engine().map_or(0, Engine::faults)
     }
 
-    /// The engine's timer handle, once `initialize` started its timer.
+    /// The engine's running timer's handle.
     #[cfg(test)]
     pub(crate) fn timer_handle(&self) -> Option<crate::engine::timer::Handle> {
         self.engine().and_then(Engine::timer_handle)
+    }
+
+    /// Starts the engine's timer from `source`, as a shell does when a host
+    /// gives it a run loop.
+    #[cfg(test)]
+    pub(crate) fn start_timer(&self, source: Source) {
+        self.engine().expect("initialized").start_timer(source);
     }
 
     /// Every automation point the last block carried, and how many it had
@@ -211,7 +219,7 @@ impl<P: Plugin> Component<P> {
         self.engine().expect("initialized").carried()
     }
 
-    /// One main-thread tick, as the timer runs it; for the test host.
+    /// Runs one main-thread tick, as `Engine::idle` does. For the test host.
     #[cfg(any(test, feature = "test-host"))]
     pub(crate) fn tick(&self) {
         if let Some(engine) = self.engine() {
@@ -222,7 +230,7 @@ impl<P: Plugin> Component<P> {
     /// The tick exactly as the timer holds it; for tests that release the
     /// component inside one.
     #[cfg(test)]
-    pub(crate) fn ticker(&self) -> Box<dyn Fn()> {
+    pub(crate) fn ticker(&self) -> crate::engine::timer::Tick {
         self.engine().expect("initialized").ticker()
     }
 
@@ -381,7 +389,7 @@ impl<P: Plugin> IPluginBaseTrait for Component<P> {
                 return kResultFalse;
             }
             if built && self.timer {
-                engine.start_timer();
+                engine.start_timer(Source::Thread);
             }
             kResultOk
         })

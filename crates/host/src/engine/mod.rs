@@ -13,8 +13,13 @@
 mod automation;
 #[cfg(any(feature = "vst3", feature = "standalone"))]
 mod editor;
+#[cfg(any(feature = "vst3", feature = "standalone"))]
+mod module;
 mod process;
+#[cfg(feature = "vst3")]
 pub(crate) mod timer;
+#[cfg(feature = "vst3")]
+mod timer_slot;
 
 #[cfg(all(test, any(feature = "vst3", feature = "cabi")))]
 mod tests;
@@ -23,12 +28,12 @@ use std::cell::{Cell, RefCell};
 #[cfg(any(feature = "vst3", feature = "standalone"))]
 use std::fmt::Display;
 use std::num::NonZeroUsize;
-#[cfg(feature = "vst3")]
-use std::ptr::NonNull;
 #[cfg(any(feature = "vst3", feature = "standalone"))]
 use std::rc::{Rc, Weak};
+use std::sync::Arc;
+#[cfg(feature = "vst3")]
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
-use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 #[cfg(any(feature = "vst3", feature = "cabi"))]
@@ -44,7 +49,8 @@ pub(crate) use editor::{EditorSlot, Opened};
 #[cfg(any(feature = "vst3", feature = "cabi", feature = "standalone"))]
 pub(crate) use process::Outcome;
 use process::{Active, PendingReset, install};
-use timer::{Handle, Timer, abandon};
+#[cfg(feature = "vst3")]
+use timer::{Handle, Timer};
 
 #[cfg(feature = "cabi")]
 use crate::boundary::Patience;
@@ -266,6 +272,8 @@ struct OnThread {
     /// Ticks the plugin's parts before each of its idles and each of its
     /// activations, and gives each activation learn's audio side.
     driver: Driver,
+    /// The timer that ticks the instance.
+    #[cfg(feature = "vst3")]
     timer: RefCell<Option<Timer>>,
     /// The editors the plugin handed out, one for each view a host asked
     /// for, as long as the view keeps it; each tick ticks the open ones.
@@ -379,9 +387,9 @@ pub(crate) struct Engine<P: Plugin, H> {
     /// Set once the shell released the engine and it leaks: its tick does
     /// nothing more.
     released: AtomicBool,
-    /// The timer's handle, for a release that leaks the timer to stop it
-    /// from any thread.
-    timer_handle: OnceLock<Handle>,
+    /// The running timer's handle, which detaches it from any thread.
+    #[cfg(feature = "vst3")]
+    timer_handle: Mutex<Option<Handle>>,
     /// Room for a block's automation, taken by the audio thread only.
     automation: AudioSlot<Automation>,
     audio: AudioSlot<Option<Active<P::Processor>>>,
@@ -467,6 +475,7 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
             ticking: Cell::new(false),
             on_thread: Some(OnThread {
                 driver,
+                #[cfg(feature = "vst3")]
                 timer: RefCell::new(None),
                 #[cfg(any(feature = "vst3", feature = "standalone"))]
                 editors: RefCell::new(Vec::new()),
@@ -483,7 +492,8 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
             processing: AtomicBool::new(false),
             reset: PendingReset::new(),
             released: AtomicBool::new(false),
-            timer_handle: OnceLock::new(),
+            #[cfg(feature = "vst3")]
+            timer_handle: Mutex::new(None),
             automation: AudioSlot::new(automation),
             audio: AudioSlot::new(None),
             main: bind(main),
@@ -619,12 +629,6 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
             .map(|audio| audio.learn.is_some())
     }
 
-    /// The timer's handle, once it started.
-    #[cfg(all(test, feature = "vst3"))]
-    pub(crate) fn timer_handle(&self) -> Option<timer::Handle> {
-        self.timer_handle.get().copied()
-    }
-
     /// Every automation point the last block carried, and how many it had
     /// no room for.
     #[cfg(all(test, feature = "vst3"))]
@@ -745,42 +749,6 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
     pub(crate) fn connect(&self, main: &Main<P, H>, host: Option<H>) {
         self.finish_edits(main);
         *main.host.borrow_mut() = host;
-    }
-
-    /// Starts a timer that ticks the plugin about 60 times a second on this
-    /// thread, until the engine is released.
-    ///
-    /// Only an engine bound to this thread starts one, since the timer may
-    /// not leave it. One made unbound, or a system that refuses a timer,
-    /// counts as a fault, and the timer then never ticks.
-    #[cfg(feature = "vst3")]
-    pub(crate) fn start_timer(&self) {
-        let Some(on_thread) = self.main.owned().and_then(|main| main.on_thread.as_ref()) else {
-            self.faults.record(Fault::NoTimer);
-            return;
-        };
-        match Timer::start(self.ticker()) {
-            Some(timer) => {
-                let _ = self.timer_handle.set(timer.handle());
-                *on_thread.timer.borrow_mut() = Some(timer);
-            }
-            None => self.faults.record(Fault::NoTimer),
-        }
-    }
-
-    /// The tick as a timer holds it, reaching the engine through a pointer:
-    /// a host may release the shell inside it.
-    #[cfg(feature = "vst3")]
-    pub(crate) fn ticker(&self) -> Box<dyn Fn()> {
-        let engine = NonNull::from(self);
-        Box::new(move || {
-            // SAFETY: the engine never moves once its address is out, as
-            // it is here. Its shell frees it only after `release` dropped
-            // the timer that holds this tick, on the main thread, outside
-            // any tick; otherwise it leaks. Either way, the engine is live
-            // whenever a tick runs.
-            unsafe { engine.as_ref() }.idle();
-        })
     }
 
     /// One tick, as a shell or its timer calls it, under the threading rule
@@ -1003,8 +971,9 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
                 self.deactivate(&main);
                 return Release::Leak;
             }
+            #[cfg(feature = "vst3")]
             if let Some(on_thread) = &main.on_thread {
-                on_thread.timer.borrow_mut().take();
+                self.stop_timer(&mut on_thread.timer.borrow_mut());
             }
             self.deactivate(&main);
             self.finish_edits(&main);
@@ -1030,9 +999,8 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
     /// detaches the timer, which leaks with it, from its tick.
     fn leave(&self) {
         self.released.store(true, Ordering::Release);
-        if let Some(&handle) = self.timer_handle.get() {
-            abandon(handle);
-        }
+        #[cfg(feature = "vst3")]
+        self.detach_timer();
     }
 }
 
