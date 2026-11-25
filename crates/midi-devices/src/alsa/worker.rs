@@ -1,5 +1,5 @@
-//! A thread of the backend's: it waits on a client and on a signal, and is
-//! told to end, woken and joined as its worker drops.
+//! A backend thread that waits on a client and a signal. As its worker
+//! drops, it tells the thread to end, wakes it and joins it.
 
 use std::fmt;
 use std::ptr;
@@ -10,8 +10,8 @@ use std::time::Duration;
 
 use super::signal::Signal;
 
-/// What a worker's thread waits on: a client's descriptors, then its
-/// signal's.
+/// The descriptors that a worker's thread waits on, a client's first and
+/// then its signal's.
 pub(super) struct Waiter {
     fds: Vec<libc::pollfd>,
     wake: Arc<Signal>,
@@ -19,9 +19,9 @@ pub(super) struct Waiter {
 }
 
 impl Waiter {
-    /// A waiter on `fds`, a client's descriptors, and on `wake`: `None`
-    /// where `wake` has no eventfd, since nothing could then wake the
-    /// thread to end it.
+    /// Creates a waiter on `fds`, a client's descriptors, and on `wake`, or
+    /// returns `None` if `wake` has no eventfd, because nothing could then
+    /// wake the thread to end it.
     pub(super) fn new(mut fds: Vec<libc::pollfd>, wake: Arc<Signal>) -> Option<Waiter> {
         fds.push(wake.poll_fd()?);
         Some(Waiter {
@@ -31,23 +31,23 @@ impl Waiter {
         })
     }
 
-    /// Whether the worker was told to end.
+    /// Returns whether the worker's `stop` has begun.
     pub(super) fn is_stopping(&self) -> bool {
         self.stopping.load(Ordering::Acquire)
     }
 
     /// Waits until the client has an event to read, the signal is set or
-    /// `timeout` passes, to within the system's timer slack; a `None`
-    /// timeout waits as long as it takes. Returns whether the client has an
-    /// event to read. A signal that woke it is cleared, so the next wait
-    /// waits for it again.
+    /// `timeout` passes, and returns whether the client has one.
+    ///
+    /// A `None` timeout never passes, and any other passes to within the
+    /// system's timer slack. A signal that woke it is cleared.
     pub(super) fn wait(&mut self, timeout: Option<Duration>) -> bool {
         for fd in &mut self.fds {
             fd.revents = 0;
         }
         let spec = timeout.map(|timeout| libc::timespec {
             tv_sec: libc::time_t::try_from(timeout.as_secs()).unwrap_or(libc::time_t::MAX),
-            // Below a second's nanoseconds: it fits a C long of any width.
+            // Under a second's nanoseconds, so it fits a C long of any width.
             tv_nsec: timeout.subsec_nanos() as libc::c_long,
         });
         let spec = spec.as_ref().map_or(ptr::null(), ptr::from_ref);
@@ -66,7 +66,7 @@ impl Waiter {
     }
 }
 
-/// A thread of the backend's, which ends as this drops.
+/// A backend thread, which ends when this drops.
 pub(super) struct Worker<T> {
     stopping: Arc<AtomicBool>,
     wake: Arc<Signal>,
@@ -74,8 +74,8 @@ pub(super) struct Worker<T> {
 }
 
 impl<T: Send + 'static> Worker<T> {
-    /// Starts `body` on a thread named `name`, handing it `waiter`: `None`
-    /// where the thread could not start, which drops what `body` holds.
+    /// Starts `body(waiter)` on a thread named `name`, or returns `None` if
+    /// the thread can't start, which drops what `body` holds.
     pub(super) fn spawn(
         name: &str,
         waiter: Waiter,
@@ -95,8 +95,8 @@ impl<T: Send + 'static> Worker<T> {
 }
 
 impl<T> Worker<T> {
-    /// Tells the thread to end, wakes it and waits for it. Returns what it
-    /// returned: `None` once stopped already, or where it panicked.
+    /// Tells the thread to end, wakes it, joins it and returns what it
+    /// returned, or `None` if it was already stopped or it panicked.
     pub(super) fn stop(&mut self) -> Option<T> {
         let thread = self.thread.take()?;
         self.stopping.store(true, Ordering::Release);

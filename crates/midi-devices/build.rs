@@ -1,7 +1,9 @@
-//! Sets the `hapto_backend` cfg on a system the crate has a backend for:
-//! WinMM on Windows, and ALSA's sequencer on Linux, but not under Miri,
-//! which cannot call into alsa-lib. What only a backend uses is built where
-//! it is set, and the `none` backend where it is not.
+//! Sets the `hapto_backend` cfg where the crate has a backend, which is
+//! WinMM on Windows and ALSA's sequencer on Linux except under Miri, because
+//! Miri can't call into alsa-lib.
+//!
+//! Code that only a backend uses is built where the cfg is set, and the
+//! `none` backend where it isn't.
 
 fn main() {
     println!("cargo::rerun-if-changed=build.rs");

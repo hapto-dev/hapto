@@ -1,6 +1,10 @@
-//! A sequencer client of the app's own, wrapped so the rest of the backend
-//! calls alsa-lib safely: the client here, the events it reads and sends in
-//! `event`, the list of ports in `list`, and the UMP calls in `ump`.
+//! A sequencer client of the app's own, wrapped so that the rest of the
+//! backend calls alsa-lib safely.
+//!
+//! - The client is here.
+//! - `event` reads and sends its events.
+//! - `list` reads the list of ports.
+//! - `ump` looks up the UMP calls.
 
 mod event;
 mod list;
@@ -36,8 +40,8 @@ pub(super) const ANNOUNCE: Address = Address {
     port: 1,
 };
 
-/// The most events the kernel lets a client hold waiting to be read. Each
-/// holds one event, or 28 bytes of a SysEx.
+/// The most events that the kernel lets a client hold unread. A SysEx takes
+/// one event's room for each 28 bytes.
 const ROOM: usize = 2000;
 
 /// A port's place in the sequencer: its client's number and its own.
@@ -79,8 +83,8 @@ impl Caps {
     const INACTIVE: Caps = Caps(1 << 8);
     const UMP_ENDPOINT: Caps = Caps(1 << 9);
 
-    /// Whether another app may subscribe to read from the port, for an
-    /// input, or to write to it, for an output.
+    /// Returns whether another app may subscribe to the port in
+    /// `direction`, reading from an input or writing to an output.
     pub(super) fn allows(self, direction: Direction) -> bool {
         self.has(match direction {
             Direction::Input => Caps::READ | Caps::SUBS_READ,
@@ -88,12 +92,14 @@ impl Caps {
         })
     }
 
-    /// Whether the port keeps out of other apps' lists, or is not in use.
+    /// Returns whether the port stays out of other apps' lists or is
+    /// inactive.
     pub(super) fn is_hidden(self) -> bool {
         self.0 & (Caps::NO_EXPORT | Caps::INACTIVE).0 != 0
     }
 
-    /// Whether the port stands for a MIDI 2.0 device's whole endpoint.
+    /// Returns whether the port stands for a MIDI 2.0 device's whole
+    /// endpoint.
     pub(super) fn is_endpoint(self) -> bool {
         self.has(Caps::UMP_ENDPOINT)
     }
@@ -111,8 +117,8 @@ impl BitOr for Caps {
     }
 }
 
-/// The MIDI a client reads and writes: MIDI 1.0's events, or UMP at either
-/// protocol.
+/// The MIDI that a client reads and writes: MIDI 1.0's events, or UMP at
+/// either protocol.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Version {
     Legacy,
@@ -138,21 +144,21 @@ impl Version {
     }
 }
 
-/// Which way a client's MIDI goes: `Input` only reads, and `Duplex`, an
-/// output's, writes too.
+/// Which way a client's MIDI goes. `Input` only reads, and an output's
+/// `Duplex` writes too.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Streams {
     Input,
     Duplex,
 }
 
-/// Whether this alsa-lib has the UMP calls, so the app's clients can speak
-/// MIDI 2.0.
+/// Returns whether this alsa-lib has the UMP calls, so the app's clients
+/// can speak MIDI 2.0.
 pub(super) fn has_ump() -> bool {
     ump().is_some()
 }
 
-/// Why a call refused, from the negative error number alsa-lib returns.
+/// Returns the error that a negative alsa-lib error number means.
 fn refused(code: c_int) -> OpenError {
     match code.saturating_neg() {
         libc::ENOMEM => OpenError::NoMemory,
@@ -162,7 +168,7 @@ fn refused(code: c_int) -> OpenError {
     }
 }
 
-/// `code`, if alsa-lib did not refuse.
+/// Returns `code`, unless it's an error number.
 fn check(code: c_int) -> Result<c_int, OpenError> {
     if code < 0 {
         Err(refused(code))
@@ -171,12 +177,12 @@ fn check(code: c_int) -> Result<c_int, OpenError> {
     }
 }
 
-/// `text` as a C string, any NUL in it left out.
+/// Returns `text` as a C string, without any NUL in it.
 fn c_string(text: &str) -> CString {
     CString::new(text.replace('\0', "")).unwrap_or_default()
 }
 
-/// What the app's clients are named: the app's own name.
+/// Returns the app's name, which its clients are named after.
 fn app_name() -> &'static CStr {
     static NAME: OnceLock<CString> = OnceLock::new();
     NAME.get_or_init(|| {
@@ -188,33 +194,35 @@ fn app_name() -> &'static CStr {
     })
 }
 
-/// A client of the sequencer, of the app's own. It closes as it drops.
+/// A sequencer client of the app's own, which closes when it drops.
 #[derive(Debug)]
 pub(super) struct Client {
     handle: *mut sys::snd_seq_t,
-    /// The UMP calls, for a client that speaks UMP; `None` for a MIDI 1.0
+    /// The UMP calls for a client that speaks UMP, or `None` for a MIDI 1.0
     /// one.
     ump: Option<&'static Ump>,
-    /// The device the client is for, if it is one's: see
+    /// The device that the client is for, if any, as set by
     /// [`for_device`](Self::for_device).
     device: Option<Address>,
 }
 
-// SAFETY: alsa-lib's handle may move between threads; each client is used
-// by one thread at a time, the one that holds it, or under a lock.
+// SAFETY: alsa-lib's handle may move between threads, and one thread at a
+// time uses a client, the one that holds it or its lock.
 unsafe impl Send for Client {}
 
 impl Client {
     /// Opens a non-blocking client named after the app, for `streams`, at
-    /// MIDI `version`. A UMP version is refused as no backend where this
-    /// alsa-lib has no UMP calls.
+    /// MIDI `version`.
+    ///
+    /// A UMP version returns [`OpenError::NoBackend`] if this alsa-lib has
+    /// no UMP calls.
     pub(super) fn open(streams: Streams, version: Version) -> Result<Client, OpenError> {
         let streams = match streams {
             Streams::Input => OPEN_INPUT,
             Streams::Duplex => OPEN_INPUT | OPEN_OUTPUT,
         };
         let mut handle = ptr::null_mut();
-        // SAFETY: the handle is written by the call; "default" names the
+        // SAFETY: the call writes the handle, and "default" names the
         // sequencer in alsa-lib's configuration.
         check(unsafe {
             sys::snd_seq_open(&raw mut handle, c"default".as_ptr(), streams, NONBLOCK)
@@ -231,7 +239,7 @@ impl Client {
         unsafe { sys::snd_seq_set_client_name(client.handle, app_name().as_ptr()) };
         if version != Version::Legacy {
             let ump = ump().ok_or(OpenError::NoBackend)?;
-            // SAFETY: the open handle; alsa-lib's own function, found by
+            // SAFETY: the open handle, and alsa-lib's own function, found by
             // its name.
             check(unsafe { (ump.set_midi_version)(client.handle, version.raw()) })?;
             client.ump = Some(ump);
@@ -239,35 +247,38 @@ impl Client {
         Ok(client)
     }
 
-    /// Raises the client's room for waiting events from the kernel's 200 to
+    /// Raises the client's room for unread events from the kernel's 200 to
     /// [`ROOM`], so a SysEx dump that comes at once waits while the
-    /// client's thread wakes, rather than being dropped. alsa-lib's own read
-    /// buffer is made as long first, so a SysEx another app sends as one
-    /// event, which the room may hold whole, is never too long to read.
+    /// client's thread wakes, rather than being dropped.
+    ///
+    /// It first sizes alsa-lib's read buffer for as many events, so a SysEx
+    /// that another app sends as one event, which the room may hold whole,
+    /// is never too long to read.
     pub(super) fn with_input_room(self) -> Client {
         let bytes = ROOM.saturating_mul(size_of::<sys::snd_seq_ump_event_t>());
-        // SAFETY: the open handle; a buffer alsa-lib cannot make leaves the
-        // one it has.
+        // SAFETY: the open handle, and if alsa-lib can't make the buffer, it
+        // keeps its old one.
         if unsafe { sys::snd_seq_set_input_buffer_size(self.handle, bytes) } >= 0 {
-            // SAFETY: the open handle; a size the kernel refuses changes
-            // nothing.
+            // SAFETY: the open handle, and a size that the kernel refuses
+            // changes nothing.
             unsafe { sys::snd_seq_set_client_pool_input(self.handle, ROOM) };
         }
         self
     }
 
-    /// Makes the client the one for the device at `device`. It then reads
-    /// only what that device sends and what the System client announces,
-    /// passing over what another app sends straight to its port. After an
-    /// overrun, which may have dropped the announcement that the device
-    /// left, it asks whether the device's port is still there, and reads
+    /// Makes the client read only what the device at `device` sends and what
+    /// the System client announces, ignoring what another app sends straight
+    /// to its port.
+    ///
+    /// After an overrun, which may have dropped the announcement that the
+    /// device left, the client checks that the port is still there, and reads
     /// that it left if not.
     pub(super) fn for_device(mut self, device: Address) -> Client {
         self.device = Some(device);
         self
     }
 
-    /// Makes a port of the client's own, `name`, with `caps`, and returns
+    /// Creates a port named `name` with `caps` on the client, and returns
     /// its number.
     pub(super) fn port(&self, name: &str, caps: Caps) -> Result<u8, OpenError> {
         let name = c_string(name);
@@ -285,7 +296,7 @@ impl Client {
 
     /// Subscribes the client's `port` to what `from` sends.
     pub(super) fn connect_from(&self, port: u8, from: Address) -> Result<(), OpenError> {
-        // SAFETY: the open handle; the call only subscribes.
+        // SAFETY: the open handle, and the call only subscribes.
         check(unsafe {
             sys::snd_seq_connect_from(
                 self.handle,
@@ -299,7 +310,7 @@ impl Client {
 
     /// Subscribes `to` to what the client's `port` sends.
     pub(super) fn connect_to(&self, port: u8, to: Address) -> Result<(), OpenError> {
-        // SAFETY: the open handle; the call only subscribes.
+        // SAFETY: the open handle, and the call only subscribes.
         check(unsafe {
             sys::snd_seq_connect_to(
                 self.handle,
@@ -311,9 +322,9 @@ impl Client {
         .map(drop)
     }
 
-    /// The descriptors a poll waits on for an event to come in.
+    /// Returns the descriptors that a poll waits on for an event to come in.
     pub(super) fn poll_fds(&self) -> Vec<libc::pollfd> {
-        // SAFETY: the open handle.
+        // SAFETY: the handle is open.
         let count = unsafe { sys::snd_seq_poll_descriptors_count(self.handle, libc::POLLIN) };
         let count = c_uint::try_from(count).unwrap_or(0);
         let empty = libc::pollfd {
@@ -322,7 +333,8 @@ impl Client {
             revents: 0,
         };
         let mut fds = vec![empty; count as usize];
-        // SAFETY: room for `count` descriptors, which the call fills.
+        // SAFETY: `fds` has room for `count` descriptors, which the call
+        // fills.
         let filled = unsafe {
             sys::snd_seq_poll_descriptors(self.handle, fds.as_mut_ptr().cast(), count, libc::POLLIN)
         };
@@ -333,8 +345,8 @@ impl Client {
 
 impl Drop for Client {
     fn drop(&mut self) {
-        // SAFETY: the open handle, closed once; its ports and subscriptions
-        // go with it.
+        // SAFETY: the open handle, closed once, which also ends its ports
+        // and subscriptions.
         unsafe { sys::snd_seq_close(self.handle) };
     }
 }

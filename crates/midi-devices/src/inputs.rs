@@ -1,6 +1,8 @@
 //! The app's MIDI in, with devices opened on the main thread and read into
-//! each block on the audio thread. Every MIDI 1.0 device is merged on one
-//! group, as a host hands a plugin its MIDI.
+//! each block on the audio thread.
+//!
+//! Every MIDI 1.0 device is merged on one group, as a host hands a plugin its
+//! MIDI.
 
 // The reader runs on the audio thread, where a panic ends the app's audio,
 // so indexing, unwrap, expect, panic and unchecked arithmetic are denied. A
@@ -211,12 +213,12 @@ impl OpenDevices for Inputs {
 /// end came, and other devices' messages go on meanwhile without cutting
 /// into it. One longer than its input's room goes out as it comes.
 ///
-/// Open: when a MIDI 2.0 device, which Linux reads with all its groups on
-/// one input, sends SysEx on two groups at once, neither reaches the block
-/// whole. The reader finds the SysEx it holds by the packets' forms alone,
-/// whatever their group: another group's start lets the one held go as far
-/// as it came, and another group's end lets it go early, with that end.
-/// Holding a SysEx for each group would mend it.
+/// Open: when a MIDI 2.0 device sends SysEx on two groups at once, neither
+/// reaches the block whole. Linux reads all the device's groups on one input,
+/// and the reader matches packets to the SysEx it holds by their forms alone,
+/// whatever their group. Another group's start releases the held SysEx as
+/// far as it came, and another group's end releases it early, with that end.
+/// Holding a SysEx for each group would fix this.
 ///
 /// # Examples
 ///
@@ -341,11 +343,11 @@ fn sysex_form(words: [u32; 4]) -> Option<SysExForm> {
 /// Returns the time and packet count of the next message that `ring` has
 /// ready for a block that starts at `now`.
 ///
-/// A SysEx is ready once its end has come, as every packet to its end, the
-/// real-time messages among them included, at its end's time. Until then it
-/// waits, unless the ring has less room left than [`BURST`] and is at least
-/// half full. It then goes out a packet at a time as it came, so the
-/// device's next buffer of it still fits.
+/// A SysEx is ready once its end has come. Then every packet up to the end,
+/// including the real-time messages among them, is ready at the end's time.
+/// Until then it waits, unless the ring has less room left than [`BURST`]
+/// and is at least half full. It then goes out a packet at a time as it
+/// came, so the device's next buffer of it still fits.
 ///
 /// Open: a SysEx on two groups at once, which [`InputsReader`] describes.
 fn ready(ring: &Consumer, now: Instant) -> Option<(Instant, usize)> {

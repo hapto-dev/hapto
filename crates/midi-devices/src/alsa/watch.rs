@@ -9,18 +9,19 @@ use super::seq::{ANNOUNCE, Caps, Client, Incoming, Parser, Streams, Version};
 use super::signal::Signal;
 use super::worker::{Waiter, Worker};
 
-/// Watches the sequencer for clients and ports that come, go or change,
-/// and marks the list for the next tick when one does. Its thread ends as
-/// it drops.
+/// A watch that marks the device list for the next tick when a client or
+/// port comes, goes or changes.
+///
+/// Its thread ends when the watch drops.
 #[derive(Debug)]
 pub(crate) struct Watch {
-    /// Ends the thread as it drops.
+    /// The thread, which ends when it drops.
     _worker: Worker<()>,
 }
 
 impl Watch {
-    /// Watches, setting `marked` on each change, or returns `None` where
-    /// the sequencer cannot be watched, and [`Devices`](crate::Devices)
+    /// Starts watching, setting `marked` at each change, or returns `None`
+    /// if the sequencer can't be watched, so [`Devices`](crate::Devices)
     /// falls back to its timer.
     pub(crate) fn new(marked: Arc<AtomicBool>) -> Option<Watch> {
         let client = Client::open(Streams::Input, Version::Legacy)
@@ -37,8 +38,8 @@ impl Watch {
     }
 }
 
-/// Runs the watch's thread: waits for announcements and marks the list on
-/// each that may change it, until the watch drops.
+/// Runs the watch's thread, which waits for announcements and marks the
+/// list at each one that may change it, until the watch drops.
 fn watch(mut client: Client, mut parser: Parser, marked: &AtomicBool, mut waiter: Waiter) {
     while !waiter.is_stopping() {
         if !waiter.wait(None) {
@@ -48,8 +49,8 @@ fn watch(mut client: Client, mut parser: Parser, marked: &AtomicBool, mut waiter
             Incoming::Announced(change) if change.lists() => {
                 marked.store(true, Ordering::Release);
             }
-            // Announcements were dropped, any of which may have changed
-            // the list.
+            // The kernel dropped announcements, which may have changed the
+            // list.
             Incoming::Overrun => marked.store(true, Ordering::Release),
             _ => {}
         });

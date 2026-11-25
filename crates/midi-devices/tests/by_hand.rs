@@ -25,8 +25,7 @@ use hapto_ump::{Event, EventList, SysEx7, SysExJoin};
 /// speakers.
 const SYNTH: &str = "Microsoft GS Wavetable Synth";
 
-/// How a loopback port's name starts, unless `HAPTO_LOOPBACK` names
-/// another start.
+/// The start of a loopback port's name, which `HAPTO_LOOPBACK` overrides.
 const LOOPBACK: &str = if cfg!(windows) {
     "loopMIDI"
 } else {
@@ -253,9 +252,9 @@ fn a_sysex_longer_than_the_inputs_room_comes_in_whole() {
     outputs.open(out).expect("the loopback's output opens");
     let (sent, events) = long_sysex(32 * 1024);
     writer.write(Instant::now(), 48_000.0, &events);
-    // Blocks of 10 ms, as an audio thread reads them, for up to 20 s: on
+    // Reads blocks of 10 ms, as an audio thread does, for up to 20 s. On
     // Linux the SysEx goes out at a MIDI cable's pace, which takes about
-    // ten for this one.
+    // 10 s for this one.
     let mut join = SysExJoin::with_room(64 * 1024);
     let mut came = None;
     for _ in 0..2000 {

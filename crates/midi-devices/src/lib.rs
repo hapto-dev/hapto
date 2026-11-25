@@ -23,10 +23,10 @@
 //! 1.0. Only an app links this crate, so a plugin in a host never sees a
 //! device.
 //!
-//! The backends are WinMM and ALSA. WinMM, on Windows, carries only MIDI
-//! 1.0. ALSA's sequencer, on Linux, carries MIDI 1.0 both ways, and MIDI 2.0
-//! in where the kernel and alsa-lib support UMP. Elsewhere the list is empty
-//! and no input or output opens.
+//! The backends are WinMM on Windows, which carries only MIDI 1.0, and ALSA's
+//! sequencer on Linux, which carries MIDI 1.0 both ways and MIDI 2.0 input
+//! where the kernel and alsa-lib support UMP. Elsewhere the list is empty and
+//! no input or output opens.
 //!
 //! Open: backends for Windows MIDI Services and CoreMIDI.
 //!
@@ -53,7 +53,8 @@
 // The nightly real-time sanitizer lane marks the audio thread's calls.
 #![cfg_attr(hapto_rtsan, feature(sanitize))]
 
-// Each backend where build.rs sets `hapto_backend`, and `none` elsewhere.
+// Each backend builds where build.rs sets `hapto_backend`, and `none`
+// builds elsewhere.
 #[cfg(all(target_os = "linux", hapto_backend))]
 #[allow(
     unsafe_code,

@@ -8,19 +8,20 @@ use crate::ring::Consumer;
 /// and counted.
 pub(crate) const SYSEX_BYTES: usize = 64 * 1024;
 
-/// A SysEx being joined from the packets an output's ring hands over.
+/// A SysEx being joined from the packets that an output reads from its ring.
 ///
 /// Every packet is joined, not only a SysEx's, so a message on a SysEx's
-/// group ends that SysEx, as [`SysExJoin`] says. A SysEx that lost a packet
-/// to a full ring is dropped and counted rather than sent with a hole.
+/// group ends that SysEx, as [`SysExJoin`] describes. A SysEx that lost a
+/// packet to a full ring is dropped and counted rather than sent incomplete.
 pub(crate) struct OutgoingSysex {
-    /// The SysEx to send, framed, once [`join`](Self::join) says it is
-    /// whole. Its room is made once and never grows, so the system's API
-    /// may read it in place while it sends.
+    /// The framed SysEx to send, once [`join`](Self::join) returns `true`.
+    /// Its capacity is allocated once and never grows, so the system's API
+    /// can read it in place while it sends.
     pub(crate) bytes: Vec<u8>,
     join: SysExJoin,
-    /// The packets the ring had lost for want of room as the SysEx under
-    /// way began: one more lost since may have been one of its own.
+    /// The ring's [`no_room`](Consumer::no_room) count when the SysEx under
+    /// way began. If the count has grown since, the SysEx may have lost a
+    /// packet.
     lost_at_start: u64,
 }
 
@@ -33,9 +34,10 @@ impl OutgoingSysex {
         }
     }
 
-    /// Joins one packet `ring` handed over, and says whether a SysEx is now
-    /// whole in [`bytes`](Self::bytes), to send. A message it drops, it
-    /// counts on the ring.
+    /// Joins `event`, a packet from `ring`, and returns whether a whole SysEx
+    /// is now in [`bytes`](Self::bytes) to send.
+    ///
+    /// Each message that it drops is counted on `ring`.
     pub(crate) fn join(&mut self, event: &Event, ring: &Consumer) -> bool {
         let lost = ring.no_room();
         if let Some(packet) = event.sysex7()
@@ -52,8 +54,9 @@ impl OutgoingSysex {
         let mut whole = false;
         if let Some(message) = joined.whole {
             let framed = message.framed();
-            // WinMM leaves the bytes to a driver that hung while sending
-            // them, which leaves no room: nothing fits from then on.
+            // The WinMM output leaks the bytes to a driver that hung while
+            // sending them, which leaves no capacity, so nothing fits from
+            // then on.
             if lost != self.lost_at_start || framed.len() > self.bytes.capacity() {
                 dropped = dropped.saturating_add(1);
             } else {
@@ -78,7 +81,7 @@ mod tests {
     use crate::Instant;
     use crate::ring::{Producer, ring};
 
-    /// A ring kept full, so the producer loses each packet it pushes.
+    /// Returns a full ring, so the producer loses each packet that it pushes.
     fn full_ring() -> (Producer, Consumer) {
         let (mut producer, consumer) = ring(1);
         producer.push(Instant::from_nanos(0), [0; 4]);
@@ -150,7 +153,7 @@ mod tests {
         assert!(!join(&mut sysex, &ring, End, &[3]));
         // The packet lost, and the SysEx it may have been part of.
         assert_eq!(ring.dropped(), 2);
-        // The next, with nothing lost meanwhile, goes whole.
+        // Nothing was lost since, so the next one goes whole.
         assert!(join(&mut sysex, &ring, Complete, &[9]));
     }
 
@@ -185,7 +188,7 @@ mod tests {
         assert!(!join(&mut sysex, &ring, Start, &[1; 6]));
         assert!(!sysex.join(&Event::new(0, [0x2090_3C7F, 0, 0, 0]), &ring));
         assert_eq!(ring.dropped(), 1);
-        // The rest passes unread, and the next is whole.
+        // The rest is ignored, and the next is whole.
         assert!(!join(&mut sysex, &ring, End, &[2]));
         assert!(join(&mut sysex, &ring, Complete, &[9]));
     }

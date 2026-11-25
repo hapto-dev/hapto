@@ -1,5 +1,6 @@
-//! Tests the output thread's own work without a device, which is packing a
-//! message as WinMM takes it. Joining a SysEx is tested in `outputs::sysex`.
+//! Tests how the output thread packs a message for WinMM, without a device.
+//!
+//! Joining a SysEx is tested in `outputs::sysex`.
 
 use super::*;
 

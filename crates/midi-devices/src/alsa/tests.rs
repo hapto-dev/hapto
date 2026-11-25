@@ -1,7 +1,9 @@
-//! The backend against the sequencer itself, with devices of the tests' own:
-//! clients whose ports any app may subscribe to, as a keyboard's or a
-//! synth's are. They need the sequencer, `/dev/snd/seq`, and no hardware.
-//! The USB card test reads a sysfs tree it writes itself.
+//! Tests the backend against the sequencer itself, with clients of the
+//! tests' own whose ports any app may subscribe to, as a keyboard's or a
+//! synth's are.
+//!
+//! They need the sequencer, `/dev/snd/seq`, but no hardware. The USB card
+//! test reads a sysfs tree that it writes itself.
 
 use hapto_testkit::sync::wait_until;
 use hapto_ump::{Event, EventList, SysEx7, SysExJoin};
@@ -9,8 +11,8 @@ use hapto_ump::{Event, EventList, SysEx7, SysExJoin};
 use super::seq::{Caps, Client, Incoming, Parser, Streams, Version};
 use crate::{Device, Devices, Direction, InputsReader, Instant, inputs, outputs};
 
-/// A device of a test's own: a client with one port any app may subscribe
-/// to. It leaves as it drops.
+/// A test's own device, a client with one port that any app may subscribe
+/// to, which leaves when it drops.
 struct Fake {
     client: Client,
     parser: Parser,
@@ -34,23 +36,23 @@ impl Fake {
         })
     }
 
-    /// A keyboard: a port that sends.
+    /// Opens a keyboard, whose port sends.
     fn keys(name: &str) -> Fake {
         Fake::open(name, Caps::READ | Caps::SUBS_READ, Version::Legacy).expect("a MIDI 1.0 client")
     }
 
-    /// A synth: a port that takes.
+    /// Opens a synth, whose port receives.
     fn synth(name: &str) -> Fake {
         Fake::open(name, Caps::WRITE | Caps::SUBS_WRITE, Version::Legacy)
             .expect("a MIDI 1.0 client")
     }
 
-    /// A MIDI 2.0 keyboard, where alsa-lib and the kernel speak UMP.
+    /// Opens a MIDI 2.0 keyboard, if alsa-lib and the kernel speak UMP.
     fn midi2_keys(name: &str) -> Option<Fake> {
         Fake::open(name, Caps::READ | Caps::SUBS_READ, Version::UmpMidi2)
     }
 
-    /// Sends `bytes`, a SysEx in pieces as a card's port hands one on.
+    /// Sends `bytes`, splitting a SysEx into pieces as a card's port does.
     fn play(&mut self, bytes: &[u8]) {
         if bytes.first() == Some(&0xF0) {
             for piece in bytes.chunks(256) {
@@ -65,7 +67,7 @@ impl Fake {
         }
     }
 
-    /// The bytes the port took, once `done` says they are enough.
+    /// Returns the bytes that the port took, once `done` accepts them.
     fn heard(&mut self, done: impl Fn(&[u8]) -> bool) -> Vec<u8> {
         let mut bytes = Vec::new();
         wait_until("the test's synth to hear it", || {
@@ -75,7 +77,7 @@ impl Fake {
         bytes
     }
 
-    /// The bytes the port took since the last look.
+    /// Returns the bytes that the port took since the last call.
     fn taken(&mut self) -> Vec<u8> {
         let mut bytes = Vec::new();
         self.client.read(&mut self.parser, |incoming| {
@@ -100,7 +102,7 @@ fn listed(name: &str, direction: Direction) -> Device {
     found.expect("listed")
 }
 
-/// The MIDI read into blocks of 512 frames, once `done` says it is enough.
+/// Returns the MIDI read into blocks of 512 frames, once `done` accepts it.
 fn read_until(reader: &mut InputsReader, done: impl Fn(&[Event]) -> bool) -> Vec<Event> {
     let mut read = Vec::new();
     wait_until("the input to read it", || {
@@ -112,13 +114,13 @@ fn read_until(reader: &mut InputsReader, done: impl Fn(&[Event]) -> bool) -> Vec
     read
 }
 
-/// A SysEx of `length` data bytes, framed.
+/// Returns a framed SysEx of `length` data bytes.
 fn sysex(length: usize) -> Vec<u8> {
     let data = (0..length).map(|place| (place % 0x80) as u8);
     [0xF0].into_iter().chain(data).chain([0xF7]).collect()
 }
 
-/// The SysEx `events` join to, framed.
+/// Returns the framed SysEx that `events` join into.
 fn joined(events: &[Event]) -> Option<Vec<u8>> {
     let mut join = SysExJoin::with_room(64 * 1024);
     events
@@ -126,7 +128,7 @@ fn joined(events: &[Event]) -> Option<Vec<u8>> {
         .find_map(|event| join.push(event).whole.map(|whole| whole.framed().to_vec()))
 }
 
-/// The SysEx7 packets on group 1 that carry `framed`.
+/// Returns the SysEx7 packets on group 1 that carry `framed`.
 fn packets(framed: &[u8]) -> Vec<Event> {
     let data = framed.get(1..framed.len().saturating_sub(1)).unwrap_or(&[]);
     let mut events = Vec::new();
@@ -320,8 +322,8 @@ fn an_output_sends_a_long_sysex_whole_and_its_close_sends_nothing() {
     let expected: Vec<u8> = [0x90, 0x3C, 0x64].into_iter().chain(long).collect();
     let heard = synth.heard(|heard| heard.len() >= expected.len());
     assert_eq!(heard, expected);
-    // The close joins the thread, and the sequencer hands a direct event on
-    // as it is sent, so whatever the close sent the synth has by now.
+    // The close joins the thread, and the sequencer passes a direct event on
+    // as it is sent, so the synth already has anything that the close sent.
     assert!(outputs.close(device.id()));
     assert_eq!(synth.taken(), Vec::<u8>::new(), "a close sends nothing");
 }

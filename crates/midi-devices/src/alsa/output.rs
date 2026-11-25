@@ -1,23 +1,21 @@
-//! An open output: a sequencer client of the app's own, its port connected
-//! to the device's, and the thread that sends the device what the audio
-//! thread hands it, each message at its time.
+//! One open output, with its sequencer client connected to the device's port
+//! and the thread that sends what the audio thread hands it, each message at
+//! its time.
 //!
-//! The audio thread never calls alsa-lib. It pushes packets into the
-//! output's ring, each stamped with when it is due, and sets the output's
-//! signal. The output's own thread waits until the next packet is due or
-//! the signal wakes it, then sends what is due as fast as the pace below
-//! allows. The writer has downgraded every packet to MIDI 1.0, so the
-//! client is a MIDI 1.0 one.
+//! The audio thread never calls alsa-lib. It pushes packets, each stamped
+//! with its due time, into the output's ring and sets the output's signal.
+//! The output's thread sleeps until the next packet is due or the signal
+//! wakes it, then sends what is due as fast as the pace below allows. The
+//! client speaks MIDI 1.0, because the writer has downgraded every packet.
 //!
 //! The kernel hands a card's port each event whole, and drops an event that
-//! does not fit the room left in the device's buffer, a page by default. So
-//! a SysEx goes out in pieces, and everything goes out paced: no more than
-//! half a page ahead of what a MIDI cable would have carried by then.
+//! doesn't fit the room left in the device's buffer, a page by default. So a
+//! SysEx goes out in pieces, and everything is paced to stay at most half a
+//! page ahead of what a MIDI cable would have carried by then.
 //!
-//! A close sends nothing. The sequencer shares a device among apps, so
-//! turning its notes off would cut off another app's notes too: as with
-//! midir and `RtMidi`, ending the notes an app leaves on is the app's own
-//! job.
+//! A close sends nothing, because the sequencer shares a device among apps,
+//! and turning its notes off would also cut off another app's notes. As with
+//! midir and `RtMidi`, ending the notes that an app leaves on is its own job.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -34,17 +32,16 @@ use crate::id::{Device, Direction};
 use crate::outputs::OutgoingSysex;
 use crate::ring::{Consumer, Reading};
 
-/// The rate a port is taken to drain what it is sent, since the backend
-/// cannot tell a port's own: a MIDI cable's 31,250 baud, ten bits a byte.
+/// The rate at which a port is assumed to drain, a MIDI cable's 31,250 baud
+/// at ten bits a byte, because the backend can't tell a port's own.
 const BYTES_PER_SECOND: f64 = 3125.0;
-/// How far ahead of the cable an output may send: half the page the kernel
-/// gives a card's port.
+/// How far ahead of the cable an output may send, which is half the page
+/// that the kernel gives a card's port.
 const AHEAD: f64 = 2048.0;
 /// The longest piece of a SysEx sent as one event.
 const PIECE: usize = 256;
 
-/// An output, sending what its ring holds while open. It closes as it
-/// drops.
+/// An output, which sends from its ring while open and closes when it drops.
 #[derive(Debug)]
 pub(crate) struct Output {
     /// Set once the device's port is gone.
@@ -53,10 +50,11 @@ pub(crate) struct Output {
 }
 
 impl Output {
-    /// Opens `device` to send what `consumer`'s ring holds, which `reading`
-    /// marks read, its thread woken by `signal`. A refusal hands the
-    /// consumer back, except where the sending thread could not start: the
-    /// failed start dropped it.
+    /// Opens `device` to send what `consumer`'s ring holds, with `reading`
+    /// marking the ring as read and `signal` waking its thread.
+    ///
+    /// On an error, the consumer comes back, unless the thread failed to
+    /// start and took it.
     pub(crate) fn open(
         device: &Device,
         consumer: Consumer,
@@ -83,13 +81,13 @@ impl Output {
         .ok_or((OpenError::NoMemory, None))
     }
 
-    /// Whether the device left while open.
+    /// Returns whether the device left while open.
     pub(crate) fn has_left(&self) -> bool {
         self.left.load(Ordering::Acquire)
     }
 
-    /// Closes the device and gives its ring's consumer back, with what it
-    /// had not sent dropped.
+    /// Closes the device, dropping what it hadn't sent, and returns its
+    /// ring's consumer.
     pub(crate) fn close(mut self) -> Option<Consumer> {
         self.worker.stop()
     }
@@ -106,8 +104,8 @@ enum Next {
     After(Duration),
 }
 
-/// Runs the output's thread: sends each packet once its time comes, until
-/// the output ends it, then hands the ring back.
+/// Runs the output's thread, which sends each packet when it is due, and
+/// returns the ring's consumer when the output stops it.
 fn send(
     mut sender: Sender,
     mut consumer: Consumer,
@@ -139,9 +137,9 @@ struct Sender {
 }
 
 impl Sender {
-    /// Opens a MIDI 1.0 client whose port hears the System client's
-    /// announcements, then connects the port to the device at `address`,
-    /// so it cannot miss the device leaving.
+    /// Opens a MIDI 1.0 client whose port subscribes to the System client's
+    /// announcements before it connects to the device at `address`, so it
+    /// can't miss the device leaving.
     fn open(address: Address, device: &Device) -> Result<Sender, OpenError> {
         let client = Client::open(Streams::Duplex, Version::Legacy)?.for_device(address);
         let caps = Caps::READ | Caps::WRITE | Caps::NO_EXPORT;
@@ -162,7 +160,8 @@ impl Sender {
         })
     }
 
-    /// Whether the client heard, since the last look, that the device left.
+    /// Returns whether the client has read, since the last call, that the
+    /// device left.
     fn heard_left(&mut self) -> bool {
         let address = self.address;
         let mut left = false;
@@ -193,7 +192,7 @@ impl Sender {
     /// Sends the packet `words` at the ring's head, or joins it into the
     /// SysEx, and takes it from the ring once done with it.
     fn packet(&mut self, words: [u32; 4], now: Instant, consumer: &mut Consumer) -> Next {
-        // The writer pushes only what MIDI 1.0's bytes carry.
+        // The writer pushes only what MIDI 1.0 bytes can carry.
         let Some(bytes) = Bytes::of(words) else {
             consumer.pop();
             return Next::Now;
@@ -241,7 +240,7 @@ struct Line {
     pace: Pace,
 }
 
-/// What one send is.
+/// What one send carries.
 #[derive(Clone, Copy)]
 enum Outgoing<'a> {
     /// A whole MIDI 1.0 message other than a SysEx.
@@ -253,7 +252,7 @@ enum Outgoing<'a> {
 /// What came of a send.
 enum Sent {
     Went,
-    /// The device has no room yet: the send waits this long.
+    /// The device has no room yet, so the send waits this long.
     Wait(Duration),
     /// Refused for good.
     Refused,
@@ -275,7 +274,7 @@ impl Line {
                 self.pace.sent(bytes.len());
                 Sent::Went
             }
-            // The device's buffer is full after all: the pace takes the
+            // The device's buffer is full after all, so the pace treats the
             // port as full, and the send waits for it to drain.
             Err(SendError::Full) => {
                 self.pace.fill(now);
@@ -302,8 +301,8 @@ impl Pace {
         }
     }
 
-    /// How long from `now` until `bytes` more fit: `None` if they fit now.
-    /// An empty port takes anything.
+    /// Returns how long from `now` until `bytes` more fit, or `None` if they
+    /// fit now. An empty port takes anything.
     fn room_in(&mut self, bytes: usize, now: Instant) -> Option<Duration> {
         self.drain(now);
         let over = self.held + bytes as f64 - AHEAD;
@@ -344,7 +343,7 @@ mod tests {
             "an empty port takes anything"
         );
         pace.sent(4096);
-        // 2,049 bytes over: 2,049 of 3,125 bytes a second.
+        // 2,049 bytes over the limit, so the wait is 2,049 / 3,125 seconds.
         assert_eq!(
             pace.room_in(1, start),
             Some(Duration::from_secs_f64(2049.0 / 3125.0))

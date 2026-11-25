@@ -46,8 +46,7 @@ struct Ring {
     tail: AtomicUsize,
     /// Packets dropped for lack of room, counted only by the producer.
     no_room: AtomicU64,
-    /// Messages that the consumer dropped itself, counted only by the
-    /// consumer.
+    /// Messages that the consumer dropped itself, which only it counts.
     consumer_dropped: AtomicU64,
     /// How many devices have pushed into the ring. A new device starts the
     /// stream over.
@@ -152,10 +151,11 @@ impl Consumer {
         self.0.reading.store(reading, Ordering::Release);
     }
 
-    /// Marks the ring as read until the returned guard drops. A device's
-    /// thread holds the guard, so the ring is marked as read until the
-    /// thread ends, however it ends, and the writer never pushes into a ring
-    /// that nobody reads.
+    /// Marks the ring as read until the returned guard drops.
+    ///
+    /// A device's thread holds the guard, so the mark lasts until the thread
+    /// ends, however it ends, and the writer never pushes into a ring that
+    /// nobody reads.
     pub(crate) fn reading(&self) -> Reading {
         self.set_reading(true);
         Reading(Arc::clone(&self.0))
@@ -172,6 +172,7 @@ impl Consumer {
 
     /// Counts a message that the consumer dropped itself, such as one that
     /// the device refused or a SysEx that it couldn't send whole.
+    ///
     /// [`dropped`](Self::dropped) includes these.
     #[cfg_attr(
         all(not(hapto_backend), not(test)),
@@ -184,8 +185,10 @@ impl Consumer {
         self.0.consumer_dropped.fetch_add(1, Ordering::Relaxed);
     }
 
-    /// How many packets found no room since the ring was made: the drops
-    /// the producer counted, which a SysEx that spanned one lost a part to.
+    /// Returns how many packets the producer has dropped for lack of room.
+    ///
+    /// A SysEx under way during one of these drops may have lost a packet to
+    /// it.
     #[cfg_attr(
         all(not(hapto_backend), not(test)),
         expect(
@@ -264,15 +267,15 @@ impl Consumer {
         self.0.generation.load(Ordering::Acquire)
     }
 
-    /// Returns how many packets have been dropped. That is the packets that
-    /// found no room, plus the messages that the consumer dropped itself.
+    /// Returns how many packets found no room, plus how many messages the
+    /// consumer dropped itself.
     pub(crate) fn dropped(&self) -> u64 {
         self.0.dropped()
     }
 }
 
-/// A ring marked read by a device while it lives: see
-/// [`Consumer::reading`].
+/// The guard that [`Consumer::reading`] returns, which marks the ring as
+/// read until it drops.
 pub(crate) struct Reading(Arc<Ring>);
 
 impl Drop for Reading {

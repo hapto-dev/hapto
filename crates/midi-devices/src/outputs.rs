@@ -32,7 +32,7 @@ use crate::id::{Device, DeviceId, Direction};
 use crate::ports::{OpenDevices, Port, Ports};
 use crate::ring::{Consumer, Producer, ring};
 
-// A system with no backend sends no SysEx.
+// Only a backend's output joins a SysEx.
 #[cfg(hapto_backend)]
 mod sysex;
 
@@ -216,8 +216,8 @@ impl Outputs {
             };
             // A device doesn't send what a block pushed before it came.
             consumer.clear();
-            // Read from now on, so the next block's MIDI reaches the device
-            // however late its thread starts.
+            // The ring counts as read from now on, so the next block's MIDI
+            // reaches the device however late its thread starts.
             let reading = consumer.reading();
             backend::Output::open(device, consumer, reading, Arc::clone(signal))
         })
@@ -300,10 +300,10 @@ impl OpenDevices for Outputs {
 /// What MIDI 1.0 has no message for is dropped and counted in
 /// [`lost`](Self::lost).
 ///
-/// Each output gets the packets in the order the plugin sent them, and its
+/// Each output gets the packets in the order that the plugin sent them. Its
 /// thread sends each when its time comes, or at once if that has passed, so
-/// never early and never dropped for being late. On Linux, a burst or a
-/// long SysEx goes no faster than a MIDI cable carries it. Once a block has
+/// none goes early or is dropped for being late. On Linux, a burst or a long
+/// SysEx goes no faster than a MIDI cable carries it. Once a block has
 /// handed an output its MIDI, the writer wakes the output's thread with a
 /// signal that never blocks, so the block's first message leaves the moment
 /// the block has played.

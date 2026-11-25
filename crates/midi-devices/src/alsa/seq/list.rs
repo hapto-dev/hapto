@@ -7,22 +7,23 @@ use alsa_sys as sys;
 
 use super::{Address, Caps, Client, Version, ump};
 
-/// What one port of the sequencer's list is.
+/// One port in the sequencer's list.
 #[derive(Debug, Clone)]
 pub(crate) struct PortEntry {
     pub(crate) address: Address,
     pub(crate) client_name: String,
     pub(crate) name: String,
-    /// The sound card the client stands for, if it is a card's.
+    /// The sound card that the client stands for, if any.
     pub(crate) card: Option<u32>,
     pub(crate) caps: Caps,
-    /// The client's MIDI version: MIDI 1.0 where this alsa-lib has no UMP
+    /// The client's MIDI version, or MIDI 1.0 if this alsa-lib has no UMP
     /// calls.
     pub(crate) version: Version,
 }
 
 impl Client {
-    /// Every port of every client the sequencer has now, in its order.
+    /// Returns every port of every client in the sequencer now, in its
+    /// order.
     pub(crate) fn ports(&self) -> Vec<PortEntry> {
         let (Some(mut client), Some(mut port)) = (ClientInfo::new(), PortInfo::new()) else {
             return Vec::new();
@@ -54,13 +55,13 @@ impl Client {
         entries
     }
 
-    /// Whether the port at `at` is in the sequencer now.
+    /// Returns whether the port at `at` is in the sequencer now.
     pub(super) fn has_port(&self, at: Address) -> bool {
-        // Without the memory to ask, it is taken to be there.
+        // Without memory for the query, the port counts as there.
         let Some(info) = PortInfo::new() else {
             return true;
         };
-        // SAFETY: the open handle and the info the call fills.
+        // SAFETY: the open handle and the info that the call fills.
         let found = unsafe {
             sys::snd_seq_get_any_port_info(
                 self.handle,
@@ -73,41 +74,42 @@ impl Client {
     }
 }
 
-/// The text alsa-lib's `text` points at, or nothing.
+/// Returns the string at `text`, or an empty one if it's null.
 ///
 /// # Safety
 ///
-/// `text` is null, or points at a string alsa-lib keeps through the call.
+/// `text` is null, or points at a string that alsa-lib keeps through the
+/// call.
 unsafe fn text(text: *const c_char) -> String {
     if text.is_null() {
         return String::new();
     }
-    // SAFETY: as the caller says.
+    // SAFETY: as the caller guarantees.
     unsafe { CStr::from_ptr(text) }
         .to_string_lossy()
         .into_owned()
 }
 
-/// A client info alsa-lib made, moved from client to client through the
-/// list, and freed as it drops.
+/// A client info from alsa-lib, moved through the list client by client and
+/// freed when it drops.
 struct ClientInfo(*mut sys::snd_seq_client_info_t);
 
 impl ClientInfo {
-    /// An info before the list's first client.
+    /// Creates an info before the list's first client.
     fn new() -> Option<ClientInfo> {
         let mut info = ptr::null_mut();
-        // SAFETY: the pointer is written by the call.
+        // SAFETY: the call writes the pointer.
         if unsafe { sys::snd_seq_client_info_malloc(&raw mut info) } < 0 || info.is_null() {
             return None;
         }
-        // SAFETY: the info made; -1 starts before the first client.
+        // SAFETY: the allocated info, and -1 places it before the first client.
         unsafe { sys::snd_seq_client_info_set_client(info, -1) };
         Some(ClientInfo(info))
     }
 
-    /// Moves on to the next client `seq` has: `false` past the last.
+    /// Moves to the next client of `seq`, returning `false` past the last.
     fn next(&mut self, seq: &Client) -> bool {
-        // SAFETY: the open handle and the info, which the call fills.
+        // SAFETY: the handle is open, and the call fills the info.
         unsafe { sys::snd_seq_query_next_client(seq.handle, self.0) >= 0 }
     }
 
@@ -121,7 +123,7 @@ impl ClientInfo {
         unsafe { text(sys::snd_seq_client_info_get_name(self.0)) }
     }
 
-    /// The sound card the client stands for, if it is a card's.
+    /// Returns the sound card that the client stands for, if any.
     fn card(&self) -> Option<u32> {
         // SAFETY: the info, filled.
         u32::try_from(unsafe { sys::snd_seq_client_info_get_card(self.0) }).ok()
@@ -129,7 +131,7 @@ impl ClientInfo {
 
     fn version(&self) -> Version {
         ump().map_or(Version::Legacy, |ump| {
-            // SAFETY: the info, filled; alsa-lib's own function.
+            // SAFETY: the filled info, and alsa-lib's own function.
             Version::from_raw(unsafe { (ump.info_midi_version)(self.0) })
         })
     }
@@ -142,30 +144,31 @@ impl Drop for ClientInfo {
     }
 }
 
-/// A port info alsa-lib made, moved from port to port through a client's,
-/// and freed as it drops.
+/// A port info from alsa-lib, moved through a client's ports one by one and
+/// freed when it drops.
 struct PortInfo(*mut sys::snd_seq_port_info_t);
 
 impl PortInfo {
     fn new() -> Option<PortInfo> {
         let mut info = ptr::null_mut();
-        // SAFETY: the pointer is written by the call.
+        // SAFETY: the call writes the pointer.
         (unsafe { sys::snd_seq_port_info_malloc(&raw mut info) } >= 0 && !info.is_null())
             .then_some(PortInfo(info))
     }
 
     /// Places the info before the first port of client `client`.
     fn start(&mut self, client: u8) {
-        // SAFETY: the info made; -1 starts before the client's first port.
+        // SAFETY: the allocated info, and -1 places it before the client's
+        // first port.
         unsafe {
             sys::snd_seq_port_info_set_client(self.0, c_int::from(client));
             sys::snd_seq_port_info_set_port(self.0, -1);
         }
     }
 
-    /// Moves on to the client's next port: `false` past the last.
+    /// Moves to the client's next port, returning `false` past the last.
     fn next(&mut self, seq: &Client) -> bool {
-        // SAFETY: the open handle and the info, which the call fills.
+        // SAFETY: the handle is open, and the call fills the info.
         unsafe { sys::snd_seq_query_next_port(seq.handle, self.0) >= 0 }
     }
 

@@ -1,9 +1,8 @@
-//! An open input: a sequencer client of the app's own subscribed to the
-//! device's port, and the thread that reads what the device sends into the
-//! input's ring.
+//! One open input, with its sequencer client subscribed to the device's port
+//! and the thread that reads what the device sends into the input's ring.
 //!
-//! A MIDI 1.0 device's events become bytes, read with `ByteStream` as
-//! WinMM's are, and the reader upgrades them by Hapto's own rules. A
+//! A MIDI 1.0 device's events become bytes, which a `ByteStream` reads as it
+//! does WinMM's, and the reader upgrades them by Hapto's own rules. A
 //! MIDI 2.0 device's packets go into the ring as they came, on their own
 //! groups.
 
@@ -21,7 +20,7 @@ use crate::error::OpenError;
 use crate::id::{Device, Direction};
 use crate::ring::Producer;
 
-/// An input, reading into its ring while open. It closes as it drops.
+/// An input, which reads into its ring while open and closes when it drops.
 #[derive(Debug)]
 pub(crate) struct Input {
     /// Set once the device's port is gone.
@@ -30,9 +29,10 @@ pub(crate) struct Input {
 }
 
 impl Input {
-    /// Opens `device` to read into `producer`'s ring. A refusal hands the
-    /// producer back, except where the reading thread could not start: the
-    /// failed start dropped it.
+    /// Opens `device` to read into `producer`'s ring.
+    ///
+    /// On an error, the producer comes back, unless the thread failed to
+    /// start and took it.
     pub(crate) fn open(
         device: &Device,
         producer: Producer,
@@ -57,21 +57,22 @@ impl Input {
         .ok_or((OpenError::NoMemory, None))
     }
 
-    /// Whether the device left while open.
+    /// Returns whether the device left while open.
     pub(crate) fn has_left(&self) -> bool {
         self.left.load(Ordering::Acquire)
     }
 
-    /// Closes the device and gives its ring's producer back.
+    /// Closes the device and returns its ring's producer.
     pub(crate) fn close(mut self) -> Option<Producer> {
         self.worker.stop()
     }
 }
 
-/// Opens a client for `device` at the device's own MIDI version, or, where
-/// the kernel refuses that version, at MIDI 1.0, which the kernel
-/// translates for. The client's port hears the System client's
-/// announcements before the device's port, so it cannot miss the device
+/// Opens a client for `device` at the device's own MIDI version.
+///
+/// If the kernel refuses that version, the client speaks MIDI 1.0 and the
+/// kernel translates. The client's port subscribes to the System client's
+/// announcements before the device's port, so it can't miss the device
 /// leaving.
 fn open_client(listed: &Listed, device: &Device) -> Result<(Client, Parser), OpenError> {
     let client = Client::open(Streams::Input, listed.version)
@@ -88,9 +89,9 @@ fn open_client(listed: &Listed, device: &Device) -> Result<(Client, Parser), Ope
     Ok((client, parser))
 }
 
-/// Runs the input's thread: reads what the device at `address` sends into
-/// the ring, stamped as it comes, until the input ends it, then hands the
-/// producer back.
+/// Runs the input's thread, which reads what the device at `address` sends
+/// into the ring, stamped as it arrives, and returns the ring's producer
+/// when the input stops it.
 fn read(
     mut client: Client,
     mut parser: Parser,
@@ -117,9 +118,9 @@ fn read(
     reading.into_producer()
 }
 
-/// What an input reads into: its ring, with a MIDI 1.0 device's byte
-/// stream, read onto group 1 as a host merges devices, or where each of a
-/// MIDI 2.0 device's groups stands in a SysEx.
+/// The ring that an input reads into, with a MIDI 1.0 device's byte stream,
+/// read onto group 1 as a host merges devices, or where each group of a
+/// MIDI 2.0 device stands in a SysEx.
 struct Reading {
     producer: Producer,
     stream: ByteStream,
@@ -146,24 +147,27 @@ impl Reading {
         }
     }
 
-    /// Ends any SysEx under way with the part that came, and passes over
-    /// the rest of it: after an overrun, so the reader never holds a SysEx
-    /// with a hole, as after a WinMM driver's error, and at the close, so it
-    /// never holds one waiting for an end that never comes.
+    /// Ends any SysEx under way with the part that came, and drops the rest
+    /// of it.
+    ///
+    /// It runs after an overrun, so the reader never holds a SysEx with a
+    /// gap, as after a WinMM driver's error. It also runs at the close, so
+    /// the reader never holds one waiting for an end that never comes.
     fn cut(&mut self, at: Instant) {
         let producer = &mut self.producer;
         self.stream.cut(|words| producer.push(at, words));
         self.under_way.cut(|words| producer.push(at, words));
     }
 
-    /// The ring's producer, any SysEx under way cut.
+    /// Returns the ring's producer, after cutting any SysEx under way.
     fn into_producer(mut self) -> Producer {
         self.cut(Instant::now());
         self.producer
     }
 }
 
-/// The packet `words` hold, with the words past its length zeroed.
+/// Returns the packet that `words` hold, with the words past its length
+/// zeroed.
 fn trimmed(mut words: [u32; 4]) -> [u32; 4] {
     let length = MessageType::of(words[0]).words();
     for word in words.iter_mut().skip(length) {
@@ -185,13 +189,13 @@ enum Stand {
     Idle,
     /// A SysEx began and has not ended.
     Begun,
-    /// A SysEx was cut here: what comes of the rest of it is passed over.
+    /// The group's SysEx was cut, so the rest of it is dropped.
     Cut,
 }
 
 impl UnderWay {
-    /// Whether `words`, a packet the device sent, goes on to the ring: not
-    /// if it is the rest of a SysEx cut here.
+    /// Returns whether the packet `words` goes on to the ring, which is
+    /// false for the rest of a cut SysEx.
     fn passes(&mut self, words: [u32; 4]) -> bool {
         let Some(packet) = SysEx7::decode(words) else {
             return true;
@@ -208,8 +212,8 @@ impl UnderWay {
         passes
     }
 
-    /// Ends every SysEx under way, handing `send` an end of no bytes for
-    /// each.
+    /// Ends every SysEx under way, calling `send` with an empty end packet
+    /// for each.
     fn cut(&mut self, mut send: impl FnMut([u32; 4])) {
         for (group, stand) in (0_u8..).zip(&mut self.0) {
             if *stand == Stand::Begun {
@@ -234,7 +238,7 @@ mod tests {
         let mut ended = Vec::new();
         under_way.cut(|words| ended.push(words));
         assert_eq!(ended, [packet(3, SysExForm::End, &[])]);
-        // The rest of the cut SysEx is passed over, and the next passes.
+        // The rest of the cut SysEx is dropped, and the next SysEx passes.
         assert!(!under_way.passes(packet(3, SysExForm::Continue, &[2; 6])));
         assert!(!under_way.passes(packet(3, SysExForm::End, &[3])));
         assert!(under_way.passes(packet(3, SysExForm::Complete, &[4])));
