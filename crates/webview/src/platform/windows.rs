@@ -8,8 +8,8 @@ use wry::{WebViewBuilder, WebViewBuilderExtWindows};
 use super::WebEngine;
 use crate::assets::plugin_folder;
 
-/// WebView2, which runs on the thread's own message loop. The type has no
-/// values, because it only names the engine.
+/// Names WebView2 for [`Engine`](super::Engine). The enum is empty, so no
+/// value of it exists.
 pub(crate) enum WebView2 {}
 
 impl WebEngine for WebView2 {
@@ -24,7 +24,7 @@ impl WebEngine for WebView2 {
         plugin_folder(&base, id).join("WebView2")
     }
 
-    /// Does nothing, because WebView2 runs on the host's own message loop.
+    /// Does nothing, because WebView2 needs no setup on the calling thread.
     fn prepare() -> Result<(), Box<dyn Error>> {
         Ok(())
     }
@@ -39,5 +39,32 @@ impl WebEngine for WebView2 {
 
     /// Does nothing, because the host's message loop dispatches WebView2's
     /// events.
-    fn pump() {}
+    fn poll() {}
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::*;
+    use crate::assets::is_page;
+
+    #[test]
+    fn the_page_built_in_is_the_page_at_webview2s_origin() {
+        assert!(is_page(
+            "http://hapto.localhost/index.html",
+            WebView2::ORIGIN,
+            None
+        ));
+    }
+
+    #[test]
+    fn the_data_folder_is_webview2s_own_below_the_plugins() {
+        let folder = WebView2::data_folder("a/b");
+        assert!(
+            folder.ends_with(Path::new("a_b").join("WebView2")),
+            "{}",
+            folder.display()
+        );
+    }
 }

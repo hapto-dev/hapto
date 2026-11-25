@@ -1,6 +1,7 @@
-//! The page's native side, which holds the dispatcher and the messages that
-//! wait while the dispatcher is in a call. It doesn't use the WebView, so its
-//! tests run on every system.
+//! The parts of the editor that don't use wry, so that their tests run on
+//! every system. They are the page's native side, [`Native`], the hand-back
+//! message, [`HAND_BACK`], and [`script`], which wraps a message for the
+//! page's transport.
 
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
@@ -102,46 +103,20 @@ impl<O: Outbox> Native<O> {
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
-    use std::cell::{Cell, RefCell};
+mod tests {
+    use std::cell::Cell;
     use std::rc::Rc;
 
     use hapto_bridge::{Commands, Dispatcher, Values};
-    use hapto_params::{Kind, ParamDecl, ParamId, ParamSet, UiParams};
+    use hapto_params::{ParamId, UiParams};
 
     use super::*;
-
-    pub(crate) const READY: &str = r#"{"type":"ready","protocol":3}"#;
-    pub(crate) const DIALOG: &str = r#"{"type":"invoke","call":1,"command":"dialog","args":null}"#;
-
-    thread_local! {
-        /// What arrives while the page's `dialog` command runs, as a file
-        /// dialog's message loop would deliver it.
-        static DURING_DIALOG: RefCell<Option<Box<dyn Fn()>>> = const { RefCell::new(None) };
-    }
-
-    /// Makes the page's `dialog` command run `during`, on this thread.
-    pub(crate) fn during_dialog(during: impl Fn() + 'static) {
-        DURING_DIALOG.with(|slot| *slot.borrow_mut() = Some(Box::new(during)));
-    }
-
-    /// The page's `dialog` command, which runs what [`during_dialog`] gave.
-    pub(crate) fn dialog(_: ()) -> Result<(), String> {
-        DURING_DIALOG.with(|during| {
-            if let Some(during) = &*during.borrow() {
-                during();
-            }
-        });
-        Ok(())
-    }
+    use crate::fixtures::{DIALOG, READY, dialog, during_dialog, params};
 
     /// A native side over one parameter, with the `dialog` command, that
     /// posts into a buffer.
     fn native() -> (Rc<Native<Vec<String>>>, UiParams, ParamId) {
-        let set = ParamSet::from_decls([ParamDecl::new("bypass", "Bypass", Kind::Bool, 0.0)])
-            .expect("valid declarations");
-        let bypass = set.id("bypass").expect("declared");
-        let ui = set.take_ui().expect("the first UI handle");
+        let (_, ui, bypass) = params();
         let commands = Commands::new().command("dialog", dialog);
         let dispatcher = Dispatcher::new(ui.clone(), commands, Values::new(), Vec::new());
         (Rc::new(Native::new(dispatcher)), ui, bypass)

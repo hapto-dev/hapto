@@ -65,7 +65,8 @@ reading how Hapto works inside, start with
   window, on Windows: `Page` makes the `Editor`, a WebView2 child window
   through wry, which serves the page from bytes built into the plugin and
   joins it to a `Dispatcher` (`editor.rs`). The page's native side is in
-  `native.rs`, and each system's web engine is in `platform/`.
+  `native.rs`. `platform.rs` defines the `WebEngine` trait, and each system's
+  engine implements it in `platform/`.
 - `crates/standalone`: `hapto-standalone`, the plugin as an app of its own, on
   Windows: the standalone exporter's instance, its editor in a winit window,
   and a test signal through it to the system's audio output through cpal

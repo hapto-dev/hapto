@@ -31,7 +31,7 @@ cargo +nightly fuzz run saved_block  # nightly workflow, ten minutes per target;
 scripts/run-benches.sh               # pull request, against the base; Linux, with valgrind and iai-callgrind-runner
 cd page && npm ci && npm run typecheck && npm test                   # pull request
 cd examples/gain/page && npm ci && npm run typecheck && npm run build   # pull request: the gain's page
-cargo test -p hapto-webview --test hidden_window -- --ignored          # by hand, Windows: the page in a real WebView2, in windows never shown; one test leaves WebView2's error dialog open, so click OK
+cargo test -p hapto-webview --test hidden_window -- --ignored          # by hand, Windows: the page in a real WebView2, in windows never shown (one test leaves a dialog open, as its doc says)
 cargo test -p hapto-example-gain --test page -- --ignored              # by hand, Windows, with the gain's page built: the same, for its page
 cargo hapto dev -p hapto-example-gain   # by hand, Windows: the gain standalone with its page from Vite, restarted with its saved block after a change to Rust
 cargo hapto dev -p hapto-example-gain --host   # by hand, Windows: the same through the dev host, in VST3 and, after its switch, the C interface

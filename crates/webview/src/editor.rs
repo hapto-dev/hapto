@@ -207,7 +207,7 @@ impl Editor for PageEditor {
     }
 
     fn tick(&mut self) {
-        Engine::pump();
+        Engine::poll();
         self.native.tick();
     }
 }
@@ -318,45 +318,17 @@ mod tests {
     use std::rc::Rc;
 
     use hapto_bridge::Refusals;
-    use hapto_host::{AuCodes, Category, PluginInfo};
-    use hapto_params::{Kind, ParamDecl, ParamSet};
+    use hapto_params::{ParamId, UiParams};
 
     use super::*;
-    use crate::native::tests::{DIALOG, READY, dialog, during_dialog};
-    use crate::{Asset, Page};
-
-    const INFO: PluginInfo = PluginInfo {
-        name: "Panel",
-        vendor: "Example",
-        url: "",
-        email: "",
-        description: "",
-        version: "0.1.0",
-        id: "dev.example.panel",
-        vst3_class_id: [0; 16],
-        au_codes: AuCodes {
-            subtype: *b"panl",
-            manufacturer: *b"Exmp",
-        },
-        category: Category::Effect,
-        features: &[],
-        layouts: &[],
-        midi_input: false,
-        midi_output: false,
-    };
-
-    const PAGE: &[Asset] = &[Asset {
-        path: "index.html",
-        bytes: b"<!doctype html>",
-    }];
+    use crate::fixtures::{DIALOG, INFO, PAGE, READY, dialog, during_dialog, params};
 
     /// An editor never opened, over one parameter, with the `dialog`
     /// command.
-    fn editor() -> PageEditor {
-        let set = ParamSet::from_decls([ParamDecl::new("bypass", "Bypass", Kind::Bool, 0.0)])
-            .expect("valid declarations");
-        let ui = set.take_ui().expect("the first UI handle");
-        PageEditor::new(Page::new(&INFO, ui, PAGE).command("dialog", dialog))
+    fn editor() -> (PageEditor, UiParams, ParamId) {
+        let (_, ui, bypass) = params();
+        let page = Page::new(&INFO, ui.clone(), PAGE).command("dialog", dialog);
+        (PageEditor::new(page), ui, bypass)
     }
 
     /// Posts as the page does, through the WebView's IPC handler.
@@ -367,8 +339,19 @@ mod tests {
     }
 
     #[test]
+    fn closing_the_editor_ends_the_pages_session() {
+        let (mut editor, ui, bypass) = editor();
+        let post = poster(&editor);
+        post(READY);
+        post(r#"{"type":"gestureBegin","param":"bypass"}"#);
+        assert!(ui.is_open(bypass));
+        editor.close();
+        assert!(!ui.is_open(bypass), "the page's drag ends for the host");
+    }
+
+    #[test]
     fn the_hand_back_reaches_no_dispatcher_and_any_other_text_does() {
-        let editor = editor();
+        let (editor, _, _) = editor();
         let post = poster(&editor);
         post(READY);
         post(HAND_BACK);
@@ -387,13 +370,13 @@ mod tests {
 
     #[test]
     fn a_hand_back_with_no_webview_open_does_nothing() {
-        let editor = editor();
+        let (editor, _, _) = editor();
         assert_eq!(hand_back(&editor.native, &editor.target), HandBack::Closed);
     }
 
     #[test]
     fn a_hand_back_while_a_command_runs_is_dropped() {
-        let editor = editor();
+        let (editor, _, _) = editor();
         let post = poster(&editor);
         let seen = Rc::new(RefCell::new(None));
         let (native, target) = (Rc::clone(&editor.native), Rc::clone(&editor.target));

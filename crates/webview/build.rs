@@ -1,7 +1,6 @@
-//! Sets the `hapto_webview` cfg on the systems where the editor has a web
-//! engine, which today is Windows with WebView2. The editor and the code that
-//! only it uses are built where the cfg is set. Elsewhere a page offers no
-//! editor.
+//! Sets the `hapto_webview` cfg on each system where the editor has a web
+//! engine. The editor and the code that only it uses are built where the cfg
+//! is set, and elsewhere a page offers no editor.
 //!
 //! The WebView library's dependency table in Cargo.toml lists the same
 //! systems, because Cargo can't read a cfg that a build script sets.

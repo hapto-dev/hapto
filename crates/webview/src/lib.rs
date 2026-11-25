@@ -127,6 +127,8 @@
 mod assets;
 #[cfg(hapto_webview)]
 mod editor;
+#[cfg(test)]
+mod fixtures;
 #[cfg(any(hapto_webview, test))]
 mod native;
 #[cfg(hapto_webview)]
@@ -292,41 +294,12 @@ impl std::fmt::Debug for Page {
 
 #[cfg(test)]
 mod tests {
-    use hapto_host::{AuCodes, Category};
-    use hapto_params::{Kind, ParamDecl, ParamSet};
-
     use super::*;
-
-    const INFO: PluginInfo = PluginInfo {
-        name: "Panel",
-        vendor: "Example",
-        url: "",
-        email: "",
-        description: "",
-        version: "0.1.0",
-        id: "dev.example.panel",
-        vst3_class_id: [0; 16],
-        au_codes: AuCodes {
-            subtype: *b"panl",
-            manufacturer: *b"Exmp",
-        },
-        category: Category::Effect,
-        features: &[],
-        layouts: &[],
-        midi_input: false,
-        midi_output: false,
-    };
-
-    const PAGE: &[Asset] = &[Asset {
-        path: "index.html",
-        bytes: b"<!doctype html>",
-    }];
+    use crate::fixtures::{INFO, PAGE, params};
 
     #[test]
     fn a_page_is_an_editor_at_its_size_where_a_web_engine_exists() {
-        let set = ParamSet::from_decls([ParamDecl::new("gain", "Gain", Kind::Bool, 0.0)])
-            .expect("valid declarations");
-        let ui = set.take_ui().expect("the first UI handle");
+        let (_, ui, _) = params();
         let page = Page::new(&INFO, ui, PAGE);
         assert_eq!(page.size, Page::SIZE);
         let size = Size {
@@ -345,9 +318,7 @@ mod tests {
 
     #[test]
     fn a_page_with_no_files_is_an_editor_only_where_a_dev_server_serves_it() {
-        let set = ParamSet::from_decls([ParamDecl::new("gain", "Gain", Kind::Bool, 0.0)])
-            .expect("valid declarations");
-        let ui = set.take_ui().expect("the first UI handle");
+        let (_, ui, _) = params();
         let editor = Page::new(&INFO, ui, &[]).into_editor();
         // A debug build run with `HAPTO_PAGE_DEV_URL` set has a dev server.
         let served = assets::dev_url().is_some();
@@ -357,9 +328,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "is bound twice")]
     fn a_value_bound_twice_panics() {
-        let set = ParamSet::from_decls([ParamDecl::new("gain", "Gain", Kind::Bool, 0.0)])
-            .expect("valid declarations");
-        let ui = set.take_ui().expect("the first UI handle");
+        let (set, ui, _) = params();
         let name = Value::new(String::new(), &set);
         let _ = Page::new(&INFO, ui, PAGE)
             .value("name", &name)
@@ -369,9 +338,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "is added twice")]
     fn a_command_added_twice_panics() {
-        let set = ParamSet::from_decls([ParamDecl::new("gain", "Gain", Kind::Bool, 0.0)])
-            .expect("valid declarations");
-        let ui = set.take_ui().expect("the first UI handle");
+        let (_, ui, _) = params();
         let _ = Page::new(&INFO, ui, PAGE)
             .command("ping", |()| Ok(()))
             .command("ping", |()| Ok(()));

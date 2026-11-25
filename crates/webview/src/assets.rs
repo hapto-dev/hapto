@@ -1,10 +1,12 @@
-//! The page's files, built into the plugin, and how the WebView is served
-//! them; the URL it loads, and the folder it keeps its data in.
+//! The page's files, which are built into the plugin, and how the WebView is
+//! served them. It also holds the URL that the WebView loads and the plugin's
+//! own folder, which each engine keeps its data below.
 
 use std::path::{Path, PathBuf};
 
-/// The scheme the page is served from. Each web engine's `ORIGIN` says which
-/// origin the page then has.
+/// The scheme that serves the page built into the plugin. The origin that the
+/// page then has differs between engines, and each engine's `ORIGIN` names
+/// it.
 pub(crate) const SCHEME: &str = "hapto";
 
 /// The URL of the page built into the plugin.
@@ -121,8 +123,8 @@ pub(crate) fn dev_url() -> Option<String> {
     None
 }
 
-/// The plugin's own folder below `base`, named by the plugin's id `id`. A
-/// character that a folder's name can't hold becomes `_`.
+/// Returns the plugin's own folder below `base`, named after the plugin's id
+/// `id`. A character that a folder's name can't hold becomes `_`.
 pub(crate) fn plugin_folder(base: &Path, id: &str) -> PathBuf {
     let name: String = id
         .chars()
