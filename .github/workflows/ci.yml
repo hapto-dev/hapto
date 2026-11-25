@@ -394,6 +394,14 @@ jobs:
           rustup target add ${{ matrix.target }}
           rustup show active-toolchain
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      # The MIDI device layer's ALSA backend builds on Linux against
+      # alsa-lib, which pkg-config finds for the runner's own system; a check
+      # links nothing, so the runner's alsa-lib serves the ARM target too.
+      - name: alsa-lib
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update && sudo apt-get install -y libasound2-dev
+          echo "PKG_CONFIG_ALLOW_CROSS=1" >> "$GITHUB_ENV"
       - name: Core and bridge
         run: cargo check --locked --target ${{ matrix.target }} --workspace --exclude hapto-host --exclude hapto-webview --exclude hapto-standalone --exclude hapto-example-eq --exclude hapto-example-gain --exclude hapto-example-midi-probe --exclude hapto-testkit --exclude xtask
       - name: C interface and example EQ
