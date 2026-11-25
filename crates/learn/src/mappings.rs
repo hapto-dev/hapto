@@ -182,7 +182,7 @@ pub enum LearnError {
     /// A number in the source is out of range for its kind.
     BadSource(Source),
     /// The source can never be bound, because it is a controller that sets
-    /// or steps a parameter number or an NRPN that the plugin reserved.
+    /// or steps a parameter number, or an NRPN that the plugin reserved.
     /// [`Control::Cc`](crate::Control::Cc) lists those controllers.
     Blocked(Source),
     /// The table holds [`Config::max_mappings`] mappings and the target has

@@ -48,9 +48,9 @@ const NULL: u8 = 127;
 ///
 /// A data entry belongs to the number that it was sent under. A low byte
 /// refines its own number's latest high byte, even if the address is sent
-/// again in between, as the specification says. The upgrade differs from the
-/// specification in three places. The first two keep one parameter's high
-/// byte from reaching another:
+/// again in between, because the specification holds the latest high byte.
+/// The upgrade differs from the specification in three places. The first two
+/// keep one parameter's high byte from reaching another:
 ///
 /// - A low byte never combines with another number's high byte.
 /// - A low byte sent before its own number's high byte waits for it, until
@@ -143,8 +143,8 @@ struct Numbers {
     /// The kind that data entry applies to, which is that of the latest
     /// address byte unless the null number is selected.
     selected: Option<Kind>,
-    /// The latest data entry high byte, already sent, which only a low byte
-    /// under the same number refines.
+    /// The latest data entry high byte, already sent. Only a low byte under
+    /// the same number refines it, however often the address is sent again.
     high: Option<Held>,
     /// A low byte that arrived before its number's high byte, which MIDI 1.0
     /// allows, kept for that high byte unless an address byte comes first.
@@ -224,7 +224,7 @@ impl Numbers {
                 self.address_byte(controller, value);
             }
             DATA_ENTRY => {
-                // A data entry consumes `early_low`. It belongs to the
+                // A data entry consumes `early_low`, which belongs to the
                 // selected number, because every address byte and Reset All
                 // Controllers drop it, so a data entry that selects nothing
                 // never finds one.

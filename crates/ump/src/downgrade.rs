@@ -13,7 +13,8 @@ use crate::{
 /// Downgrades MIDI 2.0 to MIDI 1.0 for a destination that accepts only MIDI
 /// 1.0, when someone asks for it or the other end forces it.
 ///
-/// Values drop their low bits, and three messages change form.
+/// It follows the specification's Default Translation. Values drop their low
+/// bits, and three messages change form.
 ///
 /// - A note-on that would drop to velocity 0, which MIDI 1.0 treats as a
 ///   note-off, goes out at velocity 1.
@@ -28,7 +29,7 @@ use crate::{
 /// the program. That leaves a receiver on the same bank, and a processor that
 /// drops controllers 0 and 32 still sends the bank.
 ///
-/// It drops what MIDI 1.0 can't carry, and counts it in
+/// The downgrade drops what MIDI 1.0 can't carry, and counts it in
 /// [`lost`](Self::lost):
 ///
 /// - relative controllers, per-note controllers, per-note pitch bend and
