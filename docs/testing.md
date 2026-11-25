@@ -705,9 +705,9 @@ the fuzz crate's own unit test (`cargo test --manifest-path fuzz/Cargo.toml
 `cargo llvm-cov` over the code Linux builds measured 93.5 % of lines on the day
 the lane was added. Test files, benchmarks and the test hosts are left out. So
 are the VST3 editor view and the slot that drives an editor for it
-(`vst3/view.rs`, `engine/editor.rs`): Linux builds both, but the exporter
-offers a view on Windows alone, so only Windows runs them, in the view's own
-tests (`crates/host/src/vst3/view/tests.rs`). The
+(`vst3/view.rs`, `vst3/view/` and `engine/editor.rs`): Linux builds both, but
+the exporter offers a view on Windows alone, so only Windows runs them, in the
+view's own tests (`crates/host/src/vst3/view/tests.rs`). The
 lane fails below 92 %, the measured figure less one point, rounded down to a
 whole number. When coverage rises, raise the number in `ci.yml`'s
 `COVERAGE_LINES` the same way; never lower it to land a change. The lane uploads

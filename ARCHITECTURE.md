@@ -61,7 +61,8 @@ reading how Hapto works inside, start with
   `engine`, which holds the plugin's life and builds with no feature. CLAP is
   planned, not built. A plugin's editor is an `Editor` (`editor.rs`), which
   knows no toolkit; `engine/editor.rs` drives one for each view a host asks
-  for, and the VST3 exporter's view is `vst3/view.rs`. The `standalone`
+  for, and the VST3 exporter's view is `vst3/view.rs`, with each system's
+  window type in a file of its own in `vst3/view/`. The `standalone`
   exporter (`standalone.rs`) drives the same engine for an app with no host.
 - `crates/bridge`: the page protocol, its native side (`Dispatcher`, which
   answers a page and tells it of every change to the parameters and to the

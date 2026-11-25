@@ -47,7 +47,7 @@ impl DevHost {
             let (x, y, width, height) = rect.pixels(scale);
             let frame = ChildWindow::new(&window, x, y, width, height)
                 .context("the system refused the view's window")?;
-            match shown.attach_to(&frame) {
+            match shown.attach(&frame) {
                 Ok(()) => self.frame = Some(frame),
                 // As if the plugin had none, so the bar says so, the window
                 // is laid out without a view, and the settings window opens.

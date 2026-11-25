@@ -304,10 +304,12 @@ exporter.
   the plugin tells the host and what the dev host does to the plugin, and shows
   the saved block and how its first load went. A block the plugin refused is
   kept for the next run rather than saved over.
-- `hapto-host`: `vst3::TestView::attach_to` attaches a test host's view to a
-  window of the caller's, and `vst3::ChildWindow` is a window inside one of
-  the caller's for it, placed where a host wants the view.
-  `vst3::HiddenWindow` gives its window handle.
+- `hapto-host`: `vst3::TestView::attach` attaches a test host's view to any
+  window of the caller's that gives a handle, and `vst3::ChildWindow` is a
+  window inside one of the caller's for it, placed where a host wants the
+  view. `vst3::HiddenWindow` gives its window handle. Both windows build on
+  every system, and their `new` returns `None` on one that the test host makes
+  no windows on.
 - `bench`: the comparison of the example EQ against the same EQ in plain JUCE,
   with its reports in `bench/reports`.
 - Guarantees the tests keep: the audio path never allocates (allocation gates),
