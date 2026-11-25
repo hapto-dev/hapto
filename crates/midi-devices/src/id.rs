@@ -29,17 +29,19 @@ impl Direction {
     }
 }
 
-/// A device's id, which survives the system renumbering its devices as
-/// others come and go.
+/// What identifies a device from one look at the system's list to the
+/// next.
 ///
 /// It survives the system's renumbering, which moves a device's place in
-/// the list when another comes or goes. On WinMM it is the device's
-/// interface path, or its name for one that has none; on ALSA, its sound
-/// card's USB serial number, or where a card without one sits on its bus,
-/// and its port's number, or a software port's client's name and its own:
-/// each with its place among the devices that share that string, and its
-/// direction. Compare it, keep it and show it in a log; read nothing into
-/// its text, which only says which device it names.
+/// the list when another comes or goes. It is a string that identifies the
+/// device, with the device's place among the devices that share that
+/// string, and its direction. On WinMM the string is the device's interface
+/// path, or its name for a device without one. On ALSA it is, for a card's
+/// port, the card's USB vendor, product and serial number, or where a card
+/// without one sits on its bus, then the port's number; for a software
+/// port, its client's name and the port's own. Compare it, keep it and show
+/// it in a log; read nothing into its text, which only says which device it
+/// identifies.
 ///
 /// # Examples
 ///
@@ -132,7 +134,7 @@ impl Device {
 /// Returns a device for each `(name, key)` in `named`, in order, with an id
 /// from its key and its place among the earlier ones with that key.
 #[cfg_attr(
-    all(not(any(windows, all(target_os = "linux", not(miri)))), not(test)),
+    all(not(hapto_backend), not(test)),
     expect(
         dead_code,
         reason = "only a backend names a device, and this system has none"

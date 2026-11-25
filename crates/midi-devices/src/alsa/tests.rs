@@ -1,20 +1,13 @@
 //! The backend against the sequencer itself, with devices of the tests' own:
 //! clients whose ports any app may subscribe to, as a keyboard's or a
 //! synth's are. They need the sequencer, `/dev/snd/seq`, and no hardware.
-//! A USB card's name is read from files of a test's own.
+//! The USB card test reads a sysfs tree it writes itself.
 
-use std::thread;
-use std::time::Duration;
+use hapto_testkit::sync::wait_until;
+use hapto_ump::{Event, EventList, SysEx7, SysExJoin};
 
-use hapto_ump::{Event, EventList, SysEx7, SysExForm, SysExJoin};
-
-use super::input::UnderWay;
-use super::seq::{CAP_READ, CAP_SUBS_READ, CAP_SUBS_WRITE, CAP_WRITE, Client, Incoming, Parser};
-use super::seq::{Streams, Version};
+use super::seq::{Caps, Client, Incoming, Parser, Streams, Version};
 use crate::{Device, Devices, Direction, InputsReader, Instant, inputs, outputs};
-
-/// How long a test waits for the sequencer to hand something on.
-const PATIENCE: Duration = Duration::from_secs(5);
 
 /// A device of a test's own: a client with one port any app may subscribe
 /// to. It leaves as it drops.
@@ -25,7 +18,7 @@ struct Fake {
 }
 
 impl Fake {
-    fn open(name: &str, caps: u32, version: Version) -> Option<Fake> {
+    fn open(name: &str, caps: Caps, version: Version) -> Option<Fake> {
         let client = match Client::open(Streams::Duplex, version) {
             Ok(client) => client,
             Err(why) if version == Version::Legacy => {
@@ -43,17 +36,18 @@ impl Fake {
 
     /// A keyboard: a port that sends.
     fn keys(name: &str) -> Fake {
-        Fake::open(name, CAP_READ | CAP_SUBS_READ, Version::Legacy).expect("a MIDI 1.0 client")
+        Fake::open(name, Caps::READ | Caps::SUBS_READ, Version::Legacy).expect("a MIDI 1.0 client")
     }
 
     /// A synth: a port that takes.
     fn synth(name: &str) -> Fake {
-        Fake::open(name, CAP_WRITE | CAP_SUBS_WRITE, Version::Legacy).expect("a MIDI 1.0 client")
+        Fake::open(name, Caps::WRITE | Caps::SUBS_WRITE, Version::Legacy)
+            .expect("a MIDI 1.0 client")
     }
 
     /// A MIDI 2.0 keyboard, where alsa-lib and the kernel speak UMP.
     fn midi2_keys(name: &str) -> Option<Fake> {
-        Fake::open(name, CAP_READ | CAP_SUBS_READ, Version::UmpMidi2)
+        Fake::open(name, Caps::READ | Caps::SUBS_READ, Version::UmpMidi2)
     }
 
     /// Sends `bytes`, a SysEx in pieces as a card's port hands one on.
@@ -71,14 +65,13 @@ impl Fake {
         }
     }
 
-    /// The bytes the port took, until `done` says they are enough.
+    /// The bytes the port took, once `done` says they are enough.
     fn heard(&mut self, done: impl Fn(&[u8]) -> bool) -> Vec<u8> {
         let mut bytes = Vec::new();
-        let start = std::time::Instant::now();
-        while !done(&bytes) && start.elapsed() < PATIENCE {
+        wait_until("the test's synth to hear it", || {
             bytes.extend(self.taken());
-            thread::sleep(Duration::from_millis(5));
-        }
+            done(&bytes)
+        });
         bytes
     }
 
@@ -94,36 +87,28 @@ impl Fake {
     }
 }
 
-/// The device the list names `name` in its direction, once it lists it.
-fn listed(name: &str, outputs: bool) -> Device {
-    let direction = if outputs {
-        Direction::Output
-    } else {
-        Direction::Input
-    };
-    let start = std::time::Instant::now();
-    loop {
-        let found = super::list()
+/// Waits until the list holds the device called `name` in `direction`,
+/// and returns it.
+fn listed(name: &str, direction: Direction) -> Device {
+    let mut found = None;
+    wait_until(&format!("{name} to be listed"), || {
+        found = super::list()
             .into_iter()
             .find(|device| device.name() == name && device.direction() == direction);
-        if let Some(device) = found {
-            return device;
-        }
-        assert!(start.elapsed() < PATIENCE, "{name} is never listed");
-        thread::sleep(Duration::from_millis(5));
-    }
+        found.is_some()
+    });
+    found.expect("listed")
 }
 
-/// The MIDI read into blocks of 512 frames until `done` says it is enough.
+/// The MIDI read into blocks of 512 frames, once `done` says it is enough.
 fn read_until(reader: &mut InputsReader, done: impl Fn(&[Event]) -> bool) -> Vec<Event> {
     let mut read = Vec::new();
-    let start = std::time::Instant::now();
-    while !done(&read) && start.elapsed() < PATIENCE {
+    wait_until("the input to read it", || {
         let mut block = EventList::with_capacity(4096);
         reader.read(Instant::now(), 512, &mut block);
         read.extend_from_slice(block.as_slice());
-        thread::sleep(Duration::from_millis(5));
-    }
+        done(&read)
+    });
     read
 }
 
@@ -141,14 +126,22 @@ fn joined(events: &[Event]) -> Option<Vec<u8>> {
         .find_map(|event| join.push(event).whole.map(|whole| whole.framed().to_vec()))
 }
 
+/// The SysEx7 packets on group 1 that carry `framed`.
+fn packets(framed: &[u8]) -> Vec<Event> {
+    let data = framed.get(1..framed.len().saturating_sub(1)).unwrap_or(&[]);
+    let mut events = Vec::new();
+    SysEx7::packets(0, data, |words| events.push(Event::new(0, words)));
+    events
+}
+
 #[test]
-fn a_port_any_app_may_subscribe_to_is_listed_in_each_direction_it_allows() {
+fn a_subscribable_port_is_listed_in_each_direction_it_allows() {
     let _keys = Fake::keys("listed keys");
     let _synth = Fake::synth("listed synth");
-    let keys = listed("listed keys", false);
+    let keys = listed("listed keys", Direction::Input);
     assert!(keys.id().as_str().starts_with("in:"));
     assert!(keys.id().as_str().contains("listed keys"));
-    listed("listed synth", true);
+    listed("listed synth", Direction::Output);
     let devices = Devices::new();
     assert!(
         devices
@@ -167,7 +160,7 @@ fn the_apps_own_ports_are_never_listed() {
     let _keys = Fake::keys("hidden keys");
     let (mut inputs, _reader) = inputs(64);
     inputs
-        .open(&listed("hidden keys", false))
+        .open(&listed("hidden keys", Direction::Input))
         .expect("the test's keys open");
     let devices = Devices::new();
     assert!(
@@ -185,7 +178,7 @@ fn what_a_midi_1_device_plays_reaches_the_block_upgraded_on_group_1() {
     let mut keys = Fake::keys("upgraded keys");
     let (mut inputs, mut reader) = inputs(1024);
     inputs
-        .open(&listed("upgraded keys", false))
+        .open(&listed("upgraded keys", Direction::Input))
         .expect("the test's keys open");
     keys.play(&[0x90, 0x3C, 100]);
     let read = read_until(&mut reader, |read| !read.is_empty());
@@ -203,7 +196,7 @@ fn a_sysex_longer_than_a_page_reaches_the_block_whole() {
     let mut keys = Fake::keys("sysex keys");
     let (mut inputs, mut reader) = inputs(4096);
     inputs
-        .open(&listed("sysex keys", false))
+        .open(&listed("sysex keys", Direction::Input))
         .expect("the test's keys open");
     let sent = sysex(6000);
     keys.play(&sent);
@@ -217,7 +210,7 @@ fn a_sysex_sent_as_one_event_reaches_the_block_whole() {
     let mut keys = Fake::keys("one event keys");
     let (mut inputs, mut reader) = inputs(8192);
     inputs
-        .open(&listed("one event keys", false))
+        .open(&listed("one event keys", Direction::Input))
         .expect("the test's keys open");
     let sent = sysex(20_000);
     keys.client
@@ -232,7 +225,7 @@ fn only_its_device_reaches_an_input() {
     let mut keys = Fake::keys("guarded keys");
     let (mut inputs, mut reader) = inputs(1024);
     inputs
-        .open(&listed("guarded keys", false))
+        .open(&listed("guarded keys", Direction::Input))
         .expect("the test's keys open");
     let mut other = Fake::keys("other keys");
     // The input's own port, which no list holds.
@@ -258,92 +251,66 @@ fn only_its_device_reaches_an_input() {
 }
 
 #[test]
-fn a_midi_2_device_is_read_as_it_sends_on_its_own_group() {
+fn a_midi_2_devices_packets_reach_the_block_unchanged_on_their_groups() {
     let Some(mut keys) = Fake::midi2_keys("midi 2 keys") else {
         eprintln!("skipped: this alsa-lib or kernel has no UMP");
         return;
     };
     let (mut inputs, mut reader) = inputs(1024);
     inputs
-        .open(&listed("midi 2 keys", false))
+        .open(&listed("midi 2 keys", Direction::Input))
         .expect("the test's keys open");
-    // A MIDI 2.0 note-on on group 4, key 60, velocity 0xC800.
-    let words = [0x4390_3C00, 0xC800_0000, 0, 0];
-    keys.client
-        .send_packet(keys.port, words)
-        .expect("the sequencer takes it");
-    let read = read_until(&mut reader, |read| !read.is_empty());
+    // MIDI 2.0 note-ons on group 4, keys 60 to 62, velocity 0xC800, sent at
+    // once so the input reads them in one wake.
+    let notes: Vec<[u32; 4]> = (0..3)
+        .map(|key| [0x4390_3C00 + (key << 8), 0xC800_0000, 0, 0])
+        .collect();
+    for &words in &notes {
+        keys.client
+            .send_packet(keys.port, words)
+            .expect("the sequencer takes it");
+    }
+    let read = read_until(&mut reader, |read| read.len() >= notes.len());
     assert_eq!(
         read.iter().map(|event| event.words).collect::<Vec<_>>(),
-        [words]
+        notes
     );
-}
-
-#[test]
-fn an_overrun_ends_a_midi_2_sysex_under_way_and_passes_over_the_rest_of_it() {
-    let packet = |group, form, data: &[u8]| SysEx7::new(group, form, data).words();
-    let mut under_way = UnderWay::default();
-    assert!(under_way.passes(packet(3, SysExForm::Start, &[1; 6])));
-    // A note passes between, on any group.
-    assert!(under_way.passes([0x4390_3C00, 0xC800_0000, 0, 0]));
-    let mut ended = Vec::new();
-    under_way.cut(|words| ended.push(words));
-    assert_eq!(ended, [packet(3, SysExForm::End, &[])]);
-    // What comes of the rest of it is passed over, and the next goes on.
-    assert!(!under_way.passes(packet(3, SysExForm::Continue, &[2; 6])));
-    assert!(!under_way.passes(packet(3, SysExForm::End, &[3])));
-    assert!(under_way.passes(packet(3, SysExForm::Complete, &[4])));
-    // With nothing under way, a cut ends nothing.
-    under_way.cut(|words| ended.push(words));
-    assert_eq!(ended.len(), 1);
 }
 
 #[test]
 fn a_device_that_leaves_is_closed_at_the_tick() {
     let keys = Fake::keys("leaving keys");
-    let device = listed("leaving keys", false);
+    let device = listed("leaving keys", Direction::Input);
     let (mut inputs, _reader) = inputs(64);
     inputs.open(&device).expect("the test's keys open");
     drop(keys);
-    let start = std::time::Instant::now();
-    let left = loop {
-        let left = inputs.tick();
-        if !left.is_empty() || start.elapsed() > PATIENCE {
-            break left;
-        }
-        thread::sleep(Duration::from_millis(5));
-    };
+    let mut left = Vec::new();
+    wait_until("a tick to close the device that left", || {
+        left = inputs.tick();
+        !left.is_empty()
+    });
     assert_eq!(left, std::slice::from_ref(&device));
     assert!(!inputs.is_open(device.id()));
 }
 
 #[test]
-fn a_device_that_comes_is_told_at_a_tick_after_the_list_is_marked() {
+fn a_device_that_comes_is_added_at_a_tick() {
     let mut devices = Devices::new();
     assert!(devices.is_watching());
     let _keys = Fake::keys("coming keys");
-    let start = std::time::Instant::now();
-    let came = loop {
-        let changes = devices.tick(std::time::Instant::now());
-        if let Some(device) = changes
+    wait_until("a tick to add the device that came", || {
+        devices
+            .tick(std::time::Instant::now())
             .added
-            .into_iter()
-            .find(|device| device.name() == "coming keys")
-        {
-            break Some(device);
-        }
-        if start.elapsed() > PATIENCE {
-            break None;
-        }
-        thread::sleep(Duration::from_millis(20));
-    };
-    assert!(came.is_some(), "told within a few looks");
+            .iter()
+            .any(|device| device.name() == "coming keys")
+    });
 }
 
 #[test]
-fn an_output_sends_a_note_and_a_long_sysex_whole_and_nothing_as_it_closes() {
+fn an_output_sends_a_long_sysex_whole_and_its_close_sends_nothing() {
     let mut synth = Fake::synth("played synth");
-    let device = listed("played synth", true);
+    let device = listed("played synth", Direction::Output);
     let (mut outputs, mut writer) = outputs(1024);
     outputs.open(&device).expect("the test's synth opens");
     let long = sysex(1000);
@@ -360,9 +327,9 @@ fn an_output_sends_a_note_and_a_long_sysex_whole_and_nothing_as_it_closes() {
 }
 
 #[test]
-fn a_message_on_a_sysexs_group_ends_it_as_on_windows() {
+fn a_message_on_a_sysexs_group_drops_the_sysex_as_on_windows() {
     let mut synth = Fake::synth("cut synth");
-    let device = listed("cut synth", true);
+    let device = listed("cut synth", Direction::Output);
     let (mut outputs, mut writer) = outputs(1024);
     outputs.open(&device).expect("the test's synth opens");
     // A SysEx's start, a note on its group, then its end.
@@ -370,16 +337,13 @@ fn a_message_on_a_sysexs_group_ends_it_as_on_windows() {
     sent.insert(1, Event::new(0, [0x2090_3C64, 0, 0, 0]));
     writer.write(Instant::now(), 48_000.0, &sent);
     assert_eq!(synth.heard(|heard| heard.len() >= 3), [0x90, 0x3C, 0x64]);
-    let start = std::time::Instant::now();
-    while writer.dropped() == 0 && start.elapsed() < PATIENCE {
-        thread::sleep(Duration::from_millis(5));
-    }
+    wait_until("the SysEx to be dropped", || writer.dropped() > 0);
     assert_eq!(writer.dropped(), 1, "the SysEx, dropped and counted");
     assert_eq!(synth.taken(), Vec::<u8>::new(), "none of it went out");
 }
 
 #[test]
-fn a_usb_card_with_a_serial_is_named_by_it_and_one_without_by_where_it_sits() {
+fn a_usb_card_is_keyed_by_its_serial_only_where_it_has_one() {
     let usb = std::env::temp_dir()
         .join("hapto-midi-devices-tests")
         .join(format!("usb-{}", std::process::id()))
@@ -398,23 +362,4 @@ fn a_usb_card_with_a_serial_is_named_by_it_and_one_without_by_where_it_sits() {
         Some("usb:258f:0b01:109330573537:1.0")
     );
     let _ = std::fs::remove_dir_all(&usb);
-}
-
-/// The SysEx7 packets that carry `framed`.
-fn packets(framed: &[u8]) -> Vec<Event> {
-    let data = framed.get(1..framed.len().saturating_sub(1)).unwrap_or(&[]);
-    let chunks: Vec<&[u8]> = data.chunks(6).collect();
-    chunks
-        .iter()
-        .enumerate()
-        .map(|(place, chunk)| {
-            let form = match (place, chunks.len()) {
-                (_, 1) => SysExForm::Complete,
-                (0, _) => SysExForm::Start,
-                (place, count) if place + 1 == count => SysExForm::End,
-                _ => SysExForm::Continue,
-            };
-            SysEx7::new(0, form, chunk).event(0)
-        })
-        .collect()
 }

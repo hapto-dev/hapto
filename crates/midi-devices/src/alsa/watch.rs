@@ -4,72 +4,46 @@
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::thread::{self, JoinHandle};
 
-use super::seq::{ANNOUNCE, CAP_NO_EXPORT, CAP_WRITE, Client, Incoming, Parser, Streams, Version};
-use super::signal::{Signal, wait};
+use super::seq::{ANNOUNCE, Caps, Client, Incoming, Parser, Streams, Version};
+use super::signal::Signal;
+use super::worker::{Waiter, Worker};
 
 /// Watches the sequencer for clients and ports that come, go or change,
 /// and marks the list for the next tick when one does. Its thread ends as
 /// it drops.
 #[derive(Debug)]
 pub(crate) struct Watch {
-    stopping: Arc<AtomicBool>,
-    wake: Arc<Signal>,
-    thread: Option<JoinHandle<()>>,
+    /// Ends the thread as it drops.
+    _worker: Worker<()>,
 }
 
 impl Watch {
-    /// Watches, setting `marked` on each change; `None` where the sequencer
-    /// cannot be watched, so the list is read every two seconds instead.
+    /// Watches, setting `marked` on each change, or returns `None` where
+    /// the sequencer cannot be watched, and [`Devices`](crate::Devices)
+    /// falls back to its timer.
     pub(crate) fn new(marked: Arc<AtomicBool>) -> Option<Watch> {
         let client = Client::open(Streams::Input, Version::Legacy)
             .ok()?
             .with_input_room();
-        let port = client.port("list", CAP_WRITE | CAP_NO_EXPORT).ok()?;
+        let port = client.port("list", Caps::WRITE | Caps::NO_EXPORT).ok()?;
         client.connect_from(port, ANNOUNCE).ok()?;
         let parser = Parser::new()?;
-        // Without an eventfd the thread could not be woken to end.
-        let wake = Arc::new(Signal::new());
-        wake.poll_fd()?;
-        let stopping = Arc::new(AtomicBool::new(false));
-        let (thread_wake, thread_stopping) = (Arc::clone(&wake), Arc::clone(&stopping));
-        let thread = thread::Builder::new()
-            .name("hapto midi list".to_owned())
-            .spawn(move || watch(client, parser, &marked, &thread_wake, &thread_stopping))
-            .ok()?;
-        Some(Watch {
-            stopping,
-            wake,
-            thread: Some(thread),
+        let waiter = Waiter::new(client.poll_fds(), Arc::new(Signal::new()))?;
+        Worker::spawn("hapto midi list", waiter, move |waiter| {
+            watch(client, parser, &marked, waiter);
         })
+        .map(|worker| Watch { _worker: worker })
     }
 }
 
-impl Drop for Watch {
-    fn drop(&mut self) {
-        self.stopping.store(true, Ordering::Release);
-        self.wake.set();
-        if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
-        }
-    }
-}
-
-/// The watch's thread: it waits for announcements and marks the list on
+/// Runs the watch's thread: waits for announcements and marks the list on
 /// each that may change it, until the watch drops.
-fn watch(
-    mut client: Client,
-    mut parser: Parser,
-    marked: &AtomicBool,
-    wake: &Signal,
-    stopping: &AtomicBool,
-) {
-    let mut fds = client.poll_fds();
-    fds.extend(wake.poll_fd());
-    while !stopping.load(Ordering::Acquire) {
-        wait(&mut fds, None);
-        wake.clear();
+fn watch(mut client: Client, mut parser: Parser, marked: &AtomicBool, mut waiter: Waiter) {
+    while !waiter.is_stopping() {
+        if !waiter.wait(None) {
+            continue;
+        }
         client.read(&mut parser, |incoming| match incoming {
             Incoming::Announced(change) if change.lists() => {
                 marked.store(true, Ordering::Release);

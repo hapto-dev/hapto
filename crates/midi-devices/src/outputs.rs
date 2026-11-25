@@ -33,11 +33,11 @@ use crate::ports::{OpenDevices, Port, Ports};
 use crate::ring::{Consumer, Producer, ring};
 
 // A system with no backend sends no SysEx.
-#[cfg(any(windows, all(target_os = "linux", not(miri))))]
+#[cfg(hapto_backend)]
 mod sysex;
 
-#[cfg(any(windows, all(target_os = "linux", not(miri))))]
-pub(crate) use sysex::Sysex;
+#[cfg(hapto_backend)]
+pub(crate) use sysex::OutgoingSysex;
 
 /// How many outputs may be open at once.
 pub const MAX_OUTPUTS: usize = 16;
@@ -216,7 +216,10 @@ impl Outputs {
             };
             // A device doesn't send what a block pushed before it came.
             consumer.clear();
-            backend::Output::open(device, consumer, Arc::clone(signal))
+            // Read from now on, so the next block's MIDI reaches the device
+            // however late its thread starts.
+            let reading = consumer.reading();
+            backend::Output::open(device, consumer, reading, Arc::clone(signal))
         })
     }
 
@@ -292,13 +295,14 @@ impl OpenDevices for Outputs {
 /// MIDI to every open output, as the outputs' [`Timing`] says.
 ///
 /// The plugin's MIDI 2.0 is downgraded to MIDI 1.0 here, by the
-/// specification's Default Translation, since every backend sends MIDI 1.0
-/// alone for now, a MIDI 2.0 device on Linux taking it as the kernel
-/// translates it: what MIDI 1.0 has no message for is dropped and counted
-/// in [`lost`](Self::lost). A packet goes to every open output in the order
-/// the plugin sent it, and an output's thread
-/// sends it once its time comes, at once if that has passed: never earlier,
-/// and never dropped for being late. Once a block has handed an output its
+/// specification's Default Translation, since every backend sends only
+/// MIDI 1.0 for now; on Linux the kernel upgrades it for a MIDI 2.0 device.
+/// What MIDI 1.0 has no message for is dropped and counted in
+/// [`lost`](Self::lost). A packet goes to every open output in the order
+/// the plugin sent it, and an output's thread sends it once its time comes,
+/// at once if that has passed: never earlier, and never dropped for being
+/// late. On Linux, a burst or a long SysEx goes no faster than a MIDI cable
+/// carries one. Once a block has handed an output its
 /// MIDI, the writer wakes the output's thread, a signal that never blocks:
 /// so the block's first message leaves the moment the block has played.
 ///

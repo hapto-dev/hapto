@@ -3,9 +3,9 @@
 //!
 //! The tests that replug or unplug a device follow the one whose name holds
 //! `HAPTO_DEVICE`, else the first that is not the system's synth. The long
-//! SysEx in needs a loopback port whose name starts with `HAPTO_LOOPBACK`,
-//! else with `loopMIDI` on Windows, a port loopMIDI adds, and with `Midi
-//! Through` on Linux, the kernel's own.
+//! SysEx coming in needs a loopback port whose name starts with
+//! `HAPTO_LOOPBACK`, or else with `loopMIDI` on Windows, a port loopMIDI
+//! adds, or `Midi Through` on Linux, the kernel's own.
 
 use std::thread;
 use std::time::Duration;
@@ -20,7 +20,8 @@ use hapto_ump::{Event, EventList, SysEx7, SysExJoin};
 /// speakers.
 const SYNTH: &str = "Microsoft GS Wavetable Synth";
 
-/// How a loopback port's name starts unless `HAPTO_LOOPBACK` says.
+/// How a loopback port's name starts, unless `HAPTO_LOOPBACK` names
+/// another start.
 const LOOPBACK: &str = if cfg!(windows) {
     "loopMIDI"
 } else {
@@ -248,7 +249,8 @@ fn a_sysex_longer_than_the_inputs_room_comes_in_whole() {
     let (sent, events) = long_sysex(32 * 1024);
     writer.write(Instant::now(), 48_000.0, &events);
     // Blocks of 10 ms, as an audio thread reads them, for up to 20 s: on
-    // Linux the SysEx goes out at a MIDI cable's pace, which takes ten.
+    // Linux the SysEx goes out at a MIDI cable's pace, which takes about
+    // ten for this one.
     let mut join = SysExJoin::with_room(64 * 1024);
     let mut came = None;
     for _ in 0..2000 {

@@ -70,9 +70,9 @@ pub fn inputs(room: usize) -> (Inputs, InputsReader) {
 ///
 /// Every MIDI 1.0 device's messages arrive on group 1, merged, as a host
 /// hands a plugin its MIDI, so a plugin hears in the app what it hears in a
-/// host, and a mapping learned in one plays in the other. A MIDI 2.0
-/// device's, which Linux reads, arrive on the groups it sends them on. A
-/// device that leaves while open is closed at the next
+/// host, and a mapping learned in one plays in the other. On Linux, a
+/// MIDI 2.0 device's messages arrive on the groups the device sends them
+/// on. A device that leaves while open is closed at the next
 /// [`tick`](Self::tick). Every input closes as this drops.
 ///
 /// Open: how learn tells devices apart, because a packet doesn't name its

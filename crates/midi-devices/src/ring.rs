@@ -44,10 +44,12 @@ struct Ring {
     head: AtomicUsize,
     /// Packets taken so far, wrapping. Only the consumer stores it.
     tail: AtomicUsize,
-    /// Packets dropped for lack of room.
-    dropped: AtomicU64,
-    /// How many devices have pushed into the ring. A new device starts the
-    /// stream over.
+    /// How many packets found no room. Only the producer adds.
+    no_room: AtomicU64,
+    /// How many messages the consumer dropped itself. Only it adds.
+    consumer_dropped: AtomicU64,
+    /// Counts the devices that have pushed into the ring: a new one starts
+    /// the stream over.
     generation: AtomicU32,
     /// Whether a device takes from the ring now. An output's producer pushes
     /// only then.
@@ -68,7 +70,8 @@ pub(crate) fn ring(room: usize) -> (Producer, Consumer) {
         mask: count.saturating_sub(1),
         head: AtomicUsize::new(0),
         tail: AtomicUsize::new(0),
-        dropped: AtomicU64::new(0),
+        no_room: AtomicU64::new(0),
+        consumer_dropped: AtomicU64::new(0),
         generation: AtomicU32::new(0),
         reading: AtomicBool::new(false),
     });
@@ -93,7 +96,7 @@ impl Producer {
             return;
         };
         if head.wrapping_sub(tail) > ring.mask {
-            ring.dropped.fetch_add(1, Ordering::Relaxed);
+            ring.no_room.fetch_add(1, Ordering::Relaxed);
             return;
         }
         slot.at.store(at.nanos(), Ordering::Relaxed);
@@ -122,9 +125,17 @@ impl Producer {
         self.0.reading.load(Ordering::Acquire)
     }
 
-    /// Returns how many packets have been dropped for lack of room.
+    /// How many packets were dropped since the ring was made: see
+    /// [`Consumer::dropped`].
     pub(crate) fn dropped(&self) -> u64 {
-        self.0.dropped.load(Ordering::Relaxed)
+        self.0.dropped()
+    }
+}
+
+impl Ring {
+    fn dropped(&self) -> u64 {
+        let no_room = self.no_room.load(Ordering::Relaxed);
+        no_room.saturating_add(self.consumer_dropped.load(Ordering::Relaxed))
     }
 }
 
@@ -140,16 +151,10 @@ impl Consumer {
         self.0.reading.store(reading, Ordering::Release);
     }
 
-    /// Marks the ring read by a device until the guard this returns drops,
-    /// however the device's thread ends, so the writer pushes into no ring
-    /// nobody reads.
-    #[cfg_attr(
-        all(not(any(windows, all(target_os = "linux", not(miri)))), not(test)),
-        expect(
-            dead_code,
-            reason = "only a backend's output reads its ring, and this system has none"
-        )
-    )]
+    /// Marks the ring as read by a device until the returned guard drops.
+    /// A device's thread holds the guard, so the mark ends when the thread
+    /// does, however it ends, and the writer never pushes into a ring that
+    /// nothing reads.
     pub(crate) fn reading(&self) -> Reading {
         self.set_reading(true);
         Reading(Arc::clone(&self.0))
@@ -164,17 +169,31 @@ impl Consumer {
         ring.tail.store(head, Ordering::Release);
     }
 
-    /// Counts a message that the consumer had no room for, with the packets
-    /// that a full ring drops.
+    /// Counts a message the consumer dropped itself, a device's refusal or
+    /// a SysEx it could not send whole, among those
+    /// [`dropped`](Self::dropped) counts.
     #[cfg_attr(
-        all(not(any(windows, all(target_os = "linux", not(miri)))), not(test)),
+        all(not(hapto_backend), not(test)),
         expect(
             dead_code,
             reason = "only a backend's output counts what it drops, and this system has none"
         )
     )]
     pub(crate) fn count_dropped(&self) {
-        self.0.dropped.fetch_add(1, Ordering::Relaxed);
+        self.0.consumer_dropped.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// How many packets found no room since the ring was made: the drops
+    /// the producer counted, which a SysEx that spanned one lost a part to.
+    #[cfg_attr(
+        all(not(hapto_backend), not(test)),
+        expect(
+            dead_code,
+            reason = "only a backend's output joins a SysEx, and this system has none"
+        )
+    )]
+    pub(crate) fn no_room(&self) -> u64 {
+        self.0.no_room.load(Ordering::Relaxed)
     }
 
     /// Returns the oldest packet not taken yet, with its timestamp.
@@ -244,21 +263,15 @@ impl Consumer {
         self.0.generation.load(Ordering::Acquire)
     }
 
-    /// Returns how many packets have been dropped for lack of room.
+    /// How many packets were dropped since the ring was made: those that
+    /// found no room, and the messages the consumer dropped itself.
     pub(crate) fn dropped(&self) -> u64 {
-        self.0.dropped.load(Ordering::Relaxed)
+        self.0.dropped()
     }
 }
 
 /// A ring marked read by a device while it lives: see
 /// [`Consumer::reading`].
-#[cfg_attr(
-    all(not(any(windows, all(target_os = "linux", not(miri)))), not(test)),
-    expect(
-        dead_code,
-        reason = "only a backend's output reads its ring, and this system has none"
-    )
-)]
 pub(crate) struct Reading(Arc<Ring>);
 
 impl Drop for Reading {
@@ -298,6 +311,16 @@ mod tests {
             again += 1;
         }
         assert_eq!((again, consumer.dropped()), (4, 2));
+    }
+
+    #[test]
+    fn what_found_no_room_is_counted_apart_from_what_the_consumer_dropped() {
+        let (mut producer, consumer) = ring(1);
+        producer.push(Instant::from_nanos(0), packet(0));
+        producer.push(Instant::from_nanos(1), packet(1));
+        consumer.count_dropped();
+        assert_eq!((consumer.no_room(), consumer.dropped()), (1, 2));
+        assert_eq!(producer.dropped(), 2);
     }
 
     #[test]

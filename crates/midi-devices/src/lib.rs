@@ -2,27 +2,27 @@
 //! runs a plugin in place of a host.
 //!
 //! [`Devices`] is the system's list, on the main thread: each [`Device`] is
-//! named by a [`DeviceId`] that survives the system's renumbering, and a
-//! [`tick`](Devices::tick) tells what came and went. [`inputs`] makes the
+//! identified by a [`DeviceId`] that survives the system's renumbering, and
+//! a [`tick`](Devices::tick) tells what came and went. [`inputs`] makes the
 //! app's MIDI in: [`Inputs`] opens devices on the main thread, and
-//! [`InputsReader`] reads every one into each block on the audio thread,
-//! a MIDI 1.0 device's merged on group 1 as a host hands a plugin its MIDI,
-//! at frames, stamped on one [`Instant`] clock. [`outputs`] makes the app's
-//! MIDI out: [`Outputs`] opens devices on the main thread, and
-//! [`OutputsWriter`] hands each block's MIDI to every one on the audio
-//! thread, sent by a thread of the device's own as soon as its block has
-//! played, or each message at its frame's time, as [`Timing`] says. A
-//! device's messages travel between the system's thread and the audio
-//! thread through a ring that never waits, locks or allocates, either way.
+//! [`InputsReader`] reads every one into each block on the audio thread, at
+//! frames, stamped on one [`Instant`] clock, with every MIDI 1.0 device's
+//! messages merged on group 1 as a host hands a plugin its MIDI.
+//! [`outputs`] makes the app's MIDI out: [`Outputs`] opens devices on the
+//! main thread, and [`OutputsWriter`] hands each block's MIDI to every one
+//! on the audio thread, sent by a thread of the device's own as soon as its
+//! block has played, or each message at its frame's time, as [`Timing`]
+//! says. A device's messages travel between the system's thread and the
+//! audio thread through a ring that never waits, locks or allocates, either
+//! way.
 //!
 //! A device's messages pass between the system's thread and the audio thread
 //! through a ring that never waits, locks or allocates, either way.
 //!
-//! The backends are the systems Hapto runs on: WinMM, MIDI 1.0 on Windows,
-//! and ALSA's sequencer on Linux, MIDI 1.0 and, where the kernel and
-//! alsa-lib have it, MIDI 2.0 in. Open: Windows MIDI Services and CoreMIDI;
-//! on a system with no backend the list is empty and no input or output
-//! opens.
+//! The backends are WinMM on Windows, MIDI 1.0 alone, and ALSA's sequencer
+//! on Linux, MIDI 1.0 both ways and MIDI 2.0 in where the kernel and
+//! alsa-lib support UMP. Open: Windows MIDI Services and CoreMIDI. On a
+//! system with no backend the list is empty and no input or output opens.
 //!
 //! # Examples
 //!
@@ -47,8 +47,8 @@
 // The nightly real-time sanitizer lane marks the audio thread's calls.
 #![cfg_attr(hapto_rtsan, feature(sanitize))]
 
-// Miri cannot call into alsa-lib: under it, Linux has no backend.
-#[cfg(all(target_os = "linux", not(miri)))]
+// Each backend where build.rs sets `hapto_backend`, and `none` elsewhere.
+#[cfg(all(target_os = "linux", hapto_backend))]
 #[allow(
     unsafe_code,
     reason = "a system boundary: every block says why it holds"
@@ -59,7 +59,7 @@ mod devices;
 mod error;
 mod id;
 mod inputs;
-#[cfg(not(any(windows, all(target_os = "linux", not(miri)))))]
+#[cfg(not(hapto_backend))]
 mod none;
 mod outputs;
 mod ports;
@@ -71,9 +71,9 @@ mod ring;
 )]
 mod winmm;
 
-#[cfg(all(target_os = "linux", not(miri)))]
+#[cfg(all(target_os = "linux", hapto_backend))]
 use alsa as backend;
-#[cfg(not(any(windows, all(target_os = "linux", not(miri)))))]
+#[cfg(not(hapto_backend))]
 use none as backend;
 #[cfg(windows)]
 use winmm as backend;

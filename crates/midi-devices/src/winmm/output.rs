@@ -29,8 +29,8 @@ use super::{CLOSE_TRIES, UNPREPARE_TRIES, Waits, check};
 use crate::Instant;
 use crate::error::OpenError;
 use crate::id::{Device, Direction};
-use crate::outputs::Sysex as Joining;
-use crate::ring::Consumer;
+use crate::outputs::OutgoingSysex;
+use crate::ring::{Consumer, Reading};
 
 /// How long the output's thread waits at a time for the driver to send a
 /// SysEx.
@@ -69,14 +69,14 @@ struct Header(MIDIHDR);
 struct Sysex {
     header: Box<Header>,
     /// The SysEx joined: the driver reads its bytes in place.
-    joining: Joining,
+    outgoing: OutgoingSysex,
 }
 
 impl Sysex {
     fn new() -> Sysex {
         Sysex {
             header: Box::new(Header(MIDIHDR::default())),
-            joining: Joining::new(),
+            outgoing: OutgoingSysex::new(),
         }
     }
 
@@ -84,9 +84,9 @@ impl Sysex {
     /// resets the device, and returns whether it was sent.
     fn send(&mut self, handle: Handle, shared: &Shared) -> bool {
         let size = size_of::<MIDIHDR>() as u32;
-        let length = u32::try_from(self.joining.bytes.len()).unwrap_or(u32::MAX);
+        let length = u32::try_from(self.outgoing.bytes.len()).unwrap_or(u32::MAX);
         self.header.0 = MIDIHDR {
-            lpData: PSTR(self.joining.bytes.as_mut_ptr()),
+            lpData: PSTR(self.outgoing.bytes.as_mut_ptr()),
             dwBufferLength: length,
             dwBytesRecorded: length,
             ..MIDIHDR::default()
@@ -96,7 +96,7 @@ impl Sysex {
         // bytes. Neither moves until it is unprepared below.
         let prepared = unsafe { midiOutPrepareHeader(handle.0, header, size) };
         if prepared != MMSYSERR_NOERROR {
-            self.joining.bytes.clear();
+            self.outgoing.bytes.clear();
             return false;
         }
         // SAFETY: as above, now prepared.
@@ -120,7 +120,7 @@ impl Sysex {
                     let header =
                         std::mem::replace(&mut self.header, Box::new(Header(MIDIHDR::default())));
                     Box::leak(header);
-                    std::mem::take(&mut self.joining.bytes).leak();
+                    std::mem::take(&mut self.outgoing.bytes).leak();
                     shared.left.store(true, Ordering::Release);
                     return false;
                 }
@@ -134,7 +134,7 @@ impl Sysex {
         // SAFETY: the handle is open, and the driver is done with the
         // header.
         Waits(UNPREPARE_TRIES).retry(|| unsafe { midiOutUnprepareHeader(handle.0, header, size) });
-        self.joining.bytes.clear();
+        self.outgoing.bytes.clear();
         sent == MMSYSERR_NOERROR
     }
 }
@@ -175,14 +175,14 @@ impl fmt::Debug for Output {
 }
 
 impl Output {
-    /// Opens `device` to send what `consumer`'s ring holds, with `signal` to
-    /// wake its thread.
-    ///
-    /// On an error, the consumer comes back, unless the thread failed to
-    /// start and took it.
+    /// Opens `device` to send what `consumer`'s ring holds, which `reading`
+    /// marks read, its thread woken by `signal`. A refusal hands the
+    /// consumer back, except where the sending thread could not start: the
+    /// failed start dropped it.
     pub(crate) fn open(
         device: &Device,
         consumer: Consumer,
+        reading: Reading,
         signal: Arc<Signal>,
     ) -> Result<Output, (OpenError, Option<Consumer>)> {
         let Some(index) = super::index_of(Direction::Output, device.id()) else {
@@ -214,9 +214,6 @@ impl Output {
         }
         let handle = Handle(handle);
         let (thread_shared, thread_signal) = (Arc::clone(&shared), Arc::clone(&signal));
-        // Read from here, so the next block's MIDI is the output's however
-        // soon its thread starts, until the thread ends however it ends.
-        let reading = consumer.reading();
         let started = thread::Builder::new()
             .name("hapto midi out".to_owned())
             .spawn(move || {
@@ -307,13 +304,8 @@ fn send(handle: Handle, shared: &Shared, signal: &Signal, mut consumer: Consumer
             continue;
         };
         let event = Event::new(0, words);
-        let joined = sysex.joining.join(&event, consumer.dropped());
-        for _ in 0..joined.dropped {
+        if sysex.outgoing.join(&event, &consumer) && !sysex.send(handle, shared) {
             consumer.count_dropped();
-        }
-        if joined.whole && !sysex.send(handle, shared) {
-            consumer.count_dropped();
-            sysex.joining.count();
         }
         if event.message_type() != MessageType::SYSEX7 {
             short(handle, shared, &bytes);

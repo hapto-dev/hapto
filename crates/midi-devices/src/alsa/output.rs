@@ -1,43 +1,41 @@
-//! One output, open: a client of the app's own subscribed to by the
-//! device's port, and the thread that sends what the audio thread hands it,
-//! each message at its time.
+//! An open output: a sequencer client of the app's own, its port connected
+//! to the device's, and the thread that sends the device what the audio
+//! thread hands it, each message at its time.
 //!
 //! The audio thread never calls alsa-lib. It pushes packets into the
 //! output's ring, each stamped with when it is due, and sets the output's
-//! signal; the output's own thread waits until the next is due or the
-//! signal wakes it, then sends what is due, at once. The writer has
-//! downgraded every packet to MIDI 1.0, so the client is a MIDI 1.0 one.
+//! signal. The output's own thread waits until the next packet is due or
+//! the signal wakes it, then sends what is due as fast as the pace below
+//! allows. The writer has downgraded every packet to MIDI 1.0, so the
+//! client is a MIDI 1.0 one.
 //!
-//! The kernel hands a card's port each event whole and drops one that does
-//! not fit the room left in the device's buffer, a page by default. So a
-//! SysEx goes out in pieces, and everything goes out paced: no more than
+//! The kernel hands a card's port each event whole, and drops an event that
+//! does not fit the room left in the device's buffer, a page by default. So
+//! a SysEx goes out in pieces, and everything goes out paced: no more than
 //! half a page ahead of what a MIDI cable would have carried by then.
 //!
 //! A close sends nothing. The sequencer shares a device among apps, so
-//! turning its notes off would cut another app's too: the notes an app
-//! leaves on are its own to end, as through every Linux MIDI library.
+//! turning its notes off would cut off another app's notes too: as with
+//! midir and `RtMidi`, ending the notes an app leaves on is the app's own
+//! job.
 
-use std::fmt;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use hapto_ump::{Bytes, Event, MessageType};
 
-use super::seq::{
-    ANNOUNCE, Address, CAP_NO_EXPORT, CAP_READ, CAP_WRITE, Client, Incoming, Parser, Streams,
-    Version,
-};
-use super::signal::{Signal, wait};
+use super::seq::{ANNOUNCE, Address, Caps, Client, Incoming, Parser, SendError, Streams, Version};
+use super::signal::Signal;
+use super::worker::{Waiter, Worker};
 use crate::Instant;
 use crate::error::OpenError;
 use crate::id::{Device, Direction};
-use crate::outputs::Sysex;
-use crate::ring::Consumer;
+use crate::outputs::OutgoingSysex;
+use crate::ring::{Consumer, Reading};
 
-/// How fast a port drains what it is sent, at most as far as anyone can
-/// tell: a MIDI cable's 31,250 baud, ten bits a byte.
+/// The rate a port is taken to drain what it is sent, since the backend
+/// cannot tell a port's own: a MIDI cable's 31,250 baud, ten bits a byte.
 const BYTES_PER_SECOND: f64 = 3125.0;
 /// How far ahead of the cable an output may send: half the page the kernel
 /// gives a card's port.
@@ -45,100 +43,55 @@ const AHEAD: f64 = 2048.0;
 /// The longest piece of a SysEx sent as one event.
 const PIECE: usize = 256;
 
-/// What the output shares with its thread.
-#[derive(Debug)]
-struct Shared {
-    /// Tells the thread to end.
-    stopping: AtomicBool,
-    /// Set when the System client says the device's port went: it left.
-    left: AtomicBool,
-}
-
 /// An output, sending what its ring holds while open. It closes as it
 /// drops.
+#[derive(Debug)]
 pub(crate) struct Output {
-    shared: Arc<Shared>,
-    signal: Arc<Signal>,
-    /// Hands the ring's consumer back as it ends; `None` once closed.
-    thread: Option<JoinHandle<Consumer>>,
-}
-
-impl fmt::Debug for Output {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Output")
-            .field("open", &self.thread.is_some())
-            .finish_non_exhaustive()
-    }
+    /// Set once the device's port is gone.
+    left: Arc<AtomicBool>,
+    worker: Worker<Consumer>,
 }
 
 impl Output {
-    /// Opens `device` to send what `consumer`'s ring holds, its thread
-    /// woken by `signal`. On a refusal the consumer comes back, unless the
-    /// thread that would send could not start, which took it.
+    /// Opens `device` to send what `consumer`'s ring holds, which `reading`
+    /// marks read, its thread woken by `signal`. A refusal hands the
+    /// consumer back, except where the sending thread could not start: the
+    /// failed start dropped it.
     pub(crate) fn open(
         device: &Device,
         consumer: Consumer,
+        reading: Reading,
         signal: Arc<Signal>,
     ) -> Result<Output, (OpenError, Option<Consumer>)> {
         let Some(listed) = super::find(Direction::Output, device.id()) else {
             return Err((OpenError::Gone, Some(consumer)));
         };
-        // Without an eventfd the thread could not be woken.
-        if signal.poll_fd().is_none() {
-            return Err((OpenError::NoMemory, Some(consumer)));
-        }
-        let sender = match Sender::subscribe(listed.address, device) {
+        let sender = match Sender::open(listed.address, device) {
             Ok(sender) => sender,
             Err(why) => return Err((why, Some(consumer))),
         };
-        let shared = Arc::new(Shared {
-            stopping: AtomicBool::new(false),
-            left: AtomicBool::new(false),
-        });
-        let (thread_shared, thread_signal) = (Arc::clone(&shared), Arc::clone(&signal));
-        // Read from here, so the next block's MIDI is the output's however
-        // soon its thread starts, until the thread ends however it ends.
-        let reading = consumer.reading();
-        let started = thread::Builder::new()
-            .name("hapto midi out".to_owned())
-            .spawn(move || {
-                let _reading = reading;
-                send(sender, &thread_shared, &thread_signal, consumer)
-            });
-        match started {
-            Ok(thread) => Ok(Output {
-                shared,
-                signal,
-                thread: Some(thread),
-            }),
-            Err(_) => Err((OpenError::NoMemory, None)),
-        }
+        let Some(waiter) = Waiter::new(sender.line.client.poll_fds(), signal) else {
+            return Err((OpenError::NoMemory, Some(consumer)));
+        };
+        let left = Arc::new(AtomicBool::new(false));
+        let thread_left = Arc::clone(&left);
+        Worker::spawn("hapto midi out", waiter, move |waiter| {
+            let _reading = reading;
+            send(sender, consumer, &thread_left, waiter)
+        })
+        .map(|worker| Output { left, worker })
+        .ok_or((OpenError::NoMemory, None))
     }
 
     /// Whether the device left while open.
     pub(crate) fn has_left(&self) -> bool {
-        self.shared.left.load(Ordering::Acquire)
+        self.left.load(Ordering::Acquire)
     }
 
     /// Closes the device and gives its ring's consumer back, with what it
     /// had not sent dropped.
     pub(crate) fn close(mut self) -> Option<Consumer> {
-        self.shut()
-    }
-
-    /// Ends the thread, which closes the client, and takes the consumer
-    /// back from it.
-    fn shut(&mut self) -> Option<Consumer> {
-        let thread = self.thread.take()?;
-        self.shared.stopping.store(true, Ordering::Release);
-        self.signal.set();
-        thread.join().ok()
-    }
-}
-
-impl Drop for Output {
-    fn drop(&mut self) {
-        self.shut();
+        self.worker.stop()
     }
 }
 
@@ -153,188 +106,182 @@ enum Next {
     After(Duration),
 }
 
-/// The output's thread: it sends each packet once its time comes, until
+/// Runs the output's thread: sends each packet once its time comes, until
 /// the output ends it, then hands the ring back.
-fn send(mut sender: Sender, shared: &Shared, signal: &Signal, mut consumer: Consumer) -> Consumer {
-    let mut sysex = Sysex::new();
-    // How much of a SysEx joined has gone out, while some has not.
-    let mut sent: Option<usize> = None;
-    let mut fds = sender.client.poll_fds();
-    fds.extend(signal.poll_fd());
-    // The System client's word that the device left comes as an event to
-    // read, which only a wake brings: it is looked for once after each.
-    let mut woke = true;
-    while !shared.stopping.load(Ordering::Acquire) {
-        if woke && sender.has_left() {
-            shared.left.store(true, Ordering::Release);
-        }
-        woke = false;
-        let now = Instant::now();
-        let next = match sent {
-            Some(from) => sender.piece(&mut sysex, &mut sent, from, now, &mut consumer),
-            None => match consumer.peek() {
-                None => Next::Signal,
-                Some((due, _)) if due > now => Next::After(due.since(now)),
-                Some((_, words)) => sender.packet(words, now, &mut consumer, &mut sysex, &mut sent),
-            },
-        };
-        match next {
+fn send(
+    mut sender: Sender,
+    mut consumer: Consumer,
+    left: &AtomicBool,
+    mut waiter: Waiter,
+) -> Consumer {
+    while !waiter.is_stopping() {
+        let heard = match sender.step(Instant::now(), &mut consumer) {
             Next::Now => continue,
-            Next::Signal => wait(&mut fds, None),
-            Next::After(timeout) => wait(&mut fds, Some(timeout)),
+            Next::Signal => waiter.wait(None),
+            Next::After(timeout) => waiter.wait(Some(timeout)),
+        };
+        if heard && sender.heard_left() {
+            left.store(true, Ordering::Release);
         }
-        woke = true;
-        signal.clear();
     }
     consumer
 }
 
-/// What the output's thread sends with.
+/// What the output's thread sends with, and the SysEx it is sending.
 struct Sender {
-    client: Client,
-    parser: Parser,
-    port: u8,
-    device: Address,
-    pace: Pace,
+    line: Line,
+    /// The device's port.
+    address: Address,
+    sysex: OutgoingSysex,
+    /// How many bytes of the joined SysEx have gone out, while some have
+    /// not.
+    sending: Option<usize>,
 }
 
 impl Sender {
-    /// A MIDI 1.0 client which hears the System client's announcements,
-    /// then has the device at `device` subscribe to its port, so it cannot
-    /// miss the device leave. No other app may subscribe to its port.
-    fn subscribe(device: Address, opened: &Device) -> Result<Sender, OpenError> {
-        let client = Client::open(Streams::Duplex, Version::Legacy)?.only_from(ANNOUNCE);
-        let name = format!("out: {}", opened.name());
-        let port = client.port(&name, CAP_READ | CAP_WRITE | CAP_NO_EXPORT)?;
+    /// Opens a MIDI 1.0 client whose port hears the System client's
+    /// announcements, then connects the port to the device at `address`,
+    /// so it cannot miss the device leaving.
+    fn open(address: Address, device: &Device) -> Result<Sender, OpenError> {
+        let client = Client::open(Streams::Duplex, Version::Legacy)?.for_device(address);
+        let caps = Caps::READ | Caps::WRITE | Caps::NO_EXPORT;
+        let port = client.port(&format!("out: {}", device.name()), caps)?;
         client.connect_from(port, ANNOUNCE)?;
-        client.connect_to(port, device)?;
+        client.connect_to(port, address)?;
         let parser = Parser::new().ok_or(OpenError::NoMemory)?;
         Ok(Sender {
-            client,
-            parser,
-            port,
-            device,
-            pace: Pace::new(),
+            line: Line {
+                client,
+                parser,
+                port,
+                pace: Pace::new(),
+            },
+            address,
+            sysex: OutgoingSysex::new(),
+            sending: None,
         })
     }
 
-    /// Whether the System client said the device went, since the last look.
-    fn has_left(&mut self) -> bool {
-        let device = self.device;
-        let (mut left, mut overran) = (false, false);
-        self.client
-            .read(&mut self.parser, |incoming| match incoming {
-                Incoming::Announced(change) if change.ends(device) => left = true,
-                Incoming::Overrun => overran = true,
-                _ => {}
-            });
-        // What was dropped may have held the word that the device left.
-        left || (overran && !self.client.has_port(device))
+    /// Whether the client heard, since the last look, that the device left.
+    fn heard_left(&mut self) -> bool {
+        let address = self.address;
+        let mut left = false;
+        let Line { client, parser, .. } = &mut self.line;
+        client.read(parser, |incoming| {
+            if let Incoming::Announced(change) = incoming
+                && change.ends(address)
+            {
+                left = true;
+            }
+        });
+        left
     }
 
-    /// Sends the packet `words` at the ring's head, or joins it into
-    /// `sysex`, and takes it from the ring once done with it.
-    fn packet(
-        &mut self,
-        words: [u32; 4],
-        now: Instant,
-        consumer: &mut Consumer,
-        sysex: &mut Sysex,
-        sent: &mut Option<usize>,
-    ) -> Next {
+    /// Sends the next piece of the SysEx under way, or the packet at the
+    /// ring's head once it is due.
+    fn step(&mut self, now: Instant, consumer: &mut Consumer) -> Next {
+        if let Some(from) = self.sending {
+            return self.piece(from, now, consumer);
+        }
+        match consumer.peek() {
+            None => Next::Signal,
+            Some((due, _)) if due > now => Next::After(due.since(now)),
+            Some((_, words)) => self.packet(words, now, consumer),
+        }
+    }
+
+    /// Sends the packet `words` at the ring's head, or joins it into the
+    /// SysEx, and takes it from the ring once done with it.
+    fn packet(&mut self, words: [u32; 4], now: Instant, consumer: &mut Consumer) -> Next {
         // The writer pushes only what MIDI 1.0's bytes carry.
         let Some(bytes) = Bytes::of(words) else {
             consumer.pop();
             return Next::Now;
         };
         let event = Event::new(0, words);
-        if event.message_type() == MessageType::SYSEX7 {
-            consumer.pop();
-            let joined = sysex.join(&event, consumer.dropped());
-            for _ in 0..joined.dropped {
-                consumer.count_dropped();
+        if event.message_type() != MessageType::SYSEX7 {
+            match self.line.send(Outgoing::Message(&bytes), now) {
+                Sent::Went => {}
+                Sent::Wait(wait) => return Next::After(wait),
+                Sent::Refused => consumer.count_dropped(),
             }
-            if joined.whole {
-                *sent = Some(0);
-            }
-            return Next::Now;
         }
-        let sent = match self.out(&bytes, false, now) {
-            Ok(Next::Now) => true,
-            Ok(wait) => return wait,
-            Err(()) => false,
-        };
         consumer.pop();
-        // Joined too, as every packet is: a message on a SysEx's group ends
-        // the SysEx under way there.
-        let joined = sysex.join(&event, consumer.dropped());
-        for _ in 0..joined.dropped {
-            consumer.count_dropped();
-        }
-        if !sent {
-            consumer.count_dropped();
-            sysex.count();
+        if self.sysex.join(&event, consumer) {
+            self.sending = Some(0);
         }
         Next::Now
     }
 
-    /// Sends the next piece of the SysEx joined, from `from`.
-    fn piece(
-        &mut self,
-        sysex: &mut Sysex,
-        sent: &mut Option<usize>,
-        from: usize,
-        now: Instant,
-        consumer: &mut Consumer,
-    ) -> Next {
-        let rest = sysex.bytes.get(from..).unwrap_or(&[]);
+    /// Sends the next piece of the joined SysEx, from byte `from`.
+    fn piece(&mut self, from: usize, now: Instant, consumer: &Consumer) -> Next {
+        let bytes = &self.sysex.bytes;
+        let rest = bytes.get(from..).unwrap_or(&[]);
         let piece = rest.get(..PIECE).unwrap_or(rest);
-        match self.out(piece, true, now) {
-            Ok(Next::Now) => {
+        match self.line.send(Outgoing::Piece(piece), now) {
+            Sent::Went => {
                 let next = from.saturating_add(piece.len());
-                *sent = (next < sysex.bytes.len()).then_some(next);
-                Next::Now
+                self.sending = (next < bytes.len()).then_some(next);
             }
-            Ok(wait) => wait,
-            Err(()) => {
+            Sent::Wait(wait) => return Next::After(wait),
+            Sent::Refused => {
                 consumer.count_dropped();
-                sysex.count();
-                *sent = None;
-                Next::Now
+                self.sending = None;
             }
         }
+        Next::Now
     }
+}
 
-    /// Sends `bytes`, a whole message, or a piece of a SysEx if `sysex`,
-    /// once the pace allows it: `Ok(Next::Now)` once it went, how long to
-    /// wait while the device has no room yet, and an error for a send
-    /// refused for good.
-    fn out(&mut self, bytes: &[u8], sysex: bool, now: Instant) -> Result<Next, ()> {
-        if bytes.is_empty() {
-            return Ok(Next::Now);
-        }
+/// The client an output sends with, and the pace it keeps.
+struct Line {
+    client: Client,
+    parser: Parser,
+    port: u8,
+    pace: Pace,
+}
+
+/// What one send is.
+#[derive(Clone, Copy)]
+enum Outgoing<'a> {
+    /// A whole MIDI 1.0 message other than a SysEx.
+    Message(&'a [u8]),
+    /// A piece of a SysEx.
+    Piece(&'a [u8]),
+}
+
+/// What came of a send.
+enum Sent {
+    Went,
+    /// The device has no room yet: the send waits this long.
+    Wait(Duration),
+    /// Refused for good.
+    Refused,
+}
+
+impl Line {
+    /// Sends `outgoing` once the pace allows it.
+    fn send(&mut self, outgoing: Outgoing<'_>, now: Instant) -> Sent {
+        let (Outgoing::Message(bytes) | Outgoing::Piece(bytes)) = outgoing;
         if let Some(wait) = self.pace.room_in(bytes.len(), now) {
-            return Ok(Next::After(wait));
+            return Sent::Wait(wait);
         }
-        let sent = if sysex {
-            self.client.send_sysex(self.port, bytes)
-        } else {
-            self.client.send(&mut self.parser, self.port, bytes)
+        let sent = match outgoing {
+            Outgoing::Message(message) => self.client.send(&mut self.parser, self.port, message),
+            Outgoing::Piece(piece) => self.client.send_sysex(self.port, piece),
         };
         match sent {
             Ok(()) => {
                 self.pace.sent(bytes.len());
-                Ok(Next::Now)
+                Sent::Went
             }
-            // The device's buffer is full after all: it waits for room and
-            // goes again.
-            Err(libc::ENOMEM | libc::EAGAIN) => {
+            // The device's buffer is full after all: the pace takes the
+            // port as full, and the send waits for it to drain.
+            Err(SendError::Full) => {
                 self.pace.fill(now);
-                Ok(Next::After(
-                    self.pace.room_in(bytes.len(), now).unwrap_or_default(),
-                ))
+                Sent::Wait(self.pace.room_in(bytes.len(), now).unwrap_or_default())
             }
-            Err(_) => Err(()),
+            Err(SendError::Refused) => Sent::Refused,
         }
     }
 }
@@ -367,7 +314,7 @@ impl Pace {
         self.held += bytes as f64;
     }
 
-    /// Takes the port as full at `now`.
+    /// Treats the port as full at `now`.
     fn fill(&mut self, now: Instant) {
         self.drain(now);
         self.held = self.held.max(AHEAD);
@@ -385,7 +332,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_pace_lets_half_a_page_ahead_of_a_cable_and_no_more() {
+    fn the_pace_keeps_a_busy_port_half_a_page_ahead_of_a_cable() {
         let start = Instant::from_nanos(1_000_000_000);
         let mut pace = Pace {
             held: 0.0,
