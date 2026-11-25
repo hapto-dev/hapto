@@ -133,16 +133,19 @@ const fn table<P: Plugin>(create: Create) -> HaptoPlugin {
     }
 }
 
-/// Exports a [`Plugin`] through the C interface: the one symbol `hapto_plugin`.
+/// Exports a [`Plugin`] through the C interface, as the one symbol
+/// `hapto_plugin`.
 ///
 /// Use it once, at the root of a crate built as a static library for the JUCE
-/// adapter. Keep it apart from `export_vst3!`: JUCE's own VST3 wrapper defines
-/// the symbols that one does. A binary links one plugin's exports, as two
-/// would define the same symbol: a tool that needs a plugin's facts runs the
-/// plugin's own test, as `cargo hapto juce` does. This macro refuses to build a
-/// plugin that
-/// declares no layout, or a crate built with `panic = "abort"`, under which a
-/// panic ends the host.
+/// adapter.
+///
+/// - Keep it apart from `export_vst3!`, because JUCE's own VST3 wrapper
+///   defines the same symbols.
+/// - A binary links one plugin's exports, because two would define the same
+///   symbol, so a tool that needs a plugin's facts runs the plugin's own
+///   test, as `cargo hapto juce` does.
+/// - It rejects a plugin that declares no layout, and a crate built with
+///   `panic = "abort"`, under which a panic ends the host.
 ///
 /// # Examples
 ///
@@ -598,13 +601,13 @@ unsafe extern "C" fn reset<P: Plugin>(pointer: *mut HaptoInstance) {
     }
 }
 
-/// Writes what the block sent into the caller's room, downgraded to MIDI
-/// 1.0 where the caller takes it alone, and answers how many it wrote.
-/// Past the room, a packet is dropped.
+/// Writes what the block sent into the caller's room, and returns how many
+/// packets it wrote.
 ///
-/// A downgrade drops what MIDI 1.0 has no message for, as [`Downgrade`]
-/// says, and the caller gets no count of it: its host could not take what
-/// was dropped.
+/// A packet past the room is dropped. For a caller that takes only MIDI 1.0,
+/// the packets are downgraded, which drops what MIDI 1.0 has no message for,
+/// as [`Downgrade`] says. The caller gets no count of it, because its host
+/// could not take it.
 ///
 /// # Safety
 ///
@@ -652,8 +655,8 @@ unsafe extern "C" fn process<P: Plugin>(
     else {
         return STATUS_CONTINUE;
     };
-    // SAFETY: the header's contract for `HaptoProcess`: each list, the
-    // channels' and `midi_in`, is null or holds its count of items for this
+    // SAFETY: by the header's contract for `HaptoProcess`, each list (the
+    // channels' and `midi_in`) is null or holds its count of items for this
     // call, as `lent` requires. The inputs are only read, so casting their
     // pointers to `*mut` writes nothing.
     let (inputs, outputs, midi_in) = unsafe {
@@ -663,7 +666,7 @@ unsafe extern "C" fn process<P: Plugin>(
             lent(block.midi_in, block.midi_in_count),
         )
     };
-    // Every block answers its count, so one that plays nothing answers 0.
+    // Every block writes its count, so a block that plays nothing writes 0.
     let mut written = 0;
     // SAFETY: the header's contract for `HaptoProcess`: each channel is null
     // or valid for `frames` floats (the outputs for writing too) until this
@@ -676,8 +679,8 @@ unsafe extern "C" fn process<P: Plugin>(
             outputs,
             |_| {},
             |into| into.extend(midi_in.iter().copied().map(Event::from)),
-            // The header's contract for `midi_out` is what `send_out`
-            // requires, within the block above.
+            // Inside this `unsafe` block, the header's contract for
+            // `midi_out` gives what `send_out` requires.
             |sent| written = send_out(block, sent),
         )
     };

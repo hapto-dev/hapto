@@ -1,6 +1,8 @@
-//! Decoding neither allocates nor frees: every kind of message, notes and
-//! their ids, a note's own messages, and a SysEx joined across packets; nor
-//! does reading a block's list whole and in parts, or sending.
+//! Tests that these neither allocate nor free:
+//! - Decoding every kind of message, notes and their ids, a note's own
+//!   messages and a SysEx joined across packets.
+//! - Reading a block's list whole and in parts.
+//! - Sending.
 
 hapto_testkit::install_alloc_gate!();
 
@@ -46,9 +48,9 @@ fn decoding_every_kind_of_packet_does_not_allocate() {
         }
         seen
     });
-    // Each round: twelve packets of one message each, the note-off's two,
-    // for the two notes on its key, and the SysEx once whole with its eight
-    // bytes; its first part and the clock are none.
+    // Per round, twelve packets give one message each, the note-off two for
+    // its key's two notes, and the whole SysEx one plus its eight bytes. The
+    // SysEx's first packet and the clock give none.
     assert_eq!(seen, 4 * (12 + 2 + 1 + 8));
 }
 
@@ -84,6 +86,6 @@ fn reading_a_block_and_sending_does_not_allocate() {
         }
         seen
     });
-    // The block's four messages, whole, then split two and two.
+    // The block's four messages, read whole and then in its two halves.
     assert_eq!(seen, 4 * 8);
 }

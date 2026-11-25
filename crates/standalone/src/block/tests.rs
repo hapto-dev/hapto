@@ -217,7 +217,7 @@ fn the_preview_is_what_a_player_cuts() {
 /// A block's length, and each of its packets' frame and first word.
 type Heard = (usize, Vec<(u32, u32)>);
 
-/// Keeps what MIDI each block carried.
+/// A renderer that keeps each block's MIDI.
 #[derive(Debug, Default, Clone)]
 struct Listener {
     blocks: Arc<Mutex<Vec<Heard>>>,
@@ -244,11 +244,11 @@ fn the_apps_midi_inputs_reach_the_plugin_in_its_blocks() {
     let (mut inputs, reader) = inputs(16);
     let mut player =
         Player::new(listener.clone(), Width::STEREO, 2, 48_000.0, 64, plan).with_midi(Some(reader));
-    // Long before any block: the first block's first frame, upgraded.
+    // Long before any block, so at the first block's first frame, upgraded.
     assert!(inputs.push(0, Instant::from_nanos(0), [0x2090_3C7F, 0, 0, 0]));
     assert!(inputs.push(4, Instant::from_nanos(1), [0x2090_3E7F, 0, 0, 0]));
     let mut buffer = vec![0.0_f32; 128 * 2];
-    // A second into the stream, well after the packets came.
+    // One second into the stream, well after the packets arrived.
     player.play_at(&mut buffer, Instant::from_nanos(1_000_000_000));
     let blocks = listener.blocks.lock().expect("not poisoned").clone();
     assert_eq!(blocks.len(), 2);
@@ -265,7 +265,7 @@ fn a_plugin_with_no_channels_is_given_each_blocks_frames_and_its_midi() {
         .with_midi(Some(reader));
     assert!(inputs.push(0, Instant::from_nanos(0), [0x2090_3C7F, 0, 0, 0]));
     let mut buffer = vec![9.0_f32; 128 * 2];
-    // A second into the stream, well after the packets came.
+    // One second into the stream, well after the packets arrived.
     player.play_at(&mut buffer, Instant::from_nanos(1_000_000_000));
     let blocks = listener.blocks.lock().expect("not poisoned").clone();
     assert_eq!(
@@ -279,8 +279,8 @@ fn a_plugin_with_no_channels_is_given_each_blocks_frames_and_its_midi() {
 #[test]
 fn each_block_of_a_buffer_reads_its_own_share_of_the_time_since_the_last() {
     let listener = Listener::default();
-    // Blocks as the device asks, of at most 1024: a buffer of 1920 frames,
-    // 40 ms at 48 kHz, plays as blocks of 1024 and 896.
+    // Blocks cut as the device requests frames, at most 1024 each, so a
+    // buffer of 1920 frames (40 ms at 48 kHz) plays as 1024 and 896.
     let plan = Plan::new(Blocks::Device, Signal::Silence);
     let (mut inputs, reader) = inputs(16);
     let mut player = Player::new(listener.clone(), Width::STEREO, 2, 48_000.0, 1024, plan)
@@ -288,8 +288,8 @@ fn each_block_of_a_buffer_reads_its_own_share_of_the_time_since_the_last() {
     let at = |millis: u64| Instant::from_nanos(millis * 1_000_000);
     let mut buffer = vec![0.0_f32; 1920 * 2];
     player.play_at(&mut buffer, at(1000));
-    // A note 10 ms into the next buffer's time, and one 35 ms in: the first
-    // block reads the first 21.3 ms, the second the rest.
+    // Notes 10 ms and 35 ms into the next buffer's time. The first block
+    // reads the first 21.3 ms, and the second the rest.
     assert!(inputs.push(0, at(1010), [0x2090_3C7F, 0, 0, 0]));
     assert!(inputs.push(0, at(1035), [0x2090_3E7F, 0, 0, 0]));
     player.play_at(&mut buffer, at(1040));
@@ -299,7 +299,8 @@ fn each_block_of_a_buffer_reads_its_own_share_of_the_time_since_the_last() {
     };
     assert_eq!((*first, *second), (1024, 896));
     let frame = |packets: &[(u32, u32)]| packets.first().map(|&(frame, _)| frame);
-    // 10 of the first block's 21.3 ms, and 13.7 of the second's 18.7.
+    // The notes are 10 ms into the first block's 21.3 ms and 13.7 ms into
+    // the second's 18.7 ms.
     assert!(
         frame(early).is_some_and(|f| f.abs_diff(480) <= 1),
         "{early:?}"
@@ -327,7 +328,7 @@ fn at_frames_each_blocks_midi_is_due_where_its_frames_fall_in_the_devices_buffer
     outputs.take(0);
     let mut player =
         Player::new(Sender, Width::STEREO, 2, 48_000.0, 64, plan).with_midi_out(Some(writer));
-    // One buffer of 256 frames: four blocks of 64, rendered back to back.
+    // One buffer of 256 frames, as four blocks of 64 rendered back to back.
     let before = Instant::now();
     let mut buffer = vec![0.0_f32; 256 * 2];
     player.play(&mut buffer);
@@ -335,7 +336,7 @@ fn at_frames_each_blocks_midi_is_due_where_its_frames_fall_in_the_devices_buffer
     let dues: Vec<u64> = taken.iter().map(|(at, _)| at.nanos()).collect();
     assert_eq!(dues.len(), 4);
     assert!(dues[0] >= before.nanos(), "the first when the device asked");
-    // 64 frames at 48 kHz apart, as their audio is, not as fast as they
+    // 64 frames at 48 kHz apart, as their audio is, not as close as they
     // were rendered.
     let gaps: Vec<u64> = dues.windows(2).map(|pair| pair[1] - pair[0]).collect();
     assert!(
@@ -356,11 +357,11 @@ fn at_frames_the_spacing_holds_across_a_buffers_parts_and_its_queue() {
         Player::new(Sender, Width::STEREO, 2, 48_000.0, 64, plan).with_midi_out(Some(writer));
     let frames = |count: u64| count * 1_000_000_000 / 48_000;
     let asked = 1_000_000_000;
-    // A buffer of 2048 frames, two parts of 1024: 32 blocks of 64.
+    // A buffer of 2048 frames in two parts of 1024, so 32 blocks of 64.
     let mut long = vec![0.0_f32; 2048 * 2];
     player.play_at(&mut long, Instant::from_nanos(asked));
-    // Two of 100 frames, each asked as the last ran out: the queue carries
-    // what a block of 64 leaves over.
+    // Two buffers of 100 frames, each requested as the last ran out, so the
+    // queue carries what a block of 64 leaves over.
     let mut short = vec![0.0_f32; 100 * 2];
     player.play_at(&mut short, Instant::from_nanos(asked + frames(2048)));
     player.play_at(&mut short, Instant::from_nanos(asked + frames(2148)));

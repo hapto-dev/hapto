@@ -6,8 +6,8 @@
 //! saved state, undo, the session, learn and the VST3 export. The guide
 //! `docs/first-plugin.md` walks through it.
 //!
-//! The page's Learn button arms learn on the gain, and the next controller a
-//! host or the app's MIDI inputs send drives it from then on.
+//! The page's Learn button arms learn on the gain, and from then on the next
+//! controller that a host or the app's MIDI inputs send drives it.
 
 #[cfg(feature = "vst3")]
 hapto_host::export_vst3!(Gain);
@@ -27,7 +27,7 @@ use hapto_undo::{Bound, History};
 
 const LABEL_KEY: &str = "label";
 const DEFAULT_LABEL: &str = "Untitled";
-/// Where the gain's MIDI learn is, as the page reads it.
+/// The gain's MIDI learn state, as the page reads it.
 const LEARN_OFF: &str = "off";
 const LEARN_ARMED: &str = "armed";
 const LEARN_LEARNED: &str = "learned";
@@ -65,10 +65,11 @@ pub struct Gain {
     params: GainParams,
     history: History,
     label: Value<String>,
-    /// Set by the page's Learn button; the next idle arms learn on the gain.
+    /// Set by the page's Learn button, so that the next idle arms learn on the
+    /// gain.
     learn_asked: Rc<Cell<bool>>,
-    /// Where the gain's MIDI learn is, for the page to show: `off`, `armed`
-    /// or `learned`.
+    /// The gain's MIDI learn state, `off`, `armed` or `learned`, for the page
+    /// to show.
     learn_state: Value<String>,
 }
 
@@ -110,14 +111,14 @@ impl Gain {
         self.parts.learn().mapping(self.params.gain.id()).is_some()
     }
 
-    /// Asks for learn on the gain at the next idle, as the page's Learn
+    /// Requests learn on the gain at the next idle, as the page's Learn
     /// button does.
     pub fn ask_to_learn(&self) {
         self.learn_asked.set(true);
     }
 
-    /// Where the gain's MIDI learn is, as the page shows it: `off`, `armed`
-    /// or `learned`.
+    /// Returns the gain's MIDI learn state, `off`, `armed` or `learned`, as
+    /// the page shows it.
     pub fn learn_state(&self) -> String {
         self.learn_state.get()
     }
@@ -161,7 +162,8 @@ impl Plugin for Gain {
         page::editor(self)
     }
 
-    /// Arms learn when the page asked, and tells the page where learn is.
+    /// Arms learn if the page requested it, and writes learn's state for the
+    /// page.
     fn idle(&mut self) {
         if self.learn_asked.take() {
             // Learn is on from `new`, and the gain is a parameter, so arming

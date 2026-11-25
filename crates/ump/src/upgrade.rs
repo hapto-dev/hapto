@@ -363,8 +363,8 @@ impl Upgrade {
         }
     }
 
-    /// Forgets everything held, as when a new source takes over the stream:
-    /// a high byte, an address, a bank. What was held is not sent.
+    /// Discards everything held, such as a high byte, an address or a bank,
+    /// as when a new source takes over the stream. Nothing held is sent.
     ///
     /// Thread: any. Allocates nothing.
     ///

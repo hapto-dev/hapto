@@ -1,9 +1,9 @@
-//! The values a message carries, each its own type: stored as MIDI sends
-//! them, and shown as musicians count them.
+//! The values that a message carries, each its own type, stored as MIDI
+//! sends them and shown as musicians count them.
 
 use std::fmt;
 
-/// A key, 0 to 127, shown by name: middle C, 60, is C4.
+/// A key, 0 to 127, shown by name, so middle C (60) is C4.
 ///
 /// # Examples
 ///
@@ -20,15 +20,15 @@ pub struct Key(u8);
 impl Key {
     /// Middle C.
     pub const C4: Key = Key(60);
-    /// A4: 440 Hz in equal temperament.
+    /// A4, at 440 Hz in equal temperament.
     pub const A4: Key = Key(69);
 
-    /// The key numbered `number` as MIDI sends it, masked to 7 bits.
+    /// Returns the key that MIDI numbers `number`, masked to 7 bits.
     pub const fn new(number: u8) -> Self {
         Key(number & 0x7F)
     }
 
-    /// Its number as MIDI sends it, 0 to 127.
+    /// Returns the number that MIDI sends, 0 to 127.
     pub const fn wire(self) -> u8 {
         self.0
     }
@@ -44,7 +44,7 @@ impl fmt::Display for Key {
     }
 }
 
-/// A UMP group: 0 to 15 as a packet carries it, shown 1 to 16.
+/// A UMP group, carried as 0 to 15 and shown as 1 to 16.
 ///
 /// # Examples
 ///
@@ -58,11 +58,11 @@ impl fmt::Display for Key {
 pub struct Group(u8);
 
 impl Group {
-    /// The first group, shown as 1: where MIDI from a source with no groups
+    /// The first group, shown as 1, where MIDI from a source without groups
     /// arrives.
     pub const FIRST: Group = Group(0);
 
-    /// The group a musician counts as `number`, 1 to 16.
+    /// Returns the group that a musician counts as `number`, 1 to 16.
     ///
     /// # Panics
     ///
@@ -72,17 +72,17 @@ impl Group {
         Group(number.saturating_sub(1))
     }
 
-    /// The group a packet carries as `wire`, 0 to 15, masked to 4 bits.
+    /// Returns the group that a packet carries as `wire`, masked to 4 bits.
     pub const fn from_wire(wire: u8) -> Self {
         Group(wire & 0xF)
     }
 
-    /// Its number as a packet carries it, 0 to 15.
+    /// Returns the number that a packet carries, 0 to 15.
     pub const fn wire(self) -> u8 {
         self.0
     }
 
-    /// Its place among the 16, 0 to 15, for indexing a table of them.
+    /// Returns the group's place among the 16, 0 to 15, for indexing a table.
     pub const fn index(self) -> usize {
         self.0 as usize
     }
@@ -94,8 +94,7 @@ impl fmt::Display for Group {
     }
 }
 
-/// A channel: 0 to 15 as a packet carries it, shown 1 to 16 as musicians
-/// count.
+/// A channel, carried as 0 to 15 and shown as 1 to 16, as musicians count.
 ///
 /// # Examples
 ///
@@ -113,7 +112,7 @@ impl Channel {
     /// The first channel, shown as 1.
     pub const FIRST: Channel = Channel(0);
 
-    /// The channel a musician counts as `number`, 1 to 16.
+    /// Returns the channel that a musician counts as `number`, 1 to 16.
     ///
     /// # Panics
     ///
@@ -123,18 +122,18 @@ impl Channel {
         Channel(number.saturating_sub(1))
     }
 
-    /// The channel a packet carries as `wire`, 0 to 15, masked to 4 bits.
+    /// Returns the channel that a packet carries as `wire`, masked to 4 bits.
     pub const fn from_wire(wire: u8) -> Self {
         Channel(wire & 0xF)
     }
 
-    /// Its number as a packet carries it, 0 to 15.
+    /// Returns the number that a packet carries, 0 to 15.
     pub const fn wire(self) -> u8 {
         self.0
     }
 
-    /// Its place among a group's 16 channels, 0 to 15, for indexing a table
-    /// of them.
+    /// Returns the channel's place among a group's 16, 0 to 15, for indexing
+    /// a table.
     pub const fn index(self) -> usize {
         self.0 as usize
     }
@@ -146,9 +145,9 @@ impl fmt::Display for Channel {
     }
 }
 
-/// Which of its stored sounds a program change asks an instrument for: 0 to
-/// 127 as MIDI sends it, and shown 1 to 128 as General MIDI numbers them, so
-/// program 1 is the Acoustic Grand Piano.
+/// The stored sound that a program change selects, sent as 0 to 127 and shown
+/// as 1 to 128 as General MIDI numbers them, so program 1 is the Acoustic
+/// Grand Piano.
 ///
 /// # Examples
 ///
@@ -162,7 +161,7 @@ impl fmt::Display for Channel {
 pub struct Program(u8);
 
 impl Program {
-    /// The program a keyboard shows as `number`, 1 to 128.
+    /// Returns the program that a keyboard shows as `number`, 1 to 128.
     ///
     /// # Panics
     ///
@@ -172,12 +171,12 @@ impl Program {
         Program(number.saturating_sub(1))
     }
 
-    /// The program MIDI sends as `wire`, 0 to 127, masked to 7 bits.
+    /// Returns the program that MIDI sends as `wire`, masked to 7 bits.
     pub const fn from_wire(wire: u8) -> Self {
         Program(wire & 0x7F)
     }
 
-    /// The number as MIDI sends it, 0 to 127.
+    /// Returns the number that MIDI sends, 0 to 127.
     pub const fn wire(self) -> u8 {
         self.0
     }
@@ -189,11 +188,11 @@ impl fmt::Display for Program {
     }
 }
 
-/// A value with a resting centre, from -1 to 1 and 0 at rest: a pitch bend,
-/// a brightness, a pan.
+/// A value from -1 to 1 that rests at 0, such as a pitch bend, a brightness or
+/// a pan.
 ///
-/// MIDI 2.0 sends one as 32 bits with its centre at `0x8000_0000`, which is
-/// exactly 0 here, as the lowest and highest values are exactly -1 and 1.
+/// MIDI 2.0 sends one as 32 bits, whose lowest value, centre (`0x8000_0000`)
+/// and highest value are exactly -1, 0 and 1 here.
 ///
 /// # Examples
 ///
@@ -201,7 +200,7 @@ impl fmt::Display for Program {
 /// use hapto_midi::Centred;
 ///
 /// assert_eq!(Centred::new(0.25).get(), 0.25);
-/// // Past the ends it stops at them.
+/// // A value past either end is clamped to it.
 /// assert_eq!(Centred::new(3.0).get(), 1.0);
 /// assert_eq!(Centred::default(), Centred::CENTRE);
 /// ```
@@ -209,16 +208,16 @@ impl fmt::Display for Program {
 pub struct Centred(f32);
 
 impl Centred {
-    /// At rest.
+    /// The resting value, 0.
     pub const CENTRE: Centred = Centred(0.0);
 
-    /// `value`, held to -1 to 1; a value that is not a number is the
-    /// centre.
+    /// Returns `value` clamped to -1 to 1, or the centre if `value` is NaN.
     pub fn new(value: f32) -> Self {
         Centred(held(value, -1.0, 1.0, 0.0))
     }
 
-    /// The value MIDI 2.0's 32 bits carry, its centre at `0x8000_0000`.
+    /// Returns the value that MIDI 2.0's 32 bits carry, centred at
+    /// `0x8000_0000`.
     pub(crate) fn from_bits(bits: u32) -> Self {
         const CENTRE: u32 = 0x8000_0000;
         let value = if bits >= CENTRE {
@@ -229,7 +228,7 @@ impl Centred {
         Centred(value as f32)
     }
 
-    /// The value, from -1 to 1.
+    /// Returns the value, from -1 to 1.
     pub fn get(self) -> f32 {
         self.0
     }
@@ -241,17 +240,19 @@ impl fmt::Display for Centred {
     }
 }
 
-/// A pedal's place, from 0, up, to 1, down: the damper, sostenuto and soft
-/// pedals. MIDI 1.0 reads a pedal as a switch, down from the middle on,
-/// which [`is_down`](Self::is_down) says, and a keyboard that sends half
-/// pedal sends the places between, which [`depth`](Self::depth) gives.
+/// The position of a damper, sostenuto or soft pedal, from 0 (up) to 1
+/// (down).
+///
+/// [`is_down`](Self::is_down) reads it as a MIDI 1.0 switch, down from the
+/// middle on, and [`depth`](Self::depth) returns the positions between that a
+/// half-pedal keyboard sends.
 ///
 /// # Examples
 ///
 /// ```
 /// use hapto_midi::Pedal;
 ///
-/// // Half pedal: down, as MIDI 1.0 reads a switch, and half way.
+/// // Half pedal is down as a MIDI 1.0 switch, and half way down.
 /// let half = Pedal::new(0.5);
 /// assert!(half.is_down());
 /// assert_eq!(half.depth(), 0.5);
@@ -261,23 +262,23 @@ impl fmt::Display for Centred {
 pub struct Pedal(f32);
 
 impl Pedal {
-    /// All the way up: the damper on the strings.
+    /// All the way up, with the dampers on the strings.
     pub const UP: Pedal = Pedal(0.0);
     /// All the way down.
     pub const DOWN: Pedal = Pedal(1.0);
 
-    /// A pedal `depth` down, held to 0 to 1; a depth that is not a number
-    /// is up.
+    /// Returns a pedal `depth` down, clamped to 0 to 1, or up if `depth` is
+    /// NaN.
     pub fn new(depth: f32) -> Self {
         Pedal(held(depth, 0.0, 1.0, 0.0))
     }
 
-    /// Whether it is down, as MIDI 1.0 reads a pedal: from the middle on.
+    /// Returns whether the pedal is down, from the middle on, as in MIDI 1.0.
     pub fn is_down(self) -> bool {
         self.0 >= 0.5
     }
 
-    /// How far down it is, from 0 to 1.
+    /// Returns how far down the pedal is, from 0 to 1.
     pub fn depth(self) -> f32 {
         self.0
     }
@@ -290,8 +291,8 @@ impl fmt::Display for Pedal {
     }
 }
 
-/// A pitch as a key with a fraction: A4 is 69.0, a quarter tone above it
-/// 69.5.
+/// A pitch as a key number with a fraction, so a quarter tone above A4 (69.0)
+/// is 69.5.
 ///
 /// # Examples
 ///
@@ -305,17 +306,17 @@ impl fmt::Display for Pedal {
 pub struct Pitch(f32);
 
 impl Pitch {
-    /// The pitch `semitones` above key 0.
+    /// Returns the pitch `semitones` above key 0.
     pub const fn new(semitones: f32) -> Self {
         Pitch(semitones)
     }
 
-    /// The pitch in semitones above key 0.
+    /// Returns the pitch in semitones above key 0.
     pub const fn semitones(self) -> f32 {
         self.0
     }
 
-    /// The frequency in Hz, with A4 at 440 Hz.
+    /// Returns the frequency in Hz, with A4 at 440 Hz.
     pub fn hz(self) -> f32 {
         440.0 * ((self.0 - 69.0) / 12.0).exp2()
     }
@@ -334,11 +335,11 @@ impl fmt::Display for Pitch {
     }
 }
 
-/// A sounding note, as Hapto names it from its note-on to its note-off.
+/// A sounding note's id, from its note-on to its note-off.
 ///
-/// It is the host's own id where the format has one, VST3's `noteId` say.
-/// Elsewhere the decoder makes one up, with the top bit set, so it never
-/// meets a host's.
+/// It is the host's own id where the format has one, such as VST3's `noteId`.
+/// Otherwise the decoder makes one up with the top bit set, so it never equals
+/// a host's.
 ///
 /// # Examples
 ///
@@ -357,29 +358,30 @@ impl fmt::Display for Pitch {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct NoteId(u32);
 
-/// The bit every made-up id has, and no host's.
+/// The bit that every made-up id sets, and no host's id does.
 const MADE_UP: u32 = 0x8000_0000;
-/// The bits a plugin's own id has: the made-up bit and the one below it,
+/// The bits that a plugin's own id sets, the made-up bit and the one below it,
 /// which the decoder's ids never set.
 const OWN: u32 = 0xC000_0000;
 
 impl NoteId {
-    /// The host's id `id`, below `0x8000_0000`.
+    /// Returns the host's id `id`, below `0x8000_0000`.
     pub const fn hosts(id: u32) -> Self {
         NoteId(id & !MADE_UP)
     }
 
-    /// An id of the plugin's own, `n` of up to 30 bits, for a note it sends
-    /// beside the ones it reads: a chord's other notes, say. It is never a
-    /// host's, so its note goes out under no host id, nor one the decoder
-    /// makes up, so a plugin may keep both in one table.
+    /// Returns an id of the plugin's own, `n` of up to 30 bits, for a note
+    /// that it sends beside the ones it reads, such as a chord's other notes.
+    ///
+    /// It never equals a host's id or one that the decoder makes up, so its
+    /// note goes out under no host id and a plugin can keep both in one table.
     ///
     /// # Examples
     ///
     /// ```
     /// use hapto_midi::{Key, NoteId, NoteOn};
     ///
-    /// // A fifth above a note the host named, as a note of its own.
+    /// // A fifth above the host's note, under the plugin's own id.
     /// let root = NoteOn::new(Key::new(60), 1.0).with_id(NoteId::hosts(7));
     /// let fifth = root.with_key(Key::new(67)).with_id(NoteId::own(1));
     /// assert!(!fifth.id.is_hosts());
@@ -389,18 +391,19 @@ impl NoteId {
         NoteId(n & !OWN | OWN)
     }
 
-    /// The `count`th id made up, wrapping below a plugin's own.
+    /// Returns the `count`th made-up id, which wraps before it reaches a
+    /// plugin's own ids.
     pub(crate) const fn made_up(count: u32) -> Self {
         NoteId(count & !OWN | MADE_UP)
     }
 
-    /// Whether the host named the note, rather than Hapto.
+    /// Returns whether the host named the note, rather than Hapto.
     pub const fn is_hosts(self) -> bool {
         self.0 & MADE_UP == 0
     }
 
-    /// The id as one number: a host's below `0x8000_0000`, Hapto's at or
-    /// above it.
+    /// Returns the id as one number, below `0x8000_0000` for a host's id and
+    /// at or above it for Hapto's.
     pub const fn get(self) -> u32 {
         self.0
     }
@@ -418,8 +421,7 @@ impl fmt::Display for NoteId {
     }
 }
 
-/// `value` held to `low` to `high`, or `if_nan` for a value that is not a
-/// number.
+/// Returns `value` clamped to `low` to `high`, or `if_nan` if `value` is NaN.
 pub(crate) fn held(value: f32, low: f32, high: f32, if_nan: f32) -> f32 {
     if value.is_nan() {
         if_nan

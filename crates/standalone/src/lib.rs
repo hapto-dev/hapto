@@ -1,12 +1,13 @@
-//! A plugin as an app of its own: [`main`] runs any [`Plugin`] standalone,
-//! its editor in a window and its output on the system's audio output,
-//! through Hapto's standalone exporter. Its inputs hear silence unless the
-//! command line asks for a test signal. A plugin that takes or sends MIDI
-//! reaches the computer's MIDI devices as [`MidiDevices`] says, which the
-//! binary sets through [`App`].
+//! A plugin as an app of its own, through Hapto's standalone exporter.
 //!
-//! A plugin crate gives it a binary behind a `standalone` feature, so the
-//! plugin's module never links it:
+//! [`main`] runs any [`Plugin`] standalone, with its editor in a window and
+//! its output on the system's audio output. Its inputs get silence unless
+//! the command line gives a test signal. A plugin that takes or sends MIDI
+//! reaches the computer's MIDI devices as [`MidiDevices`] says, set through
+//! [`App`].
+//!
+//! A plugin crate gives it a binary behind a `standalone` feature, so that
+//! the plugin's module never links it:
 //!
 //! ```toml
 //! [features]
@@ -21,22 +22,22 @@
 //! required-features = ["standalone"]
 //! ```
 //!
-//! `src/bin/standalone.rs` is one call, [`main`], or an [`App`] built and
-//! run. `cargo hapto dev` builds the binary and runs it with `--dev`,
+//! `src/bin/standalone.rs` is one call to [`main`], or builds and runs an
+//! [`App`]. `cargo hapto dev` builds the binary, runs it with `--dev`,
 //! restarts it after each rebuild with the plugin's saved block kept, and
 //! serves the page from its dev server. Run on its own, the app keeps the
 //! saved block in the plugin's folder below the user's local application
 //! data.
 //!
-//! With the `dev-host` feature, `--host` runs the plugin through the VST3
-//! exporter or the C interface instead, in process, by Hapto's test hosts,
-//! with a settings window of what the host sees: `cargo hapto dev --host`.
+//! With the `dev-host` feature, `--host` runs the plugin in process through
+//! the VST3 exporter or the C interface instead, with Hapto's test hosts and
+//! a settings window of what the host sees (`cargo hapto dev --host`).
 //!
-//! Windows only for now, as the page in a window is: elsewhere [`main`] says
-//! so and ends.
+//! The app runs only on Windows for now, because the page in a window does.
+//! Elsewhere, [`main`] prints an error that says so and fails.
 
-// Each module but the app, the device, the MIDI devices and the dev host is
-// platform-neutral and tested everywhere, but only Windows runs them.
+// Every module except the app, the device, the MIDI devices and the dev host
+// is platform-neutral and tested everywhere, but only Windows runs them.
 #[cfg(windows)]
 mod app;
 #[cfg(any(windows, test))]
@@ -129,14 +130,15 @@ pub fn main<P: Plugin>() -> ExitCode {
     App::<P>::new().run()
 }
 
-/// `P` as an app, with the MIDI devices it opens said in code: a filter for
-/// each direction, and when the outputs send, by the rules and with the
-/// defaults of [`MidiDevices`]. [`midi`](Self::midi) is the handle that
+/// `P` as an app, with its MIDI devices set in code.
+///
+/// A filter for each direction and the outputs' timing follow the rules and
+/// defaults of [`MidiDevices`]. [`midi`](Self::midi) returns the handle that
 /// changes them while the app runs. [`main`] is `App::<P>::new().run()`.
 ///
 /// # Examples
 ///
-/// A plugin crate's `src/bin/standalone.rs`, which hears one keyboard and
+/// A plugin crate's `src/bin/standalone.rs`, which reads one keyboard and
 /// sends to a virtual port:
 ///
 /// ```no_run
@@ -181,15 +183,15 @@ pub fn main<P: Plugin>() -> ExitCode {
 ///
 /// use hapto_standalone::MidiDevices;
 ///
-/// /// The app's MIDI devices, where the plugin's own code reaches them:
-/// /// its page, say, which lists them and lets a user pick.
+/// /// The app's MIDI devices, where the plugin's own code, such as a page
+/// /// that lists them for a user to pick, can reach them.
 /// static MIDI: OnceLock<MidiDevices> = OnceLock::new();
 ///
 /// fn main() -> std::process::ExitCode {
 ///     let app = hapto_standalone::App::<MyPlugin>::new()
 ///         .with_midi_inputs(|device| device.name().contains("Xkey"))
 ///         .with_midi_outputs(|device| device.name().starts_with("loopMIDI"))
-///         // An arpeggiator: its notes keep their spacing.
+///         // An arpeggiator, whose notes keep their spacing.
 ///         .with_midi_out_timing(hapto_standalone::Timing::AtFrames);
 ///     let _ = MIDI.set(app.midi());
 ///     app.run()
@@ -216,8 +218,8 @@ impl<P: Plugin> Default for App<P> {
 }
 
 impl<P: Plugin> App<P> {
-    /// `P` as an app with the MIDI devices [`MidiDevices`] opens by
-    /// default.
+    /// Returns `P` as an app with the default MIDI devices of
+    /// [`MidiDevices`].
     pub fn new() -> Self {
         App {
             midi: MidiDevices::new(),
@@ -225,7 +227,7 @@ impl<P: Plugin> App<P> {
         }
     }
 
-    /// Opens the MIDI inputs `filter` passes, as
+    /// Opens the MIDI inputs that `filter` passes, as
     /// [`MidiDevices::set_inputs`] does.
     #[must_use]
     pub fn with_midi_inputs(
@@ -236,7 +238,7 @@ impl<P: Plugin> App<P> {
         self
     }
 
-    /// Opens the MIDI outputs `filter` passes, as
+    /// Opens the MIDI outputs that `filter` passes, as
     /// [`MidiDevices::set_outputs`] does.
     #[must_use]
     pub fn with_midi_outputs(
@@ -247,7 +249,7 @@ impl<P: Plugin> App<P> {
         self
     }
 
-    /// Has the outputs send as `timing` says, as
+    /// Sets the outputs' timing to `timing`, as
     /// [`MidiDevices::set_timing`] does.
     #[must_use]
     pub fn with_midi_out_timing(self, timing: Timing) -> Self {
@@ -255,17 +257,20 @@ impl<P: Plugin> App<P> {
         self
     }
 
-    /// The handle to the app's MIDI devices, to keep: it changes them while
-    /// the app runs, as [`MidiDevices`] says. The plugin is made inside
-    /// [`run`](Self::run), so its own code reaches the handle where the
-    /// binary keeps it, in a `static`, as [`App`]'s example does.
+    /// Returns the handle that changes the app's MIDI devices while it runs,
+    /// as [`MidiDevices`] says.
+    ///
+    /// The plugin is made inside [`run`](Self::run), so the binary keeps the
+    /// handle where the plugin's code can reach it, such as a `static`, as
+    /// [`App`]'s example does.
     pub fn midi(&self) -> MidiDevices {
         self.midi.clone()
     }
 
-    /// Runs the app, reading the command line, until its window closes.
-    /// Returns the exit code: failure, with the reason written, when it
-    /// could not run.
+    /// Reads the command line and runs the app until its window closes.
+    ///
+    /// Returns the exit code, which is failure, with the reason printed, if
+    /// the app couldn't run.
     pub fn run(self) -> ExitCode {
         run::<P>(self.midi).unwrap_or_else(|reason| {
             eprintln!("{reason:#}");

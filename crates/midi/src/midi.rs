@@ -1,5 +1,5 @@
-//! A block's MIDI: its packets decoded once into messages, each at its
-//! frame, read as often as needed; and the MIDI a block sends.
+//! The MIDI that a block receives, decoded once into messages at their
+//! frames, and the MIDI that it sends.
 
 use std::fmt;
 
@@ -12,7 +12,7 @@ use crate::values::Group;
 
 /// How many messages a list made with [`MidiList::new`] holds in a block.
 pub const MESSAGES: usize = 2048;
-/// How many SysEx bytes, across a block's SysEx messages, it holds.
+/// How many SysEx bytes, in total, that list holds in a block.
 pub const BLOCK_SYSEX_BYTES: usize = 16 * 1024;
 
 /// One decoded message, as a list keeps it.
@@ -25,7 +25,7 @@ pub(crate) struct Entry {
 #[derive(Debug, Clone, Copy)]
 enum Kept {
     Message(Message<'static>),
-    /// A SysEx's bytes, in the list's own room.
+    /// A SysEx, as a range of the list's SysEx bytes.
     SysEx {
         group: Group,
         start: usize,
@@ -33,14 +33,14 @@ enum Kept {
     },
 }
 
-/// A block's MIDI, decoded: the room a block's [`Midi`] is read from, made
-/// once, at activation, so reading a block allocates nothing.
+/// The room that a block's [`Midi`] is decoded into, allocated once at
+/// activation so that reading a block allocates nothing.
 ///
-/// [`read`](Self::read) decodes a block's packets in order, with a decoder
-/// of its own, so state that spans blocks, a note sounding or a SysEx under
-/// way, stays right. [`midi`](Self::midi) is the whole block's MIDI, and
-/// [`Midi::between`] part of it. A message past its room is dropped and
-/// counted in [`Midi::dropped`], and a SysEx past it is dropped whole.
+/// [`read`](Self::read) decodes packets in order with the list's own decoder,
+/// so state that spans blocks, such as a sounding note or a SysEx under way,
+/// stays correct. [`midi`](Self::midi) returns the whole block and
+/// [`Midi::between`] part of it. A message or SysEx that doesn't fit is
+/// dropped whole and counted in [`Midi::dropped`].
 ///
 /// # Examples
 ///
@@ -56,7 +56,7 @@ enum Kept {
 /// list.read(&packets, 16);
 /// let frames: Vec<usize> = list.midi().iter().map(|(frame, _)| frame).collect();
 /// assert_eq!(frames, [3, 9]);
-/// // The second half of the block, its frames from its own start.
+/// // The block's second half, with frames from its start.
 /// let later = list.midi().between(8, 16);
 /// assert!(matches!(later.iter().next(), Some((1, Message::NoteOff(_)))));
 /// ```
@@ -65,13 +65,13 @@ pub struct MidiList {
     room: Room,
 }
 
-/// What a list keeps of a block, in room made once.
+/// What a list keeps of a block, in room allocated once.
 struct Room {
     entries: Vec<Entry>,
     sysex: Vec<u8>,
-    /// The block's packets, at frames of the block and in time order.
+    /// The block's packets, at frames within it and in time order.
     packets: Vec<Event>,
-    /// What the block lost.
+    /// The block's losses, as [`Midi::dropped`] counts them.
     dropped: u64,
 }
 
@@ -92,18 +92,18 @@ impl Default for MidiList {
 }
 
 impl MidiList {
-    /// A list with room for [`MESSAGES`] messages, as many packets, and
-    /// [`BLOCK_SYSEX_BYTES`] of SysEx a block, over a [`Decoder::new`].
+    /// Returns a list with room per block for [`MESSAGES`] messages, as many
+    /// packets and [`BLOCK_SYSEX_BYTES`] of SysEx, with a [`Decoder::new`].
     ///
-    /// Thread: any but audio: it allocates its room.
+    /// Thread: any but audio, because it allocates.
     pub fn new() -> MidiList {
         MidiList::with_room(MESSAGES, BLOCK_SYSEX_BYTES, Decoder::new())
     }
 
-    /// A list with room for `messages` messages and as many packets, and
-    /// `sysex_bytes` of SysEx a block, over `decoder`.
+    /// Returns a list with room per block for `messages` messages, as many
+    /// packets and `sysex_bytes` of SysEx, with `decoder`.
     ///
-    /// Thread: any but audio: it allocates its room.
+    /// Thread: any but audio, because it allocates.
     pub fn with_room(messages: usize, sysex_bytes: usize, decoder: Decoder) -> MidiList {
         MidiList {
             decoder,
@@ -116,11 +116,13 @@ impl MidiList {
         }
     }
 
-    /// Decodes `block`, one block's packets in time order, replacing what
-    /// the list held. A packet lands at its frame of a block of `frames`
-    /// frames: one past the block at its last frame, and one before the
-    /// packet before it at that one's frame, so the list stays in time
-    /// order. The block's own drops count as the list's.
+    /// Decodes `block`, one block's packets in time order, in place of what
+    /// the list held.
+    ///
+    /// Each packet lands at its frame in a block of `frames` frames. To keep
+    /// time order, a packet past the block lands at the last frame, and one
+    /// earlier than the packet before it lands at that packet's frame. The
+    /// list's drops include those of `block`.
     ///
     /// Thread: audio. Allocates nothing.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
@@ -149,7 +151,7 @@ impl MidiList {
         room.dropped = room.dropped.saturating_add(decoded_drops);
     }
 
-    /// The whole block's MIDI.
+    /// Returns the whole block's MIDI.
     pub fn midi(&self) -> Midi<'_> {
         Midi {
             entries: &self.room.entries,
@@ -160,7 +162,7 @@ impl MidiList {
         }
     }
 
-    /// Forgets every note sounding and any SysEx under way, as at an
+    /// Forgets every sounding note and any SysEx under way, as at an
     /// activation.
     pub fn reset(&mut self) {
         self.decoder.reset();
@@ -180,7 +182,7 @@ impl Room {
         self.dropped = self.dropped.saturating_add(1);
     }
 
-    /// Keeps a message at `frame`, or counts it with no room left.
+    /// Keeps a message at `frame`, or counts a drop if the room is full.
     fn push(&mut self, frame: u32, kept: Kept) {
         if self.entries.len() < self.entries.capacity() {
             self.entries.push(Entry { frame, kept });
@@ -189,7 +191,7 @@ impl Room {
         }
     }
 
-    /// Keeps what one packet decoded to, a SysEx's bytes copied into the
+    /// Keeps what one packet decoded to, copying a SysEx's bytes into the
     /// room.
     fn keep(&mut self, frame: u32, decoder: &Decoder, decoded: Decoded) {
         match decoded {
@@ -216,13 +218,12 @@ impl Room {
     }
 }
 
-/// One block's MIDI, decoded once: [`Block::midi`] in `hapto-host`. It
-/// reads like JUCE's `MidiBuffer`, each message with its frame, in the
-/// order it came, as often as needed.
+/// One block's decoded MIDI, the type of [`Block::midi`] in `hapto-host`.
 ///
-/// The packets the messages came in are kept beside them, in
-/// [`packets`](Self::packets), exactly as they came, for a plugin that
-/// wants them so: an echo, or a recorder.
+/// Like JUCE's `MidiBuffer`, it yields each message with its frame, in order
+/// of arrival, and can be read any number of times. [`packets`](Self::packets)
+/// keeps the original packets unchanged, for a plugin such as an echo or a
+/// recorder.
 ///
 /// [`Block::midi`]: https://docs.rs/hapto-host/latest/hapto_host/struct.Block.html#structfield.midi
 ///
@@ -231,7 +232,7 @@ impl Room {
 /// ```
 /// use hapto_midi::{Message, Midi, controller};
 ///
-/// /// What a plugin keeps of its MIDI: the sustain pedal.
+/// /// Tracks the sustain pedal, and ignores other MIDI.
 /// fn read(midi: Midi<'_>, sustain: &mut bool) {
 ///     for (_frame, message) in midi {
 ///         if let Some(pedal) = controller::SUSTAIN.read(&message) {
@@ -250,13 +251,13 @@ pub struct Midi<'a> {
     entries: &'a [Entry],
     sysex: &'a [u8],
     packets: &'a [Event],
-    /// The frame of the block this part starts at.
+    /// The block's frame that this part starts at.
     start: u32,
     dropped: u64,
 }
 
 impl<'a> Midi<'a> {
-    /// Each message with its frame, in the order they came.
+    /// Returns each message with its frame, in the order of arrival.
     pub fn iter(&self) -> Iter<'a> {
         Iter {
             entries: self.entries.iter(),
@@ -265,8 +266,7 @@ impl<'a> Midi<'a> {
         }
     }
 
-    /// The packets the messages were decoded from, exactly as they came,
-    /// each at its frame.
+    /// Returns the original packets, unchanged, each at its frame.
     pub fn packets(&self) -> Packets<'a> {
         Packets {
             packets: self.packets.iter(),
@@ -274,14 +274,15 @@ impl<'a> Midi<'a> {
         }
     }
 
-    /// The messages alone, without their frames: for a part of a block in
-    /// which they all arrive at its first frame, a span's.
+    /// Returns the messages without frames, for a part whose messages all
+    /// arrive at its first frame, such as a span's.
     pub fn messages(&self) -> impl ExactSizeIterator<Item = Message<'a>> + use<'a> {
         self.iter().map(|(_, message)| message)
     }
 
-    /// The part of it at frames `from` up to `to`, at frames from `from`.
-    /// Its drops come with the part that starts at frame 0.
+    /// Returns the part at frames `from` up to `to`, renumbered from `from`.
+    ///
+    /// Only a part from frame 0 reports drops.
     ///
     /// # Examples
     ///
@@ -315,25 +316,28 @@ impl<'a> Midi<'a> {
         }
     }
 
-    /// The frame its first message arrives at, if any does.
+    /// Returns the first message's frame, if there is one.
     pub fn first_frame(&self) -> Option<usize> {
         self.iter().next().map(|(frame, _)| frame)
     }
 
-    /// How many messages arrived.
+    /// Returns how many messages arrived.
     pub fn len(&self) -> usize {
         self.entries.len()
     }
 
-    /// Whether none did.
+    /// Returns whether no messages arrived.
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
 
-    /// How many messages the block lost: packets past its list's room,
-    /// messages and whole SysEx past the decoded room, and the SysEx the
-    /// [`Decoder`] drops; and how many notes gave up their place in the
-    /// decoder's full table, whose note-offs name them no more.
+    /// Returns how many messages the block lost.
+    ///
+    /// - Packets that didn't fit in the list's room.
+    /// - Messages and whole SysEx that didn't fit in the decoded room.
+    /// - SysEx that the [`Decoder`] dropped.
+    /// - Notes that lost their place in the decoder's full table, so their
+    ///   note-offs no longer name them.
     pub fn dropped(&self) -> u64 {
         self.dropped
     }
@@ -357,7 +361,7 @@ impl<'a> IntoIterator for &Midi<'a> {
     }
 }
 
-/// Each message of a [`Midi`] with its frame: what [`Midi::iter`] returns.
+/// The messages of a [`Midi`] with their frames, from [`Midi::iter`].
 ///
 /// # Examples
 ///
@@ -407,8 +411,7 @@ impl<'a> Iterator for Iter<'a> {
 
 impl ExactSizeIterator for Iter<'_> {}
 
-/// The packets of a [`Midi`], each at its frame: what [`Midi::packets`]
-/// returns.
+/// The packets of a [`Midi`], each at its frame, from [`Midi::packets`].
 ///
 /// # Examples
 ///
@@ -416,7 +419,7 @@ impl ExactSizeIterator for Iter<'_> {}
 /// use hapto_midi::{Midi, MidiOut};
 /// use hapto_ump::EventList;
 ///
-/// // An echo: every packet out as it came.
+/// // An echo sends every packet on unchanged.
 /// let mut sent = EventList::with_capacity(8);
 /// MidiOut::new(&mut sent).extend(Midi::default().packets());
 /// assert!(sent.as_slice().is_empty());
@@ -445,11 +448,12 @@ impl Iterator for Packets<'_> {
 
 impl ExactSizeIterator for Packets<'_> {}
 
-/// The MIDI a block sends: [`Block::midi_out`] in `hapto-host`. Messages
-/// go out as MIDI 2.0, and are downgraded on the way out only where the
-/// other end needs MIDI 1.0. Messages and packets go out in one list, in the
-/// order the plugin sends them, which should be time order. One past the
-/// list's room is dropped and counted.
+/// The MIDI that a block sends, through [`Block::midi_out`] in `hapto-host`.
+///
+/// Messages go out as MIDI 2.0, downgraded only where the other end needs
+/// MIDI 1.0. Messages and packets share one list, in the order that the plugin
+/// sends them, which should be time order. What doesn't fit is dropped and
+/// counted.
 ///
 /// [`Block::midi_out`]: https://docs.rs/hapto-host/latest/hapto_host/struct.Block.html#structfield.midi_out
 ///
@@ -461,7 +465,7 @@ impl ExactSizeIterator for Packets<'_> {}
 ///
 /// let mut sent = EventList::with_capacity(4);
 /// let mut out = MidiOut::new(&mut sent);
-/// // A note a fifth up, a quarter of a block of 64 frames in.
+/// // G4, a quarter of the way into a 64-frame block.
 /// out.send(16, NoteOn::new(Key::new(67), 1.0));
 /// assert_eq!(sent.as_slice()[0].offset, 16);
 /// assert_eq!(sent.as_slice()[0].words[0], 0x4090_4300);
@@ -472,23 +476,24 @@ pub struct MidiOut<'a> {
 }
 
 impl<'a> MidiOut<'a> {
-    /// Sends into `packets`.
+    /// Returns a sender into `packets`.
     pub fn new(packets: &'a mut EventList) -> Self {
         MidiOut { packets }
     }
 
-    /// Sends `message` at `frame`, encoded anew: a message of the plugin's
-    /// own, a note moved with [`NoteOn::with_key`](crate::NoteOn::with_key),
-    /// or a message that arrived, sent on to the next plugin as MIDI thru,
-    /// which is never implicit.
+    /// Encodes `message` and sends it at `frame`.
     ///
-    /// A note keeps its attribute and its id, so one its host named goes out
-    /// under the host's id, in the packet's origin, where the host knows it
-    /// again; a note sent beside it takes an id of the plugin's own,
-    /// [`NoteId::own`](crate::NoteId::own). A value goes at an `f32`'s
-    /// precision: for the packets exactly as they came, extend with
-    /// [`Midi::packets`]. A SysEx goes out whole or not at all: one past the
-    /// room is dropped and its packets counted.
+    /// The message can be the plugin's own, a note moved with
+    /// [`NoteOn::with_key`](crate::NoteOn::with_key), or a message that
+    /// arrived, passed on as MIDI thru, which is never implicit.
+    ///
+    /// A note keeps its attribute and id, so a note that its host named goes
+    /// out under the host's id, in the packet's origin, where the host can
+    /// match it. A note sent beside it takes an id from
+    /// [`NoteId::own`](crate::NoteId::own). Values go out at `f32` precision,
+    /// so for the exact packets, extend with [`Midi::packets`]. A SysEx goes
+    /// out whole or not at all, and one that doesn't fit is counted as dropped
+    /// packets.
     ///
     /// Thread: audio. Allocates nothing.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
@@ -517,20 +522,20 @@ impl<'a> MidiOut<'a> {
         });
     }
 
-    /// Sends `packet` as it is, at its own frame: for a plugin that keeps
-    /// or builds packets itself.
+    /// Sends `packet` unchanged at its own frame, for a plugin that keeps or
+    /// builds its own packets.
     pub fn send_packet(&mut self, packet: Event) {
         self.packets.push(packet);
     }
 
-    /// How many packets found no room in the block.
+    /// Returns how many packets found no room in the block.
     pub fn dropped(&self) -> u32 {
         self.packets.dropped()
     }
 }
 
-/// Where a message's packets come from: the host's note id, for a note or
-/// a note's own message its host named, as the decoder found it.
+/// Returns the origin for a message's packets, with the host's note id if the
+/// decoder found that the host named the note.
 fn named(message: &Message<'_>) -> Origin {
     message
         .note()
@@ -539,10 +544,12 @@ fn named(message: &Message<'_>) -> Origin {
         .map_or(Origin::Midi2, |id| Origin::Note { id: id.get() })
 }
 
-/// The packets `messages` go out as, each at its frame, as a plugin's
-/// [`MidiOut`] sends them: for a test or a tool to hand a host, a test host
-/// or a device, in place of packets written out by hand. It allocates, so it
-/// is no part of the audio thread's.
+/// Returns the packets that a [`MidiOut`] sends for `messages`, each at its
+/// frame.
+///
+/// A test or tool can hand them to a host, a test host or a device instead of
+/// hand-written packets. It allocates, so it doesn't belong on the audio
+/// thread.
 ///
 /// # Examples
 ///
@@ -560,7 +567,7 @@ fn named(message: &Message<'_>) -> Origin {
 /// ```
 pub fn packets_of<'m>(messages: impl IntoIterator<Item = (usize, Message<'m>)>) -> Vec<Event> {
     let messages: Vec<(usize, Message<'m>)> = messages.into_iter().collect();
-    // A SysEx takes a packet for each six bytes; any other message, a packet
+    // A SysEx takes a packet per six bytes, and any other message takes one
     // or two.
     let room = messages
         .iter()
@@ -574,9 +581,8 @@ pub fn packets_of<'m>(messages: impl IntoIterator<Item = (usize, Message<'m>)>) 
     packets.as_slice().to_vec()
 }
 
-/// Sends each packet as it is, as [`MidiOut::send_packet`] does.
-/// Sends each message at its frame, as [`MidiOut::send`] does: MIDI thru
-/// is `midi_out.extend(midi)`.
+/// Sends each message at its frame, as [`MidiOut::send`] does. MIDI thru is
+/// `midi_out.extend(midi)`.
 ///
 /// # Examples
 ///
@@ -602,6 +608,7 @@ impl<'m> Extend<(usize, Message<'m>)> for MidiOut<'_> {
     }
 }
 
+/// Sends each packet unchanged, as [`MidiOut::send_packet`] does.
 impl Extend<Event> for MidiOut<'_> {
     fn extend<I: IntoIterator<Item = Event>>(&mut self, packets: I) {
         for packet in packets {
@@ -610,7 +617,7 @@ impl Extend<Event> for MidiOut<'_> {
     }
 }
 
-/// Sends each packet as it is, as [`MidiOut::send_packet`] does.
+/// Sends each packet unchanged, as [`MidiOut::send_packet`] does.
 impl<'e> Extend<&'e Event> for MidiOut<'_> {
     fn extend<I: IntoIterator<Item = &'e Event>>(&mut self, packets: I) {
         for &packet in packets {

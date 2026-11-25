@@ -33,7 +33,7 @@ fn a_cut_ends_a_sysex_that_began_and_drops_one_that_did_not() {
         short.is_empty(),
         "nothing of it went out, so none of it does"
     );
-    // It starts over: a data byte with no status reads as nothing.
+    // It starts over, so a data byte with no status reads as nothing.
     stream.read(&[0x40], |words| short.push(words));
     assert!(short.is_empty());
 }

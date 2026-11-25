@@ -1,5 +1,5 @@
-//! The app's MIDI out with no device: what the writer hands each output
-//! that is read, when each packet is due, and what is dropped or lost.
+//! Tests, with no device, what the app's MIDI writer hands each output that
+//! is read, when each packet is due, and what is dropped or lost.
 
 use std::time::Duration;
 
@@ -21,7 +21,7 @@ fn first_words(taken: &[(Instant, [u32; 4])]) -> Vec<(Instant, u32)> {
 fn at_frames_a_block_goes_to_each_open_output_as_midi_1_due_at_its_frame() {
     let (mut outputs, mut writer) = outputs(16);
     outputs.set_timing(Timing::AtFrames);
-    // Output 0 is read, as an open device reads it; output 1 has none.
+    // Output 0 is read as an open device reads it, but output 1 is not.
     assert_eq!(outputs.take(0), Some(Vec::new()));
     let sent = [
         Event::new(0, [0x4090_3C00, 0xFFFF_0000, 0, 0]),
@@ -52,8 +52,8 @@ fn by_default_a_blocks_midi_is_due_at_once_as_juce_sends_it() {
     ];
     writer.write(START, 48_000.0, &sent);
     let taken = outputs.take(0).expect("no device there");
-    // Both due before any moment the clock can tell, so sent as they come,
-    // in the order the plugin sent them.
+    // Both are due at the clock's start, which has always passed, so they go
+    // out in the order the plugin sent them.
     let at_once = Instant::from_nanos(0);
     assert_eq!(
         first_words(&taken),
@@ -65,12 +65,12 @@ fn by_default_a_blocks_midi_is_due_at_once_as_juce_sends_it() {
 fn what_midi_1_has_no_message_for_is_lost_and_a_block_with_no_output_costs_nothing() {
     let (mut outputs, mut writer) = outputs(16);
     let unsent = [
-        // A note's own pitch bend, which MIDI 1.0 has no message for.
+        // A per-note pitch bend, which MIDI 1.0 has no message for.
         Event::new(0, [0x4060_3C00, 0x8000_0000, 0, 0]),
         // A utility message, which has no MIDI 1.0 bytes.
         Event::new(0, [0x0000_0000, 0, 0, 0]),
     ];
-    // No output is read: the block is not even downgraded.
+    // No output is read, so the block is not even downgraded.
     writer.write(START, 48_000.0, &unsent);
     assert_eq!(writer.lost(), 0);
     outputs.take(0);
@@ -84,7 +84,7 @@ fn a_registered_controller_goes_out_as_its_four_and_a_sysex_as_its_packets() {
     let (mut outputs, mut writer) = outputs(16);
     outputs.set_timing(Timing::AtFrames);
     outputs.take(0);
-    // The bend range, 12 semitones, then a SysEx of eight bytes.
+    // A pitch bend range of 12 semitones, then a SysEx of eight bytes.
     let sent = [
         Event::new(
             0,

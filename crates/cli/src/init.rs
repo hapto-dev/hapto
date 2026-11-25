@@ -81,8 +81,8 @@ pub(crate) const FILES: &[(&str, &str)] = &[
     ),
 ];
 
-/// Each file the instrument template writes, as [`FILES`] is the effect's:
-/// no page, no audio in, and MIDI in.
+/// Each file that the instrument template writes, with MIDI in, no audio in
+/// and no page, as [`FILES`] holds the effect's.
 pub(crate) const INSTRUMENT_FILES: &[(&str, &str)] = &[
     (
         "Cargo.toml",
@@ -207,8 +207,8 @@ pub(crate) struct Options {
     /// The Hapto checkout to take the crates from.
     #[arg(long, value_name = "CHECKOUT")]
     pub(crate) hapto: Option<PathBuf>,
-    /// An instrument in place of the gain: no audio in, MIDI in, a sine for
-    /// each note, and no page.
+    /// An instrument in place of the gain, with MIDI in, no audio in, a sine
+    /// for each note and no page.
     #[arg(long)]
     pub(crate) instrument: bool,
 }

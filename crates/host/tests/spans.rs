@@ -1,5 +1,6 @@
-//! A block cut into spans: at each frame a message arrives at, and at most
-//! so long, covering the block once with every message where it belongs.
+//! A block cut into spans that start at each message's frame, are no longer
+//! than a limit, and cover the block once with every message where it
+//! belongs.
 
 use hapto_host::layout::Mono;
 use hapto_host::midi::{Message, MidiList};
@@ -7,8 +8,8 @@ use hapto_host::{AudioBuf, Event, EventList, Midi, Spans};
 use proptest::prelude::*;
 use proptest::test_runner::FileFailurePersistence;
 
-/// A list holding channel pressure at each of `frames`, its value the
-/// message's place, so a test can follow each.
+/// Returns a list with channel pressure at each of `frames`, whose value is
+/// the message's place, so a test can follow each.
 fn list(frames: &[u32], block: usize) -> MidiList {
     let mut packets = EventList::with_capacity(frames.len());
     for (place, &frame) in frames.iter().enumerate() {
@@ -19,7 +20,8 @@ fn list(frames: &[u32], block: usize) -> MidiList {
     list
 }
 
-/// Each span's start, length, and the places of the messages it got.
+/// Returns each span's start and length, and the places of the messages
+/// that it got.
 fn spans(midi: Midi<'_>, block: usize, most: usize) -> Vec<(usize, usize, Vec<u32>)> {
     let mut buffer = AudioBuf::<Mono>::new(block);
     Spans::new(buffer.audio(), midi)
@@ -67,10 +69,12 @@ proptest! {
         ..ProptestConfig::default()
     })]
 
-    /// However messages fall and however short the spans must be, the spans
-    /// cover the block once, in order, none empty and none past the most,
-    /// a new one starts at every message's frame, and every message comes
-    /// once, with the span that starts at its frame.
+    /// However the messages fall and however short the spans must be:
+    ///
+    /// - They cover the block once, in order.
+    /// - None is empty or longer than the most.
+    /// - One starts at every message's frame.
+    /// - Every message comes once, with the span that starts at its frame.
     #[test]
     fn spans_cover_the_block_once_with_every_message_where_it_arrived(
         block in 1_usize..64,
@@ -87,7 +91,7 @@ proptest! {
             at += length;
         }
         prop_assert_eq!(at, block);
-        // A message past the block arrives at its last frame.
+        // A message past the block arrives at the block's last frame.
         let landed: Vec<usize> = frames.iter().map(|&f| (f as usize).min(block - 1)).collect();
         for frame in &landed {
             prop_assert!(got.iter().any(|(start, _, _)| start == frame));

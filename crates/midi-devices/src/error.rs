@@ -1,4 +1,4 @@
-//! Why a device did not open, for either direction.
+//! Why an input or an output did not open.
 
 use std::error::Error;
 use std::fmt;
@@ -19,22 +19,22 @@ use std::fmt;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum OpenError {
-    /// The device takes MIDI and sends none, so it cannot be read.
+    /// The device only takes MIDI, so it can't be read.
     NotAnInput,
-    /// The device sends MIDI and takes none, so nothing can be sent to it.
+    /// The device only sends MIDI, so nothing can be sent to it.
     NotAnOutput,
     /// The device is not in the system's list now.
     Gone,
-    /// Another app holds it: WinMM lets one app at a time open a device.
+    /// Another app has the device open, and WinMM allows one at a time.
     InUse,
     /// [`MAX_INPUTS`](crate::MAX_INPUTS) inputs, or
-    /// [`MAX_OUTPUTS`](crate::MAX_OUTPUTS) outputs, are open already.
+    /// [`MAX_OUTPUTS`](crate::MAX_OUTPUTS) outputs, are already open.
     NoRoom,
-    /// The system had no memory for it.
+    /// The system ran out of memory.
     NoMemory,
     /// No backend is built for this system.
     NoBackend,
-    /// The system refused it, with this code of its own.
+    /// The system refused, with this error code.
     System(u32),
 }
 

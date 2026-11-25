@@ -212,12 +212,12 @@ impl Attribute {
     /// No attribute.
     pub const NONE: Attribute = Attribute { kind: 0, data: 0 };
 
-    /// The type of a note's pitch: 7.9 fixed point, 7 bits of key and 9 of
-    /// fraction.
+    /// The attribute type of a note's pitch, in 7.9 fixed point, with 7 bits
+    /// of key and 9 of fraction.
     pub const PITCH_7_9: u8 = 3;
 
-    /// A pitch attribute of `semitones`, key 0 at 0, held to 0 to just under
-    /// 128.
+    /// Returns a pitch attribute of `semitones`, with key 0 at 0, clamped to 0
+    /// to just under 128.
     ///
     /// # Examples
     ///
@@ -236,8 +236,8 @@ impl Attribute {
         }
     }
 
-    /// The pitch a pitch attribute names, in semitones; `None` for an
-    /// attribute of any other type.
+    /// Returns the pitch that a pitch attribute names, in semitones, or `None`
+    /// for an attribute of any other type.
     pub fn semitones(self) -> Option<f64> {
         (self.kind == Attribute::PITCH_7_9).then(|| f64::from(self.data) / 512.0)
     }
@@ -266,8 +266,8 @@ pub struct Bank {
 }
 
 impl ChannelMessage {
-    /// The registered per-note controller of a note's absolute pitch, 7.25
-    /// fixed point, as [`scale::pitch_7_25`](crate::scale::pitch_7_25)
+    /// The registered per-note controller for a note's absolute pitch, in
+    /// 7.25 fixed point, as [`scale::pitch_7_25`](crate::scale::pitch_7_25)
     /// writes it.
     pub const PER_NOTE_PITCH: u8 = 3;
 }

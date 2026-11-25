@@ -1,6 +1,6 @@
-//! `cargo hapto juce`: a plugin's settings for the JUCE adapter, which its
-//! own `juce_settings` test writes from its `INFO`, and the CMake that builds
-//! it through the adapter.
+//! `cargo hapto juce`, which writes a plugin's JUCE adapter settings from its
+//! `INFO`, through its own `juce_settings` test, and prints the CMake that
+//! builds the plugin through the adapter.
 
 #[cfg(test)]
 mod tests;
@@ -15,23 +15,22 @@ use crate::init;
 use crate::tool::{generating_test, run};
 use crate::workspace::{Plugin, Workspace};
 
-/// What `cargo hapto juce` was asked to do.
+/// The options of `cargo hapto juce`.
 #[derive(Clone, Debug, PartialEq, Eq, clap::Args)]
 pub(crate) struct Options {
-    /// The plugin crate, by its package name; else the one the folder is
-    /// in, or the workspace's only one.
+    /// The plugin crate, by its package name, or by default the crate that
+    /// the folder is in or the workspace's only crate.
     #[arg(short, long, value_name = "CRATE")]
     pub(crate) package: Option<String>,
 }
 
-/// Runs `cargo hapto juce` with `options`: writes the settings, or in CI
-/// checks them, and prints the CMake that builds the plugin through the
-/// adapter.
+/// Runs `cargo hapto juce` with `options`, which in CI checks the settings
+/// instead of writing them.
 ///
 /// # Errors
 ///
-/// Returns that the crate has no `juce_settings` test, or the test's
-/// failure: a parameter key whose JUCE id collides, or in CI settings that
+/// Returns an error if the crate has no `juce_settings` test, or if the test
+/// fails because a parameter key's JUCE id collides or, in CI, the settings
 /// do not match the plugin's `INFO`.
 pub(crate) fn run_juce(options: &Options) -> Result<()> {
     let (workspace, plugin) = Workspace::find(options.package.as_deref())?;
@@ -52,15 +51,14 @@ pub(crate) fn run_juce(options: &Options) -> Result<()> {
     Ok(())
 }
 
-/// The `juce_settings` test of `package`, run from `root`, with `ci` the
-/// value of `CI`, as [`generating_test`] runs it: it writes the settings, or
-/// in CI checks them.
+/// Returns the `juce_settings` test of `package`, run from `root` by
+/// [`generating_test`] with `ci` as the value of `CI`.
 fn settings_test(package: &str, root: &Path, ci: Option<&OsStr>) -> Command {
     generating_test(package, "juce_settings", root, ci)
 }
 
-/// What a CMake project that adds JUCE writes to build `plugin`, of the
-/// workspace at `root`, through the adapter at `adapter`.
+/// Returns the CMake that builds `plugin`, of the workspace at `root`,
+/// through the adapter at `adapter`, for a CMake project that adds JUCE.
 fn cmake(plugin: &Plugin, root: &Path, adapter: &str) -> String {
     let slashes = |path: &Path| path.to_string_lossy().replace('\\', "/");
     let target: String = plugin

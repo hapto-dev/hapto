@@ -32,10 +32,10 @@ pub(crate) const RECENT: usize = 40;
 /// What the app plays its blocks through: a plugin's audio side, in any
 /// format.
 pub(crate) trait Render: Send + 'static {
-    /// Plays `block`, whose MIDI is the packets of the app's MIDI inputs at
-    /// its frames, and hands `sent` what the plugin sent, at its frames, once
-    /// it has played. A plugin may have no channels, and a block may hold no
-    /// frames.
+    /// Plays `block`, whose MIDI is the app's MIDI inputs at its frames, then
+    /// passes what the plugin sent, at its frames, to `sent`.
+    ///
+    /// A plugin can have no channels, and a block no frames.
     fn render(&mut self, block: StandaloneBlock<'_, '_>, sent: &mut dyn FnMut(&[Event]));
 }
 
@@ -51,8 +51,8 @@ impl<P: hapto_host::Plugin> Render for StandaloneAudio<P> {
     }
 }
 
-/// The app's MIDI inputs on the audio thread: the reader, and the block's
-/// list it reads into.
+/// The app's MIDI inputs on the audio thread, with the reader and the
+/// block's list that it reads into.
 #[derive(Debug)]
 struct MidiIn {
     reader: InputsReader,
@@ -250,14 +250,13 @@ pub(crate) struct Player<R> {
     /// The frames rendered and not yet played, per output.
     queue: Vec<Vec<f32>>,
     queued: usize,
-    /// The app's MIDI inputs, read into each block; `None` for none.
+    /// The app's MIDI inputs, read into each block, if any.
     midi: Option<MidiIn>,
-    /// The app's MIDI outputs, which each block's MIDI goes to; `None` for
-    /// none.
+    /// The app's MIDI outputs, which each block's MIDI goes to, if any.
     midi_out: Option<OutputsWriter>,
     /// The device's rate, which places a block's MIDI in time.
     sample_rate: f64,
-    /// When the device asked for the buffer it fills now.
+    /// When the device requested the buffer that it's filling now.
     asked: Instant,
     /// How many frames of that buffer the parts before this one fill.
     ahead: usize,
@@ -303,16 +302,19 @@ impl<R: Render> Player<R> {
         }
     }
 
-    /// Sends the plugin's MIDI out to the app's outputs `writer` hands it
-    /// to, each block's due where its frames fall in the device's stream.
-    /// With none, what the plugin sends goes nowhere.
+    /// Sends the plugin's MIDI to the app's outputs through `writer`, each
+    /// block's MIDI due where its frames fall in the device's stream.
+    ///
+    /// Without a writer, the MIDI goes nowhere.
     pub(crate) fn with_midi_out(mut self, writer: Option<OutputsWriter>) -> Self {
         self.midi_out = writer;
         self
     }
 
-    /// Plays the app's MIDI inputs `reader` reads into each block. With
-    /// none, each block's MIDI in is empty.
+    /// Plays the MIDI that `reader` reads from the app's inputs into each
+    /// block.
+    ///
+    /// Without a reader, each block's MIDI in is empty.
     pub(crate) fn with_midi(mut self, reader: Option<InputsReader>) -> Self {
         self.midi = reader.map(|reader| MidiIn {
             reader,
@@ -327,7 +329,8 @@ impl<R: Render> Player<R> {
         self.play_at(data, Instant::now());
     }
 
-    /// [`play`](Self::play), the device having asked at `asked`.
+    /// Does what [`play`](Self::play) does, for a buffer that the device
+    /// requested at `asked`.
     pub(crate) fn play_at(&mut self, data: &mut [f32], asked: Instant) {
         let width = self.device_channels;
         self.asked = asked;
@@ -347,19 +350,21 @@ impl<R: Render> Player<R> {
         }
     }
 
-    /// When a block rendered now begins: as many frames after the device
-    /// asked as the buffer's parts before this one, and the queue, hold.
+    /// Returns when a block rendered now begins, as many frames after the
+    /// device's request as the buffer's earlier parts and the queue hold.
     fn block_start(&self) -> Instant {
         let frames = (self.ahead + self.queued) as f64;
         let after = frames * 1e9 / self.sample_rate.max(1.0);
         self.asked.after(Duration::from_nanos(after as u64))
     }
 
-    /// The time up to which a block of `length` frames rendered now reads
-    /// the app's MIDI in: where its frames end on the stream's timeline, a
-    /// device buffer back, and never past when the device asked. So the
-    /// blocks one buffer holds each read their own share of the time since
-    /// the last, as long as they are.
+    /// Returns the time up to which a block of `length` frames rendered now
+    /// reads the app's MIDI in.
+    ///
+    /// It's where the block's frames end on the stream's timeline, one device
+    /// buffer back, and never past the device's request. So each block in a
+    /// buffer reads its own share of the time since the previous buffer, as
+    /// long as the block is.
     fn input_until(&self, length: usize) -> Instant {
         let end = (self.ahead + self.queued + length) as f64 - self.buffer as f64;
         let after = end * 1e9 / self.sample_rate.max(1.0);

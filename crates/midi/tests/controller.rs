@@ -1,12 +1,15 @@
-//! Controllers read typed: MIDI 1.0's from a keyboard's own values, each
-//! from its own message alone, a registered, an assignable and a note's
-//! own, and each sent and read back as it was.
+//! Tests typed controller reads:
+//! - MIDI 1.0's, from a keyboard's own values.
+//! - Each from its own message only.
+//! - A registered, an assignable and a note's own.
+//! - Each sent and read back unchanged.
 
 use hapto_midi::controller::{self, Address, Controller};
 use hapto_midi::{Centred, Channel, Decoder, Group, Message, MidiOut, Pedal};
 use hapto_ump::{Event, EventList, Midi1Message, Midi1Voice, Upgrade};
 
-/// A MIDI 1.0 control change, upgraded as a keyboard's is, then decoded.
+/// Returns a MIDI 1.0 control change, upgraded as a keyboard's is and then
+/// decoded.
 fn sent(controller: u8, value: u8) -> Message<'static> {
     let voice = Midi1Voice {
         group: 0,
@@ -18,13 +21,13 @@ fn sent(controller: u8, value: u8) -> Message<'static> {
     decode(upgraded.as_slice()[0])
 }
 
-/// The one message `event` decodes to.
+/// Returns the one message that `event` decodes to.
 fn decode(event: Event) -> Message<'static> {
     let mut decoder = Decoder::new();
     let message = decoder.decode(&event).next().expect("a message");
     match message {
         Message::SysEx { .. } => panic!("no SysEx here"),
-        // A message with no borrow lives as long as asked.
+        // A message that borrows nothing can take the `'static` lifetime.
         other => owned(other),
     }
 }
@@ -93,7 +96,7 @@ fn a_keyboards_values_read_typed_and_its_defaults_as_the_controllers_rest() {
         controller::PAN.read(&sent(10, 127)),
         Some(Centred::new(1.0))
     );
-    // A default is what a keyboard's value of it reads as.
+    // A default is what a keyboard's default value reads as.
     assert_eq!(
         controller::VOLUME.read(&sent(7, 100)),
         Some(controller::VOLUME.default())
@@ -151,7 +154,7 @@ fn registered_and_assignable_controllers_read_by_bank_and_index() {
     assert_eq!(CUTOFF.default(), 0.5);
 }
 
-/// `message` sent through a block's MIDI out and decoded again.
+/// Sends `message` through a block's MIDI out and returns it decoded again.
 fn round_trip(message: Message<'_>) -> Message<'static> {
     let mut packets = EventList::with_capacity(4);
     MidiOut::new(&mut packets).send(0, message);
@@ -181,7 +184,7 @@ fn a_value_that_is_not_a_number_reads_as_each_types_rest() {
     assert_eq!(Centred::from_unit(f32::NAN), Centred::CENTRE);
     assert_eq!(Centred::new(f32::NAN), Centred::CENTRE);
     assert_eq!(Pedal::new(f32::NAN), Pedal::UP);
-    // In range, each is held to its ends.
+    // Out of range, each is clamped to its ends.
     assert_eq!(Centred::from_unit(2.0), Centred::new(1.0));
     assert_eq!(f32::from_unit(-1.0), 0.0);
 }
@@ -203,7 +206,7 @@ fn a_controller_made_at_run_time_is_the_one_its_constant_would_be() {
 
 #[test]
 fn every_controller_midi_1_0_defines_has_a_name_and_no_other_does() {
-    // The numbers MIDI 1.0's table of controllers leaves undefined.
+    // The numbers that MIDI 1.0's table of controllers leaves undefined.
     let undefined = |number: u8| {
         matches!(
             number,

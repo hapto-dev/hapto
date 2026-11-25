@@ -38,8 +38,8 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
         kResultOk
     }
 
-    /// The plugin's parameters, then, for a plugin that takes MIDI, the
-    /// hidden proxies its controllers reach it through.
+    /// Counts the plugin's parameters and then, if it takes MIDI, its hidden
+    /// controller proxies.
     unsafe fn getParameterCount(&self) -> int32 {
         let count = self.engine().map_or(0, |engine| {
             let proxies = if P::INFO.midi_input { midi::GRID } else { 0 };
@@ -176,7 +176,7 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
         })
     }
 
-    /// A proxy answers its default: what it carried went to the block.
+    /// For a proxy, returns its default, because its value went to the block.
     unsafe fn getParamNormalized(&self, id: ParamID) -> ParamValue {
         self.guard(0.0, || match (self.engine(), self.param(id)) {
             (Some(engine), Some((param, _))) => engine.set().normalized(param),
@@ -184,8 +184,8 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
         })
     }
 
-    /// A proxy takes a write and keeps nothing: its controller reaches the
-    /// plugin through `process` alone.
+    /// For a proxy, accepts the write and keeps nothing, because its
+    /// controller goes only through `process`.
     unsafe fn setParamNormalized(&self, id: ParamID, normalized: ParamValue) -> tresult {
         self.guard(kInternalError, || {
             if Proxy::of::<P>(id).is_some() {

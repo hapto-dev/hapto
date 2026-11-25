@@ -1,6 +1,6 @@
-//! MIDI in through the VST3 exporter: notes named by the host's ids, a
-//! note's tuning and expressions, SysEx, and controllers through the hidden
-//! proxies a host maps them to, in time order with the notes.
+//! Tests of MIDI input through the VST3 exporter, for notes under the host's
+//! ids, a note's tuning and expressions, SysEx, and controllers through the
+//! hidden proxies a host maps them to, in time order with the notes.
 
 use hapto_midi::{Centred, Message, NoteId, controller};
 use hapto_ump::Origin;
@@ -11,8 +11,8 @@ use super::{Sender, note_on, play, playing};
 use crate::layout::Stereo;
 use crate::{Block, Processor, Status};
 
-/// Takes MIDI and does nothing with it, so a test reads what the block
-/// decoded.
+/// A plugin that takes MIDI and does nothing with it, so a test reads what
+/// the block decoded.
 type Listener = Sender<Listening, false>;
 
 #[derive(Default)]
@@ -30,7 +30,7 @@ fn running() -> TestHost<Listener> {
     playing()
 }
 
-/// Each message the last block decoded as its line, with its frame.
+/// Returns each message the last block decoded, as text with its frame.
 fn heard(host: &TestHost<Listener>) -> Vec<(usize, String)> {
     host.component()
         .heard(|midi| {
@@ -51,8 +51,8 @@ fn a_note_reaches_the_plugin_as_midi_2_named_by_the_hosts_id() {
         velocity: 0.5,
         id: 7,
     };
-    // Two notes on middle C, as VST3 lets a host send them: the note-off
-    // that names the first ends it alone.
+    // Two notes on middle C, as VST3 allows, and a note-off with the first's
+    // id, which ends only that note.
     play(
         &mut host,
         &[
@@ -244,8 +244,8 @@ fn a_controller_comes_through_its_proxy_as_midi_1_upgraded_and_before_a_note_at_
     let volume = host.midi_mapping(0, 7).expect("mapped");
     let pressure = host.midi_mapping(0, 128).expect("mapped");
     let bend = host.midi_mapping(0, 129).expect("mapped");
-    // As a host divides a MIDI 1.0 controller: volume 100, full pressure,
-    // and the bend at rest.
+    // Volume 100, full pressure and the pitch bend centred, each divided as
+    // a host divides a MIDI 1.0 controller.
     let queues: [(u32, &[(i32, f64)]); 3] = [
         (volume, &[(3, 100.0 / 127.0)]),
         (pressure, &[(3, 1.0)]),
@@ -298,8 +298,8 @@ fn a_parameter_s_address_comes_before_its_data_entry_at_one_frame_whatever_the_q
     let mut host = running();
     let proxy = |controller| host.midi_mapping(0, controller).expect("mapped");
     let (entry, high, low) = (proxy(6), proxy(101), proxy(100));
-    // The bend range, 12 semitones, all at frame 4: the host lists the data
-    // entry's queue before the address's.
+    // The bend range of 12 semitones, all at frame 4, with the host listing
+    // the data entry's queue before the address's.
     let queues: [(u32, &[(i32, f64)]); 3] = [
         (entry, &[(4, 12.0 / 127.0)]),
         (high, &[(4, 0.0)]),
@@ -333,7 +333,7 @@ fn a_data_entry_s_high_byte_comes_before_its_low_byte_at_one_frame_whatever_the_
                 .collect::<Vec<_>>()
         })
     };
-    // The bend range, 2 semitones.
+    // The bend range of 2 semitones.
     let first: [(u32, &[(i32, f64)]); 4] = [
         (high, &[(0, 0.0)]),
         (low, &[(0, 0.0)]),
@@ -342,8 +342,8 @@ fn a_data_entry_s_high_byte_comes_before_its_low_byte_at_one_frame_whatever_the_
     ];
     play(&mut host, &[], &first);
     assert_eq!(range(&host).expect("active"), [(0, 2.0)]);
-    // Then 12 and a half, the host listing the low byte's queue first: it
-    // refines its own high byte, not the one before.
+    // Then 12.5, with the low byte's queue listed first. It refines its own
+    // high byte, not the one before.
     let next: [(u32, &[(i32, f64)]); 2] =
         [(fine, &[(4, 50.0 / 127.0)]), (entry, &[(4, 12.0 / 127.0)])];
     play(&mut host, &[], &next);
@@ -403,7 +403,8 @@ fn every_channel_offers_the_note_expressions_a_plugin_reads() {
 fn a_note_expression_reads_as_text_and_back_by_its_curve() {
     let host = running();
     let (volume, tuning) = (0, 2);
-    // The tuning in semitones, 120 either way; the rest in percent.
+    // The tuning reads in semitones, up to 120 either way, and the rest in
+    // percent.
     assert_eq!(
         host.expression_text(0, tuning, 0.5).as_deref(),
         Some("+0.00")
@@ -424,7 +425,7 @@ fn a_note_expression_reads_as_text_and_back_by_its_curve() {
         "held to 1"
     );
     assert_eq!(host.expression_value(0, volume, "loud"), None);
-    // A channel past the event bus's 16 offers none.
+    // A channel past the event bus's 16 has no note expressions.
     assert_eq!(host.expression_text(16, volume, 0.25), None);
 }
 
@@ -455,8 +456,8 @@ fn a_host_claiming_more_than_the_block_has_room_for_is_read_as_far_as_there_is_r
             (midi.len(), midi.dropped(), note)
         })
         .expect("active");
-    // The block's room, 2048 packets: the controllers leave the note its
-    // room, and the rest of their points are counted.
+    // The block holds 2048 packets, with room left for the note, and the
+    // controllers' other points are counted as dropped.
     assert_eq!((count, dropped, note), (2048, 3000 - 2047, true));
 }
 
@@ -465,7 +466,7 @@ fn a_host_whose_reads_fail_is_read_no_further_than_the_block_has_room() {
     let mut host = running();
     let volume = host.midi_mapping(0, 7).expect("mapped");
     let (mut left, mut right) = ([0.0_f32; 16], [0.0_f32; 16]);
-    // One point it can give, and as many as an `int32` holds claimed.
+    // The queue holds one point but reports as many as an `int32` holds.
     let reads = host
         .process_claiming(
             &mut [&mut left[..], &mut right[..]],

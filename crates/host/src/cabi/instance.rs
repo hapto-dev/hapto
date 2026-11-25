@@ -94,12 +94,12 @@ pub(super) fn status_code(status: Status) -> u32 {
     }
 }
 
-/// A list a host lends: `count` items at `items`.
+/// Returns the slice of `count` items at `items` that a host lends.
 ///
 /// # Safety
 ///
-/// `items` is null, or points to `count` items that stay valid for reads,
-/// and unchanged, for `'a`.
+/// `items` is null, or points to `count` items that stay valid for reads
+/// and unchanged for `'a`.
 pub(super) unsafe fn lent<'a, T>(items: *const T, count: u32) -> &'a [T] {
     if items.is_null() || count == 0 {
         return &[];
@@ -109,12 +109,12 @@ pub(super) unsafe fn lent<'a, T>(items: *const T, count: u32) -> &'a [T] {
     unsafe { std::slice::from_raw_parts(items, count as usize) }
 }
 
-/// Room a host lends to write: `count` items at `items`.
+/// Returns the slice of `count` items at `items` that a host lends to write.
 ///
 /// # Safety
 ///
 /// `items` is null, or points to `count` items that stay valid for writes,
-/// and touched by nothing else, for `'a`.
+/// and that nothing else touches, for `'a`.
 pub(super) unsafe fn lent_mut<'a, T>(items: *mut T, count: u32) -> &'a mut [T] {
     if items.is_null() || count == 0 {
         return &mut [];

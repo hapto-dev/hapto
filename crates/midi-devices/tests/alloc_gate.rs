@@ -1,7 +1,9 @@
-//! The audio thread's sides of the app's MIDI neither allocate nor free:
-//! every input's packets read into a block, merged in time order and
-//! upgraded, a SysEx held until whole, and the pushes that feed them; and
-//! each block's MIDI downgraded and handed to every output that is read.
+//! Tests that the audio thread's sides of the app's MIDI neither allocate
+//! nor free:
+//!
+//! - Every input's packets read into a block, merged in time order and
+//!   upgraded, with a SysEx held until whole, and the pushes that feed them.
+//! - Each block's MIDI downgraded and handed to every output that is read.
 
 hapto_testkit::install_alloc_gate!();
 
@@ -19,8 +21,8 @@ fn reading_every_input_into_blocks_does_not_allocate() {
             for input in 0..MAX_INPUTS {
                 let at = Instant::from_nanos(round * 1_000 + input as u64);
                 let note = [0x2090_3C7F, 0, 0, 0];
-                // On the first, a SysEx in two halves too, which waits a
-                // block for its end and then goes whole.
+                // The first input also gets a SysEx in two halves, which
+                // waits a block for its end and then goes out whole.
                 match (input, round % 2) {
                     (0, 0) => {
                         inputs.push(input, at, note);
@@ -49,11 +51,11 @@ fn reading_every_input_into_blocks_does_not_allocate() {
 #[test]
 fn writing_blocks_to_every_output_does_not_allocate() {
     let (mut outputs, mut writer) = outputs(64);
-    // Every output read, as open devices read them.
+    // Every output is read, as open devices read them.
     for output in 0..MAX_OUTPUTS {
         outputs.take(output);
     }
-    // A note, a registered controller, which goes out as four, and a SysEx.
+    // A note, a registered controller (sent as four controllers) and a SysEx.
     let block = [
         Event::new(0, [0x4090_3C00, 0xFFFF_0000, 0, 0]),
         Event::new(4, [0x4020_0000, 0x1800_0000, 0, 0]),

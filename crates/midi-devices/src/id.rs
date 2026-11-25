@@ -1,4 +1,4 @@
-//! What names a device, and what the list says of it.
+//! A device's id, and what the list says about it.
 
 use std::fmt;
 
@@ -14,9 +14,9 @@ use std::fmt;
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Direction {
-    /// It sends MIDI: a keyboard, a controller.
+    /// A device that sends MIDI, such as a keyboard or a controller.
     Input,
-    /// It takes MIDI: a synth, a port out.
+    /// A device that takes MIDI, such as a synth or an output port.
     Output,
 }
 
@@ -29,14 +29,12 @@ impl Direction {
     }
 }
 
-/// What names a device from one look at the system's list to the next.
+/// A device's id, which survives the system renumbering its devices as
+/// others come and go.
 ///
-/// It survives the system's renumbering, which moves a device's place in
-/// the list when another comes or goes. On WinMM it is the device's
-/// interface path, or its name for one that has none, with its place among
-/// the devices that share that string and its direction. Compare it, keep
-/// it and show it in a log; read nothing into its text, which only says
-/// which device it names.
+/// On WinMM it is made of the device's direction, its interface path (or its
+/// name if it has none), and its place among the devices that share both.
+/// Compare it, keep it and log it, but don't rely on its text.
 ///
 /// # Examples
 ///
@@ -53,13 +51,13 @@ impl Direction {
 pub struct DeviceId(String);
 
 impl DeviceId {
-    /// The id of the `place`th device, from 0, whose backend names it by
-    /// `key` in `direction`.
+    /// Returns the id of the device at `place`, from 0, among those in
+    /// `direction` that the backend names by `key`.
     pub(crate) fn new(direction: Direction, key: &str, place: usize) -> DeviceId {
         DeviceId(format!("{}:{key}#{place}", direction.tag()))
     }
 
-    /// The id as text.
+    /// Returns the id as text.
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -71,8 +69,7 @@ impl fmt::Display for DeviceId {
     }
 }
 
-/// A MIDI device the system lists: its id, its name as the system shows
-/// it, and its direction.
+/// A MIDI device in the system's list, with its id, name and direction.
 ///
 /// # Examples
 ///
@@ -99,8 +96,8 @@ impl Device {
         }
     }
 
-    /// A device named `name` that no system lists, for another crate's tests
-    /// of what it does with one.
+    /// Returns a device named `name` that no system lists, for other crates'
+    /// tests.
     #[doc(hidden)]
     pub fn for_tests(name: &str, direction: Direction) -> Device {
         Device::new(
@@ -110,25 +107,25 @@ impl Device {
         )
     }
 
-    /// What names it from one look at the list to the next.
+    /// Returns the device's id.
     pub fn id(&self) -> &DeviceId {
         &self.id
     }
 
-    /// Its name, as the system shows it. On WinMM the system cuts it at 31
-    /// characters.
+    /// Returns the device's name as the system shows it, which WinMM cuts at
+    /// 31 characters.
     pub fn name(&self) -> &str {
         &self.name
     }
 
-    /// Whether it sends MIDI or takes it.
+    /// Returns whether the device sends or takes MIDI.
     pub fn direction(&self) -> Direction {
         self.direction
     }
 }
 
-/// Names each of `named`, in the system's order, by its key and its place
-/// among the ones before it with the same key.
+/// Returns a device for each `(name, key)` in `named`, in order, with an id
+/// from its key and its place among the earlier ones with that key.
 #[cfg_attr(
     all(not(windows), not(test)),
     expect(

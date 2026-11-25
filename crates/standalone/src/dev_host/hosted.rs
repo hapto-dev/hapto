@@ -131,8 +131,8 @@ struct Vst3<P: Plugin> {
 impl<P: Plugin> Vst3<P> {
     fn new() -> Self {
         let host: &'static _ = Box::leak(Box::new(vst3::TestHost::<P>::with_timer()));
-        // A host shows no hidden parameter: the proxies a plugin's MIDI
-        // controllers reach it through.
+        // A host shows no hidden parameter, such as the proxies that a
+        // plugin's MIDI controllers reach it through.
         let params: Vec<Param> = (0..host.parameter_count())
             .filter_map(|index| host.parameter(index))
             .filter(|info| !info.is_hidden)
@@ -279,7 +279,7 @@ struct Vst3Audio {
 }
 
 impl Render for Vst3Audio {
-    // Open: the dev host hands the formats no MIDI yet.
+    // Open: the dev host passes the formats no MIDI yet.
     fn render(&mut self, block: StandaloneBlock<'_, '_>, _sent: &mut dyn FnMut(&[Event])) {
         let StandaloneBlock {
             inputs,

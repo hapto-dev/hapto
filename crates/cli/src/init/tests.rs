@@ -277,9 +277,8 @@ fn a_vendor_with_no_letters_cannot_make_the_default_id() {
     assert!(given.is_ok(), "an id given needs no vendor's letters");
 }
 
-/// Writes a crate from `files` with this checkout's crates, then builds and
-/// tests it: the template compiles, its generated files match its
-/// declarations, and its tests pass.
+/// Writes a crate from `files` with this checkout's crates, and checks that
+/// it builds, its generated files match its declarations and its tests pass.
 fn builds_and_passes_its_tests(name: &str, files: &[(&str, &str)]) {
     let dir = temp("e2e").join(name);
     let checkout = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -296,18 +295,19 @@ fn builds_and_passes_its_tests(name: &str, files: &[(&str, &str)]) {
     assert!(status.success(), "the new crate's tests: {status}");
 }
 
-/// The gain the template writes builds and passes its tests. The full CI run
-/// takes it on Windows, and by hand: `cargo test -p cargo-hapto --
-/// --ignored`, minutes the first time, since the crate builds in a target
-/// folder of its own.
+/// The gain that the template writes builds and passes its tests.
+///
+/// The full CI run runs it on Windows, and `cargo test -p cargo-hapto --
+/// --ignored` by hand, in minutes the first time because the crate builds in
+/// its own target folder.
 #[test]
 #[ignore = "builds a whole plugin crate"]
 fn a_new_crate_builds_and_passes_its_tests() {
     builds_and_passes_its_tests("e2e-plugin", FILES);
 }
 
-/// The instrument `--instrument` writes builds and passes its tests: a note
-/// sounds through the VST3 exporter until it is released.
+/// The instrument that `--instrument` writes builds and passes its tests, in
+/// which a note sounds through the VST3 exporter until it is released.
 #[test]
 #[ignore = "builds a whole plugin crate"]
 fn a_new_instrument_builds_and_passes_its_tests() {

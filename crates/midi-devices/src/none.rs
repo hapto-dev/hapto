@@ -1,5 +1,5 @@
-//! A system Hapto reaches no MIDI devices on yet: the list is empty,
-//! nothing changes, and no input or output opens.
+//! The backend for systems where Hapto reaches no MIDI devices yet, so the
+//! list is empty and never changes, and no input or output opens.
 
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -13,7 +13,7 @@ pub(crate) fn list() -> Vec<Device> {
     Vec::new()
 }
 
-/// Watches nothing: an empty list never changes, so it needs no look.
+/// A watch that never starts, because an empty list never changes.
 #[derive(Debug)]
 pub(crate) struct Watch;
 
@@ -23,7 +23,7 @@ impl Watch {
     }
 }
 
-/// An input that cannot be: no device opens here.
+/// An input that can't exist, because no device opens here.
 #[derive(Debug)]
 pub(crate) struct Input(Infallible);
 
@@ -44,7 +44,8 @@ impl Input {
     }
 }
 
-/// What would wake an output's thread, which no output here has.
+/// An output thread's wake signal, which does nothing because no output
+/// opens here.
 #[derive(Debug)]
 pub(crate) struct Signal;
 
@@ -57,7 +58,7 @@ impl Signal {
     pub(crate) fn set(&self) {}
 }
 
-/// An output that cannot be: no device opens here.
+/// An output that can't exist, because no device opens here.
 #[derive(Debug)]
 pub(crate) struct Output(Infallible);
 

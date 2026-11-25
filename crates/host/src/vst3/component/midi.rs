@@ -1,22 +1,21 @@
-//! The component's MIDI in: the host's events, and its controllers through
-//! hidden proxy parameters, as Universal MIDI Packets for the engine.
+//! Turns the host's events, and the controllers it sends through hidden
+//! proxy parameters, into Universal MIDI Packets for the engine.
 //!
-//! VST3 hands notes over as events, which become MIDI 2.0, each note named
-//! by the host's `noteId` in the packet's [`Origin::Note`], so the decoder
-//! names it that way too. A note expression names its note alone, so the
-//! component keeps the channel and key of each note its host named.
+//! Notes become MIDI 2.0, each packet with the host's `noteId` in its
+//! [`Origin::Note`], so the decoder identifies notes by that id too. A note
+//! expression gives only the id, so the component keeps each such note's
+//! channel and key.
 //!
-//! A controller reaches a plugin only as a parameter change, so the
-//! component lists a hidden proxy for each channel and controller, 16 by
-//! 130, in the id range no key's hash takes, and tells the host through
-//! `IMidiMapping`. A proxy's value is its MIDI 1.0 controller's, which the
-//! host divided by 127, or by 16383 for the bend, so the component rounds it
-//! back to those bits and the engine upgrades it as it does any MIDI 1.0:
-//! learn then narrows it exactly.
+//! VST3 sends a controller only as a parameter change, so the component lists
+//! a hidden proxy for each channel and controller (16 by 130), in the id range
+//! that no key's hash takes, and maps them through `IMidiMapping`. The host
+//! divides a proxy's MIDI 1.0 value by 127, or 16383 for the pitch bend. The
+//! component rounds it back, and the engine upgrades it like any MIDI 1.0, so
+//! learn narrows it back exactly.
 
-// Audio-path code: a panic here ends a host, so indexing, unwrap, expect,
-// panic and unchecked arithmetic are refused, and a site that is provably
-// safe says why in an `#[expect]`.
+// A panic in audio-path code ends the host, so these lints reject indexing,
+// unwrap, expect, panic and unchecked arithmetic. A provably safe site gives
+// its reason in an `#[expect]`.
 #![cfg_attr(
     not(test),
     deny(
@@ -56,7 +55,7 @@ use hapto_ump::controller::{DATA_ENTRY, NRPN_LSB, RPN_MSB};
 
 /// The channels the grid covers.
 const CHANNELS: u32 = 16;
-/// Each channel's controllers, as VST3 numbers them: MIDI 1.0's 128, then
+/// Each channel's controllers as VST3 numbers them, MIDI 1.0's 128 then
 /// channel pressure and the pitch bend.
 const CONTROLLERS: u32 = ControllerNumbers_::kCountCtrlNumber as uint32;
 /// VST3's number for channel pressure.
@@ -65,26 +64,25 @@ pub(super) const PRESSURE: u8 = ControllerNumbers_::kAfterTouch as u8;
 pub(super) const BEND: u8 = ControllerNumbers_::kPitchBend as u8;
 /// How many proxies the grid has.
 pub(super) const GRID: u32 = CHANNELS * CONTROLLERS;
-/// The first proxy's id, the reserved range's first.
+/// The first proxy's id, which starts the reserved range.
 const FIRST_PROXY: u32 = *RESERVED_HOST_IDS.start();
 const _: () = assert!(FIRST_PROXY + (GRID - 1) <= *RESERVED_HOST_IDS.end());
 
-/// The most events one block's list is read for: far past any block's
-/// room, so a host that claims millions is walked a bounded way.
+/// The most events read from one block's list, far more than a block has
+/// room for, so a host that claims millions is read only this far.
 const MOST_EVENTS: int32 = 1 << 16;
 
-/// MIDI 2.0's registered per-note controller for a note's absolute pitch,
-/// 7.25.
+/// MIDI 2.0's registered per-note controller for a note's absolute pitch
+/// (Pitch 7.25).
 pub(super) const PER_NOTE_PITCH: u8 = ChannelMessage::PER_NOTE_PITCH;
-/// MIDI 1.0's controller for vibrato depth, sound controller 8, which a
+/// MIDI 1.0's controller for vibrato depth (sound controller 8), which a
 /// note's vibrato becomes.
 const VIBRATO_DEPTH: u8 = 77;
 /// How far VST3's tuning expression reaches either way, in semitones.
 pub(super) const TUNING_REACH: f64 = 120.0;
 
-/// The note expressions the component offers, in the order it lists them:
-/// each with its title, the per-note controller it becomes, its default and
-/// its flags.
+/// The note expressions that the component offers, in the order it lists
+/// them.
 pub(super) const EXPRESSIONS: [Expression; 6] = [
     Expression {
         id: NoteExpressionTypeIDs_::kVolumeTypeID,
@@ -140,20 +138,20 @@ pub(super) const EXPRESSIONS: [Expression; 6] = [
 pub(super) struct Expression {
     pub(super) id: u32,
     title: &'static str,
-    /// The registered per-note controller it becomes: 3, a note's absolute
-    /// pitch, for the tuning.
+    /// The registered per-note controller it becomes, such as absolute pitch
+    /// (3) for the tuning.
     pub(super) controller: u8,
     default: f64,
     flags: int32,
     curve: Curve,
 }
 
-/// How a note expression's value, 0 to 1, stands for its controller's, and
+/// How a note expression's value (0 to 1) maps to its controller's and
 /// reads to a musician.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Curve {
-    /// The tuning: a note's absolute pitch, up to [`TUNING_REACH`]
-    /// semitones either way of its note-on's.
+    /// The tuning, as absolute pitch up to [`TUNING_REACH`] semitones either
+    /// side of the note-on's.
     Tuning,
     /// The volume, on controller 7's curve.
     Volume,
@@ -162,20 +160,19 @@ enum Curve {
 }
 
 impl Expression {
-    /// The expression VST3 types `id`.
+    /// Returns the expression whose VST3 type id is `id`.
     fn by_type(id: u32) -> Option<&'static Expression> {
         EXPRESSIONS.iter().find(|expression| expression.id == id)
     }
 
-    /// The expression that registered per-note controller `index` stands
-    /// for.
+    /// Returns the expression for registered per-note controller `index`.
     pub(super) fn by_controller(index: u8) -> Option<&'static Expression> {
         EXPRESSIONS
             .iter()
             .find(|expression| expression.controller == index)
     }
 
-    /// The controller's 32 bits for VST3's `value`, on `note`.
+    /// Returns the controller's 32 bits for VST3's `value` on `note`.
     fn bits(&self, value: f64, note: &Named) -> u32 {
         match self.curve {
             Curve::Tuning => {
@@ -187,8 +184,8 @@ impl Expression {
         }
     }
 
-    /// VST3's value for the controller's 32 `bits`, on a note at `key`
-    /// whose note-on was tuned `cents`.
+    /// Returns VST3's value for 32 `bits` on a note at `key` whose note-on
+    /// was tuned by `cents`.
     pub(super) fn value(&self, bits: u32, key: u8, cents: f32) -> f64 {
         match self.curve {
             Curve::Tuning => {
@@ -201,7 +198,7 @@ impl Expression {
         .clamp(0.0, 1.0)
     }
 
-    /// The value as its text: semitones for the tuning, a percentage for
+    /// Returns the value as text, in semitones for the tuning and percent for
     /// the rest.
     fn text(&self, value: f64) -> String {
         match self.curve {
@@ -210,8 +207,8 @@ impl Expression {
         }
     }
 
-    /// The value `text` stands for, as [`text`](Self::text) writes it,
-    /// held to 0 to 1; `None` for text that is no number.
+    /// Parses `text` as [`text`](Self::text) writes it, clamped to 0 to 1, or
+    /// returns `None` if it isn't a number.
     fn parse(&self, text: &str) -> Option<f64> {
         let number = text
             .trim()
@@ -228,7 +225,7 @@ impl Expression {
         )
     }
 
-    /// The units its text is in.
+    /// Returns its text's units.
     fn units(&self) -> &'static str {
         match self.curve {
             Curve::Tuning => "semitones",
@@ -237,20 +234,20 @@ impl Expression {
     }
 }
 
-/// A tuning expression's value, 0 to 1, as the semitones it moves a note,
-/// [`TUNING_REACH`] either way.
+/// Converts a tuning value (0 to 1) to semitones, up to [`TUNING_REACH`]
+/// either way.
 fn semitones_of_tuning(value: f64) -> f64 {
     TUNING_REACH * (value.clamp(0.0, 1.0) * 2.0 - 1.0)
 }
 
-/// The tuning expression's value for a move of `semitones`: the inverse of
+/// Converts `semitones` to a tuning value, the inverse of
 /// [`semitones_of_tuning`].
 fn tuning_of_semitones(semitones: f64) -> f64 {
     (semitones / TUNING_REACH + 1.0) / 2.0
 }
 
-/// A proxy: the hidden parameter a host's MIDI 1.0 controller on a
-/// channel reaches the plugin through, as JUCE's wrapper maps them.
+/// A proxy, the hidden parameter that carries a host's MIDI 1.0 controller
+/// on one channel, as JUCE's wrapper maps them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct Proxy {
     channel: u8,
@@ -258,19 +255,19 @@ pub(super) struct Proxy {
 }
 
 impl Proxy {
-    /// The proxy `id` names, for plugin `P`, which has them only when it
+    /// Returns the proxy `id` for plugin `P`, which has proxies only if it
     /// takes MIDI.
     pub(super) fn of<P: Plugin>(id: ParamID) -> Option<Proxy> {
         P::INFO.midi_input.then(|| Proxy::named(id)).flatten()
     }
 
-    /// The proxy `id` names, if it is one.
+    /// Returns the proxy `id`, if it is one.
     fn named(id: ParamID) -> Option<Proxy> {
         let index = id.checked_sub(FIRST_PROXY).filter(|index| *index < GRID)?;
         Proxy::from_index(index)
     }
 
-    /// The `index`th proxy, listed after the plugin's own parameters.
+    /// Returns the `index`th proxy, listed after the plugin's own parameters.
     pub(super) fn at(index: usize) -> Option<Proxy> {
         Proxy::from_index(u32::try_from(index).ok().filter(|index| *index < GRID)?)
     }
@@ -282,7 +279,7 @@ impl Proxy {
         })
     }
 
-    /// The proxy for `controller` on `channel`, as VST3 numbers them.
+    /// Returns the proxy for `controller` on `channel`, as VST3 numbers them.
     fn mapped(channel: int16, controller: int16) -> Option<Proxy> {
         let channel = u8::try_from(channel)
             .ok()
@@ -296,28 +293,28 @@ impl Proxy {
         })
     }
 
-    /// Its parameter id.
+    /// Returns its parameter id.
     pub(super) fn id(self) -> ParamID {
-        // Below the grid's size, which the reserved range holds.
+        // `index` is below the grid's size, which fits the reserved range.
         let index = u32::from(self.channel)
             .saturating_mul(CONTROLLERS)
             .saturating_add(u32::from(self.controller));
         FIRST_PROXY.saturating_add(index)
     }
 
-    /// The most its MIDI 1.0 value reaches: 16383 for the bend, 127 for the
-    /// rest.
+    /// Returns its largest MIDI 1.0 value, 16383 for the pitch bend and 127
+    /// for the rest.
     fn most(self) -> u32 {
         if self.controller == BEND { 0x3FFF } else { 127 }
     }
 
-    /// Its default: the bend at rest, any other controller at 0.
+    /// Returns its default, the centre for the pitch bend and 0 for the rest.
     pub(super) fn default(self) -> f64 {
         if self.controller == BEND { 0.5 } else { 0.0 }
     }
 
-    /// The MIDI 1.0 message its value stands for: its controller's 7 bits,
-    /// or the bend's 14, as the host divided them.
+    /// Returns the MIDI 1.0 message for `value`, with the 7 bits (14 for the
+    /// pitch bend) that the host divided.
     fn message(self, value: f64) -> Midi1Message {
         let steps = steps(value, self.most());
         match self.controller {
@@ -332,8 +329,8 @@ impl Proxy {
         }
     }
 
-    /// Where its message goes among those at its frame: a parameter's
-    /// address first and its data entry high byte next, as [`Rank`] says.
+    /// Returns its message's place among those at its frame, as [`Rank`]
+    /// says, with an address first and a data entry high byte next.
     fn rank(self) -> Rank {
         match self.controller {
             NRPN_LSB..=RPN_MSB => Rank::Address,
@@ -342,21 +339,21 @@ impl Proxy {
         }
     }
 
-    /// Its `normalized` value as text: the MIDI 1.0 value it stands for, as
-    /// the engine rounds it.
+    /// Returns `normalized` as text, the MIDI 1.0 value it stands for,
+    /// rounded as the engine rounds it.
     pub(super) fn text(self, normalized: f64) -> String {
         steps(normalized, self.most()).to_string()
     }
 
-    /// The normalized value of `text`, a MIDI 1.0 value held to its range;
-    /// `None` for text that is no whole number.
+    /// Parses `text` as a MIDI 1.0 value clamped to its range and returns it
+    /// normalized, or `None` if it isn't a whole number.
     pub(super) fn parse(self, text: &str) -> Option<f64> {
         let most = self.most();
         let value = text.trim().parse::<i64>().ok()?;
         Some(value.clamp(0, i64::from(most)) as f64 / f64::from(most))
     }
 
-    /// Fills `info` for it: hidden, so a host shows none of them, and not
+    /// Fills `info` for it as hidden, so a host shows no proxy, and not
     /// automatable.
     pub(super) fn fill(self, info: &mut ParameterInfo) {
         let channel = u32::from(self.channel).saturating_add(1);
@@ -376,9 +373,10 @@ impl Proxy {
     }
 }
 
-/// The notes the host named, each with its channel, key and tuning, so a
-/// note expression, which names its note alone, finds them. It has room
-/// for as many as the decoder keeps; past that the oldest gives way.
+/// The notes that the host gave ids, with their channel, key and tuning, for
+/// the note expressions that give only an id.
+///
+/// It holds as many as the decoder keeps and then drops the oldest.
 pub(crate) struct Notes {
     named: Vec<Named>,
 }
@@ -400,7 +398,7 @@ impl Notes {
         }
     }
 
-    /// Forgets every note, as at an activation.
+    /// Removes every note, as at an activation.
     pub(crate) fn clear(&mut self) {
         self.named.clear();
     }
@@ -410,7 +408,7 @@ impl Notes {
         if self.named.len() == self.named.capacity() && !self.named.is_empty() {
             self.named.remove(0);
         }
-        // Under the capacity, so it never allocates.
+        // The push stays within the capacity, so it never allocates.
         self.named.push(note);
     }
 
@@ -431,12 +429,13 @@ impl std::fmt::Debug for Notes {
     }
 }
 
-/// Pushes each proxy's points as the MIDI 1.0 controller it stands for,
-/// a packet a point at its offset, looking at no more than `most` queues,
-/// each ranked as [`Proxy::rank`] says. Every read, carried or failed,
-/// uses up a packet of the block's room, less `keep` packets left for the
-/// event list, so a host whose reads fail is read no further than that.
-/// Once the room is used up, the points left are counted, unread.
+/// Pushes each proxy's points as its MIDI 1.0 controller, a packet per point
+/// at its offset, from at most `most` queues, ranked as [`Proxy::rank`] says.
+///
+/// Every read, even a failed one, uses up a packet of the block's room less
+/// `keep` packets left for the event list, so a host whose reads fail is
+/// read no further. Once the room is used up, the points left are counted as
+/// dropped.
 ///
 /// # Safety
 ///
@@ -470,7 +469,8 @@ pub(super) unsafe fn read_controllers(
             };
             reads = left;
             let (mut offset, mut value) = (0, 0.0);
-            // SAFETY: as above; `offset` and `value` are room for the point.
+            // SAFETY: as above, and `offset` and `value` have room for one
+            // point.
             if unsafe { queue.getPoint(point, &mut offset, &mut value) } != kResultOk {
                 continue;
             }
@@ -485,12 +485,12 @@ pub(super) unsafe fn read_controllers(
     }
 }
 
-/// `value`, 0 to 1, as the nearest of `most` steps, held to the ends.
+/// Rounds `value`, clamped to 0 to 1, to the nearest of `most` steps.
 fn steps(value: f64, most: u32) -> u32 {
     (value.clamp(0.0, 1.0) * f64::from(most)).round() as u32
 }
 
-/// How many events the host says `events` holds, at most as many as
+/// Returns how many events the host reports in `events`, capped at what
 /// [`read_events`] reads.
 ///
 /// # Safety
@@ -502,17 +502,18 @@ pub(super) unsafe fn event_count(events: ComRef<'_, IEventList>) -> usize {
     usize::try_from(count).unwrap_or(0)
 }
 
-/// Pushes the host's events on the plugin's event bus as packets: notes,
-/// a note's pressure and expression, and SysEx. Chords, scales, text and
-/// the rest carry nothing a plugin reads. `notes` is `None` when the
-/// main thread holds them, which no host does while it processes; a note
-/// expression then finds no note. Once the block has no room, the events
-/// left are counted, unread.
+/// Pushes the host's notes, a note's pressure and expression, and SysEx on
+/// the plugin's event bus as packets.
+///
+/// Chords, scales, text and the rest carry nothing a plugin reads. `notes` is
+/// `None` while the main thread holds them, which no host causes during
+/// processing, and a note expression then finds no note. Once the block has
+/// no room, the events left are counted as dropped.
 ///
 /// # Safety
 ///
-/// `events` is alive until this call returns, and a SysEx event's bytes
-/// with it, as the SDK promises for the events `process` receives.
+/// `events` and each SysEx event's bytes are alive until this call returns,
+/// as the SDK promises for the events that `process` receives.
 pub(super) unsafe fn read_events(
     events: ComRef<'_, IEventList>,
     mut notes: Option<&mut Notes>,
@@ -529,17 +530,17 @@ pub(super) unsafe fn read_events(
         let Ok(index) = int32::try_from(index) else {
             break;
         };
-        // SAFETY: as above; `event` is room for one.
+        // SAFETY: as above, and `event` has room for one event.
         if unsafe { events.getEvent(index, &mut event) } != kResultOk || event.busIndex != 0 {
             continue;
         }
-        // SAFETY: the caller's contract: a SysEx event's bytes are alive
+        // SAFETY: by the caller's contract, a SysEx event's bytes are alive
         // until this call returns.
         unsafe { read_event(&event, notes.as_deref_mut(), midi) };
     }
 }
 
-/// One event, as [`read_events`] reads it.
+/// Reads one event, as [`read_events`] does.
 ///
 /// # Safety
 ///
@@ -594,7 +595,7 @@ unsafe fn read_event(event: &Event, notes: Option<&mut Notes>, midi: &mut MidiIn
             if data.r#type != SYSEX || data.bytes.is_null() {
                 return;
             }
-            // SAFETY: this function's contract: `bytes` holds `size` bytes.
+            // SAFETY: by this function's contract, `bytes` holds `size` bytes.
             let bytes = unsafe { std::slice::from_raw_parts(data.bytes, data.size as usize) };
             sysex(bytes, offset, midi);
         }
@@ -602,8 +603,8 @@ unsafe fn read_event(event: &Event, notes: Option<&mut Notes>, midi: &mut MidiIn
     }
 }
 
-/// Pushes `message` on `channel` at `offset`, its note named `id` by the
-/// host, or by no one for a negative `id`, as VST3 says none.
+/// Pushes `message` on `channel` at `offset` under the host's note `id`,
+/// where a negative `id` means none, as in VST3.
 fn send(midi: &mut MidiIn<'_>, offset: u32, channel: u8, id: int32, message: ChannelMessage) {
     let voice = ChannelVoice {
         group: 0,
@@ -617,8 +618,8 @@ fn send(midi: &mut MidiIn<'_>, offset: u32, channel: u8, id: int32, message: Cha
     });
 }
 
-/// A note-on, its tuning as its pitch attribute, and its note kept for
-/// the expressions that name it.
+/// Pushes a note-on with its tuning as its pitch attribute, and keeps the
+/// note for its expressions.
 fn note_on(on: &NoteOnEvent, offset: u32, notes: Option<&mut Notes>, midi: &mut MidiIn<'_>) {
     let Some((channel, key)) = place(on.channel, on.pitch) else {
         return;
@@ -649,9 +650,10 @@ fn note_on(on: &NoteOnEvent, offset: u32, notes: Option<&mut Notes>, midi: &mut 
     }
 }
 
-/// A note expression, as the registered per-note controller it becomes:
-/// the tuning as the note's absolute pitch, from its key and its note-on's
-/// tuning. One for a note the host never named is dropped.
+/// Pushes a note expression as its registered per-note controller, with the
+/// tuning as absolute pitch from the key and the note-on's tuning.
+///
+/// An expression for a note without a host id is dropped.
 fn expression(value: &NoteExpressionValueEvent, offset: u32, notes: &Notes, midi: &mut MidiIn<'_>) {
     let (Some(note), Some(expression)) =
         (notes.find(value.noteId), Expression::by_type(value.typeId))
@@ -666,9 +668,11 @@ fn expression(value: &NoteExpressionValueEvent, offset: u32, notes: &Notes, midi
     send(midi, offset, note.channel, value.noteId, message);
 }
 
-/// A SysEx's bytes, with or without its F0 and F7, as 7-bit SysEx packets
-/// on the first group: one message, each byte held to 7 bits, since a
-/// format's SysEx event is one.
+/// Pushes a SysEx message's bytes, with or without F0 and F7, as one 7-bit
+/// SysEx message on the first group, because a format's SysEx event holds
+/// one.
+///
+/// Each byte is masked to 7 bits.
 fn sysex(bytes: &[u8], offset: u32, midi: &mut MidiIn<'_>) {
     let data = bytes.strip_prefix(&[0xF0]).unwrap_or(bytes);
     let data = data.strip_suffix(&[0xF7]).unwrap_or(data);
@@ -677,41 +681,42 @@ fn sysex(bytes: &[u8], offset: u32, midi: &mut MidiIn<'_>) {
     });
 }
 
-/// A note's channel and key, if both are in range.
+/// Returns a note's channel and key, if both are in range.
 fn place(channel: int16, pitch: int16) -> Option<(u8, u8)> {
     let channel = u8::try_from(channel).ok().filter(|channel| *channel < 16)?;
     let key = u8::try_from(pitch).ok().filter(|key| *key < 128)?;
     Some((channel, key))
 }
 
-/// A value from 0 to 1 as 16 bits, held to the ends.
+/// Converts a value from 0 to 1, clamped, to 16 bits.
 fn sixteen(value: f32) -> u16 {
     scale::unit_to_16(f64::from(value))
 }
 
-/// A volume note expression's value as the per-note volume it stands for.
-/// VST3's value is a gain four times itself, 0 dB at 0.25; the volume
-/// follows controller 7's curve, whose gain is its value squared, so 0 dB
-/// reads as 1 and −12 dB about as controller 7's 64. VST3's boost past 0 dB
-/// is held at 1.
+/// Converts a volume note expression's value to its per-note volume.
+///
+/// VST3's gain is four times its value, so 0 dB is at 0.25. The volume
+/// follows controller 7's curve, whose gain is the value squared, so 0 dB
+/// becomes 1 and −12 dB about controller 7's 64. VST3's boost above 0 dB is
+/// clamped to 1.
 pub(super) fn volume_of_expression(value: f64) -> f64 {
     (4.0 * value.clamp(0.0, 1.0)).sqrt().min(1.0)
 }
 
-/// A per-note volume as the volume note expression's value: the inverse of
+/// Converts a per-note volume to a volume expression's value, the inverse of
 /// [`volume_of_expression`].
 pub(super) fn expression_of_volume(volume: f64) -> f64 {
     volume.clamp(0.0, 1.0).powi(2) / 4.0
 }
 
-/// A value from 0 to 1 as 32 bits, held to the ends.
+/// Converts a value from 0 to 1, clamped, to 32 bits.
 fn bits(value: f64) -> u32 {
     scale::unit_to_32(value)
 }
 
-/// The controllers a host's MIDI 1.0 input reaches the plugin through: a
-/// proxy for each channel and controller on the event bus, as JUCE's
-/// wrapper maps them. None for a plugin that takes no MIDI.
+/// The proxies that carry a host's MIDI 1.0 controllers, one for each
+/// channel and controller on the event bus, as JUCE's wrapper maps them, and
+/// none for a plugin that takes no MIDI.
 impl<P: Plugin> IMidiMappingTrait for Component<P> {
     unsafe fn getMidiControllerAssignment(
         &self,
@@ -724,8 +729,8 @@ impl<P: Plugin> IMidiMappingTrait for Component<P> {
             if !P::INFO.midi_input || bus != 0 {
                 return kResultFalse;
             }
-            // SAFETY: the SDK's contract: `id` is null or valid for writing
-            // one `ParamID` until this call returns.
+            // SAFETY: by the SDK's contract, `id` is null or valid for
+            // writing one `ParamID` until this call returns.
             match (Proxy::mapped(channel, controller), unsafe { id.as_mut() }) {
                 (Some(proxy), Some(id)) => {
                     *id = proxy.id();
@@ -738,15 +743,16 @@ impl<P: Plugin> IMidiMappingTrait for Component<P> {
     }
 }
 
-/// The note expressions a host may send, on every channel of the event
-/// bus, each of which reaches the plugin as a registered per-note
-/// controller. None for a plugin that takes no MIDI.
-/// Whether the component offers its note expressions on `bus` and
-/// `channel`: the event bus's 16 channels, for a plugin that takes MIDI.
+/// Returns whether the component offers note expressions on `bus` and
+/// `channel`, as it does on the event bus's 16 channels for a plugin that
+/// takes MIDI.
 fn offers_expressions<P: Plugin>(bus: int32, channel: int16) -> bool {
     P::INFO.midi_input && bus == 0 && u32::try_from(channel).is_ok_and(|channel| channel < CHANNELS)
 }
 
+/// The note expressions that a host may send on every channel of the event
+/// bus. Each reaches the plugin as a registered per-note controller, and a
+/// plugin that takes no MIDI has none.
 impl<P: Plugin> INoteExpressionControllerTrait for Component<P> {
     unsafe fn getNoteExpressionCount(&self, bus: int32, channel: int16) -> int32 {
         if offers_expressions::<P>(bus, channel) {
@@ -768,7 +774,7 @@ impl<P: Plugin> INoteExpressionControllerTrait for Component<P> {
                 .ok()
                 .filter(|_| offers_expressions::<P>(bus, channel))
                 .and_then(|index| EXPRESSIONS.get(index));
-            // SAFETY: the SDK's contract: `info` is null or valid for
+            // SAFETY: by the SDK's contract, `info` is null or valid for
             // writing one `NoteExpressionTypeInfo` until this call returns.
             let (Some(expression), Some(info)) = (expression, unsafe { info.as_mut() }) else {
                 return kInvalidArgument;
@@ -799,7 +805,7 @@ impl<P: Plugin> INoteExpressionControllerTrait for Component<P> {
         self.guard(kInternalError, || {
             let expression =
                 Expression::by_type(id).filter(|_| offers_expressions::<P>(bus, channel));
-            // SAFETY: the SDK's contract: `string` is null or valid for
+            // SAFETY: by the SDK's contract, `string` is null or valid for
             // writing one `String128` until this call returns.
             let (Some(expression), Some(string)) = (expression, unsafe { string.as_mut() }) else {
                 return kInvalidArgument;
@@ -820,12 +826,12 @@ impl<P: Plugin> INoteExpressionControllerTrait for Component<P> {
         self.guard(kInternalError, || {
             let expression =
                 Expression::by_type(id).filter(|_| offers_expressions::<P>(bus, channel));
-            // SAFETY: the SDK's contract: `value` is null or valid for
+            // SAFETY: by the SDK's contract, `value` is null or valid for
             // writing one value until this call returns.
             let (Some(expression), Some(value)) = (expression, unsafe { value.as_mut() }) else {
                 return kInvalidArgument;
             };
-            // SAFETY: the SDK's contract: `string` is null or a
+            // SAFETY: by the SDK's contract, `string` is null or a
             // NUL-terminated string of at most a `String128`, readable until
             // this call returns, as `read_utf16` requires.
             let Some(text) = (unsafe { read_utf16(string, 128) }) else {

@@ -1,9 +1,8 @@
-//! A block cut into spans: the stretches between its MIDI messages, in
-//! which nothing arrives.
+//! A block cut into spans, the stretches between its MIDI messages.
 
-// Audio-path code: a panic here ends a host, so indexing, unwrap, expect,
-// panic and unchecked arithmetic are refused, and a site that is provably
-// safe says why in an `#[expect]`.
+// A panic in audio-path code ends the host, so these lints reject indexing,
+// unwrap, expect, panic and unchecked arithmetic. A provably safe site gives
+// its reason in an `#[expect]`.
 #![cfg_attr(
     not(test),
     deny(
@@ -18,11 +17,10 @@
 use crate::layout::Layout;
 use crate::{Audio, Block, Midi, MidiOut};
 
-/// Part of a block in which nothing arrives but at its first frame: its
-/// audio, and the messages that arrive as it starts.
+/// Part of a block in which messages arrive only at its first frame.
 ///
-/// A span has a block's shape, so it goes to any function written for a
-/// block's audio.
+/// A span's fields match a block's, so any function written for a block's
+/// audio also takes a span's.
 ///
 /// # Examples
 ///
@@ -32,7 +30,7 @@ use crate::{Audio, Block, Midi, MidiOut};
 ///
 /// let mut buffer = AudioBuf::<Mono>::new(6);
 /// for mut span in Spans::new(buffer.audio(), Midi::default()).at_most(4) {
-///     // The block's frame it starts at, and its own frames.
+///     // The span's start, in the block's frames, and its own audio.
 ///     let level = span.start as f32;
 ///     span.audio.add_to_all(std::iter::repeat(level));
 /// }
@@ -41,25 +39,27 @@ use crate::{Audio, Block, Midi, MidiOut};
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct Span<'a, L: Layout> {
-    /// The block's frame the span starts at: for sending MIDI at the
+    /// The block's frame that the span starts at, for sending MIDI at the
     /// block's frames from inside it.
     pub start: usize,
     /// The span's frames, in every channel.
     pub audio: Audio<'a, L>,
-    /// What arrives at its first frame, in the order it came: every message
-    /// is at frame 0, so [`Midi::messages`] reads them.
+    /// The messages at the first frame, in the order they came. Each is at
+    /// frame 0, so [`Midi::messages`] reads them.
     pub midi: Midi<'a>,
 }
 
-/// A block's spans, in time order, disjoint, covering it once: a new one at
-/// each frame a message arrives at, so a plugin acts on each message, then
-/// renders until the next. None is empty. [`Block::spans`] makes them.
+/// A block's spans in time order, which cover each frame once.
 ///
-/// A plugin that never asks for spans keeps its block whole, so a convolver
-/// or an FFT is never cut short.
+/// A new span starts at each frame where a message arrives, so a plugin acts
+/// on each message and then renders until the next. None is empty, and
+/// [`Block::spans`] makes them.
 ///
-/// Open: a parameter marked sample-accurate, to split at its automation
-/// too, is to come.
+/// A plugin that never cuts its block into spans keeps it whole, so a
+/// convolver or an FFT is never cut short.
+///
+/// Open: marking a parameter sample-accurate, so spans also split at its
+/// automation, is to come.
 ///
 /// # Examples
 ///
@@ -68,8 +68,8 @@ pub struct Span<'a, L: Layout> {
 /// use hapto_host::midi::{Message, controller};
 /// use hapto_host::{Block, Processor, Status};
 ///
-/// /// A gate the sustain pedal opens: each span plays at the pedal's state
-/// /// as it starts.
+/// /// A gate that the sustain pedal opens, so each span plays with the
+/// /// pedal's state at its start.
 /// struct Pedal {
 ///     down: bool,
 /// }
@@ -106,18 +106,18 @@ pub struct Span<'a, L: Layout> {
 /// ```
 #[derive(Debug)]
 pub struct Spans<'a, L: Layout> {
-    /// The frames not yet handed out; `None` once all are.
+    /// The frames not yet handed out, or `None` once all are.
     rest: Option<Audio<'a, L>>,
     midi: Midi<'a>,
-    /// The block's frame `rest` starts at.
+    /// The block's frame that `rest` starts at.
     at: usize,
     /// The most frames a span holds.
     most: usize,
 }
 
 impl<'a, L: Layout> Spans<'a, L> {
-    /// The spans of `audio` with `midi`, a block's or a part of one.
-    /// [`Block::spans_and_out`] makes a block's with its `midi_out` kept.
+    /// Returns the spans of `audio` with `midi`, a block's or part of one.
+    /// [`Block::spans_and_out`] also hands back the block's `midi_out`.
     ///
     /// # Examples
     ///
@@ -155,7 +155,7 @@ impl<'a, L: Layout> Spans<'a, L> {
         }
     }
 
-    /// Also splits wherever a span would run past `frames`, at least 1: for
+    /// Also splits wherever a span would run past `frames` (at least 1), for
     /// an effect whose modulation must move at least that often.
     ///
     /// # Examples
@@ -190,8 +190,8 @@ impl<'a, L: Layout> Iterator for Spans<'a, L> {
             .between(self.at.saturating_add(1), usize::MAX)
             .first_frame()
             .map_or(left, |frame| frame.saturating_add(1));
-        // At least a frame, since each bound is: `at_most` keeps the most
-        // above 0, and the rest is never empty. So every span moves on.
+        // Every bound is at least 1 (`at_most` keeps `most` above 0 and
+        // `rest` is never empty), so each span moves `at` forward.
         let length = next.min(self.most).min(left);
         let (audio, later) = rest.split_at(length);
         let start = self.at;
@@ -203,18 +203,18 @@ impl<'a, L: Layout> Iterator for Spans<'a, L> {
 }
 
 impl<'a, L: Layout> Block<'a, L> {
-    /// Splits the block at each frame a MIDI message arrives at: see
-    /// [`Spans`]. The block's [`midi_out`](Self::midi_out) goes with it; a
-    /// plugin that sends too takes both with
-    /// [`spans_and_out`](Self::spans_and_out).
+    /// Splits the block at each frame where a MIDI message arrives, as
+    /// [`Spans`] describes.
+    ///
+    /// The block's [`midi_out`](Self::midi_out) is dropped, so a plugin that
+    /// sends MIDI calls [`spans_and_out`](Self::spans_and_out) instead.
     pub fn spans(self) -> Spans<'a, L> {
         Spans::new(self.audio, self.midi)
     }
 
-    /// Splits the block at each frame a MIDI message arrives at, as
-    /// [`spans`](Self::spans) does, and hands its
-    /// [`midi_out`](Self::midi_out) back beside them: for a plugin that
-    /// sends MIDI as it plays each span.
+    /// Splits the block as [`spans`](Self::spans) does and also returns its
+    /// [`midi_out`](Self::midi_out), for a plugin that sends MIDI as it plays
+    /// each span.
     ///
     /// # Examples
     ///
@@ -222,7 +222,7 @@ impl<'a, L: Layout> Block<'a, L> {
     /// use hapto_host::layout::Mono;
     /// use hapto_host::{Block, Event, Processor, Status};
     ///
-    /// /// Sends MIDI's clock at the start of each span.
+    /// /// Sends a MIDI clock tick at the start of each span.
     /// struct Ticks;
     ///
     /// impl Processor for Ticks {

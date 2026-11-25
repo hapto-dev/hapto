@@ -105,15 +105,19 @@ pub(crate) fn npm() -> Command {
     Command::new(if cfg!(windows) { "npm.cmd" } else { "npm" })
 }
 
-/// The test `test` of `package`, run from `root`, with `ci` the value of
-/// `CI`: a plugin's generated file is its own test's to write, since a tool
-/// that linked the plugin would carry its entry points. The test writes the
-/// file, unless `CI` is set: there it checks it, since Hapto's drift check
-/// refuses a test that rewrites its own file in CI, and a file that does not
-/// match fails the build. The variables' names are `hapto-testkit`'s, which
-/// this command does not link. Cargo shows its progress, since a new crate's
-/// first run compiles hundreds of crates here, and the test's own harness is
-/// quiet.
+/// Returns the test `test` of `package`, run from `root` with `ci` as the
+/// value of `CI`.
+///
+/// A plugin's own test writes its generated file, because a tool that linked
+/// the plugin would carry its entry points.
+///
+/// - In CI the test checks the file instead, because Hapto's drift check
+///   rejects a test that rewrites its own file there, and a file that does
+///   not match fails the build.
+/// - The variables' names come from `hapto-testkit`, which this command does
+///   not link.
+/// - Cargo shows its progress, because a new crate's first run compiles
+///   hundreds of crates, but the test's harness is quiet.
 pub(crate) fn generating_test(
     package: &str,
     test: &str,

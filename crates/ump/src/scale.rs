@@ -111,8 +111,8 @@ pub const fn down_32_to_14(value: u32) -> u16 {
     (value >> 18) as u16
 }
 
-/// A value from 0 to 1 as MIDI 2.0's 16 bits, such as a velocity: held to
-/// 0 to 1 and rounded, and 0 for one that is not a number.
+/// Scales a value from 0 to 1, such as a velocity, to MIDI 2.0's 16 bits.
+/// The value is clamped to 0 to 1 and rounded, and NaN gives 0.
 ///
 /// # Examples
 ///
@@ -127,7 +127,7 @@ pub fn unit_to_16(value: f64) -> u16 {
     (value.clamp(0.0, 1.0) * f64::from(u16::MAX)).round() as u16
 }
 
-/// MIDI 2.0's 16 bits as a value from 0 to 1.
+/// Returns MIDI 2.0's 16 bits as a value from 0 to 1.
 ///
 /// # Examples
 ///
@@ -141,8 +141,8 @@ pub fn unit_of_16(bits: u16) -> f64 {
     f64::from(bits) / f64::from(u16::MAX)
 }
 
-/// A value from 0 to 1 as MIDI 2.0's 32 bits, such as a controller's: held
-/// to 0 to 1 and rounded, and 0 for one that is not a number.
+/// Scales a value from 0 to 1, such as a controller's, to MIDI 2.0's 32
+/// bits. The value is clamped to 0 to 1 and rounded, and NaN gives 0.
 ///
 /// # Examples
 ///
@@ -157,7 +157,7 @@ pub fn unit_to_32(value: f64) -> u32 {
     (value.clamp(0.0, 1.0) * f64::from(u32::MAX)).round() as u32
 }
 
-/// MIDI 2.0's 32 bits as a value from 0 to 1.
+/// Returns MIDI 2.0's 32 bits as a value from 0 to 1.
 ///
 /// # Examples
 ///
@@ -171,10 +171,10 @@ pub fn unit_of_32(bits: u32) -> f64 {
     f64::from(bits) / f64::from(u32::MAX)
 }
 
-/// A pitch in semitones, key 0 at 0, as the 7.25 fixed point of a note's
-/// absolute pitch controller,
-/// [`ChannelMessage::PER_NOTE_PITCH`](crate::ChannelMessage::PER_NOTE_PITCH):
-/// held to 0 to just under 128.
+/// Returns a pitch in semitones, with key 0 at 0, as the 7.25 fixed point of
+/// a note's absolute pitch controller,
+/// [`ChannelMessage::PER_NOTE_PITCH`](crate::ChannelMessage::PER_NOTE_PITCH).
+/// The pitch is clamped to 0 to just under 128.
 ///
 /// # Examples
 ///
@@ -190,7 +190,7 @@ pub fn pitch_7_25(semitones: f64) -> u32 {
     (semitones.clamp(0.0, 127.999_999) * f64::from(1_u32 << 25)).round() as u32
 }
 
-/// A note's absolute pitch, 7.25 fixed point, in semitones.
+/// Returns a note's absolute pitch, in 7.25 fixed point, as semitones.
 ///
 /// # Examples
 ///

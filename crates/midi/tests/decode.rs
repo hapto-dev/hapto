@@ -1,5 +1,8 @@
-//! Packets decoded into messages: every channel message's values, notes and
-//! their ids, a note's own messages, SysEx joined, and each message's line.
+//! Tests decoding packets into messages:
+//! - Every channel message's values.
+//! - Notes and their ids, and a note's own messages.
+//! - SysEx joined across packets.
+//! - Each message's line.
 
 use hapto_midi::{Centred, Channel, Decoder, Group, Message, NoteId, Program, controller};
 use hapto_ump::SysExForm::{self, Complete, Continue, End, Start};
@@ -101,7 +104,8 @@ fn every_channel_message_decodes_to_its_values() {
     }
 }
 
-/// MIDI 1.0 as a device sends it, upgraded as the engine upgrades it.
+/// Returns MIDI 1.0 control changes from a device, upgraded as the engine
+/// does.
 fn upgraded(sent: &[(u8, u8)]) -> Vec<Event> {
     let events: Vec<Event> = sent
         .iter()
@@ -188,8 +192,8 @@ fn a_note_off_ends_every_note_on_its_key_and_one_with_none_still_comes() {
     let b = note_id(&decode(&mut decoder, on(60, 0x8000))[0]);
     let ended: Vec<NoteId> = decode(&mut decoder, off(60)).iter().map(note_id).collect();
     assert_eq!(ended, [a, b]);
-    // No note on the key now: a note-off still comes, under an id no note
-    // has, for a plugin that ends notes by key.
+    // With no note on the key, a note-off still comes, under an id that no
+    // note has, for a plugin that ends notes by key.
     let orphan = decode(&mut decoder, off(60));
     assert_eq!(orphan.len(), 1);
     let id = note_id(&orphan[0]);
@@ -206,7 +210,7 @@ fn a_notes_own_message_names_its_key_and_the_newest_note_on_it() {
     let newer = note_id(&decode(&mut decoder, on(60, 0xFFFF))[0]);
     let during = decode(&mut decoder, pressure);
     assert!(matches!(during[0], Message::NotePressure { note, .. } if note.id == Some(newer)));
-    // Detached, the key's notes take no more of them.
+    // Once detached, the key's notes take no more per-note messages.
     decode(&mut decoder, [0x40F0_3C02, 0]);
     let after = decode(&mut decoder, pressure);
     assert!(matches!(after[0], Message::NotePressure { note, .. } if note.id.is_none()));
@@ -216,7 +220,7 @@ fn a_notes_own_message_names_its_key_and_the_newest_note_on_it() {
     assert!(matches!(again[0], Message::NotePressure { note, .. } if note.id == Some(next)));
 }
 
-/// `words` with its host's name for the note, `id`, as VST3 names a note.
+/// Returns `words` as a packet with the host's note id `id`, as in VST3.
 fn named(words: [u32; 2], id: u32) -> Event {
     Event {
         origin: Origin::Note { id },
@@ -233,14 +237,15 @@ fn a_note_its_host_named_keeps_that_id_and_its_note_off_ends_it_alone() {
         .collect();
     assert_eq!(ids, [NoteId::hosts(7), NoteId::hosts(9)]);
     assert!(ids[0].is_hosts());
-    // Two notes on one key: the note-off that names the first ends it alone.
+    // With two notes on one key, the note-off that names the first ends it
+    // alone.
     let ended: Vec<NoteId> = decoder
         .decode(&named(off(60), 7))
         .map(|m| note_id(&m))
         .collect();
     assert_eq!((ended, decoder.sounding()), (vec![NoteId::hosts(7)], 1));
-    // One that names a note the decoder does not hold comes under the
-    // host's id alone: the other note on the key sounds on, and its own
+    // A note-off that names a note the decoder doesn't hold comes under the
+    // host's id alone, and the other note on the key sounds on until its own
     // note-off ends it.
     let ended: Vec<NoteId> = decoder
         .decode(&named(off(60), 7))
@@ -261,11 +266,11 @@ fn a_note_past_a_full_table_takes_the_oldest_notes_place() {
         .map(|key| note_id(&decode(&mut decoder, on(key, 0xFFFF))[0]))
         .to_vec();
     assert_eq!((decoder.sounding(), decoder.dropped()), (2, 1));
-    // The newest are held, and their note-offs name them.
+    // The table holds the newest notes, and their note-offs name them.
     let ended = note_id(&decode(&mut decoder, off(64))[0]);
     assert_eq!(ended, ids[2]);
-    // The oldest's comes under an id no note has, for a plugin that ends
-    // notes by key.
+    // The oldest note's note-off comes under an id that no note has, for a
+    // plugin that ends notes by key.
     let ended = note_id(&decode(&mut decoder, off(60))[0]);
     assert!(!ids.contains(&ended));
     assert_eq!(decoder.sounding(), 1);
@@ -303,7 +308,7 @@ fn a_notes_own_message_its_host_named_finds_that_note_and_not_the_newest() {
         older,
         Some(Message::NotePressure { note, .. }) if note.id == Some(NoteId::hosts(7))
     ));
-    // A note its host names that does not sound there names none.
+    // A host's id for a note that isn't sounding names no note.
     let gone = decoder.decode(&named(pressure, 3)).next();
     assert!(matches!(
         gone,
@@ -321,11 +326,12 @@ fn a_notes_pitch_comes_with_it_or_on_its_own() {
     };
     assert_eq!(note.pitch().semitones(), 69.5);
     assert_eq!(note.attribute(), Some(Attribute::pitch(69.5)));
-    // Registered per-note controller 3: 7 bits of key, 25 of fraction.
+    // Registered per-note controller 3 carries 7 bits of key and 25 of
+    // fraction.
     let quarter = [0x4000_4503, 60 << 25 | 1 << 23];
     let messages = decode(&mut decoder, quarter);
     assert!(matches!(messages[0], Message::NotePitch { pitch, .. } if pitch.semitones() == 60.25));
-    // Another per-note controller keeps its number: 74 is brightness.
+    // Another per-note controller keeps its number, such as brightness (74).
     let bright = decode(&mut decoder, [0x4000_454A, u32::MAX]);
     assert!(matches!(
         bright[0],
@@ -344,7 +350,7 @@ fn midi_1_reads_as_nothing_since_it_is_upgraded_before() {
     assert_eq!(decode(&mut decoder, [0x10F8_0000, 0]), []);
 }
 
-/// A 7-bit SysEx packet on `group`, of `form`, carrying `bytes`.
+/// Returns a 7-bit SysEx packet of `form` on `group`, carrying `bytes`.
 fn sysex(group: u8, form: SysExForm, bytes: &[u8]) -> [u32; 2] {
     let [first, second, ..] = SysEx7::new(group, form, bytes).words();
     [first, second]
@@ -387,12 +393,12 @@ fn a_sysex_too_long_cut_short_or_begun_elsewhere_is_dropped_and_counted() {
         "past the buffer"
     );
     assert_eq!(decoder.dropped(), 1);
-    // A note on its group cuts one short.
+    // A note on the SysEx's group cuts it short.
     decode(&mut decoder, sysex(0, Start, &[1]));
     decode(&mut decoder, on(60, 0xFFFF));
     assert_eq!(decode(&mut decoder, sysex(0, End, &[2])), []);
     assert_eq!(decoder.dropped(), 2);
-    // One begun on another group while one is under way.
+    // A SysEx begun on another group while one is under way is dropped.
     decode(&mut decoder, sysex(0, Start, &[1]));
     assert_eq!(decode(&mut decoder, sysex(1, Complete, &[9])), []);
     let whole = decode(&mut decoder, sysex(0, End, &[2]));
@@ -461,8 +467,8 @@ proptest! {
     })]
 
     /// However keys are pressed and released, a note-off ends exactly the
-    /// notes its key has sounding, in the order they began, and every id is
-    /// the note's own.
+    /// notes that are sounding on its key, in the order that they began, and
+    /// every id is the note's own.
     #[test]
     fn a_note_off_ends_the_notes_its_key_has(
         played in prop::collection::vec(

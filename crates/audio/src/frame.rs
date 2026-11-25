@@ -98,10 +98,12 @@ impl fmt::Debug for Frame<'_> {
     }
 }
 
-/// Adding one sample into each of a frame's channels, as a mono voice plays:
-/// what every layout's frame does, a [`Bus`](crate::layout::Bus)'s array as
-/// much as a [`Frame`], so code over any [`Layout`](crate::layout::Layout)
-/// adds a voice the same way.
+/// A frame that adds one sample to each of its channels, as a mono voice
+/// plays.
+///
+/// Every layout's frame, a [`Bus`](crate::layout::Bus)'s array or a
+/// [`Frame`], implements it, so code over any
+/// [`Layout`](crate::layout::Layout) adds a voice the same way.
 ///
 /// # Examples
 ///
@@ -116,7 +118,7 @@ impl fmt::Debug for Frame<'_> {
 /// assert_eq!(buffer.channels(), [[0.25, 0.25], [0.25, 0.25]]);
 /// ```
 pub trait AddSample {
-    /// Adds `sample` into each of the frame's channels.
+    /// Adds `sample` to each of the frame's channels.
     fn add(self, sample: f32);
 }
 

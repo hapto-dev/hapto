@@ -9,12 +9,12 @@ use crate::id::{Device, DeviceId, Direction};
 
 /// The list of the computer's MIDI devices, on the main thread.
 ///
-/// It reads the list at [`new`](Self::new), and again at a
-/// [`tick`](Self::tick) when it may have changed, telling what came and went.
-/// The system marks it as changed from a thread of its own; the tick reads
-/// it half a second after, then one, two and four seconds after each look,
-/// since a system's list can lag its own notice. Where the backend cannot be
-/// told, the tick reads it every two seconds.
+/// [`new`](Self::new) reads the list, and [`tick`](Self::tick) reads it
+/// again when it may have changed and returns what came and went. Once the
+/// system's notification marks the list as changed, from a thread of its
+/// own, the tick reads it half a second later, then one, two and four
+/// seconds after each read, because a system's list can lag behind its
+/// notification. Without notifications, the tick reads it every two seconds.
 ///
 /// Open: only WinMM is built, so elsewhere the list is empty.
 ///
@@ -38,12 +38,12 @@ pub struct Devices {
     list: Vec<Device>,
     /// Set from the system's thread when the list may have changed.
     marked: Arc<AtomicBool>,
-    /// Keeps the system's notice coming; `None` where it cannot.
+    /// Keeps notifications coming, or `None` where the backend has none.
     watch: Option<backend::Watch>,
     looks: Looks,
 }
 
-/// What came and went between two looks at the list.
+/// The devices that came and went between two reads of the list.
 ///
 /// # Examples
 ///
@@ -64,12 +64,12 @@ pub struct Devices {
 pub struct Changes {
     /// The devices that came, in the system's order.
     pub added: Vec<Device>,
-    /// The devices that went, in the order the list had them.
+    /// The devices that went, in the list's order.
     pub removed: Vec<Device>,
 }
 
 impl Changes {
-    /// Whether nothing came or went.
+    /// Returns whether nothing came or went.
     pub fn is_empty(&self) -> bool {
         self.added.is_empty() && self.removed.is_empty()
     }
@@ -82,7 +82,9 @@ impl Default for Devices {
 }
 
 impl Devices {
-    /// Reads the system's list and starts watching it. Thread: main.
+    /// Reads the system's list and starts watching it.
+    ///
+    /// Thread: main.
     pub fn new() -> Devices {
         let marked = Arc::new(AtomicBool::new(false));
         let watch = backend::Watch::new(Arc::clone(&marked));
@@ -94,17 +96,17 @@ impl Devices {
         }
     }
 
-    /// Every device, inputs then outputs, each in the system's order.
+    /// Returns every device, inputs then outputs, each in the system's order.
     pub fn all(&self) -> &[Device] {
         &self.list
     }
 
-    /// The devices that send MIDI.
+    /// Returns the devices that send MIDI.
     pub fn inputs(&self) -> impl Iterator<Item = &Device> {
         self.of(Direction::Input)
     }
 
-    /// The devices that take MIDI.
+    /// Returns the devices that take MIDI.
     pub fn outputs(&self) -> impl Iterator<Item = &Device> {
         self.of(Direction::Output)
     }
@@ -115,13 +117,15 @@ impl Devices {
             .filter(move |device| device.direction() == direction)
     }
 
-    /// The device `id` names, if the list has it.
+    /// Returns the device that `id` names, if the list has it.
     pub fn get(&self, id: &DeviceId) -> Option<&Device> {
         self.list.iter().find(|device| device.id() == id)
     }
 
-    /// Reads the list again if it may have changed and a look is due by
-    /// `now`, and tells what came and went. Call it once per tick.
+    /// Reads the list again if it may have changed and a read is due by
+    /// `now`, and returns what came and went.
+    ///
+    /// Call it once per tick.
     ///
     /// Thread: main.
     pub fn tick(&mut self, now: std::time::Instant) -> Changes {
@@ -135,7 +139,7 @@ impl Devices {
         }
     }
 
-    /// Reads the list now, and tells what came and went since the last look.
+    /// Reads the list now, and returns what came and went since the last read.
     ///
     /// Thread: main.
     pub fn refresh(&mut self) -> Changes {
@@ -145,14 +149,14 @@ impl Devices {
         changes
     }
 
-    /// Whether the system tells it when the list changes, so it reads the
+    /// Returns whether the system notifies of changes, so a tick reads the
     /// list only then.
     pub fn is_watching(&self) -> bool {
         self.watch.is_some()
     }
 }
 
-/// What came and went from `old` to `new`, by id.
+/// Returns what came and went from `old` to `new`, by id.
 fn changed(old: &[Device], new: &[Device]) -> Changes {
     let has = |list: &[Device], device: &Device| list.iter().any(|d| d.id() == device.id());
     Changes {
@@ -161,24 +165,25 @@ fn changed(old: &[Device], new: &[Device]) -> Changes {
     }
 }
 
-/// When the list is next read.
+/// When the list is next read. Each read is a look.
 #[derive(Debug)]
 struct Looks {
     /// The next look, if one is due.
     next: Option<std::time::Instant>,
-    /// The wait before the look after it.
+    /// The wait from the next look to the one after.
     wait: Duration,
     /// The looks left after the next.
     left: u8,
-    /// Whether the system tells of changes; if not, a look every two
-    /// seconds.
+    /// Whether the system sends notifications. Without them, a look is due
+    /// every two seconds.
     told: bool,
 }
 
-/// The first look after a notice, and the most looks one brings.
+/// The wait before a notification's first look.
 const FIRST: Duration = Duration::from_millis(500);
+/// The looks that a notification brings.
 const LOOKS: u8 = 4;
-/// How often the list is read when the system cannot tell of changes.
+/// How often the list is read without notifications.
 const POLL: Duration = Duration::from_secs(2);
 
 impl Looks {
@@ -191,15 +196,15 @@ impl Looks {
         }
     }
 
-    /// The system said the list changed at `now`: look half a second
-    /// later, and three times more, each wait twice the last.
+    /// Schedules four looks after a notification at `now`, the first half a
+    /// second later and each wait twice the last.
     fn marked(&mut self, now: std::time::Instant) {
         self.next = Some(now + FIRST);
         self.wait = FIRST;
         self.left = LOOKS - 1;
     }
 
-    /// Whether a look is due by `now`, counting it if so.
+    /// Returns whether a look is due by `now`, counting it if so.
     fn due(&mut self, now: std::time::Instant) -> bool {
         match self.next {
             None => {
@@ -255,7 +260,7 @@ mod tests {
                 seen.push(millis);
             }
         }
-        // Half a second, then a second, two and four after each look.
+        // Half a second, then one, two and four seconds after each look.
         assert_eq!(seen, [500, 1500, 3500, 7500]);
     }
 

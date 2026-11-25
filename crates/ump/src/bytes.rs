@@ -9,9 +9,7 @@ use crate::head::Head;
 use crate::sysex::{SYSEX_BEGIN, SYSEX_FINISH};
 use crate::{MessageType, SysEx7, SysExForm};
 
-/// Reads a MIDI 1.0 byte stream into Universal MIDI Packets on one group:
-/// channel voice messages as MIDI 1.0's (message type 2), system messages
-/// as type 1, and System Exclusive as 7-bit SysEx packets (type 3).
+/// Reads a MIDI 1.0 byte stream into Universal MIDI Packets on one group.
 ///
 /// Channel voice messages become message type 2, system messages type 1,
 /// and System Exclusive 7-bit SysEx (type 3).
@@ -100,16 +98,15 @@ impl ByteStream {
         }
     }
 
-    /// Forgets a message under way, a SysEx included, and any running
-    /// status.
+    /// Discards a partial message, a SysEx included, and the running status.
     fn reset(&mut self) {
         *self = ByteStream::new(self.group);
     }
 
-    /// Ends a SysEx under way, then starts over, as after a device's error
-    /// or its close: a SysEx that sent packets already ends with what the
-    /// stream holds of it, so a reader holding it for its end is not left
-    /// waiting, and one that sent none is dropped.
+    /// Ends any SysEx in progress and starts over, as after a device's error
+    /// or close. A SysEx that already sent packets ends with the bytes held,
+    /// so a reader that waits for its end isn't left waiting. A SysEx that
+    /// sent none is dropped.
     ///
     /// # Examples
     ///
@@ -118,11 +115,11 @@ impl ByteStream {
     ///
     /// let mut stream = ByteStream::new(0);
     /// let mut packets = Vec::new();
-    /// // Seven bytes of a SysEx: six went out as its start.
+    /// // Seven bytes of a SysEx. The first six go out as its start.
     /// stream.read(&[0xF0, 1, 2, 3, 4, 5, 6, 7], |words| packets.push(words));
     /// assert_eq!(packets.len(), 1);
     /// stream.cut(|words| packets.push(words));
-    /// // Its end, status 3, with the byte held.
+    /// // The SysEx's end (status 3), with the held byte.
     /// assert_eq!((packets[1][0] >> 20) & 0xF, 0x3);
     /// ```
     pub fn cut(&mut self, mut send: impl FnMut([u32; 4])) {

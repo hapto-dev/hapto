@@ -1,5 +1,5 @@
-//! From packets to messages: what the engine runs over every block, and a
-//! plugin may run on its main thread or in a test.
+//! Decodes packets into messages. The engine runs a decoder over every block,
+//! and a plugin can run one on its main thread or in a test.
 
 use std::fmt;
 
@@ -15,8 +15,7 @@ pub const NOTES: usize = 256;
 /// The longest SysEx message a decoder made with [`Decoder::new`] joins.
 pub const SYSEX_BYTES: usize = 4096;
 
-/// Where a channel voice message came: its group and channel, and its
-/// host's name for the note, if it gave one.
+/// The group, channel and host's note id, if any, of a channel voice message.
 #[derive(Debug, Clone, Copy)]
 struct Place {
     group: Group,
@@ -24,37 +23,39 @@ struct Place {
     named: Option<NoteId>,
 }
 
-/// A note sounding, as the decoder keeps it.
+/// A sounding note, as the decoder keeps it.
 #[derive(Debug, Clone, Copy)]
 struct Sounding {
     group: Group,
     channel: Channel,
     key: Key,
     id: NoteId,
-    /// Per-note management detached it: it takes no more per-note
-    /// messages.
+    /// Whether per-note management detached the note, which then takes no
+    /// more per-note messages.
     detached: bool,
 }
 
-/// Reads packets into [`Message`]s, as the engine reads each block's.
+/// Decodes packets into [`Message`]s, as the engine does for each block.
 ///
-/// It reads MIDI 2.0 alone, which is all that reaches a plugin: MIDI 1.0 is
-/// upgraded before it. It keeps what spans packets in tables made with it,
-/// so decoding allocates nothing:
+/// It decodes only MIDI 2.0, because MIDI 1.0 is upgraded before it reaches a
+/// plugin. Its tables are allocated when it is made, so decoding allocates
+/// nothing. For the sounding notes:
 ///
-/// - The notes sounding, so each note-on gets an id, unless its host gave
-///   one, and a note-off ends every note on its key. A host gives one in
-///   the packet's [`Origin::Note`], as VST3 names its notes: its note-off
-///   ends that note alone, under the host's id whether or not the table
-///   holds it, and a note's own message names that note, even when a newer
-///   one sounds on its key. A note-off for a key with no note it knows of
-///   still comes, under an id no note has, so a plugin that ends notes by key
-///   hears it. All Notes Off, All Sound Off and the mode messages end a
-///   channel's notes in the table. A note past the table takes the place of
-///   the oldest, which is counted in [`dropped`](Self::dropped).
-/// - A SysEx message as its packets arrive, which comes whole once its last
-///   does, by the rules [`SysExJoin`](hapto_ump::SysExJoin) follows. One it
-///   drops is counted in [`dropped`](Self::dropped).
+/// - Each note-on gets an id, unless the host gave one in the packet's
+///   [`Origin::Note`], as VST3 does.
+/// - A note-off ends every note on its key, or only the note whose host id it
+///   carries, under that id even if the table doesn't hold it.
+/// - A note's own message with a host id names that note, even when a newer
+///   note sounds on its key.
+/// - A note-off for a key with no note still comes, under an id that no note
+///   has, for a plugin that ends notes by key.
+/// - All Notes Off, All Sound Off and the mode messages end a channel's notes.
+/// - A note-on past the table's room takes the oldest note's place, counted in
+///   [`dropped`](Self::dropped).
+///
+/// A SysEx comes whole once its last packet arrives, by the rules of
+/// [`SysExJoin`](hapto_ump::SysExJoin), and one that is dropped is counted in
+/// [`dropped`](Self::dropped).
 ///
 /// # Examples
 ///
@@ -74,14 +75,14 @@ struct Sounding {
 /// assert!(ended.iter().all(|m| matches!(m, Message::NoteOff(off) if off.key == Key::C4)));
 /// ```
 pub struct Decoder {
-    /// The notes sounding, oldest first, at most `room` of them.
+    /// The sounding notes, oldest first, at most `room` of them.
     notes: Vec<Sounding>,
     room: usize,
-    /// How many ids it has made up.
+    /// How many ids the decoder has made up.
     made: u32,
-    /// The notes the last note-off ended.
+    /// The notes that the last note-off ended.
     ends: Vec<NoteId>,
-    /// The SysEx under way, or the one the last packet made whole.
+    /// The SysEx under way, or the one that the last packet completed.
     sysex: SysExJoin,
     dropped: u64,
 }
@@ -112,8 +113,8 @@ pub(crate) enum Decoded {
     SysEx(Group),
 }
 
-/// The messages one packet decoded to, in order: what
-/// [`Decoder::decode`] returns.
+/// The messages that one packet decoded to, in order, from
+/// [`Decoder::decode`].
 ///
 /// # Examples
 ///
@@ -159,18 +160,18 @@ impl<'d> Iterator for Messages<'d> {
 }
 
 impl Decoder {
-    /// A decoder that keeps track of up to [`NOTES`] notes and joins SysEx
-    /// of up to [`SYSEX_BYTES`].
+    /// Returns a decoder that tracks up to [`NOTES`] notes and joins SysEx of
+    /// up to [`SYSEX_BYTES`] bytes.
     ///
-    /// Thread: any but audio: it allocates its tables.
+    /// Thread: any but audio, because it allocates.
     pub fn new() -> Decoder {
         Decoder::with_room(NOTES, SYSEX_BYTES)
     }
 
-    /// A decoder that keeps track of up to `notes` notes and joins SysEx of
-    /// up to `sysex_bytes`.
+    /// Returns a decoder that tracks up to `notes` notes and joins SysEx of up
+    /// to `sysex_bytes` bytes.
     ///
-    /// Thread: any but audio: it allocates its tables.
+    /// Thread: any but audio, because it allocates.
     pub fn with_room(notes: usize, sysex_bytes: usize) -> Decoder {
         Decoder {
             notes: Vec::with_capacity(notes),
@@ -182,9 +183,10 @@ impl Decoder {
         }
     }
 
-    /// The messages `event` completes: none for a packet Hapto does not
-    /// read or the first parts of a SysEx, several for a note-off that ends
-    /// several notes.
+    /// Returns the messages that `event` completes.
+    ///
+    /// A packet that Hapto doesn't read, or a SysEx's first packets, complete
+    /// none, and a note-off that ends several notes completes several.
     ///
     /// Thread: any. Allocates nothing.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
@@ -197,28 +199,28 @@ impl Decoder {
         }
     }
 
-    /// The notes the last note-off ended.
+    /// Returns the notes that the last note-off ended.
     pub(crate) fn ended(&self) -> &[NoteId] {
         &self.ends
     }
 
-    /// The SysEx last whole.
+    /// Returns the last completed SysEx.
     pub(crate) fn sysex_bytes(&self) -> &[u8] {
         self.sysex.message().map_or(&[], |whole| whole.data())
     }
 
-    /// How many notes gave up their place in the full table, and how many
-    /// SysEx messages were dropped, since it was made.
+    /// Returns how many notes lost their place in the full table, and how many
+    /// SysEx were dropped, since it was made.
     pub fn dropped(&self) -> u64 {
         self.dropped
     }
 
-    /// How many notes sound now, as far as it knows.
+    /// Returns how many notes the table holds.
     pub fn sounding(&self) -> usize {
         self.notes.len()
     }
 
-    /// Forgets every note sounding and any SysEx under way, as at an
+    /// Forgets every sounding note and any SysEx under way, as at an
     /// activation.
     pub fn reset(&mut self) {
         self.notes.clear();
@@ -226,11 +228,12 @@ impl Decoder {
         self.sysex.reset();
     }
 
-    /// What `event` decoded to, the note-offs' ids in [`ended`](Self::ended)
-    /// and a whole SysEx in [`sysex_bytes`](Self::sysex_bytes).
+    /// Returns what `event` decoded to, with note-offs' ids in
+    /// [`ended`](Self::ended) and a completed SysEx in
+    /// [`sysex_bytes`](Self::sysex_bytes).
     pub(crate) fn read(&mut self, event: &Event) -> Decoded {
-        // The join reads every packet: anything on a SysEx's group but real
-        // time ends it, cut short.
+        // The join reads every packet, because any but a real-time one on a
+        // SysEx's group cuts the SysEx short.
         let joined = self.sysex.push(event);
         let (whole, dropped) = (joined.whole.map(|whole| whole.group), joined.dropped);
         self.dropped = self.dropped.saturating_add(u64::from(dropped));
@@ -253,7 +256,7 @@ impl Decoder {
         }
     }
 
-    /// One channel voice message; `named` is its host's name for the note.
+    /// Decodes one channel voice message, with `named` as the host's note id.
     fn voice(&mut self, voice: ChannelVoice, named: Option<NoteId>) -> Decoded {
         let group = Group::from_wire(voice.group);
         let channel = Channel::from_wire(voice.channel);
@@ -331,7 +334,8 @@ impl Decoder {
         Decoded::One(message)
     }
 
-    /// A note's own message, named by its key; `None` for any other.
+    /// Decodes a note's own message, which names its note by key, or returns
+    /// `None` for any other.
     fn per_note(&mut self, at: Place, message: ChannelMessage) -> Option<Message<'static>> {
         let Place { group, channel, .. } = at;
         Some(match message {
@@ -392,14 +396,14 @@ impl Decoder {
         } = at;
         let id = named.unwrap_or_else(|| self.make_id());
         if self.notes.len() >= self.room {
-            // A full table: the oldest note gives up its place, so the
-            // newest, which a note-off is likeliest to name, is kept.
+            // The table is full, so the oldest note goes, and the newest,
+            // which a note-off most likely names, stays.
             self.dropped = self.dropped.saturating_add(1);
             if !self.notes.is_empty() {
                 self.notes.remove(0);
             }
         }
-        // Within the room made, so it never allocates.
+        // Within the allocated room, so the push never allocates.
         if self.notes.len() < self.room {
             self.notes.push(Sounding {
                 group,
@@ -419,10 +423,9 @@ impl Decoder {
         }
     }
 
-    /// Ends every note on the key, or the note its host named alone, moving
-    /// their ids to `ends`. A named note the table does not hold, one it
-    /// lost or one from before a reset, ends under the host's id, and no
-    /// other note with it.
+    /// Ends every note on the key, or only the note that its host named, and
+    /// moves their ids to `ends`. A named note that the table doesn't hold,
+    /// lost or from before a reset, still ends, alone, under the host's id.
     fn note_off(&mut self, at: Place, key: Key, velocity: u16) -> Decoded {
         let Place {
             group,
@@ -435,15 +438,15 @@ impl Decoder {
         let ends = &mut self.ends;
         self.notes.retain(|note| {
             let ending = on_key(note) && named.is_none_or(|id| note.id == id);
-            // The ends have a place for every note the table holds.
+            // `ends` has room for every note that the table holds.
             if ending && ends.len() < ends.capacity() {
                 ends.push(note.id);
             }
             !ending
         });
         if self.ends.is_empty() {
-            // No note it knows of: the host's name for it, or an id no note
-            // has.
+            // No such note is held, so the note-off takes the host's id or an
+            // id that no note has.
             let id = named.unwrap_or_else(|| self.make_id());
             self.ends.push(id);
         }
@@ -456,10 +459,11 @@ impl Decoder {
         })
     }
 
-    /// The key a per-note message names, with its note: the one its host
-    /// named, if that one sounds there, and none if not; with no name, the
-    /// newest on the key. A detached note takes no per-note messages, so it
-    /// is never named.
+    /// Returns the key that a per-note message names, with its note.
+    ///
+    /// The note is the one that its host named, if it sounds on the key, or
+    /// else none. Without a host id, it is the newest on the key. A detached
+    /// note takes no per-note messages, so it is never returned.
     fn key(&self, at: Place, key: u8) -> NoteKey {
         let Place {
             group,
@@ -509,18 +513,20 @@ impl Decoder {
 /// The registered parameter for the pitch bend range.
 const BEND_RANGE: u8 = 0;
 
-/// A 32-bit controller value as 0 to 1.
+/// Returns a 32-bit controller value as 0 to 1.
 fn unit(value: u32) -> f32 {
     scale::unit_of_32(value) as f32
 }
 
-/// A pitch as MIDI 2.0's 7.25 carries it: 7 bits of key, 25 of fraction.
+/// Returns the pitch in MIDI 2.0's 7.25 format, 7 bits of key and 25 of
+/// fraction.
 fn pitch_7_25(value: u32) -> Pitch {
     Pitch::new(scale::semitones_7_25(value) as f32)
 }
 
-/// The bend range registered parameter 0 carries: semitones in its 14
-/// bits' high 7 and cents in their low 7, as MIDI 1.0 sends them.
+/// Returns the bend range that registered parameter 0 carries, whose 14 bits
+/// hold semitones in the high 7 and cents in the low 7, as MIDI 1.0 sends
+/// them.
 fn semitones(value: u32) -> f32 {
     let entry = down_32_to_14(value);
     f32::from(entry >> 7) + f32::from(entry & 0x7F) / 100.0

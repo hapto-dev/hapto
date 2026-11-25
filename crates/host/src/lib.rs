@@ -232,8 +232,8 @@ pub use hapto_audio::{AddSample, Audio, AudioBuf, Frame, layout};
 #[cfg(feature = "manifest")]
 #[cfg_attr(docsrs, doc(cfg(feature = "manifest")))]
 pub use hapto_macros::manifest_info;
-/// MIDI in musicians' terms: the messages a block's [`Midi`] holds, and
-/// the values they carry.
+/// MIDI in musicians' terms: the messages that a block's [`Midi`] holds, and
+/// their values.
 pub use hapto_midi as midi;
 pub use hapto_midi::{Message, Midi, MidiOut};
 pub use info::{AuCodes, Category, Feature, PluginInfo};

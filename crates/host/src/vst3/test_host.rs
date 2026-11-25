@@ -169,8 +169,7 @@ pub struct ParamInfo {
     pub is_list: bool,
     /// Whether it is the bypass.
     pub is_bypass: bool,
-    /// Whether the host shows it nowhere, as the proxies a plugin's MIDI
-    /// controllers reach it through.
+    /// Whether it is hidden, as a plugin's MIDI controller proxies are.
     pub is_hidden: bool,
 }
 
@@ -394,9 +393,8 @@ impl<P: Plugin> TestHost<P> {
         (&self.plugin, &self.processor, &self.controller)
     }
 
-    /// Returns the parameters a host shows, in its order: the plugin's own,
-    /// without the hidden proxies the exporter lists for each MIDI 1.0
-    /// controller of a plugin that takes MIDI, 2,080 of them, which
+    /// Returns the plugin's own parameters in the host's order, without the
+    /// 2,080 hidden MIDI 1.0 controller proxies that
     /// [`parameter_count`](Self::parameter_count) counts.
     pub fn parameters(&self) -> Vec<ParamInfo> {
         (0..self.parameter_count())
@@ -405,8 +403,8 @@ impl<P: Plugin> TestHost<P> {
             .collect()
     }
 
-    /// Returns how many parameters the host lists, the hidden ones among
-    /// them.
+    /// Returns how many parameters the host lists, including the hidden
+    /// ones.
     pub fn parameter_count(&self) -> usize {
         // SAFETY: the component is alive while this host holds its
         // interfaces, and the call passes no pointer.
@@ -685,13 +683,14 @@ impl<P: Plugin> TestHost<P> {
     }
 
     /// Processes `frames` frames in place with `events` on the event bus,
-    /// after `queues`, as [`process_queues`](Self::process_queues) sends
-    /// them: a host sends a MIDI controller through the proxy that
-    /// [`midi_mapping`](Self::midi_mapping) names.
+    /// after `queues`, which it sends as
+    /// [`process_queues`](Self::process_queues) does, with a MIDI controller
+    /// sent through the proxy that [`midi_mapping`](Self::midi_mapping)
+    /// returns.
     ///
     /// # Errors
     ///
-    /// The [`Refused`] answer to `process`.
+    /// The [`Refused`] code that `process` returns.
     ///
     /// # Panics
     ///
@@ -706,14 +705,15 @@ impl<P: Plugin> TestHost<P> {
         self.blocks.process_events(channels, frames, events, queues)
     }
 
-    /// Processes `frames` frames in place with `queue` alone, which claims
-    /// `claimed` points however many it holds, as a broken host's: a read
-    /// past the points it holds fails. Answers how many points the plugin
-    /// asked for.
+    /// Processes `frames` frames in place with only `queue`, which reports
+    /// `claimed` points whatever it holds, as a broken host's does, and
+    /// returns how many points the plugin requested.
+    ///
+    /// A read past the held points fails.
     ///
     /// # Errors
     ///
-    /// The [`Refused`] answer to `process`.
+    /// The [`Refused`] code that `process` returns.
     ///
     /// # Panics
     ///
@@ -729,11 +729,12 @@ impl<P: Plugin> TestHost<P> {
             .process_claiming(channels, frames, queue, claimed)
     }
 
-    /// Returns the proxy parameter a MIDI 1.0 controller on `channel`, 0 to
-    /// 15, reaches the plugin through, as a host asks `IMidiMapping`:
-    /// controllers 0 to 127, then 128 for channel pressure and 129 for the
-    /// pitch bend, as VST3 numbers them. `None` for a plugin that takes no
-    /// MIDI.
+    /// Returns the proxy that carries `controller` on `channel` (0 to 15),
+    /// found through `IMidiMapping` as a host does, or `None` for a plugin
+    /// that takes no MIDI.
+    ///
+    /// `controller` is a MIDI 1.0 controller (0 to 127), channel pressure
+    /// (128) or the pitch bend (129), as VST3 numbers them.
     pub fn midi_mapping(&self, channel: i16, controller: i16) -> Option<u32> {
         let mapping = self.controller.cast::<IMidiMapping>()?;
         let mut id = 0;
@@ -744,21 +745,23 @@ impl<P: Plugin> TestHost<P> {
     }
 
     /// Returns what the plugin sent in the last block, as the host's output
-    /// event list took it. A SysEx's bytes are the plugin's, which it keeps
-    /// until its next block, so this borrows the host until then.
+    /// event list received it.
+    ///
+    /// The plugin keeps a SysEx message's bytes until its next block, so the
+    /// result borrows the host until then.
     pub fn sent(&mut self) -> Vec<BusEvent<'_>> {
         let list = self.blocks.sent.list.borrow();
         list.iter()
             // SAFETY: a data event's bytes are in the component's room for
-            // the block's SysEx, which it clears at its next block alone;
+            // the block's SysEx, which it clears only at its next block.
             // `&mut self` keeps any block from running, here or on an audio
-            // side, while the events borrow it.
+            // side, while the events borrow the host.
             .filter_map(|event| unsafe { BusEvent::from_vst(event) })
             .collect()
     }
 
-    /// Returns the note expressions the plugin offers on `channel`, each its
-    /// VST3 type and its title.
+    /// Returns the note expressions that the plugin offers on `channel`, as
+    /// VST3 type and title.
     pub fn note_expressions(&self, channel: i16) -> Vec<(u32, String)> {
         let Some(expressions) = self.controller.cast::<INoteExpressionController>() else {
             return Vec::new();
@@ -771,7 +774,7 @@ impl<P: Plugin> TestHost<P> {
                 // SAFETY: all zeros is a valid info, which the call
                 // overwrites.
                 let mut info: NoteExpressionTypeInfo = unsafe { std::mem::zeroed() };
-                // SAFETY: as above; `info` is valid for writing one info
+                // SAFETY: as above, and `info` is valid for writing one info
                 // during the call.
                 let read =
                     unsafe { expressions.getNoteExpressionInfo(0, channel, index, &mut info) };
@@ -780,8 +783,8 @@ impl<P: Plugin> TestHost<P> {
             .collect()
     }
 
-    /// Returns the text the plugin shows for note expression `kind`'s
-    /// `value` on `channel`, or `None` where it refuses.
+    /// Returns the plugin's text for note expression `kind`'s `value` on
+    /// `channel`, or `None` if it rejects the call.
     pub fn expression_text(&self, channel: i16, kind: u32, value: f64) -> Option<String> {
         let expressions = self.controller.cast::<INoteExpressionController>()?;
         let mut text: String128 = [0; 128];
@@ -794,16 +797,16 @@ impl<P: Plugin> TestHost<P> {
         (result == kResultOk).then(|| wide(&text))
     }
 
-    /// Returns the value the plugin reads from `text` for note expression
-    /// `kind` on `channel`, or `None` where it refuses.
+    /// Returns the value that the plugin reads from `text` for note
+    /// expression `kind` on `channel`, or `None` if it rejects the call.
     pub fn expression_value(&self, channel: i16, kind: u32, text: &str) -> Option<f64> {
         let expressions = self.controller.cast::<INoteExpressionController>()?;
         let mut wide_text: String128 = [0; 128];
         copy_utf16(text, &mut wide_text);
         let mut value = 0.0;
         // SAFETY: the component is alive while this host holds its
-        // interfaces; `wide_text` is a terminated `String128` and `value` is
-        // valid for writing one value, both during the call.
+        // interfaces, and during the call `wide_text` is a terminated
+        // `String128` and `value` is valid for writing one value.
         let result = unsafe {
             expressions.getNoteExpressionValueByString(
                 0,
@@ -1014,7 +1017,7 @@ impl Blocks {
         self.changes.fill(queues.iter().copied());
         self.events.fill(events);
         let sent = self.send(frames, inputs);
-        // A SysEx's bytes are the caller's, borrowed for this call alone.
+        // The caller lends a SysEx message's bytes only for this call.
         self.events.clear();
         sent
     }
@@ -1111,10 +1114,11 @@ impl Blocks {
         };
         // SAFETY: the component is alive while this side holds its
         // interfaces. `data` and its two buses live through the call. Each
-        // bus's channel list holds `numChannels` pointers into buffers the
-        // callers above borrow for at least `frames` floats. The changes and
-        // their queues are this side's objects, alive throughout, and so are
-        // the events, each SysEx's bytes borrowed by the caller for the call.
+        // bus's channel list holds `numChannels` pointers into buffers that
+        // the callers above borrow for at least `frames` floats. The changes,
+        // their queues and the events are this side's objects, alive
+        // throughout, and the caller lends each SysEx message's bytes for the
+        // call.
         let processed = unsafe { self.processor.process(&mut data) };
         self.silence = output.silenceFlags;
         Refused::check(processed)
@@ -1306,9 +1310,9 @@ const QUEUE_POINTS: usize = 64;
 struct Queue {
     id: Cell<u32>,
     points: RefCell<Vec<(i32, f64)>>,
-    /// How many points it says it holds, when a broken host says more.
+    /// How many points it reports, if a broken host claims more.
     claimed: Cell<Option<int32>>,
-    /// How many points the plugin asked for.
+    /// How many points the plugin requested.
     reads: Cell<usize>,
 }
 
@@ -1447,10 +1451,11 @@ impl IParameterChangesTrait for Changes {
     }
 }
 
-/// An event a host sends on the plugin's event bus, as VST3 carries it,
-/// for [`TestHost::process_events`]. A note's events name the note by the
-/// host's `id`, or -1 for none; velocity and pressure run from 0 to 1, and
-/// a note-on's tuning is in cents.
+/// An event that a host sends on the plugin's event bus, as VST3 carries
+/// it, for [`TestHost::process_events`].
+///
+/// A note's events carry the host's `id`, or -1 for none. Velocity and
+/// pressure run from 0 to 1, and tuning is in cents.
 ///
 /// # Examples
 ///
@@ -1462,14 +1467,14 @@ impl IParameterChangesTrait for Changes {
 /// host.setup(48_000.0, 4)?;
 /// host.activate()?;
 /// host.start()?;
-/// // Middle C at frame 1, which the host names note 7, and a SysEx.
+/// // Middle C at frame 1 with the host's note id 7, and a SysEx message.
 /// let events = [
 ///     BusEvent::NoteOn { offset: 1, channel: 0, pitch: 60, velocity: 1.0, tuning: 0.0, id: 7 },
 ///     BusEvent::SysEx { offset: 2, bytes: &[0xF0, 0x7E, 0x7F, 0x06, 0x01, 0xF7] },
 /// ];
 /// let (mut left, mut right) = ([1.0_f32; 4], [1.0_f32; 4]);
 /// host.process_events(&mut [&mut left[..], &mut right[..]], 4, &events, &[])?;
-/// // The gain takes no MIDI, so it plays on as before.
+/// // The gain takes no MIDI, so its output is unchanged.
 /// assert_eq!(left, [1.0; 4]);
 /// # Ok::<(), hapto_host::vst3::Refused>(())
 /// ```
@@ -1487,7 +1492,7 @@ pub enum BusEvent<'a> {
         velocity: f32,
         /// In cents from the key.
         tuning: f32,
-        /// The host's name for the note.
+        /// The host's id for the note.
         id: i32,
     },
     /// A note ending.
@@ -1500,7 +1505,7 @@ pub enum BusEvent<'a> {
         pitch: i16,
         /// From 0 to 1.
         velocity: f32,
-        /// The host's name for the note.
+        /// The host's id for the note.
         id: i32,
     },
     /// A note's pressure.
@@ -1513,16 +1518,16 @@ pub enum BusEvent<'a> {
         pitch: i16,
         /// From 0 to 1.
         pressure: f32,
-        /// The host's name for the note.
+        /// The host's id for the note.
         id: i32,
     },
-    /// A note expression: one of VST3's types for a note the host named.
+    /// A note expression of one of VST3's types, for a note with a host id.
     Expression {
         /// The frame of the block.
         offset: i32,
-        /// The host's name for the note.
+        /// The host's id for the note.
         id: i32,
-        /// VST3's type: 0 the volume, 2 the tuning, 5 the brightness.
+        /// VST3's type, such as 0 (volume), 2 (tuning) or 5 (brightness).
         kind: u32,
         /// From 0 to 1, as VST3 normalizes it.
         value: f64,
@@ -1535,26 +1540,26 @@ pub enum BusEvent<'a> {
         bytes: &'a [u8],
     },
     /// A MIDI 1.0 controller, channel pressure, pitch bend or program
-    /// change, as VST3 carries the plugin's out: a host's input sends
-    /// these through the proxies instead.
+    /// change, as VST3 carries the plugin's output. A host sends these
+    /// through the proxies instead.
     Controller {
         /// The frame of the block.
         offset: i32,
         /// The channel, 0 to 15.
         channel: i16,
-        /// The controller, 0 to 127, then VST3's numbers: 128 channel
-        /// pressure, 129 the bend, 130 a program change.
+        /// The controller (0 to 127), or VST3's number for channel pressure
+        /// (128), the pitch bend (129) or a program change (130).
         controller: u8,
-        /// The value, 0 to 127: the bend's low 7 bits.
+        /// The value (0 to 127), or the pitch bend's low 7 bits.
         value: int8,
-        /// The bend's high 7 bits; 0 for any other.
+        /// The pitch bend's high 7 bits, or 0 for the rest.
         value2: int8,
     },
 }
 
 impl<'a> BusEvent<'a> {
-    /// The event VST3 carried, if it is one of these; a SysEx's bytes
-    /// borrowed for `'a`.
+    /// Converts a VST3 event, if it is one of these, with a SysEx message's
+    /// bytes borrowed for `'a`.
     ///
     /// # Safety
     ///
@@ -1631,8 +1636,8 @@ impl<'a> BusEvent<'a> {
         })
     }
 
-    /// The event as VST3 carries it, its bytes borrowed for as long as
-    /// `self`'s are.
+    /// Converts the event to VST3's form, with its bytes borrowed for as long
+    /// as `self`'s are.
     fn to_vst(self) -> Event {
         let mut event = blank(0, 0);
         match self {

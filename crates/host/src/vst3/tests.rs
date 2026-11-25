@@ -788,8 +788,7 @@ pub(super) fn playing<P: Plugin>() -> TestHost<P> {
 
 // What the MIDI tests share.
 
-/// A plugin around processor `R` that takes MIDI, and sends it when
-/// `SENDS`.
+/// A plugin around processor `R` that takes MIDI, and sends it if `SENDS`.
 pub(super) struct Sender<R, const SENDS: bool>(PhantomData<R>);
 
 impl<R: Processor<Layout = Stereo> + Default, const SENDS: bool> Plugin for Sender<R, SENDS> {
@@ -824,7 +823,7 @@ impl<R: Processor<Layout = Stereo> + Default, const SENDS: bool> Plugin for Send
     }
 }
 
-/// One block of 16 frames with `events` and `queues`.
+/// Processes one block of 16 frames with `events` and `queues`.
 pub(super) fn play<P: Plugin>(
     host: &mut TestHost<P>,
     events: &[BusEvent<'_>],

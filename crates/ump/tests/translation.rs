@@ -696,7 +696,7 @@ fn downgrade(messages: &[ChannelMessage]) -> Vec<Midi1Message> {
     downgraded(messages).0
 }
 
-/// `messages` downgraded, and how many packets MIDI 1.0 could not carry.
+/// Returns `messages` downgraded, and how many packets MIDI 1.0 can't carry.
 fn downgraded(messages: &[ChannelMessage]) -> (Vec<Midi1Message>, u32) {
     let input: Vec<Event> = messages
         .iter()
@@ -862,7 +862,7 @@ fn a_packet_midi_1_has_no_bytes_for_is_dropped_and_counted() {
     let down = Downgrade::new();
     let mut out = EventList::with_capacity(8);
     let packets = [
-        // A utility message: a no-op.
+        // A utility message, a no-op.
         Event::new(0, [0x0000_0000, 0, 0, 0]),
         // A system message with an undefined status, 0xF4.
         Event::new(0, [0x10F4_0000, 0, 0, 0]),
@@ -877,7 +877,7 @@ fn a_packet_midi_1_has_no_bytes_for_is_dropped_and_counted() {
     ];
     assert_eq!(down.block(&packets, &mut out), 6);
     assert!(out.as_slice().is_empty());
-    // What MIDI 1.0 carries passes as it is.
+    // What MIDI 1.0 carries passes through unchanged.
     let carried = [
         Event::new(1, [0x10F8_0000, 0, 0, 0]),
         Event::new(2, [0x2090_3C7F, 0, 0, 0]),

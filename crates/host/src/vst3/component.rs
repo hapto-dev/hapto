@@ -113,13 +113,13 @@ pub(crate) struct Component<P: Plugin> {
     /// made ([`wrap`](Self::wrap)), with no reference of its own: what a
     /// view takes a reference to the component through.
     this: OnceLock<usize>,
-    /// The notes the host named, for the note expressions that name them,
-    /// from block to block. The audio thread holds them in a block, and an
-    /// activation clears them.
+    /// The notes that the host gave ids, kept across blocks for their note
+    /// expressions. The audio thread holds them in a block, and an activation
+    /// clears them.
     notes: AudioSlot<midi::Notes>,
-    /// What sending the plugin's MIDI keeps from block to block: the notes
-    /// it sent under a host's id and the room for its SysEx. The audio
-    /// thread holds it in a block, and an activation clears it.
+    /// What sending the plugin's MIDI keeps across blocks, the notes it sent
+    /// under a host's id and its SysEx room. The audio thread holds it in a
+    /// block, and an activation clears it.
     midi_out: AudioSlot<midi_out::Out>,
 }
 
@@ -233,15 +233,15 @@ impl<P: Plugin> Component<P> {
         self.engine().expect("initialized").carried()
     }
 
-    /// What `read` makes of the last block's MIDI, decoded as its processor
-    /// read it; `None` before `initialize` or while inactive.
+    /// Returns what `read` makes of the last block's MIDI, decoded as its
+    /// processor read it, or `None` before `initialize` or while inactive.
     #[cfg(test)]
     pub(crate) fn heard<T>(&self, read: impl FnOnce(hapto_midi::Midi<'_>) -> T) -> Option<T> {
         self.engine()?.heard(read)
     }
 
-    /// What the plugin sent that VST3 had no event for, or the host
-    /// refused, since the component was made.
+    /// Returns how many of the plugin's messages VST3 had no event for, or
+    /// the host refused, since the component was made.
     #[cfg(test)]
     pub(crate) fn lost_out(&self) -> u64 {
         self.midi_out.hold().lost()
@@ -262,16 +262,15 @@ impl<P: Plugin> Component<P> {
         self.engine().expect("initialized").ticker()
     }
 
-    /// One block: the host's parameter changes, then its MIDI, then the
+    /// Processes one block's parameter changes, then its MIDI, then its
     /// audio.
     ///
     /// # Safety
     ///
     /// `data` is null, or the host's `ProcessData` for this `process` call,
     /// valid for reads and writes until it returns. Its buses, channel
-    /// buffers and parameter changes are valid as the VST3 SDK promises for
-    /// that call, and so are its events. The host touches none of them
-    /// meanwhile.
+    /// buffers, parameter changes and events are valid as the VST3 SDK
+    /// promises for that call. The host touches none of them meanwhile.
     unsafe fn process_block(&self, data: *mut ProcessData) -> tresult {
         // SAFETY: the caller's contract, and `data` is used only inside this
         // call.
@@ -299,7 +298,7 @@ impl<P: Plugin> Component<P> {
             return kResultFalse;
         }
         let events = data.inputEvents;
-        // As many queues as the automation's walk looks at, and the grid.
+        // As many queues as the automation's walk reads, plus the grid.
         let most = engine
             .set()
             .len()
@@ -311,14 +310,14 @@ impl<P: Plugin> Component<P> {
                 return;
             }
             // SAFETY: the SDK makes `inputEvents` null or the host's
-            // `IEventList`, alive with each SysEx's bytes until `process`
-            // returns. `ComRef` borrows it for no longer than that.
+            // `IEventList`, alive with each SysEx message's bytes until
+            // `process` returns. `ComRef` borrows it for no longer than that.
             let events = unsafe { ComRef::from_raw(events) };
             // SAFETY: as above.
             let keep = events.map_or(0, |events| unsafe { midi::event_count(events) });
-            // The controllers first, so at one frame they come before the
-            // notes, as JUCE's wrapper hands them over, leaving the notes
-            // their room so dense controllers drop no note-off.
+            // Controllers go first, so at one frame they precede the notes,
+            // as in JUCE's wrapper, and they leave the notes their room, so
+            // dense controllers drop no note-off.
             // SAFETY: as for the automation above.
             if let Some(changes) = unsafe { ComRef::from_raw(changes) } {
                 // SAFETY: as above.
@@ -582,7 +581,7 @@ impl<P: Plugin> IComponentTrait for Component<P> {
                 return kResultFalse;
             };
             let done = if state != 0 {
-                // Notes named before were for another activation.
+                // The kept notes belong to the last activation.
                 self.notes.hold().clear();
                 self.midi_out.hold().clear();
                 let setup = main.setup().unwrap_or(Setup::FALLBACK);

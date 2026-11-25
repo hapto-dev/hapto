@@ -1,11 +1,13 @@
-//! What hapto-host runs over and over does not allocate: the per-block event
-//! list a format exporter fills and a processor reads, a block's spans with
-//! their messages, a block through an
-//! exporter with learn's audio side in it, a block of the host's MIDI
-//! through the VST3 exporter, in and back out, the standalone exporter's
-//! audio side around
-//! the engine, and a plugin's idle tick when nothing changed, which every
-//! instance runs about 60 times a second.
+//! What hapto-host runs over and over does not allocate:
+//!
+//! - The per-block event list that a format exporter fills and a processor
+//!   reads.
+//! - A block's spans with their messages.
+//! - A block through an exporter with learn's audio side in it.
+//! - A block of the host's MIDI through the VST3 exporter, in and back out.
+//! - The standalone exporter's audio side around the engine.
+//! - A plugin's idle tick when nothing changed, which every instance runs
+//!   about 60 times a second.
 
 hapto_testkit::install_alloc_gate!();
 
@@ -42,9 +44,14 @@ fn walking_a_blocks_spans_does_not_allocate() {
         }
         seen
     });
-    // Spans at frames 0, 3, 40 and 255: four whole; seven at most 64 frames
-    // long, the one from 40 cut at 104, 168 and 232; 256 one frame each;
-    // every message once each time.
+    // Messages at frames 0, 3, 40 and 255 start the spans:
+    //
+    // - Four with no limit.
+    // - Seven of at most 64 frames, with the one from 40 cut at 104, 168 and
+    //   232.
+    // - 256 of one frame.
+    //
+    // Each pass sees every message once.
     assert_eq!(seen, (4 + 7 + 256, 3 * 5));
 }
 
@@ -85,7 +92,7 @@ impl Processor for Silent {
     }
 }
 
-/// Sends on every message it reads, at its frame.
+/// Sends on every message that it reads, at its frame.
 struct Echo;
 
 impl Processor for Echo {
@@ -301,9 +308,9 @@ fn midi_through_the_c_interface_with_learn_mapped_and_armed_does_not_allocate() 
         frame,
         words: [first, second, 0, 0],
     };
-    // MIDI 1.0 as a JUCE host hands it over: a note, the mapped controller,
-    // an NRPN whose high byte the upgrade holds to the block's end, and a
-    // SysEx; then a MIDI 2.0 note-off.
+    // MIDI 1.0 as a JUCE host hands it over (a note, the mapped controller,
+    // an NRPN whose high byte the upgrade holds until the block's end, and a
+    // SysEx), then a MIDI 2.0 note-off.
     let midi_in = [
         packet(0, 0x2090_3C7F, 0),
         packet(1, 0x20B0_0764, 0),
@@ -349,9 +356,9 @@ fn a_plugin_sending_its_midi_back_through_the_vst3_exporter_does_not_allocate() 
     vst3_midi_blocks::<Echoing>("blocks with MIDI in and back out through the VST3 exporter");
 }
 
-/// Blocks with a note, its expression and pressure, a SysEx and
-/// controllers through the VST3 exporter, the first after activation among
-/// them.
+/// Runs blocks with a note, its expression and pressure, a SysEx and
+/// controllers through the VST3 exporter, including the first block after
+/// activation.
 #[cfg(all(feature = "vst3", feature = "test-host"))]
 fn vst3_midi_blocks<P: Plugin>(what: &str) {
     use hapto_host::vst3::{BusEvent, TestHost};
@@ -422,8 +429,8 @@ fn a_block_through_the_standalone_exporter_does_not_allocate() {
     let (mut left, mut right) = (vec![0.0f32; 600], vec![0.0f32; 600]);
     let mut wide = vec![vec![0.0f32; 64]; MAX_CHANNELS + 1];
     let mut outputs: Vec<&mut [f32]> = wide.iter_mut().map(|c| &mut c[..]).collect();
-    // A controller, and an NRPN whose high byte the upgrade holds to the
-    // block's end, past the block's end for the shortest.
+    // A controller, and an NRPN whose high byte the upgrade holds until the
+    // block's end, at frame 3, past the shortest block's end.
     let midi = [0x00B0_0764, 0x00B0_6302, 0x00B0_622C, 0x00B0_0640]
         .map(|bytes: u32| hapto_host::Event::new(3, [0x2000_0000 | bytes, 0, 0, 0]));
     assert_no_allocations("a block before the activation, which is silence", || {

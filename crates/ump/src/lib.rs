@@ -137,14 +137,15 @@ pub enum Origin {
     /// [`Midi1`](Self::Midi1), so a reader can tell a sent low byte of 0 from
     /// a missing one.
     Midi1HighByte,
-    /// Sent as a format's own note event, which named the note: VST3's
-    /// `noteId`. The packet is the note's message on its key, and `id` is
-    /// the host's name for the note, which the words have no room for.
+    /// Sent as a format's own note event, such as VST3's, which names the
+    /// note (`noteId`). The packet is the note's message on its key, and `id`
+    /// holds the host's id for the note, because the words have no room for
+    /// it.
     ///
     /// ```
     /// use hapto_ump::{Event, MessageType, Origin};
     ///
-    /// // A note-on whose host named its note 7.
+    /// // A note-on that the host named 7.
     /// let event = Event {
     ///     origin: Origin::Note { id: 7 },
     ///     ..Event::new(0, [0x4090_3C00, 0xFFFF_0000, 0, 0])
@@ -169,9 +170,10 @@ impl Event {
         }
     }
 
-    /// The offset of the last frame of a block of `frames` frames, where a
-    /// packet at or past the block's end goes: 0 for a block of none, and
-    /// the last offset there is for a block longer than offsets reach.
+    /// Returns the offset of the last frame in a block of `frames` frames,
+    /// where a packet at or past the block's end goes. It's 0 for an empty
+    /// block, and the largest offset for a block longer than an offset can
+    /// reach.
     ///
     /// # Examples
     ///
@@ -186,7 +188,7 @@ impl Event {
         u32::try_from(frames.saturating_sub(1)).unwrap_or(u32::MAX)
     }
 
-    /// The packet's message type.
+    /// Returns the packet's message type.
     ///
     /// # Examples
     ///

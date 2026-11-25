@@ -1,12 +1,14 @@
-//! The computer's own MIDI devices, by hand: each test is ignored, since it
-//! needs a device and a person. `cargo test -p hapto-midi-devices --test
-//! by_hand -- --ignored --nocapture --test-threads 1`, with a test's name
-//! after `--ignored` for that one alone.
+//! By-hand tests of the computer's own MIDI devices, ignored because each
+//! needs a device and a person.
 //!
-//! The tests that replug or unplug a device follow the one whose name holds
-//! `HAPTO_DEVICE`, else the first that is not the system's synth. The long
-//! SysEx in needs a loopback port, such as loopMIDI's, whose name starts
-//! with `HAPTO_LOOPBACK`, else with `loopMIDI`.
+//! Run them with `cargo test -p hapto-midi-devices --test by_hand --
+//! --ignored --nocapture --test-threads 1`, with a test's name after
+//! `--ignored` to run only that one.
+//!
+//! The replug and unplug tests use the device whose name contains
+//! `HAPTO_DEVICE`, or if that is unset, the first that is not the system's
+//! synth. The long SysEx test needs a loopback port, such as loopMIDI's,
+//! whose name starts with `HAPTO_LOOPBACK`, or `loopMIDI` if that is unset.
 
 use std::thread;
 use std::time::Duration;
@@ -45,8 +47,8 @@ fn a_chord_and_a_sysex_play_on_the_systems_synth_each_at_its_time() {
     let (mut outputs, mut writer) = outputs(64);
     outputs.set_timing(Timing::AtFrames);
     outputs.open(synth).expect("the synth opens");
-    // General MIDI on, then C, E and G a quarter second apart, held to a
-    // second, as one block of a second at 1 kHz.
+    // General MIDI on, then C, E and G a quarter second apart, held until one
+    // second, in one second-long block at 1 kHz.
     let on = |frame: u32, key: u32| Event::new(frame, [0x4090_0000 | key << 8, 0xC000_0000, 0, 0]);
     let off = |frame: u32, key: u32| Event::new(frame, [0x4080_0000 | key << 8, 0, 0, 0]);
     let block = [
@@ -75,7 +77,7 @@ fn every_output_opens_takes_all_notes_off_and_closes() {
             Err(why) => println!("{}: {why}", device.name()),
         }
     }
-    // Controller 123, all notes off, on the first channel.
+    // All notes off (controller 123) on the first channel.
     writer.write(
         Instant::now(),
         48_000.0,
@@ -118,8 +120,8 @@ fn what_is_played_on_every_input_reaches_a_block() {
     assert_eq!(reader.dropped(), 0);
 }
 
-/// The device the person chose by `HAPTO_DEVICE`, a part of its name, among
-/// `listed`, else the first that is not the system's synth.
+/// Returns the device in `listed` whose name contains `HAPTO_DEVICE`, or if
+/// that is unset, the first that is not the system's synth.
 fn chosen<'a>(mut listed: impl Iterator<Item = &'a Device>) -> Option<&'a Device> {
     match std::env::var("HAPTO_DEVICE") {
         Ok(part) => listed.find(|device| device.name().contains(&part)),
@@ -127,8 +129,8 @@ fn chosen<'a>(mut listed: impl Iterator<Item = &'a Device>) -> Option<&'a Device
     }
 }
 
-/// `length` bytes of SysEx for no one's gear, 0x7D being the id MIDI keeps
-/// for non-commercial use, and its packets as events at frame 0.
+/// Returns `length` bytes of SysEx with the non-commercial id (0x7D), which
+/// belongs to no manufacturer, and its packets as events at frame 0.
 fn long_sysex(length: usize) -> (Vec<u8>, Vec<Event>) {
     let data: Vec<u8> = std::iter::once(0x7D)
         .chain((1..length).map(|index| (index % 0x7F) as u8))
@@ -138,12 +140,12 @@ fn long_sysex(length: usize) -> (Vec<u8>, Vec<Event>) {
     (data, events)
 }
 
-/// Ticks the list as an app's main thread does, about 60 times a second,
-/// handing `each` what came and went, until it says it is done.
+/// Ticks the list about 60 times a second, as an app's main thread does,
+/// and passes the changes to `each` until it returns `true`.
 ///
 /// # Panics
 ///
-/// After `limit`, naming what it was `waiting_for`.
+/// After `limit`, naming `waiting_for`.
 fn tick_until(
     devices: &mut Devices,
     limit: Duration,
@@ -160,7 +162,7 @@ fn tick_until(
     }
 }
 
-/// Opens every listed direction of the device called `name`.
+/// Opens the device called `name` in every direction that the list has.
 fn open_both(devices: &Devices, name: &str, inputs: &mut Inputs, outputs: &mut Outputs) {
     for device in devices.all().iter().filter(|device| device.name() == name) {
         let opened = match device.direction() {
@@ -182,7 +184,8 @@ fn a_device_replugged_past_the_slots_opens_every_time_and_still_reads() {
     let (mut inputs, mut reader) = inputs(1024);
     let (mut outputs, _writer) = outputs(64);
     open_both(&devices, &name, &mut inputs, &mut outputs);
-    // One past every slot, so each replug takes a slot a device left.
+    // One more replug than there are slots, so each takes a slot that a device
+    // left.
     let replugs = MAX_INPUTS.max(MAX_OUTPUTS) + 1;
     for round in 1..=replugs {
         println!("{round} of {replugs}: unplug {name}");
@@ -191,7 +194,7 @@ fn a_device_replugged_past_the_slots_opens_every_time_and_still_reads() {
                 inputs.close(device.id());
                 outputs.close(device.id());
             }
-            // A device found gone as it was read closes here too.
+            // A device found gone while it was read is closed here too.
             inputs.tick();
             outputs.tick();
             changes.removed.iter().any(|device| device.name() == name)
@@ -232,7 +235,7 @@ fn a_sysex_longer_than_the_inputs_room_comes_in_whole() {
         println!("no loopback port named {port}* here: add one in loopMIDI");
         return;
     };
-    // Room for 1024 packets is 6 KB of SysEx, and the SysEx is five times
+    // Room for 1024 packets holds 6 KB of SysEx, and the SysEx is five times
     // that, so it comes in a part at a time as the room fills.
     let (mut inputs, mut reader) = inputs(1024);
     let (mut outputs, mut writer) = outputs(16384);
@@ -267,8 +270,8 @@ fn a_sysex_longer_than_the_inputs_room_comes_in_whole() {
     );
 }
 
-/// A note-on and its note-off on each of the first eight keys from middle C,
-/// at frame 0.
+/// Returns a note-on and a note-off for each of the eight keys from middle C
+/// up, at frame 0.
 fn notes() -> Vec<Event> {
     (60..68)
         .flat_map(|key: u32| {
@@ -280,10 +283,12 @@ fn notes() -> Vec<Event> {
         .collect()
 }
 
-/// Notes, not SysEx: through Windows 10's WDM driver, a device unplugged
-/// while a long SysEx goes out to it leaves the send stuck in the driver,
-/// and the process cannot end after it, as the open note on `Outputs` says.
-/// Short messages are safe, so they are what goes out as the device leaves.
+/// Sends notes, not SysEx, while the device leaves, because short messages
+/// are safe.
+///
+/// With Windows 10's WDM driver, unplugging a device during a long SysEx
+/// leaves the send stuck in the driver, and the process can't end after
+/// that, as the open note on `Outputs` says.
 #[test]
 #[ignore = "by hand: unplug a USB MIDI device while notes go out to it, then plug it in"]
 fn a_device_unplugged_while_notes_go_out_closes_at_once_and_opens_again() {

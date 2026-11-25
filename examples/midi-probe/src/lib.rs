@@ -1,20 +1,25 @@
-//! The MIDI probe: what a host's MIDI does, made audible and sent back out,
+//! The MIDI probe, which makes a host's MIDI audible and sends it back out,
 //! for checking MIDI through a real host by hand.
 //!
-//! Each note plays a sine at its pitch, as loud as its velocity. The note's
-//! own pitch, bend, pressure and volume move it, so a VST3 host's note
-//! expressions and MIDI 2.0's per-note controllers are heard: pressure adds
-//! the octave above. A channel's pitch bend moves its notes by the channel's
-//! bend range, two semitones until a host says otherwise, and its volume,
-//! controller 7, sets their level. All notes off and all sound off release
-//! the channel's notes. Every message that arrives goes back out at its
-//! frame, as it came, so a host's MIDI monitor, or a track that records the
-//! probe, shows what reached the plugin.
+//! Each note plays a sine at its pitch, as loud as its velocity.
 //!
-//! Its `cdylib` is a VST3 module through Hapto's exporter (the `vst3`
-//! feature, on by default); with only `cabi` on, it exports the C interface
-//! the JUCE adapter builds on; and the `standalone` feature makes it an app
-//! of its own, which plays the computer's MIDI inputs.
+//! - A note's own pitch, bend, pressure and volume move it, so a VST3 host's
+//!   note expressions and MIDI 2.0's per-note controllers are heard.
+//!   Pressure adds the octave above.
+//! - A channel's pitch bend moves its notes by its bend range, two semitones
+//!   until a host sets another.
+//! - A channel's volume (controller 7) sets its notes' level.
+//! - All notes off and all sound off release the channel's notes.
+//!
+//! Every message goes back out at its frame as it came, so a host's MIDI
+//! monitor, or a track that records the probe, shows what reached the plugin.
+//!
+//! - With the `vst3` feature, on by default, its `cdylib` is a VST3 module
+//!   through Hapto's exporter.
+//! - With only `cabi`, it exports the C interface that the JUCE adapter
+//!   builds on.
+//! - With `standalone`, it is an app of its own, which plays the computer's
+//!   MIDI inputs.
 
 #[cfg(feature = "vst3")]
 hapto_host::export_vst3!(MidiProbe);
@@ -28,23 +33,23 @@ use hapto_host::midi::controller::{self, number};
 use hapto_host::midi::{Channel, Group, Message, NoteId, NoteKey, NoteOn, PerChannel, Pitch};
 use hapto_host::{AddSample, Block, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status};
 
-/// How many notes sound at once. A note past them takes the quietest.
+/// How many notes sound at once. A further note takes the quietest voice.
 const VOICES: usize = 16;
 /// How long a note takes to reach its level, in seconds.
 const ATTACK: f32 = 0.005;
 /// How long a released note takes to fall 60 dB, in seconds.
 const RELEASE: f32 = 0.2;
-/// The level at which a released note stops: 60 dB down.
+/// The level at which a released note stops, 60 dB down.
 const SILENT: f32 = 1e-3;
-/// A note's own pitch bend at either end, in semitones: MIDI 2.0's default
-/// per-note bend range.
+/// A note's own pitch bend at either end, in semitones, which is MIDI 2.0's
+/// default per-note bend range.
 const NOTE_BEND_RANGE: f32 = 48.0;
 /// The level of a note at velocity 1 and full volume.
 const LEVEL: f32 = 0.25;
 /// A channel's bend range, in semitones, until a host sets one.
 const BEND_RANGE: f32 = 2.0;
 
-/// The plugin, on the main thread: it holds nothing.
+/// The main-thread half of the plugin, which holds nothing.
 #[derive(Debug)]
 pub struct MidiProbe;
 
@@ -67,8 +72,8 @@ impl Plugin for MidiProbe {
     }
 }
 
-/// The audio-thread half: sixteen sines, played from the block's MIDI, and
-/// the block's MIDI sent back out.
+/// The audio-thread half, which plays sixteen sines from the block's MIDI
+/// and sends that MIDI back out.
 #[derive(Debug)]
 pub struct Probe {
     sample_rate: f32,
@@ -84,7 +89,8 @@ pub struct Probe {
 /// One sine, and the note it plays.
 #[derive(Debug, Clone, Copy, Default)]
 struct Voice {
-    /// The note, and the group and channel it came on; `None` while silent.
+    /// The note, and the group and channel that it came on, or `None` while
+    /// silent.
     note: Option<(NoteId, Group, Channel)>,
     /// Whether its key is still down.
     held: bool,
@@ -97,7 +103,7 @@ struct Voice {
     /// Its own volume, from 0 to 1.
     volume: f32,
     velocity: f32,
-    /// Where its envelope is, from 0 to 1.
+    /// Its envelope's level, from 0 to 1.
     level: f32,
     phase: f32,
     /// How far its phase moves each frame, as of the span's start.
@@ -109,7 +115,7 @@ struct Voice {
 /// What a channel's messages set for its notes.
 #[derive(Debug, Clone, Copy)]
 struct ChannelState {
-    /// Controller 7, from 0 to 1.
+    /// The volume (controller 7), from 0 to 1.
     volume: f32,
     /// The pitch bend, from -1 to 1.
     bend: f32,
@@ -193,7 +199,7 @@ impl Probe {
         }
     }
 
-    /// Starts `note` on a silent voice, or on the quietest when none is.
+    /// Starts `note` on a silent voice, or else on the quietest.
     fn start(&mut self, note: &NoteOn) {
         let quietest = self.voices.iter_mut().min_by(|a, b| {
             (a.note.is_some().cmp(&b.note.is_some())).then(a.level.total_cmp(&b.level))
@@ -210,8 +216,8 @@ impl Probe {
         }
     }
 
-    /// Changes the voice that plays the note `key` names, if one does: the
-    /// decoder has found which note that is.
+    /// Changes the voice, if any, that plays the note that `key` names, which
+    /// the decoder has already found.
     fn each_on(&mut self, key: NoteKey, change: impl FnOnce(&mut Voice)) {
         let playing = |voice: &&mut Voice| voice.note.is_some_and(|(id, ..)| Some(id) == key.id);
         if let Some(voice) = self.voices.iter_mut().find(playing) {
@@ -233,7 +239,7 @@ impl Probe {
         }
     }
 
-    /// The next frame of every voice, summed.
+    /// Returns the next frame of every voice, summed.
     fn next_sample(&mut self) -> f32 {
         let mut sum = 0.0;
         for voice in &mut self.voices {

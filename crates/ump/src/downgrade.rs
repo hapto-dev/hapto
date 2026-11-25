@@ -17,13 +17,25 @@ use crate::{
 /// It follows the specification's Default Translation. Values drop their low
 /// bits, and three messages change form.
 ///
-/// What comes out is what MIDI 1.0 carries, exactly what [`Bytes::of`]
-/// writes: its channel voice messages, its system messages and 7-bit SysEx.
-/// The rest is dropped, and each call returns how many packets it dropped:
-/// relative controllers, per-note controllers, per-note pitch bend and
-/// per-note management, a note's attribute, whose note still goes out, and
-/// any packet MIDI 1.0 has no bytes for, such as a utility or stream
-/// message, 8-bit SysEx, or a status MIDI 1.0 leaves undefined.
+/// - A note-on that would drop to velocity 0, which MIDI 1.0 treats as a
+///   note-off, goes out at velocity 1.
+/// - A registered or assignable controller becomes four controllers (101 and
+///   100, or 99 and 98, then 6 and 38), even one upgraded from a lone high
+///   byte. A MIDI 1.0 receiver treats a low byte of 0 as no low byte, and one
+///   that waits for the low byte, as [`Upgrade`](crate::Upgrade) does, gets
+///   the value without delay.
+/// - A program change with a bank becomes bank select (0 and 32), then the
+///   program.
+///
+/// It sends only what MIDI 1.0 carries, which is exactly what [`Bytes::of`]
+/// writes: channel voice messages, system messages and 7-bit SysEx. Each call
+/// drops the rest and returns how many packets it dropped:
+///
+/// - relative controllers, per-note controllers, per-note pitch bend and
+///   per-note management
+/// - a note's attribute, though the note still goes out
+/// - any packet that MIDI 1.0 has no bytes for, such as a utility or stream
+///   message, 8-bit SysEx, or a status that MIDI 1.0 leaves undefined
 ///
 /// # Examples
 ///
@@ -48,14 +60,15 @@ use crate::{
 pub struct Downgrade {}
 
 impl Downgrade {
-    /// The Default Translation's downgrade.
+    /// Returns a downgrade by the Default Translation.
     pub const fn new() -> Self {
         Downgrade {}
     }
 
     /// Downgrades a block's packets, in order, into `out`, and returns how
-    /// many MIDI 1.0 could not carry. A packet past `out`'s room is dropped
-    /// and counted there.
+    /// many MIDI 1.0 can't carry.
+    ///
+    /// A packet that doesn't fit is dropped, and `out` counts it.
     ///
     /// Thread: audio. Allocates nothing.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
@@ -65,9 +78,9 @@ impl Downgrade {
         })
     }
 
-    /// Downgrades one packet, handing `send` each MIDI 1.0 packet it
-    /// becomes, and returns how many MIDI 1.0 could not carry: none, or one
-    /// for a packet dropped or a note's attribute.
+    /// Downgrades one packet, calls `send` with each MIDI 1.0 packet that it
+    /// becomes, and returns how many MIDI 1.0 can't carry. That is 0, or 1
+    /// for a dropped packet or a note's attribute.
     ///
     /// Thread: audio. Allocates nothing.
     ///
@@ -76,7 +89,7 @@ impl Downgrade {
     /// ```
     /// use hapto_ump::{Downgrade, Event};
     ///
-    /// // MIDI 2.0's controller 7 at full, as MIDI 1.0's at 127.
+    /// // MIDI 2.0's controller 7 at full scale becomes MIDI 1.0's at 127.
     /// let mut sent = Vec::new();
     /// let controller = Event::new(5, [0x40B0_0700, u32::MAX, 0, 0]);
     /// let lost = Downgrade::new().translate(&controller, |packet| sent.push(packet));
@@ -94,7 +107,8 @@ impl Downgrade {
             message,
         }) = event.channel_voice()
         else {
-            // Any other packet goes as it is, if MIDI 1.0 has bytes for it.
+            // Any other packet passes through unchanged if MIDI 1.0 has bytes
+            // for it.
             if Bytes::of(event.words).is_none() {
                 return 1;
             }
@@ -179,9 +193,9 @@ const fn cc(controller: u8, value: u8) -> Midi1Message {
     Midi1Message::ControlChange { controller, value }
 }
 
-/// Sends a registered or assignable controller as MIDI 1.0's four: its
-/// `address` controllers with its bank and index, then data entry's high
-/// and low bytes.
+/// Sends a registered or assignable controller as MIDI 1.0's four
+/// controllers, which are its `address` controllers with its bank and index,
+/// then data entry's high and low bytes.
 fn number(
     send: &mut impl FnMut(Midi1Message),
     [msb, lsb]: [u8; 2],
@@ -195,7 +209,8 @@ fn number(
     send(cc(DATA_ENTRY_LSB, low));
 }
 
-/// One for a note's attribute, which MIDI 1.0 has nowhere to carry.
+/// Returns 1 for a note's attribute, which MIDI 1.0 can't carry, or 0 for
+/// none.
 fn attribute_lost(attribute: Attribute) -> u32 {
     u32::from(attribute != Attribute::NONE)
 }

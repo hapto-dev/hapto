@@ -1,13 +1,15 @@
-//! A value for each channel a plugin hears.
+//! A value for each MIDI channel.
 
 use std::ops::{Index, IndexMut};
 
 use crate::values::{Channel, Group};
 
-/// A value for each channel of each group: the 256 a MIDI 2.0 stream
-/// carries, MIDI 1.0's 16 being the first group's. For what a plugin keeps
-/// for each channel, such as its bend, its volume or its pedals, indexed by
-/// the group and channel a message names.
+/// A value for each of the 256 channels in a MIDI 2.0 stream, 16 in each
+/// group.
+///
+/// MIDI 1.0's 16 are the first group's. A plugin keeps its per-channel state
+/// in it, such as the bend, volume or pedals, indexed by a message's group
+/// and channel.
 ///
 /// # Examples
 ///
@@ -31,7 +33,7 @@ use crate::values::{Channel, Group};
 pub struct PerChannel<T>([T; 256]);
 
 impl<T: Clone> PerChannel<T> {
-    /// `value` for every channel.
+    /// Returns a `PerChannel` with `value` for every channel.
     pub fn new(value: T) -> Self {
         PerChannel(std::array::from_fn(|_| value.clone()))
     }
@@ -44,13 +46,15 @@ impl<T: Default> Default for PerChannel<T> {
 }
 
 impl<T> PerChannel<T> {
-    /// Every channel's value, the first group's first channel first.
+    /// Returns an iterator over every channel's value, from the first
+    /// group's first channel.
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
         self.0.iter_mut()
     }
 }
 
-/// Where a group's channel sits: each is below 16, so the slot is below 256.
+/// Returns the slot of a group's channel, which is below 256 because each is
+/// below 16.
 fn slot(group: Group, channel: Channel) -> usize {
     group.index().wrapping_mul(16).wrapping_add(channel.index())
 }

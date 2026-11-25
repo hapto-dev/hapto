@@ -13,9 +13,11 @@ use crate::{Midi, MidiOut};
 /// setup that promises more for this many, and a longer block plays in pieces.
 pub const MAX_FRAMES: usize = 65_536;
 
-/// The most MIDI packets one block carries in, and the most events it
-/// sends, for a plugin that takes or sends MIDI: the room every exporter
-/// builds, and the C interface's `HAPTO_MAX_EVENTS`.
+/// The most MIDI packets that one block carries in, and the most events that
+/// it sends, for a plugin that takes or sends MIDI.
+///
+/// Every exporter allocates this much room, which the C interface calls
+/// `HAPTO_MAX_EVENTS`.
 ///
 /// # Examples
 ///
@@ -58,9 +60,10 @@ pub struct ProcessSetup {
     /// The main bus's channels in and out: the width the host chose among
     /// those the processor's [layout](crate::Processor::Layout) runs at.
     pub layout: Width,
-    /// The most MIDI packets one block may carry in; more are dropped and
-    /// counted. A block's decoded messages have room for twice as many,
-    /// since one note-off may end several notes on its key.
+    /// The most MIDI packets that one block may carry in.
+    ///
+    /// More are dropped and counted. A block's decoded messages have room for
+    /// twice as many, because one note-off may end several notes on its key.
     pub max_events: usize,
     /// The most MIDI events one block may send; more are dropped and
     /// counted. Zero for a plugin without
@@ -130,19 +133,20 @@ pub struct Block<'a, L: Layout> {
     /// On entry the first `inputs` carry the input, and any further ones are
     /// zeroed. On return the first `outputs` carry the output.
     pub audio: Audio<'a, L>,
-    /// The MIDI that arrived, decoded once by the engine: each
-    /// [`Message`](crate::Message) at its frame, in the order it came, with
-    /// the packets it came in. Read it as often as needed, as a `MidiBuffer`
-    /// is read.
-    pub midi: Midi<'a>,
-    /// The MIDI to send, in time order: messages, or packets as they are.
-    /// MIDI only: parameter changes reach the host through the exporter.
+    /// The MIDI that arrived, decoded once by the engine.
     ///
-    /// Empty on entry, but for a host's block longer than
-    /// [`ProcessSetup::max_frames`], which plays as several blocks. Each
-    /// later one finds what the earlier ones sent, already at frames from
-    /// the host's block's start. The exporter hands it to the host once the
-    /// block has played, for a plugin that declares
+    /// It holds each [`Message`](crate::Message) at its frame, in the order
+    /// that it came, with its packets. Read it as often as needed, like a
+    /// `MidiBuffer`.
+    pub midi: Midi<'a>,
+    /// The MIDI to send, in time order, as messages or unchanged packets.
+    ///
+    /// Parameter changes reach the host through the exporter instead. It is
+    /// empty on entry unless a host's block is longer than
+    /// [`ProcessSetup::max_frames`] and plays as several blocks. Each later
+    /// block then finds what the earlier ones sent, at frames from the host
+    /// block's start. The exporter passes it to the host after the block
+    /// plays, for a plugin that declares
     /// [`PluginInfo::midi_output`](crate::PluginInfo::midi_output).
     pub midi_out: MidiOut<'a>,
 }
@@ -183,7 +187,8 @@ pub enum Status {
 impl<'a, L: Layout> Block<'a, L> {
     /// Creates a block over `audio`, with `midi` in and `midi_out` to send
     /// into, for an exporter or a test that drives a processor.
-    /// [`Midi::default`] is a block with no MIDI in.
+    ///
+    /// Pass [`Midi::default`] for a block with no MIDI in.
     pub fn new(audio: Audio<'a, L>, midi: Midi<'a>, midi_out: MidiOut<'a>) -> Self {
         Block {
             audio,

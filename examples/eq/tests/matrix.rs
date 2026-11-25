@@ -1,18 +1,20 @@
-//! The example EQ through both exporters across the conditions hosts make,
-//! under the allocation gate (debug and release) and the audio-thread mark
-//! the exporters hold around a block: the block sizes and sample rates
-//! below, every layout the EQ offers, every parameter moving with several
-//! points a block, and blocks longer than the setup promised, which play in
-//! pieces.
+//! The example EQ through both exporters, under the allocation gate (debug
+//! and release) and the audio-thread mark that the exporters hold around a
+//! block, across the conditions that hosts make:
+//!
+//! - The block sizes and sample rates below.
+//! - Every layout that the EQ offers.
+//! - Every parameter moving with several points a block.
+//! - Blocks longer than the setup promised, which play in pieces.
 //!
 //! Each block also plays through the processor driven directly, after the
-//! same values, and the two must agree sample for sample: an exporter applies
+//! same values, and the two must agree sample for sample. An exporter applies
 //! each queue's last point before the block, so many points per parameter
 //! compare with one write. The output must be finite and free of denormals.
 //!
 //! `soak` runs the grid at random for `HAPTO_SOAK_SECONDS` (default 10), and
-//! is ignored in a normal run. It prints its seed; `HAPTO_SOAK_SEED` repeats a
-//! run.
+//! is ignored in a normal run. It prints its seed, and `HAPTO_SOAK_SEED`
+//! repeats a run.
 //!
 //! ```sh
 //! HAPTO_SOAK_SECONDS=1800 cargo test --release -p hapto-example-eq \

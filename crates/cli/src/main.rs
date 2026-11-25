@@ -76,11 +76,11 @@ enum Command {
     /// Pluginval is `--pluginval`, else `PLUGINVAL`, else the one on the
     /// PATH.
     Validate(validate::Options),
-    /// Write the crate's settings for the JUCE adapter, `hapto-juce.cmake`,
-    /// through its `juce_settings` test, and print the CMake that builds it
-    /// through the adapter, as AU, AAX or a JUCE VST3.
+    /// Write the crate's JUCE adapter settings, `hapto-juce.cmake`, through
+    /// its `juce_settings` test, and print the CMake that builds the crate
+    /// through the adapter as AU, AAX or a JUCE VST3.
     ///
-    /// In CI it checks the settings instead, and fails when they are out of
+    /// In CI it checks the settings instead, and fails if they are out of
     /// date with the plugin's `INFO`.
     Juce(juce::Options),
 }

@@ -1,4 +1,4 @@
-//! The callback's reading, driven with the messages WinMM sends, so no
+//! Tests the callback's reading with the messages that WinMM sends, so no
 //! device is needed.
 
 use windows::Win32::Media::{MMSYSERR_ALLOCATED, MMSYSERR_BADDEVICEID, MMSYSERR_NOMEM};
@@ -11,13 +11,13 @@ fn shared() -> (Shared, Consumer) {
     let (producer, consumer) = ring(16);
     let wake = EventHandle::new().expect("an event");
     let shared = Shared::new(producer, wake);
-    // The device started a second in.
+    // The device started at one second.
     shared.started.store(1_000_000_000, Ordering::Release);
     (shared, consumer)
 }
 
-/// What the ring holds: when each packet came, in milliseconds, and its
-/// first two words.
+/// Returns each packet's time in the ring, in milliseconds, and its first
+/// two words.
 fn taken(consumer: &mut Consumer) -> Vec<(u64, [u32; 2])> {
     let mut taken = Vec::new();
     while let Some((at, [first, second, ..])) = consumer.pop() {
@@ -26,8 +26,8 @@ fn taken(consumer: &mut Consumer) -> Vec<(u64, [u32; 2])> {
     taken
 }
 
-/// A SysEx buffer as the driver hands it back: `bytes` recorded, and its
-/// place among the input's buffers.
+/// Hands back a SysEx buffer as the driver does, with `bytes` recorded, at
+/// `index` among the input's buffers.
 fn long_data(shared: &Shared, bytes: &mut [u8], index: usize, millis: usize) {
     let header = MIDIHDR {
         lpData: PSTR(bytes.as_mut_ptr()),
@@ -43,8 +43,8 @@ fn long_data(shared: &Shared, bytes: &mut [u8], index: usize, millis: usize) {
 fn a_short_message_is_read_into_a_packet_stamped_from_the_start() {
     let (shared, mut consumer) = shared();
     shared.message(MM_MIM_DATA, 0x007F_3C90, 5);
-    // A clock is one byte and a program change two: the rest of the word
-    // is not read.
+    // A clock is one byte and a program change two, so the rest of the word
+    // isn't read.
     shared.message(MM_MIM_DATA, 0x00AA_BBF8, 6);
     shared.message(MM_MIM_DATA, 0x00AA_05C1, 7);
     assert_eq!(
@@ -78,8 +78,8 @@ fn a_sysex_across_buffers_reads_as_one() {
     let mut second = [5, 6, 7, 0xF7];
     long_data(&shared, &mut first, 0, 1);
     long_data(&shared, &mut second, 1, 2);
-    // A Start of six bytes once the seventh shows more follows, then the
-    // End.
+    // A Start of six bytes, once the seventh shows that more follows, then
+    // the End.
     assert_eq!(
         taken(&mut consumer),
         [(1002, [0x3016_0102, 0x0304_0506]), (1002, [0x3031_0700, 0])]

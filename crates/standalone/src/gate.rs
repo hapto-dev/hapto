@@ -31,7 +31,7 @@ impl fmt::Debug for Callback {
 }
 
 impl Callback {
-    /// The callback that plays `player`, which it owns.
+    /// Returns the callback that plays `player`, which it owns.
     fn of<R: Render>(mut player: Player<R>) -> Callback {
         Callback {
             play: Box::new(move |data| player.play(data)),
@@ -62,10 +62,12 @@ impl Callback {
         ))
     }
 
-    /// The shipped app's, as [`app`](Self::app) makes it for a stereo device
-    /// at 48 kHz in blocks of up to 1024 frames cut as the device asks, in
-    /// silence, with the MIDI inputs `midi` reads in its blocks, and the
-    /// MIDI the plugin sends handed to the outputs `out` writes to.
+    /// Returns the shipped app's callback, as [`app`](Self::app) makes it,
+    /// with MIDI.
+    ///
+    /// It plays to a stereo device at 48 kHz, in silence, in blocks of up to
+    /// 1024 frames cut as the device requests. Its blocks get the MIDI that
+    /// `midi` reads, and their MIDI out goes to `out`.
     pub fn app_with_midi<P: Plugin>(
         plugin: &Standalone<P>,
         layout: Width,

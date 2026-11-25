@@ -1,5 +1,5 @@
-//! An output thread's waits: a signal from another thread ends one at
-//! once, and the timer ends one no earlier than asked.
+//! Tests that a signal from another thread ends an output thread's wait at
+//! once, and that the timer never ends one early.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -14,9 +14,9 @@ fn a_signal_from_another_thread_ends_a_wait_for_it() {
     let set = Arc::new(AtomicBool::new(false));
     let seen = Arc::clone(&set);
     let waiting = thread::spawn(move || {
-        // A wait with no timeout ends only when the signal is set. One set
-        // before the wait began is kept for it, as an auto-reset event
-        // keeps it, so either order ends it, and never before the set.
+        // A wait with no timeout ends only when the signal is set. An
+        // auto-reset event stays set until a wait takes it, so either order
+        // ends the wait, never before the set.
         Timer::new().wait(&signal, None);
         seen.load(Ordering::Acquire)
     });

@@ -1,11 +1,10 @@
-//! The app's MIDI in: devices opened on the main thread, and read into each
-//! block on the audio thread, merged on one group as a host hands a plugin
-//! its MIDI.
+//! The app's MIDI in, with devices opened on the main thread and read into
+//! each block on the audio thread, merged on one group as a host hands a
+//! plugin its MIDI.
 
-// Audio-path code: the reader runs on the audio thread, where a panic ends
-// the app's audio, so indexing, unwrap, expect, panic and unchecked
-// arithmetic are refused, and a site that is provably safe says why in an
-// `#[expect]`.
+// The reader runs on the audio thread, where a panic ends the app's audio,
+// so indexing, unwrap, expect, panic and unchecked arithmetic are denied. A
+// provably safe site gives its reason in an `#[expect]`.
 #![cfg_attr(
     not(test),
     deny(
@@ -32,14 +31,13 @@ use crate::ring::{Consumer, Producer, ring};
 pub const MAX_INPUTS: usize = 16;
 
 /// Makes the app's MIDI in, with room in each input for `room` packets
-/// between two blocks, and splits it into its two sides: [`Inputs`], which
-/// opens devices on the main thread, and [`InputsReader`], which reads them
-/// into each block on the audio thread.
+/// between two blocks, and splits it into [`Inputs`] for the main thread and
+/// [`InputsReader`] for the audio thread.
 ///
-/// Every input's room and translation state is made here, so opening a
+/// Every input's room and translation state is allocated here, so opening a
 /// device later allocates only the system's own buffers, on the main
-/// thread. Room enough for a SysEx lets it reach a block whole: see
-/// [`InputsReader`].
+/// thread. A SysEx that fits in the room usually reaches a block whole, and
+/// [`InputsReader`] describes when it doesn't.
 ///
 /// # Examples
 ///
@@ -48,7 +46,7 @@ pub const MAX_INPUTS: usize = 16;
 /// use hapto_ump::EventList;
 ///
 /// let (mut inputs, mut reader) = inputs(1024);
-/// // On the main thread: every keyboard the computer has.
+/// // On the main thread, every keyboard that the computer has.
 /// for device in Devices::new().inputs() {
 ///     if let Err(why) = inputs.open(device) {
 ///         eprintln!("{}: {why}", device.name());
@@ -67,15 +65,16 @@ pub fn inputs(room: usize) -> (Inputs, InputsReader) {
     (inputs, InputsReader::new(consumers))
 }
 
-/// The main thread's side of the app's MIDI in: the devices open now.
+/// The main thread's side of the app's MIDI in, with the open devices.
 ///
-/// Every device's messages arrive on group 1, merged, as a host hands a
-/// plugin its MIDI, so a plugin hears in the app what it hears in a host,
-/// and a mapping learned in one plays in the other. A device that leaves
-/// while open is closed at the next [`tick`](Self::tick). Every input closes
-/// as this drops.
+/// Every device's messages arrive merged on group 1, as a host hands a
+/// plugin its MIDI, so a plugin gets the same MIDI in the app as in a host,
+/// and a mapping learned in one works in the other. A device that leaves
+/// while open is closed at the next [`tick`](Self::tick), and every input
+/// closes when this drops.
 ///
-/// Open: learn telling two devices apart, which a packet does not say.
+/// Open: how learn tells devices apart, because a packet doesn't name its
+/// device.
 ///
 /// Thread: main.
 ///
@@ -90,7 +89,7 @@ pub fn inputs(room: usize) -> (Inputs, InputsReader) {
 ///     let _ = inputs.open(device);
 /// }
 ///
-/// // At each tick: follow the devices that come and go.
+/// // At each tick, follow the devices that come and go.
 /// let changes = devices.tick(std::time::Instant::now());
 /// for device in &changes.removed {
 ///     inputs.close(device.id());
@@ -125,11 +124,11 @@ impl fmt::Debug for Inputs {
 }
 
 impl Inputs {
-    /// Opens `device`. A device open already stays open.
+    /// Opens `device`, unless it is already open.
     ///
     /// # Errors
     ///
-    /// Returns why it did not open: an [`OpenError`].
+    /// Returns an [`OpenError`] if the device did not open.
     pub fn open(&mut self, device: &Device) -> Result<(), OpenError> {
         if device.direction() != Direction::Input {
             return Err(OpenError::NotAnInput);
@@ -140,23 +139,24 @@ impl Inputs {
         })
     }
 
-    /// Closes the device `id` names, if it is open, and says whether it was.
+    /// Closes the device that `id` names, if it is open, and returns whether
+    /// it was.
     pub fn close(&mut self, id: &DeviceId) -> bool {
         self.ports.close(id)
     }
 
-    /// Whether the device `id` names is open.
+    /// Returns whether the device that `id` names is open.
     pub fn is_open(&self, id: &DeviceId) -> bool {
         self.ports.is_open(id)
     }
 
-    /// The devices open now.
+    /// Returns the open devices.
     pub fn devices(&self) -> impl Iterator<Item = &Device> {
         self.ports.devices()
     }
 
-    /// Pushes a packet into input `input`'s ring as a device would, when no
-    /// device is open there, and says whether it did.
+    /// Pushes a packet into input `input`'s ring as a device would, if no
+    /// device is open there, and returns whether it did.
     ///
     /// A hook for tests, which have no device to read.
     #[doc(hidden)]
@@ -168,7 +168,8 @@ impl Inputs {
         true
     }
 
-    /// Closes the inputs whose device left while open, and returns them.
+    /// Closes and returns the devices that left while open.
+    ///
     /// Call it once per tick.
     pub fn tick(&mut self) -> Vec<Device> {
         self.ports.tick()
@@ -193,20 +194,21 @@ impl OpenDevices for Inputs {
     }
 }
 
-/// The audio thread's side of the app's MIDI in: it reads every input into
-/// each block, merged in the order the messages came.
+/// The audio thread's side of the app's MIDI in, which reads every input
+/// into each block, merged in the order that the messages came.
 ///
-/// A message lands at the frame its time takes in the block, as the time
-/// since the last block maps onto this one: so input plays a block late,
-/// and keeps its own timing within one. A message that came before the last
-/// block lands at the first frame.
+/// Each message lands at its time's frame, as the time since the last block
+/// maps onto this one, so input plays a block late but keeps its timing
+/// within the block. A message that came before the last block lands at the
+/// first frame.
 ///
-/// Each input is upgraded to MIDI 2.0 with a translation of its own, as an
-/// exporter's MIDI is, so two devices' parameter numbers never mix, and a
-/// new device on an input starts it over. A SysEx reaches the block whole,
-/// at the frame its end came, once all of it has: another device's message
-/// never cuts it, and goes on meanwhile. One longer than its input's room
-/// goes out as it comes instead.
+/// Each input is upgraded to MIDI 2.0 by its own translation, as an
+/// exporter's MIDI is, so two devices' parameter numbers never mix. A new
+/// device on an input starts its translation over.
+///
+/// A SysEx reaches the block whole once all of it has come, at the frame its
+/// end came, and other devices' messages go on meanwhile without cutting
+/// into it. One longer than its input's room goes out as it comes.
 ///
 /// # Examples
 ///
@@ -232,13 +234,12 @@ struct Lane {
     ring: Consumer,
     /// The input's translation to MIDI 2.0.
     upgrade: Upgrade,
-    /// The generation of the ring the reader last read: a change means a
-    /// new device took it.
+    /// The ring's generation at the last read. A change means a new device
+    /// took the ring.
     seen: u32,
-    /// The ring's next message, when it came and how many packets it is,
-    /// for the block being read: found once, and again only once it was
-    /// read, so a SysEx held for its end is not looked over for every
-    /// message another input sends.
+    /// The time and packet count of the ring's next message in this block,
+    /// found again only after that message is read, so a SysEx held for its
+    /// end isn't scanned for every message from another input.
     head: Option<(Instant, usize)>,
 }
 
@@ -252,7 +253,7 @@ impl fmt::Debug for InputsReader {
 }
 
 impl InputsReader {
-    /// A reader over `consumers`, an input each.
+    /// Returns a reader over `consumers`, one per input.
     fn new(consumers: Vec<Consumer>) -> InputsReader {
         let lanes = consumers
             .into_iter()
@@ -267,10 +268,13 @@ impl InputsReader {
     }
 
     /// Reads every message that came before `now` into `out`, at frames of
-    /// a block of `frames` frames, in the order they came across every
-    /// input; messages that came at the same moment keep their inputs'
-    /// order. A block of no frames reads nothing, so its messages wait for
-    /// the next. Past `out`'s room a message is dropped and counted there.
+    /// a block of `frames` frames.
+    ///
+    /// - Messages are in the order they came across every input, with ties
+    ///   in input order.
+    /// - A block of no frames reads nothing, so its messages wait for the
+    ///   next.
+    /// - A message past `out`'s room is dropped and counted in `out`.
     ///
     /// Thread: audio. Allocates nothing.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
@@ -282,17 +286,16 @@ impl InputsReader {
         for lane in &mut self.lanes {
             lane.head = ready(&lane.ring, now);
         }
-        // The earliest message across the inputs, the first input's of
-        // those that came at the same moment.
+        // The earliest message across the inputs, or on a tie, the first
+        // input's.
         while let Some((at, count, lane)) = self
             .lanes
             .iter_mut()
             .filter_map(|lane| lane.head.map(|(at, count)| (at, count, lane)))
             .min_by_key(|(at, _, _)| *at)
         {
-            // Read after the ring's head, so a packet a new device pushed
-            // comes with the new device's generation, and its translation
-            // starts over before it.
+            // The generation is read after the ring's head, so a new device's
+            // packet comes with it and the translation starts over first.
             let generation = lane.ring.generation();
             if generation != lane.seen {
                 lane.upgrade.reset();
@@ -311,31 +314,33 @@ impl InputsReader {
         }
     }
 
-    /// How many messages found no room in their input's ring, since it was
-    /// made: the audio thread read too seldom for how fast they came.
+    /// Returns how many messages have been dropped because their input's ring
+    /// was full.
+    ///
+    /// A drop means that the audio thread read too seldom for how fast the
+    /// messages came.
     pub fn dropped(&self) -> u64 {
         self.lanes.iter().map(|lane| lane.ring.dropped()).sum()
     }
 }
 
-/// The most packets a device hands over at once: a SysEx buffer of 1024
-/// bytes, six bytes a packet, and one more for what the stream held.
+/// The most packets that a device hands over at once, a SysEx buffer of
+/// 1024 bytes at six bytes a packet, plus one for what the stream held.
 pub(crate) const BURST: usize = 172;
 
-/// A SysEx7 packet's form, or `None` for any other packet.
+/// Returns a SysEx7 packet's form, or `None` for any other packet.
 fn sysex_form(words: [u32; 4]) -> Option<SysExForm> {
     SysEx7::decode(words).map(|packet| packet.form)
 }
 
-/// What `ring` has ready for a block that starts at `now`: when its next
-/// message came, and how many packets that message is.
+/// Returns the time and packet count of the next message that `ring` has
+/// ready for a block that starts at `now`.
 ///
-/// A SysEx is ready once its end has come, and is every packet to its end,
-/// the real-time messages among them included, at the time its end came.
-/// Until then it waits, unless the ring has less room left than a device
-/// hands over at once, [`BURST`], and is at least half full, when it goes
-/// out a packet at a time as it came: so a device's next buffer of it still
-/// fits.
+/// A SysEx is ready once its end has come, as every packet to its end, the
+/// real-time messages among them included, at its end's time. Until then it
+/// waits, unless the ring has less room left than [`BURST`] and is at least
+/// half full. It then goes out a packet at a time as it came, so the
+/// device's next buffer of it still fits.
 fn ready(ring: &Consumer, now: Instant) -> Option<(Instant, usize)> {
     let (at, words) = ring.peek()?;
     if at >= now {
@@ -354,8 +359,8 @@ fn ready(ring: &Consumer, now: Instant) -> Option<(Instant, usize)> {
             Some(SysExForm::End) => return Some((when, index.saturating_add(1))),
             Some(SysExForm::Continue) => latest = when,
             _ if Event::new(0, words).is_real_time() => {}
-            // A SysEx the device dropped part way, then something else:
-            // what came of it goes as it is.
+            // The device cut the SysEx short with another message, so what
+            // came goes out as it is.
             _ => return Some((latest, index)),
         }
     }
@@ -366,12 +371,12 @@ fn ready(ring: &Consumer, now: Instant) -> Option<(Instant, usize)> {
     (ring.len() >= full).then_some((at, 1))
 }
 
-/// The frame of a block of `frames` frames, at least one, that `at` takes,
-/// as the time from `last` to `now` maps onto the block.
+/// Returns the frame of `at` when the time from `last` to `now` maps onto a
+/// block of `frames` frames, at least one.
 fn frame(at: Instant, last: Instant, now: Instant, frames: usize) -> u32 {
     let span = u128::from(now.nanos().saturating_sub(last.nanos()));
     let into = u128::from(at.nanos().saturating_sub(last.nanos()));
-    // A span of nothing puts everything at the first frame.
+    // An empty span puts everything at the first frame.
     let frame = into
         .saturating_mul(frames as u128)
         .checked_div(span)

@@ -1,12 +1,15 @@
-//! What a plugin sends: a note moved to another key with its pitch, a note
-//! of its own beside the host's, a SysEx whole or not at all, the bend
-//! range at its edges, and a controller that could never read refused.
+//! Tests what a plugin sends:
+//! - A note moved to another key, with its pitch.
+//! - A note of the plugin's own beside the host's.
+//! - A SysEx, whole or not at all.
+//! - The bend range at its edges.
+//! - Refusing a controller that could never be read.
 
 use hapto_midi::controller::Controller;
 use hapto_midi::{Channel, Decoder, Group, Key, Message, MidiOut, NoteId, NoteOn};
 use hapto_ump::{Event, EventList};
 
-/// What `send` sent, decoded again, each message's line.
+/// Returns the lines of what `send` sent, decoded again, and its drops.
 fn sent(room: usize, send: impl FnOnce(&mut MidiOut<'_>)) -> (Vec<String>, u32) {
     let mut packets = EventList::with_capacity(room);
     let mut out = MidiOut::new(&mut packets);
@@ -26,7 +29,7 @@ fn sent(room: usize, send: impl FnOnce(&mut MidiOut<'_>)) -> (Vec<String>, u32) 
     (lines, dropped)
 }
 
-/// The note-on `words` decodes to.
+/// Returns the note-on that `words` decodes to.
 fn note_on(words: [u32; 2]) -> NoteOn {
     let event = Event::new(0, [words[0], words[1], 0, 0]);
     match Decoder::new().decode(&event).next() {
@@ -37,8 +40,8 @@ fn note_on(words: [u32; 2]) -> NoteOn {
 
 #[test]
 fn a_note_moved_to_another_key_moves_its_own_pitch_with_it() {
-    // A4 a quarter tone sharp, in MIDI 2.0's pitch attribute: 7.9 fixed
-    // point, a key 512.
+    // A4 a quarter tone sharp, in MIDI 2.0's 7.9 fixed-point pitch
+    // attribute, where a key is 512.
     let a4 = note_on([0x4090_4503, 0xFFFF_0000 | 69 << 9 | 0x100]);
     assert_eq!(a4.pitch().semitones(), 69.5);
     let e5 = a4.with_key(Key::new(76));

@@ -1,12 +1,13 @@
-//! The hand-off between a device's thread and the audio thread: a ring of
-//! stamped packets with one producer and one consumer, whose slots are
-//! atomics, so neither side waits, locks or allocates and no `unsafe` is
-//! needed. An input's device pushes and the audio thread takes; an output's
-//! audio thread pushes and its device takes.
+//! A ring of timestamped packets with one producer and one consumer, between
+//! a device's thread and the audio thread.
+//!
+//! Its slots are atomics, so neither side waits, locks or allocates, and no
+//! `unsafe` is needed. An input's device pushes and the audio thread takes,
+//! and an output's audio thread pushes and its device takes.
 
-// Audio-path code: a panic here ends the app's audio, so indexing, unwrap,
-// expect, panic and unchecked arithmetic are refused, and a site that is
-// provably safe says why in an `#[expect]`.
+// A panic on the audio path ends the app's audio, so indexing, unwrap,
+// expect, panic and unchecked arithmetic are denied. A provably safe site
+// gives its reason in an `#[expect]`.
 #![cfg_attr(
     not(test),
     deny(
@@ -29,7 +30,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering}
 
 use crate::Instant;
 
-/// One packet and when it came.
+/// One packet and its timestamp.
 struct Slot {
     at: AtomicU64,
     words: [AtomicU32; 4],
@@ -37,19 +38,19 @@ struct Slot {
 
 struct Ring {
     slots: Box<[Slot]>,
-    /// The slot count less one: the count is a power of two.
+    /// The slot count minus one. The count is a power of two.
     mask: usize,
-    /// How many packets the producer has written, wrapping. Only it stores.
+    /// Packets written so far, wrapping. Only the producer stores it.
     head: AtomicUsize,
-    /// How many the consumer has taken, wrapping. Only it stores.
+    /// Packets taken so far, wrapping. Only the consumer stores it.
     tail: AtomicUsize,
-    /// How many packets found no room.
+    /// Packets dropped for lack of room.
     dropped: AtomicU64,
-    /// Counts the devices that have pushed into the ring: a new one starts
-    /// the stream over.
+    /// How many devices have pushed into the ring. A new device starts the
+    /// stream over.
     generation: AtomicU32,
-    /// Whether a device takes from the ring now: an output's producer
-    /// pushes only while one does.
+    /// Whether a device takes from the ring now. An output's producer pushes
+    /// only then.
     reading: AtomicBool,
 }
 
@@ -74,19 +75,19 @@ pub(crate) fn ring(room: usize) -> (Producer, Consumer) {
     (Producer(Arc::clone(&ring)), Consumer(ring))
 }
 
-/// The pushing side: an input's device, as packets come, or an output's
-/// audio thread, as a block sends them.
+/// The pushing end, used by an input's device or an output's audio thread.
 pub(crate) struct Producer(Arc<Ring>);
 
 impl Producer {
-    /// Adds a packet stamped `at`. With no room it is dropped and counted.
+    /// Adds a packet stamped `at`, or drops and counts it if the ring is full.
+    ///
     /// Thread: the producer's. Allocates nothing.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub(crate) fn push(&mut self, at: Instant, words: [u32; 4]) {
         let ring = &*self.0;
         let head = ring.head.load(Ordering::Relaxed);
-        // Acquire: the consumer has read every slot below the tail it
-        // stored, so writing one of them cannot tear its read.
+        // Acquire, so the consumer has finished reading every slot below the
+        // tail it stored, and writing one can't tear its read.
         let tail = ring.tail.load(Ordering::Acquire);
         let Some(slot) = ring.slots.get(head & ring.mask) else {
             return;
@@ -99,44 +100,48 @@ impl Producer {
         for (word, &value) in slot.words.iter().zip(&words) {
             word.store(value, Ordering::Relaxed);
         }
-        // Release: the consumer that sees the new head sees the slot.
+        // Release, so a consumer that sees the new head also sees the slot.
         ring.head.store(head.wrapping_add(1), Ordering::Release);
     }
 
-    /// Says a new device pushes from now on, so the consumer starts its
-    /// stream over. Thread: main, before the device is handed the producer.
+    /// Marks that a new device pushes from now on, so the consumer starts its
+    /// stream over.
+    ///
+    /// Thread: main, before the device gets the producer.
     pub(crate) fn renew(&mut self) {
-        // Release: the consumer that reads a packet the new device pushed
-        // reads the new generation with it.
+        // Release, so a consumer that reads the new device's packet also reads
+        // the new generation.
         self.0.generation.fetch_add(1, Ordering::Release);
     }
 
-    /// Whether a device takes from the ring now. Thread: the producer's.
+    /// Returns whether a device takes from the ring now.
+    ///
+    /// Thread: the producer's.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub(crate) fn is_read(&self) -> bool {
         self.0.reading.load(Ordering::Acquire)
     }
 
-    /// How many packets found no room, since the ring was made.
+    /// Returns how many packets have been dropped for lack of room.
     pub(crate) fn dropped(&self) -> u64 {
         self.0.dropped.load(Ordering::Relaxed)
     }
 }
 
-/// The taking side: the audio thread, for an input, or an output's device:
-/// it takes packets in the order they were pushed.
+/// The taking end, used by the audio thread for an input and by the device
+/// for an output.
 pub(crate) struct Consumer(Arc<Ring>);
 
 impl Consumer {
-    /// Says whether a device takes from the ring from now on.
+    /// Sets whether a device takes from the ring from now on.
     pub(crate) fn set_reading(&self, reading: bool) {
-        // Release: a producer that sees it set sees the ring as the
+        // Release, so a producer that sees the flag set sees the ring as the
         // device found it.
         self.0.reading.store(reading, Ordering::Release);
     }
 
-    /// Takes every packet waiting, unread: what was pushed before a device
-    /// took the ring is not its to send.
+    /// Discards every waiting packet, because a device doesn't send what was
+    /// pushed before it took the ring.
     pub(crate) fn clear(&mut self) {
         let ring = &*self.0;
         // Acquire and release as in `pop`, for every slot at once.
@@ -144,8 +149,8 @@ impl Consumer {
         ring.tail.store(head, Ordering::Release);
     }
 
-    /// Counts a message the consumer had no room for, as a full ring
-    /// counts a packet.
+    /// Counts a message that the consumer had no room for, with the packets
+    /// that a full ring drops.
     #[cfg_attr(
         all(not(windows), not(test)),
         expect(
@@ -157,15 +162,18 @@ impl Consumer {
         self.0.dropped.fetch_add(1, Ordering::Relaxed);
     }
 
-    /// The oldest packet not taken yet, and when it came. Thread: the
-    /// consumer's.
+    /// Returns the oldest packet not taken yet, with its timestamp.
+    ///
+    /// Thread: the consumer's.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub(crate) fn peek(&self) -> Option<(Instant, [u32; 4])> {
         self.peek_at(0)
     }
 
-    /// The packet `index` places after the oldest not taken yet, and when
-    /// it came: `None` past the last. Thread: the consumer's.
+    /// Returns the packet `index` places after the oldest, with its timestamp,
+    /// or `None` past the last.
+    ///
+    /// Thread: the consumer's.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub(crate) fn peek_at(&self, index: usize) -> Option<(Instant, [u32; 4])> {
         if index >= self.len() {
@@ -182,41 +190,46 @@ impl Consumer {
         Some((at, words))
     }
 
-    /// Takes the oldest packet, and when it came: the one
-    /// [`peek`](Self::peek) shows. `None` while the ring is empty. Thread:
-    /// the consumer's.
+    /// Takes the packet that [`peek`](Self::peek) returns, or returns `None`
+    /// if the ring is empty.
+    ///
+    /// Thread: the consumer's.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub(crate) fn pop(&mut self) -> Option<(Instant, [u32; 4])> {
         let packet = self.peek()?;
         let ring = &*self.0;
         let tail = ring.tail.load(Ordering::Relaxed);
-        // Release, after the read: the producer that sees the new tail may
-        // reuse the slot, which this side is done reading.
+        // Release, after the read, because a producer that sees the new tail
+        // may reuse the slot.
         ring.tail.store(tail.wrapping_add(1), Ordering::Release);
         Some(packet)
     }
 
-    /// How many packets wait to be taken. Thread: the consumer's.
+    /// Returns how many packets wait to be taken.
+    ///
+    /// Thread: the consumer's.
     pub(crate) fn len(&self) -> usize {
         let ring = &*self.0;
         let tail = ring.tail.load(Ordering::Relaxed);
-        // Acquire: pairs with the producer's release of the head, so every
+        // Acquire pairs with the producer's release of the head, so every
         // packet counted can be read.
         ring.head.load(Ordering::Acquire).wrapping_sub(tail)
     }
 
-    /// How many packets the ring holds at most.
+    /// Returns how many packets the ring holds at most.
     pub(crate) fn capacity(&self) -> usize {
         self.0.slots.len()
     }
 
-    /// How many devices have pushed into the ring: a change means a new
-    /// one took it. Thread: the consumer's.
+    /// Returns how many devices have pushed into the ring, which changes
+    /// when a new one takes it.
+    ///
+    /// Thread: the consumer's.
     pub(crate) fn generation(&self) -> u32 {
         self.0.generation.load(Ordering::Acquire)
     }
 
-    /// How many packets found no room, since the ring was made.
+    /// Returns how many packets have been dropped for lack of room.
     pub(crate) fn dropped(&self) -> u64 {
         self.0.dropped.load(Ordering::Relaxed)
     }
@@ -243,7 +256,7 @@ mod tests {
         }
         assert_eq!(taken, [(0, 0), (1, 1), (2, 2), (3, 3)]);
         assert_eq!(consumer.dropped(), 2);
-        // Taken, the room is free again, round the end of the slots.
+        // Once taken, the room is free again, round the end of the slots.
         for tag in 10..14 {
             producer.push(Instant::from_nanos(u64::from(tag)), packet(tag));
         }
@@ -302,9 +315,9 @@ mod tests {
 mod loom_models {
     use super::*;
 
-    /// A device's thread pushes while the audio thread takes. Whatever the
-    /// interleaving, the audio thread takes a prefix of what was pushed, in
-    /// order and whole, and what found no room is counted.
+    /// In every interleaving of pushes and takes, the audio thread takes a
+    /// prefix of what was pushed, in order and whole, and the rest is counted
+    /// as dropped.
     #[test]
     fn loom_the_audio_thread_takes_what_the_device_pushed_in_order_and_whole() {
         loom::model(|| {
@@ -334,9 +347,8 @@ mod loom_models {
         });
     }
 
-    /// An output clears its ring as a device takes it, while the audio
-    /// thread may push. Whatever the interleaving, what is left afterwards
-    /// is whole packets, in the order they were pushed.
+    /// A clear racing the audio thread's pushes leaves whole packets, in the
+    /// order they were pushed.
     #[test]
     fn loom_a_clear_racing_a_push_leaves_whole_packets_in_order() {
         loom::model(|| {
@@ -360,9 +372,8 @@ mod loom_models {
         });
     }
 
-    /// The reader looks over a SysEx held in the ring by its place, while
-    /// the device pushes more. Every packet the length counts reads whole,
-    /// in order.
+    /// While the device pushes more, every packet of a held SysEx that `len`
+    /// counts reads whole and in order by index.
     #[test]
     fn loom_every_packet_the_length_counts_reads_whole_by_its_place() {
         loom::model(|| {
@@ -381,10 +392,8 @@ mod loom_models {
         });
     }
 
-    /// A new device takes an input: the main thread renews the ring, and the
-    /// device then pushes. A packet the reader finds came with the new
-    /// generation, which it reads after the packet, so it starts the new
-    /// device's translation over before it.
+    /// A reader that finds a new device's packet and then reads the generation
+    /// sees the new one, so it starts the device's translation over first.
     #[test]
     fn loom_a_packet_a_new_device_pushed_comes_with_its_generation() {
         loom::model(|| {

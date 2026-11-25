@@ -1,23 +1,28 @@
-//! MIDI in musicians' terms: what a block's packets say, decoded into
-//! [`Message`]s.
+//! Decodes a block's MIDI packets into [`Message`]s in musicians' terms.
 //!
-//! MIDI reaches a plugin in one form whatever its host sent: MIDI 1.0 is
-//! upgraded to MIDI 2.0 on the way in, and [`Decoder`] reads MIDI 2.0 into
-//! messages in MIDI 2.0's meanings. A value from 0 to 1 is an `f32`, and one
-//! that rests at a centre, a bend or a brightness, is [`Centred`]: -1 to 1,
-//! 0 at rest. Groups, channels, keys and programs are types of their own,
-//! stored as MIDI sends them and shown as musicians count them: channel 1 to
-//! 16, middle C as C4, program 1 to 128. A note is named by its [`NoteId`]
-//! from its note-on to its note-off, and a note's own message by the
-//! [`NoteKey`] it names. [`controller`] names MIDI's controllers.
+//! MIDI reaches a plugin in one form, whatever its host sent, because MIDI
+//! 1.0 is upgraded to MIDI 2.0 on the way in. [`Decoder`] reads it into
+//! messages with MIDI 2.0's meanings:
 //!
-//! A block's MIDI is a [`Midi`]: its messages, each at its frame, and the
-//! packets they came in, read from a [`MidiList`] the engine decodes each
-//! block into once. What a block sends goes through its [`MidiOut`].
+//! - A value from 0 to 1 is an `f32`.
+//! - A value that rests at a centre, such as a bend, is [`Centred`], from -1
+//!   to 1 with 0 at rest.
+//! - Groups, channels, keys and programs have their own types, stored as
+//!   MIDI sends them and shown as musicians count, such as channels 1 to 16,
+//!   middle C as C4 and programs 1 to 128.
+//! - A [`NoteId`] names a note from its note-on to its note-off, and a
+//!   per-note message names its note with a [`NoteKey`].
 //!
-//! The crate is in the core tier, on `hapto-ump`, and depends on nothing
-//! else. Decoding, reading a block and sending are fit for the audio thread:
-//! they allocate nothing and never panic.
+//! The [`controller`] module names MIDI's controllers.
+//!
+//! A block's MIDI is a [`Midi`], with its messages, each at its frame, and
+//! their packets. It reads them from a [`MidiList`], which the engine
+//! decodes each block into once. A block sends
+//! MIDI through its [`MidiOut`].
+//!
+//! The crate is in the core tier and depends only on `hapto-ump`. Decoding,
+//! reading a block and sending are safe on the audio thread, because they
+//! allocate nothing and never panic.
 //!
 //! # Examples
 //!
@@ -45,11 +50,12 @@
 //! assert_eq!(ended.id, note.id);
 //! ```
 
-// The nightly real-time sanitizer lane marks the calls the audio thread makes.
+// The nightly real-time sanitizer lane marks the calls that the audio thread
+// makes.
 #![cfg_attr(hapto_rtsan, feature(sanitize))]
-// A panic on the audio path ends a host, so the crate refuses indexing,
-// unwrap, expect, panic and unchecked arithmetic outside its unit tests, and
-// a site that is provably safe says why in an `#[expect]`.
+// A panic on the audio path ends the host, so the crate denies indexing,
+// unwrap, expect, panic and unchecked arithmetic outside its unit tests. A
+// site that is provably safe gives its reason in an `#[expect]`.
 #![cfg_attr(
     not(test),
     deny(

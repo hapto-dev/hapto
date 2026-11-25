@@ -13,16 +13,18 @@ use windows::Win32::Devices::DeviceAndDriverInstallation::{
 use windows::core::GUID;
 
 /// The device interface classes of MIDI inputs and outputs, whose devices
-/// WinMM lists: the classes JUCE watches for the same.
+/// WinMM lists. JUCE watches the same classes.
 const MIDI_INPUT: GUID = GUID::from_u128(0x504b_e32c_ccf6_4d2c_b73f_6f8b_3747_e22b);
 const MIDI_OUTPUT: GUID = GUID::from_u128(0x6dc2_3320_ab33_4ce4_80d4_bbb3_ebbf_2814);
 
-/// Marks the list as changed when a MIDI device interface comes or goes.
-/// The system calls back on a thread of its own, which only marks.
+/// A watch that marks the device list as changed when a MIDI device
+/// interface comes or goes.
+///
+/// The system's callback runs on its own thread and only sets the mark.
 pub(crate) struct Watch {
     registrations: Vec<HCMNOTIFICATION>,
-    /// The mark, which every registration holds: let go only once they are
-    /// gone.
+    /// The mark, which every registration holds, released only after they
+    /// are all unregistered.
     marked: *const AtomicBool,
 }
 
@@ -35,8 +37,8 @@ impl fmt::Debug for Watch {
 }
 
 impl Watch {
-    /// Starts watching, marking `marked` at each notice. `None` when the
-    /// system takes no registration.
+    /// Starts watching, setting `marked` at each notification, or returns
+    /// `None` if the system accepts no registration.
     pub(crate) fn new(marked: Arc<AtomicBool>) -> Option<Watch> {
         let context = Arc::into_raw(marked);
         let mut registrations = Vec::new();
@@ -51,10 +53,10 @@ impl Watch {
                 },
             };
             let mut registration = HCMNOTIFICATION::default();
-            // SAFETY: the filter and the handle are this frame's, read and
-            // written for the call. The context is the mark, which outlives
-            // the registration: `drop` lets it go only after unregistering,
-            // which waits for a callback under way.
+            // SAFETY: the filter and the handle are locals that the call
+            // reads and writes. The context is the mark, which outlives the
+            // registration because `drop` releases it only after
+            // unregistering, which waits for a callback in progress.
             let registered = unsafe {
                 CM_Register_Notification(
                     &raw const filter,
@@ -71,7 +73,7 @@ impl Watch {
             registrations,
             marked: context,
         };
-        // A watch with nothing registered lets the mark go as it drops.
+        // A watch with no registration releases the mark when it drops.
         (!watch.registrations.is_empty()).then_some(watch)
     }
 }
@@ -79,17 +81,18 @@ impl Watch {
 impl Drop for Watch {
     fn drop(&mut self) {
         for &registration in &self.registrations {
-            // SAFETY: a registration this watch made, unregistered once. The
-            // call waits for a callback under way, and none comes after.
+            // SAFETY: a registration that this watch made, unregistered once.
+            // The call waits for a callback in progress, and none comes after.
             unsafe { CM_Unregister_Notification(registration) };
         }
-        // SAFETY: the mark `new` let go of with `into_raw`, taken back once,
-        // now that no registration can reach it.
+        // SAFETY: the mark that `new` gave up with `into_raw`, taken back
+        // once, now that no registration can reach it.
         drop(unsafe { Arc::from_raw(self.marked) });
     }
 }
 
-/// The system's notice: it only marks the list as changed.
+/// Marks the device list as changed at each notification, and does nothing
+/// else.
 unsafe extern "system" fn changed(
     _registration: HCMNOTIFICATION,
     context: *const c_void,
@@ -100,7 +103,7 @@ unsafe extern "system" fn changed(
     // SAFETY: the context is the watch's mark, alive while any registration
     // is, as `Watch::new` says.
     let marked = unsafe { &*context.cast::<AtomicBool>() };
-    // Release: the tick that sees the mark reads the list after it.
+    // Release, because the tick that sees the mark reads the list after it.
     marked.store(true, Ordering::Release);
     // ERROR_SUCCESS.
     0

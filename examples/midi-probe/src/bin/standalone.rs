@@ -1,4 +1,4 @@
-//! The MIDI probe as an app of its own: it plays every MIDI input the
+//! The MIDI probe as an app of its own. It plays every MIDI input that the
 //! computer has, and sends what it echoes to the system's synth, so its MIDI
 //! out is heard beside its own sines.
 

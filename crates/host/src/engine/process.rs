@@ -43,11 +43,14 @@ pub(super) struct Active<R> {
     arrivals: Arrivals,
     /// The block's MIDI in, at frames from the block's start.
     events: EventList,
-    /// MIDI 1.0 the host sends, upgraded as it arrives. It holds an NRPN's
-    /// high byte from block to block, so it lives with the processor.
+    /// The upgrade of the host's MIDI 1.0, as it arrives.
+    ///
+    /// It holds an NRPN's high byte from block to block, so it lives with the
+    /// processor.
     upgrade: Upgrade,
-    /// The block's MIDI in, decoded once: each piece reads its share. It
-    /// lives with the processor, as its notes and a SysEx under way span
+    /// The block's MIDI in, decoded once for all the pieces.
+    ///
+    /// It lives with the processor, because notes and a SysEx under way span
     /// blocks.
     midi: MidiList,
     /// The block's MIDI out. Every piece pushes to it, and what a piece
@@ -110,8 +113,8 @@ impl<R> Active<R> {
             arrivals: Arrivals::with_room(max_events),
             events: EventList::with_capacity(max_events),
             upgrade: Upgrade::new(),
-            // A note-off may end several notes, so room for twice the
-            // packets.
+            // A note-off may end several notes, so there is room for twice as
+            // many messages as packets.
             midi: MidiList::with_room(
                 max_events.saturating_mul(2),
                 hapto_midi::BLOCK_SYSEX_BYTES,
@@ -124,12 +127,13 @@ impl<R> Active<R> {
     }
 }
 
-/// The block's MIDI in, as an exporter fills it: each packet its host
-/// sent, at a frame of the block, in any order. The block takes them in
-/// time order, those at one frame in the order they came, as VST3 needs:
-/// it hands each controller over in a queue of its own, and its notes in a
-/// list beside them. A packet of MIDI 1.0 is upgraded to MIDI 2.0 once in
-/// order, so nothing above reads MIDI 1.0.
+/// The block's MIDI in, which an exporter fills with its host's packets, each
+/// at a frame of the block, in any order.
+///
+/// The block takes them in time order, and those at one frame in the order
+/// that they came, because VST3 hands each controller over in a queue of its
+/// own and its notes in a list beside them. Once they are in order, MIDI 1.0
+/// is upgraded to MIDI 2.0, so nothing above reads MIDI 1.0.
 #[cfg_attr(
     not(any(feature = "standalone", feature = "cabi", feature = "vst3", test)),
     expect(dead_code, reason = "no exporter is built")
@@ -139,8 +143,8 @@ pub(crate) struct MidiIn<'a> {
 }
 
 impl MidiIn<'_> {
-    /// Adds the host's next packet. Past the block's room it is dropped and
-    /// counted.
+    /// Adds the host's next packet, or drops and counts it past the block's
+    /// room.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     #[cfg_attr(
         not(any(feature = "standalone", feature = "cabi", feature = "vst3", test)),
@@ -150,11 +154,13 @@ impl MidiIn<'_> {
         self.arrivals.push(event, Rank::Rest);
     }
 
-    /// Adds a packet that goes at its frame as `rank` says, then in the
-    /// order it came, for a host that hands controllers over in queues of
-    /// their own, as VST3 does: a data entry then finds its address, and a
-    /// low byte its high byte, whatever order the queues come in. Past the
-    /// block's room it is dropped and counted.
+    /// Adds a packet that goes at its frame by `rank`, then by the order that
+    /// it came in.
+    ///
+    /// It is for a host that hands controllers over in queues of their own,
+    /// as VST3 does, so that a data entry finds its address, and a low byte
+    /// its high byte, whatever order the queues come in. Past the block's
+    /// room, the packet is dropped and counted.
     #[cfg_attr(
         not(feature = "vst3"),
         expect(dead_code, reason = "VST3 alone hands controllers over apart")
@@ -163,8 +169,10 @@ impl MidiIn<'_> {
         self.arrivals.push(event, rank);
     }
 
-    /// Whether the block has room for another packet: an exporter whose
-    /// host claims more than it can give stops reading there.
+    /// Returns whether the block has room for another packet.
+    ///
+    /// An exporter stops reading there if its host claims more packets than
+    /// fit.
     #[cfg_attr(
         not(feature = "vst3"),
         expect(dead_code, reason = "VST3 alone reads a host's claims")
@@ -173,7 +181,7 @@ impl MidiIn<'_> {
         self.room() > 0
     }
 
-    /// How many more packets the block has room for.
+    /// Returns how many more packets the block has room for.
     #[cfg_attr(
         not(feature = "vst3"),
         expect(dead_code, reason = "VST3 alone reads a host's claims")
@@ -185,8 +193,8 @@ impl MidiIn<'_> {
             .saturating_sub(self.arrivals.packets.len())
     }
 
-    /// Counts `count` packets the host sent that the exporter did not read,
-    /// for want of room.
+    /// Counts `count` packets that the host sent and the exporter did not
+    /// read for lack of room.
     #[cfg_attr(
         not(feature = "vst3"),
         expect(dead_code, reason = "VST3 alone reads a host's claims")
@@ -205,9 +213,11 @@ impl Extend<Event> for MidiIn<'_> {
     }
 }
 
-/// Where a packet goes among those at its frame, before the order it came
-/// in: a MIDI 1.0 parameter number's controllers in the order a data entry
-/// needs them, which is the order of the variants.
+/// A packet's place among those at its frame, which sorts before the order
+/// that it came in.
+///
+/// The variants are in the order that a data entry needs a MIDI 1.0
+/// parameter number's controllers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(
     not(feature = "vst3"),
@@ -223,9 +233,10 @@ pub(crate) enum Rank {
     Rest,
 }
 
-/// The block's MIDI in as the exporter hands it over: each packet with its
-/// rank at its frame and the order it came in, so that it sorts by its
-/// frame, then its rank, then that order, and no two sort as equal.
+/// The block's MIDI in as the exporter hands it over.
+///
+/// Each packet keeps its rank and the order that it came in, so the packets
+/// sort by frame, rank and then that order, and no two are equal.
 #[derive(Debug)]
 struct Arrivals {
     packets: Vec<(Event, Rank, usize)>,
@@ -241,7 +252,7 @@ impl Arrivals {
         }
     }
 
-    /// Adds `event` at `rank` while there is room, which never allocates.
+    /// Adds `event` at `rank` if there is room, without allocating.
     fn push(&mut self, event: Event, rank: Rank) {
         if self.packets.len() < self.packets.capacity() {
             let order = self.packets.len();
@@ -257,8 +268,8 @@ impl Arrivals {
     }
 }
 
-/// Fills `audio`'s MIDI in for a block of `frames` frames, at least one:
-/// what `midi` pushes, in time order, then what the upgrade held to the
+/// Fills `audio`'s MIDI in for a block of `frames` frames, at least one, with
+/// what `midi` pushes, in time order, then what the upgrade held until the
 /// block's end.
 fn fill<R>(audio: &mut Active<R>, frames: usize, midi: impl FnOnce(&mut MidiIn<'_>)) {
     let Active {
@@ -271,9 +282,8 @@ fn fill<R>(audio: &mut Active<R>, frames: usize, midi: impl FnOnce(&mut MidiIn<'
     midi(&mut MidiIn {
         arrivals: &mut *arrivals,
     });
-    // No two keys are equal, so a sort that need not keep equal ones in
-    // order, which sorts in place and allocates nothing, keeps them as
-    // they came.
+    // No two keys are equal, so an unstable sort, which sorts in place
+    // without allocating, keeps the order that they came in.
     arrivals
         .packets
         .sort_unstable_by_key(|&(event, rank, order)| (event.offset, rank, order));
@@ -376,31 +386,35 @@ pub(crate) enum Outcome {
 }
 
 impl<P: Plugin, H: HostLink> Engine<P, H> {
-    /// One block of `frames` frames.
+    /// Processes one block of `frames` frames, in this order:
     ///
-    /// First comes the host's automation for it, which `automation` hands over
-    /// queue by queue and which lands before the block. Then `midi` hands
-    /// over the host's MIDI for it, upgraded as it arrives, and learn's audio
-    /// side runs over that, when the plugin's parts have learn on. Then the
-    /// processor runs, in pieces when the block is longer than the activation
-    /// promised. Then `sent` is handed the MIDI the processor sent, at the
-    /// block's frames, for the exporter to pass to its host. A block of no
-    /// frames carries no MIDI: `midi` and `sent` are not called, and neither
-    /// are they when no processor runs.
+    /// - `automation` hands over the host's automation queue by queue, which
+    ///   lands before the block.
+    /// - `midi` hands over the host's MIDI, which is upgraded as it arrives,
+    ///   and learn's audio side runs over it if the plugin's parts have learn
+    ///   on.
+    /// - The processor runs, in pieces if the block is longer than the
+    ///   activation promised.
+    /// - `sent` gets the MIDI that the processor sent, at the block's frames,
+    ///   for the exporter to pass to its host.
     ///
-    /// A panic in the processor is caught while it is still held (see
-    /// [`run_held`]): the block is silent, and so is every block until the
-    /// next activation's processor. A panic anywhere else in the block, the
-    /// automation walk say, is caught here and silences that block alone. A
-    /// panic in `sent` comes after the block played, so it is counted and
-    /// the block stands.
+    /// `midi` and `sent` are not called for a block of no frames, or if no
+    /// processor runs.
+    ///
+    /// - A panic in the processor is caught while it is still held (see
+    ///   [`run_held`]). The block is silent, and so is every block until the
+    ///   next activation's processor.
+    /// - A panic elsewhere, such as in the automation walk or `midi`, is
+    ///   caught here, and silences only that block and leaves the processor
+    ///   alone.
+    /// - A panic in `sent` comes after the block played, so it is counted and
+    ///   the block stands.
     ///
     /// The calling thread carries the params crate's audio-thread mark
     /// throughout, so a debug build panics, caught as above, at any lock or
-    /// audio-side drop the block reaches. Nothing here drops a processor:
-    /// one that panicked stays in its slot until the main thread replaces
-    /// or takes it. A panic in `midi` silences the block, as one in the
-    /// automation walk does, and leaves the processor alone.
+    /// audio-side drop that the block reaches. Nothing here drops a
+    /// processor, so one that panicked stays in its slot until the main
+    /// thread replaces or takes it.
     ///
     /// # Safety
     ///
@@ -425,8 +439,8 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
         self.faults.guard(Outcome::Silent, block)
     }
 
-    /// The block, with the processor's panics caught, and those of `midi`
-    /// and `sent`.
+    /// Runs the block, and catches the panics of the processor, `midi` and
+    /// `sent`.
     ///
     /// # Safety
     ///
@@ -457,15 +471,15 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
             if self.reset.take() {
                 audio.processor.reset();
             }
-            // The exporter's code, not the processor's: a panic in it
-            // silences the block without faulting the processor.
+            // `fill` runs the exporter's code, not the processor's, so a panic
+            // in it silences the block without faulting the processor.
             if self.faults.caught(|| fill(audio, frames, midi)) {
                 return Outcome::Silent;
             }
             // SAFETY: this function's contract.
             let status = unsafe { pieces(audio, frames, inputs, outputs) };
-            // The exporter's code too: the block has played, so a panic in
-            // it is counted and the block stands.
+            // `sent` is the exporter's code too. The block has already
+            // played, so a panic in it is counted and the block stands.
             let out = audio.out_events.as_slice();
             self.faults.caught(|| sent(out));
             Outcome::Played(status)
@@ -481,28 +495,30 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
     }
 }
 
-/// The processor over the block, in pieces of at most the activation's
-/// frames, answering the last piece's status.
+/// Runs the processor over the block in pieces of at most the activation's
+/// frames, and returns the last piece's status.
 ///
 /// Learn's audio side runs first, once, over the whole block's events, as the
-/// host's automation lands before the block: so every piece reads what a
-/// learned controller wrote, and learn counts a host's blocks, which times
-/// its wait for the second half of a 14-bit pair. In a block that plays in
+/// host's automation lands before the block. So every piece reads what a
+/// learned controller wrote, and learn counts host blocks, which time its
+/// wait for the second half of a 14-bit pair. In a block that plays in
 /// pieces, a controller in a later piece applies from the block's start.
 ///
-/// The block's MIDI is decoded once, after learn, and each piece is handed
-/// the messages and packets that fall in it, at frames from its own start.
-/// One past the block's end plays at its last frame, in the last piece:
-/// dropping it could lose a note-off and leave a note hanging. The first
-/// piece also reports the block's drops. They were lost before any piece
-/// ran, at frames no one knows, and the first piece is the earliest a
-/// processor can act on them. Reported once, they add up over the pieces to
-/// the block's count.
+/// The block's MIDI is decoded once, after learn, and each piece gets the
+/// messages and packets that fall in it, at frames from its own start. A
+/// message past the block's end plays at the last frame of the last piece,
+/// because dropping it could lose a note-off and leave a note hanging.
 ///
-/// Every piece sends into the block's list, and what it sent moves to the
-/// block's frames once it returns, a frame past the piece's end at its last
-/// frame, as MIDI in does: so nothing lands in a later piece or past the
-/// block. A later piece finds the earlier pieces' events already there.
+/// The first piece also reports the block's drops, which were lost before
+/// any piece ran, at unknown frames. It is the earliest that a processor can
+/// act on them, and reporting them once keeps the pieces' total equal to the
+/// block's count.
+///
+/// Every piece sends into the block's list. When the piece returns, what it
+/// sent moves to the block's frames, and an event past the piece's end moves
+/// to its last frame, as MIDI in does, so nothing lands in a later piece or
+/// past the block. A later piece finds the earlier pieces' events already
+/// there.
 ///
 /// # Safety
 ///

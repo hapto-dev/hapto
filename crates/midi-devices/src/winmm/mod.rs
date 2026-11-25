@@ -1,6 +1,8 @@
-//! The WinMM backend: Windows' MIDI 1.0 devices, through the API every
-//! Windows has. Its calls into the system are the crate's only `unsafe`,
-//! each with why it holds.
+//! The WinMM backend, which opens Windows' MIDI 1.0 devices through the API
+//! that every Windows has.
+//!
+//! Its system calls are the crate's only `unsafe` code, and each says why it
+//! is sound.
 
 mod input;
 mod output;
@@ -24,17 +26,17 @@ pub(crate) use watch::Watch;
 use crate::error::OpenError;
 use crate::id::{Device, DeviceId, Direction, named};
 
-/// How often, and how far apart, a close asks again of a driver that is
-/// still busy with a buffer, as JUCE does.
+/// How many times, and how far apart, a close retries a driver that is still
+/// busy with a buffer, as JUCE does.
 const UNPREPARE_TRIES: u32 = 10;
 const CLOSE_TRIES: u32 = 5;
 const RETRY_WAIT: std::time::Duration = std::time::Duration::from_millis(20);
 
-/// The longest device interface path read, in UTF-16 units, as JUCE reads
-/// it.
+/// The longest device interface path that is read, in UTF-16 units, as in
+/// JUCE.
 const PATH_UNITS: usize = 512;
 
-/// Every device, inputs then outputs, each in WinMM's order.
+/// Returns every device, inputs first, each in WinMM's order.
 pub(crate) fn list() -> Vec<Device> {
     let mut devices: Vec<Device> = listed(Direction::Input)
         .into_iter()
@@ -48,10 +50,10 @@ pub(crate) fn list() -> Vec<Device> {
     devices
 }
 
-/// The devices of `direction`, each with the index WinMM opens it by now.
+/// Returns the devices of `direction`, each with its current WinMM index.
 fn listed(direction: Direction) -> Vec<(Device, u32)> {
     let count = match direction {
-        // SAFETY: the call takes nothing and only counts.
+        // SAFETY: the call takes no arguments and only counts.
         Direction::Input => unsafe { midiInGetNumDevs() },
         // SAFETY: as for the inputs.
         Direction::Output => unsafe { midiOutGetNumDevs() },
@@ -63,7 +65,7 @@ fn listed(direction: Direction) -> Vec<(Device, u32)> {
             continue;
         };
         // A device with no interface path, such as the system's software
-        // synth, is named by its name.
+        // synth, is keyed by its name.
         let key = interface(direction, index)
             .filter(|path| !path.is_empty())
             .unwrap_or_else(|| name.clone());
@@ -73,9 +75,11 @@ fn listed(direction: Direction) -> Vec<(Device, u32)> {
     named(direction, entries).into_iter().zip(indices).collect()
 }
 
-/// The index WinMM opens the device of `direction` that `id` names by now.
-/// The list is read again, since an index moves when another device comes
-/// or goes.
+/// Returns the current WinMM index of the device of `direction` that `id`
+/// names.
+///
+/// It reads the list again, because an index moves when a device comes or
+/// goes.
 pub(crate) fn index_of(direction: Direction, id: &DeviceId) -> Option<u32> {
     listed(direction)
         .into_iter()
@@ -83,17 +87,18 @@ pub(crate) fn index_of(direction: Direction, id: &DeviceId) -> Option<u32> {
         .map(|(_, index)| index)
 }
 
-/// The device's name, as WinMM gives it: at most 31 characters.
+/// Returns the device's name as WinMM gives it, at most 31 characters.
 fn name(direction: Direction, index: u32) -> Option<String> {
     let id = index as usize;
     match direction {
         Direction::Input => {
             let mut caps = MIDIINCAPSW::default();
             let size = size_of::<MIDIINCAPSW>() as u32;
-            // SAFETY: `caps` is a MIDIINCAPSW the call fills, of the size it
-            // is told.
+            // SAFETY: `caps` is a MIDIINCAPSW for the call to fill, and
+            // `size` is its size.
             let result = unsafe { midiInGetDevCapsW(id, &raw mut caps, size) };
-            // A copy: the struct is packed, so its fields cannot be borrowed.
+            // A copy, because the struct is packed and its fields can't be
+            // borrowed.
             let units = caps.szPname;
             (result == MMSYSERR_NOERROR).then(|| text(&units))
         }
@@ -108,17 +113,17 @@ fn name(direction: Direction, index: u32) -> Option<String> {
     }
 }
 
-/// The device's interface path, which stays as long as the device is
-/// plugged in where it is; empty for a device that has none.
+/// Returns the device's interface path, which stays while the device is
+/// plugged in where it is, or an empty string if it has none.
 fn interface(direction: Direction, index: u32) -> Option<String> {
-    // WinMM takes the device's index where the handle goes for these two
-    // messages, as DRV_QUERYDEVICEINTERFACE says.
+    // For these two messages, WinMM takes the device's index for the handle,
+    // as DRV_QUERYDEVICEINTERFACE's docs say.
     let device = std::ptr::without_provenance_mut::<c_void>(index as usize);
     let query = |message: u32, first: usize, second: usize| -> u32 {
         match direction {
             // SAFETY: `first` is the address of a u32 for the size query, or
             // of a buffer of `second` bytes for the path, as each message
-            // asks.
+            // requires.
             Direction::Input => unsafe {
                 midiInMessage(Some(HMIDIIN(device)), message, Some(first), Some(second))
             },
@@ -145,7 +150,7 @@ fn interface(direction: Direction, index: u32) -> Option<String> {
     (asked == MMSYSERR_NOERROR).then(|| text(&path))
 }
 
-/// UTF-16 up to its first NUL.
+/// Decodes UTF-16 up to the first NUL.
 fn text(units: &[u16]) -> String {
     let end = units
         .iter()
@@ -154,13 +159,15 @@ fn text(units: &[u16]) -> String {
     String::from_utf16_lossy(units.get(..end).unwrap_or(units))
 }
 
-/// How many times a call WinMM answers "still busy" may wait before it is
-/// tried again: one budget, which calls in turn may share.
+/// How many more times a call that returns `MIDIERR_STILLPLAYING` can wait
+/// and retry.
+///
+/// Calls made in turn can share one budget.
 struct Waits(u32);
 
 impl Waits {
-    /// Runs `call` until it answers anything but "still busy", waiting
-    /// before each try again while the budget lasts, and says whether it
+    /// Calls `call`, waiting and retrying while it returns
+    /// `MIDIERR_STILLPLAYING` and the budget lasts, and returns whether it
     /// succeeded.
     fn retry(&mut self, mut call: impl FnMut() -> u32) -> bool {
         loop {
@@ -176,8 +183,8 @@ impl Waits {
     }
 }
 
-/// `code`, a WinMM call's answer, as a result: the refusal it means for
-/// anything but success.
+/// Returns `Ok` if `code`, a WinMM result, means success, or else the error
+/// that it means.
 fn check(code: u32) -> Result<(), OpenError> {
     if code == MMSYSERR_NOERROR {
         Ok(())
@@ -186,7 +193,7 @@ fn check(code: u32) -> Result<(), OpenError> {
     }
 }
 
-/// The refusal a WinMM error code means.
+/// Returns the error that a WinMM error code means.
 fn refusal(code: u32) -> OpenError {
     use windows::Win32::Media::{MMSYSERR_ALLOCATED, MMSYSERR_BADDEVICEID, MMSYSERR_NOMEM};
     match code {

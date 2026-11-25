@@ -304,9 +304,9 @@ fn packets_handed_over_out_of_order_reach_the_block_in_time_order_and_at_one_fra
     let mut audio = audio();
     let off = Event::new(9, [0x4080_3C00, 0, 0, 0]);
     let on = Event::new(9, [0x4090_3C00, 0xFFFF_0000, 0, 0]);
-    // As VST3 hands controllers over, a queue each: a registered
-    // parameter's data entry before its address. And at frame 9, a note-off
-    // then a note-on, which must stay in that order.
+    // VST3 hands each controller over in its own queue, so here an RPN's data
+    // entry comes before its address. At frame 9, a note-off and then a
+    // note-on must stay in that order.
     fill(&mut audio, 32, |into| {
         into.push(sent(5, 6, 64));
         into.push(off);
@@ -366,9 +366,9 @@ fn a_packet_pushed_first_goes_before_the_rest_at_its_frame_and_never_to_an_earli
         index: 0,
         value: hapto_ump::scale::up_14_to_32(64 << 7),
     };
-    // The address at frame 2 found by the entry before it, which with no
-    // low byte goes out at the block's last frame; the volume at frame 1
-    // still comes before both.
+    // The data entry at frame 2 finds the address pushed after it, and with
+    // no low byte it goes out at the block's last frame. The volume at frame
+    // 1 still comes first.
     assert_eq!(events, [(1, Some(volume)), (31, Some(range))]);
 }
 
@@ -387,8 +387,8 @@ fn a_high_byte_goes_before_a_low_byte_at_its_frame_whatever_order_they_come_in()
         into.push_ranked(sent(0, 6, 64), Rank::HighByte);
         into.push(sent(0, 38, 10));
     });
-    // The next, its low byte's queue listed before its high byte's: the
-    // low byte refines its own high byte, not the one before.
+    // The next move lists its low byte's queue first, and the low byte still
+    // refines its own high byte, not the one before.
     fill(&mut audio, 32, |into| {
         into.push(sent(5, 38, 3));
         into.push_ranked(sent(5, 6, 65), Rank::HighByte);

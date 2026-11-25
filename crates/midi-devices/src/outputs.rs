@@ -1,11 +1,12 @@
-//! The app's MIDI out: devices opened on the main thread, the audio
-//! thread's writer that hands each block's MIDI to every one, and a thread
-//! of each device's own that sends it as soon as its block has played, or
-//! each message at its frame's time.
+//! The app's MIDI out, with devices opened on the main thread and each
+//! block's MIDI handed to them on the audio thread.
+//!
+//! Each device's own thread sends the MIDI as soon as the block has played,
+//! or each message at its frame's time.
 
-// Audio-path code: a panic here ends the app's audio, so indexing, unwrap,
-// expect, panic and unchecked arithmetic are refused, and a site that is
-// provably safe says why in an `#[expect]`.
+// A panic on the audio path ends the app's audio, so indexing, unwrap,
+// expect, panic and unchecked arithmetic are denied. A provably safe site
+// gives its reason in an `#[expect]`.
 #![cfg_attr(
     not(test),
     deny(
@@ -36,14 +37,16 @@ pub const MAX_OUTPUTS: usize = 16;
 
 /// When an output sends a block's MIDI.
 ///
-/// A message from an input is placed in a block by when it came, so it
-/// plays a block late, and keeps its timing within one. Sent at once, the
-/// block's MIDI reaches a device as soon as the block has played, as JUCE's
-/// standalone sends it: the least latency, from no time to a block after
-/// its input, but each message a block's length or less early of its frame,
-/// so a block's spacing is lost. Sent at its frame's time, each message
-/// keeps its place: an arpeggio stays even and a clock steady, and a
-/// message from an input goes out a block after it came, every time.
+/// A message from an input is placed in a block by the time it came, so it
+/// plays a block late but keeps its timing within the block.
+///
+/// - [`Immediate`](Self::Immediate) sends the block's MIDI as soon as the
+///   block has played, as JUCE's standalone does. It has the least latency,
+///   from none to a block after the input, but each message goes up to a
+///   block early, so the block's spacing is lost.
+/// - [`AtFrames`](Self::AtFrames) sends each message at its frame's time, so
+///   an arpeggio stays even and a clock steady, and a message from an input
+///   always goes out a block after it came.
 ///
 /// # Examples
 ///
@@ -59,11 +62,10 @@ pub const MAX_OUTPUTS: usize = 16;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub enum Timing {
-    /// As soon as its block has played, as JUCE sends it: the least
-    /// latency.
+    /// As soon as the block has played, for the least latency.
     #[default]
     Immediate,
-    /// Each message at its frame's time: the block's spacing kept.
+    /// Each message at its frame's time, keeping the block's spacing.
     AtFrames,
 }
 
@@ -84,12 +86,11 @@ impl Timing {
 }
 
 /// Makes the app's MIDI out, with room in each output for `room` packets
-/// waiting to go, and splits it into its two sides: [`Outputs`], which opens
-/// devices on the main thread, and [`OutputsWriter`], which hands each
-/// block's MIDI to them on the audio thread.
+/// waiting to go, and splits it into [`Outputs`] for the main thread and
+/// [`OutputsWriter`] for the audio thread.
 ///
-/// Every output's room is made here, so opening a device later allocates
-/// only on the main thread and the device's own.
+/// Every output's room is allocated here, so opening a device later
+/// allocates only on the main thread and the device's own thread.
 ///
 /// # Examples
 ///
@@ -98,14 +99,14 @@ impl Timing {
 /// use hapto_ump::Event;
 ///
 /// let (mut outputs, mut writer) = outputs(1024);
-/// // On the main thread: a virtual port, by name.
+/// // On the main thread, a virtual port found by name.
 /// for device in Devices::new().outputs() {
 ///     if device.name().starts_with("loopMIDI") {
 ///         let _ = outputs.open(device);
 ///     }
 /// }
 ///
-/// // On the audio thread, once per block: a MIDI 2.0 note-on at frame 0,
+/// // On the audio thread, once per block, a MIDI 2.0 note-on at frame 0,
 /// // which goes out as MIDI 1.0 when its time comes.
 /// let sent = [Event::new(0, [0x4090_3C00, 0xFFFF_0000, 0, 0])];
 /// writer.write(Instant::now(), 48_000.0, &sent);
@@ -129,18 +130,21 @@ pub fn outputs(room: usize) -> (Outputs, OutputsWriter) {
     (outputs, writer)
 }
 
-/// The main thread's side of the app's MIDI out: the devices open now.
+/// The main thread's side of the app's MIDI out, with the open devices.
 ///
-/// Each device gets every message the plugin sends, whatever its group: a
-/// MIDI 1.0 device has none. A device found gone as the output sends to it
-/// is closed at the next [`tick`](Self::tick); one that leaves while nothing
-/// is sent is closed once the system's list no longer shows it. Every output
-/// closes as this drops.
+/// Each device gets every message the plugin sends, whatever its group,
+/// because a MIDI 1.0 device has no groups.
 ///
-/// Open: through Windows 10's WDM driver, a device unplugged while a long
-/// SysEx goes out to it leaves the send stuck in the driver for good, and
-/// every later look at the list of devices waits behind it, so a tick hangs.
-/// Short messages are safe. JUCE hangs the same way.
+/// - A device found gone when the output sends to it closes at the next
+///   [`tick`](Self::tick).
+/// - One that leaves while nothing is sent closes once the system's list
+///   drops it.
+/// - Every output closes when this drops.
+///
+/// Open: with Windows 10's WDM driver, unplugging a device during a long
+/// SysEx leaves the send stuck in the driver for good, and every later read
+/// of the device list waits behind it, so a tick hangs. Short messages are
+/// safe, and JUCE hangs the same way.
 ///
 /// Thread: main.
 ///
@@ -152,7 +156,7 @@ pub fn outputs(room: usize) -> (Outputs, OutputsWriter) {
 /// let mut devices = Devices::new();
 /// let (mut outputs, _writer) = outputs(1024);
 ///
-/// // At each tick: follow the devices that come and go.
+/// // At each tick, follow the devices that come and go.
 /// let changes = devices.tick(std::time::Instant::now());
 /// for device in &changes.removed {
 ///     outputs.close(device.id());
@@ -164,9 +168,9 @@ pub fn outputs(room: usize) -> (Outputs, OutputsWriter) {
 /// ```
 pub struct Outputs {
     ports: Ports<backend::Output>,
-    /// What wakes each output's thread, the writer setting it.
+    /// The signal that wakes each output's thread, set by the writer.
     signals: Box<[Arc<backend::Signal>]>,
-    /// When the writer has the outputs send, shared with it.
+    /// When the outputs send, shared with the writer.
     timing: Arc<AtomicU8>,
 }
 
@@ -189,11 +193,11 @@ impl fmt::Debug for Outputs {
 }
 
 impl Outputs {
-    /// Opens `device`. A device open already stays open.
+    /// Opens `device`, unless it is already open.
     ///
     /// # Errors
     ///
-    /// Returns why it did not open: an [`OpenError`].
+    /// Returns an [`OpenError`] if the device did not open.
     pub fn open(&mut self, device: &Device) -> Result<(), OpenError> {
         if device.direction() != Direction::Output {
             return Err(OpenError::NotAnOutput);
@@ -203,47 +207,48 @@ impl Outputs {
             let Some(signal) = signals.get(place) else {
                 return Err((OpenError::NoRoom, Some(consumer)));
             };
-            // What a block pushed before the device came is not its to send.
+            // A device doesn't send what a block pushed before it came.
             consumer.clear();
             backend::Output::open(device, consumer, Arc::clone(signal))
         })
     }
 
-    /// Closes the device `id` names, if it is open, and says whether it was.
-    /// What it had not sent yet is dropped with it.
+    /// Closes the device that `id` names, if it is open, dropping what it
+    /// has not sent, and returns whether it was open.
     pub fn close(&mut self, id: &DeviceId) -> bool {
         self.ports.close(id)
     }
 
-    /// Whether the device `id` names is open.
+    /// Returns whether the device that `id` names is open.
     pub fn is_open(&self, id: &DeviceId) -> bool {
         self.ports.is_open(id)
     }
 
-    /// From the next block on, has every output send as `timing` says.
+    /// Sets every output's timing to `timing`, from the next block on.
     pub fn set_timing(&self, timing: Timing) {
         self.timing.store(timing.index(), Ordering::Relaxed);
     }
 
-    /// When the outputs send a block's MIDI.
+    /// Returns when the outputs send a block's MIDI.
     pub fn timing(&self) -> Timing {
         Timing::from_index(self.timing.load(Ordering::Relaxed))
     }
 
-    /// The devices open now.
+    /// Returns the open devices.
     pub fn devices(&self) -> impl Iterator<Item = &Device> {
         self.ports.devices()
     }
 
-    /// Closes the outputs whose device left while open, and returns them.
+    /// Closes and returns the devices that left while open.
+    ///
     /// Call it once per tick.
     pub fn tick(&mut self) -> Vec<Device> {
         self.ports.tick()
     }
 
     /// Takes every packet waiting in output `output`'s room, as its device
-    /// would, when no device is open there, and marks the room read, so
-    /// the writer hands it the next blocks: `None` where a device is open.
+    /// would, and marks the room read so the writer hands it the next blocks,
+    /// or returns `None` if a device is open there.
     ///
     /// A hook for tests, which have no device to send to.
     #[doc(hidden)]
@@ -276,19 +281,20 @@ impl OpenDevices for Outputs {
     }
 }
 
-/// The audio thread's side of the app's MIDI out: it hands each block's
-/// MIDI to every open output, due as soon as the block has played, or each
-/// packet at its frame's time, as the outputs' [`Timing`] says.
+/// The audio thread's side of the app's MIDI out, which hands each block's
+/// MIDI to every open output, as the outputs' [`Timing`] says.
 ///
-/// The plugin's MIDI 2.0 is downgraded to MIDI 1.0 here, by the
-/// specification's Default Translation, since every device on the systems
-/// Hapto reads now takes MIDI 1.0 alone: what MIDI 1.0 has no message for
-/// is dropped and counted in [`lost`](Self::lost). A packet goes to every
-/// open output in the order the plugin sent it, and an output's thread
-/// sends it once its time comes, at once if that has passed: never earlier,
-/// and never dropped for being late. Once a block has handed an output its
-/// MIDI, the writer wakes the output's thread, a signal that never blocks:
-/// so the block's first message leaves the moment the block has played.
+/// The writer downgrades the plugin's MIDI 2.0 to MIDI 1.0 by the
+/// specification's Default Translation, because every device on the systems
+/// that Hapto reads now takes only MIDI 1.0. What MIDI 1.0 has no message
+/// for is dropped and counted in [`lost`](Self::lost).
+///
+/// Each output gets the packets in the order the plugin sent them, and its
+/// thread sends each when its time comes, or at once if that has passed, so
+/// never early and never dropped for being late. Once a block has handed an
+/// output its MIDI, the writer wakes the output's thread with a signal that
+/// never blocks, so the block's first message leaves the moment the block
+/// has played.
 ///
 /// # Examples
 ///
@@ -297,14 +303,14 @@ impl OpenDevices for Outputs {
 /// use hapto_ump::Event;
 ///
 /// let (_outputs, mut writer) = outputs(1024);
-/// // Each block, on the audio thread, once the plugin has played it: the
+/// // Each block, on the audio thread, once the plugin has played it. The
 /// // block's first frame is due now, at 48 kHz.
 /// let sent = [Event::new(480, [0x40B0_0700, u32::MAX, 0, 0])];
 /// writer.write(Instant::now(), 48_000.0, &sent);
 /// assert_eq!((writer.dropped(), writer.lost()), (0, 0));
 /// ```
 pub struct OutputsWriter {
-    /// Each output's ring, and what wakes its thread.
+    /// Each output's ring, and the signal that wakes its thread.
     rings: Box<[(Producer, Arc<backend::Signal>)]>,
     timing: Arc<AtomicU8>,
     lost: u64,
@@ -320,14 +326,15 @@ impl fmt::Debug for OutputsWriter {
 }
 
 impl OutputsWriter {
-    /// Hands `sent`, a block's MIDI, to every open output: due at once,
-    /// or, at [`Timing::AtFrames`], each packet at `start`, when the
-    /// block's first frame is, plus its frame at `rate` frames a second.
-    /// Past an output's room a packet is dropped and counted in
+    /// Hands `sent`, a block's MIDI, to every open output.
+    ///
+    /// Each packet is due at once, or, at [`Timing::AtFrames`], at `start`
+    /// (the block's first frame) plus its frame at `rate` frames a second. A
+    /// packet past an output's room is dropped and counted in
     /// [`dropped`](Self::dropped).
     ///
-    /// Thread: audio. Allocates nothing, and wakes each output it handed
-    /// MIDI with a signal that never blocks.
+    /// Thread: audio. Allocates nothing, and wakes each output it handed MIDI
+    /// with a signal that never blocks.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn write(&mut self, start: Instant, rate: f64, sent: &[Event]) {
         if sent.is_empty() || !self.rings.iter().any(|(ring, _)| ring.is_read()) {
@@ -339,7 +346,8 @@ impl OutputsWriter {
         let (mut lost, mut pushed) = (0_u64, false);
         let rings = &mut self.rings;
         for event in sent {
-            // Due at once: no moment is earlier than the clock's start.
+            // Due at once, because no moment is earlier than the clock's
+            // start.
             let due = if at_frames {
                 let after = (f64::from(event.offset) * nanos_per_frame) as u64;
                 start.after(Duration::from_nanos(after))
@@ -362,14 +370,18 @@ impl OutputsWriter {
         self.lost = self.lost.saturating_add(lost);
     }
 
-    /// How many packets found no room in an open output's ring, or were a
-    /// SysEx longer than its device sends whole, since it was made: the
-    /// device sends too slowly for what the plugin sends.
+    /// Returns how many packets have been dropped because an open output's
+    /// ring was full or they were part of a SysEx longer than its device
+    /// sends whole.
+    ///
+    /// A drop from a full ring means that the device sends too slowly for
+    /// what the plugin sends.
     pub fn dropped(&self) -> u64 {
         self.rings.iter().map(|(ring, _)| ring.dropped()).sum()
     }
 
-    /// How many messages MIDI 1.0 had no message for, since it was made.
+    /// Returns how many messages have been lost because MIDI 1.0 has no
+    /// message for them.
     pub fn lost(&self) -> u64 {
         self.lost
     }

@@ -1,6 +1,6 @@
-//! MIDI out through the VST3 exporter: notes as note events under the
-//! host's ids, a note's expressions, controllers as MIDI 1.0, SysEx whole,
-//! and what VST3 has no event for counted.
+//! Tests of MIDI output through the VST3 exporter, for notes as note events
+//! under the host's ids, a note's expressions, controllers as MIDI 1.0,
+//! whole SysEx messages, and a count of what VST3 has no event for.
 
 use ::vst3::Steinberg::int8;
 
@@ -9,7 +9,7 @@ use super::{Sender, note_on, play, playing};
 use crate::layout::Stereo;
 use crate::{Block, Event, Processor, Status};
 
-/// Sends on every message it reads, at its frame: MIDI thru.
+/// A MIDI thru, which sends on every message it reads at its frame.
 #[derive(Default)]
 struct Thru;
 
@@ -25,10 +25,12 @@ impl Processor for Thru {
     }
 }
 
-/// Sends packets it builds itself: a MIDI 1.0 note-on and a controller
-/// past the block's end, then a note's pitch bend and a timing clock, which
-/// VST3 has no event for, then a start, a song position and a MIDI 2.0
-/// note-on at the least velocity.
+/// A processor that sends packets it builds itself:
+///
+/// - A MIDI 1.0 note-on, and a controller past the block's end.
+/// - A note's pitch bend and a timing clock, which VST3 has no event for.
+/// - A start, a song position and a MIDI 2.0 note-on at the lowest nonzero
+///   velocity.
 #[derive(Default)]
 struct Raw;
 
@@ -53,8 +55,8 @@ impl Processor for Raw {
     }
 }
 
-/// Sends two groups' SysEx from packets, interleaved: group 1's begins
-/// while group 0's is under way.
+/// A processor that sends two groups' SysEx in interleaved packets, so group
+/// 1's begins while group 0's is under way.
 #[derive(Default)]
 struct TwoGroups;
 
@@ -91,7 +93,8 @@ fn a_note_goes_back_out_under_its_hosts_id_and_one_made_up_under_none() {
         velocity: 0.25,
         id: 7,
     };
-    // Middle C a quarter tone sharp, named 7, then a note no host named.
+    // Middle C a quarter tone sharp with the host's id 7, then a note
+    // without a host id.
     play(
         &mut host,
         &[
@@ -132,8 +135,8 @@ fn controllers_go_back_out_as_the_midi_1_values_they_came_in_as() {
     let proxy = |controller| host.midi_mapping(0, controller).expect("mapped");
     let (volume, pressure, bend) = (proxy(7), proxy(128), proxy(129));
     let (high, low, entry) = (proxy(101), proxy(100), proxy(6));
-    // The bend at 12345 of 16383, volume 100, full pressure, and a bend
-    // range of 12 semitones, as a host divides them.
+    // The pitch bend at 12345 of 16383, volume 100, full pressure and a bend
+    // range of 12 semitones, divided as a host divides them.
     let queues: [(u32, &[(i32, f64)]); 6] = [
         (bend, &[(0, 12_345.0 / 16_383.0)]),
         (volume, &[(1, 100.0 / 127.0)]),
@@ -157,8 +160,8 @@ fn controllers_go_back_out_as_the_midi_1_values_they_came_in_as() {
             ref other => panic!("not a controller: {other:?}"),
         })
         .collect();
-    // The bend's low 7 bits first. The range, whose entry has no low byte,
-    // goes out at the block's last frame as its four controllers.
+    // The pitch bend's low 7 bits go first. The range's data entry has no
+    // low byte, so it goes out at the block's last frame as four controllers.
     assert_eq!(
         sent,
         [
@@ -195,8 +198,8 @@ fn a_note_s_expressions_go_back_out_for_a_note_its_host_named() {
         pressure: 0.5,
         id,
     };
-    // A4 a quarter tone sharp, tuned two semitones up and brightened, then
-    // a note no host named, pressed.
+    // A4 a quarter tone sharp, tuned two semitones up and brightened, then a
+    // pressed note without a host id.
     let tuned = 0.5 + 2.0 / 240.0;
     play(
         &mut host,

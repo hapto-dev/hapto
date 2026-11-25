@@ -1,8 +1,10 @@
-//! The computer's MIDI devices, played into and out of the plugin: the
-//! inputs and outputs the author's filters pass open, merged on group 1 as
-//! a host merges them, followed as devices come and go and as the filters
-//! change. A line tells the author each device that opens, leaves, closes
-//! or is refused.
+//! The computer's MIDI devices, played into and out of the plugin.
+//!
+//! The app opens the inputs and outputs that the author's filters pass. The
+//! inputs are merged on group 1, as a host merges them, and each output gets
+//! every message that the plugin sends. The open devices follow the system's
+//! list and the filters as they change. A line tells the author each device
+//! that opens, leaves, closes or fails to open.
 
 use std::time::{Duration, Instant};
 
@@ -13,29 +15,30 @@ use hapto_midi_devices::{
 
 use crate::routing::{MidiDevices, plan};
 
-/// The packets each input holds between two blocks, and each output holds
-/// waiting to go: past it, they are dropped and counted.
+/// How many packets each input holds between two blocks, and each output
+/// holds before sending, beyond which they are dropped and counted.
 const ROOM: usize = 1024;
 
-/// How long a device that left is kept out of what opens: longer than the
-/// system's list may still show it, which the list's last look after a
-/// change, at four seconds, settles.
+/// How long a device that left is kept from opening again.
+///
+/// The system's list might show it until the list's last read, four seconds
+/// after a change.
 const LEFT_WAIT: Duration = Duration::from_secs(5);
 
 /// The app's MIDI devices, on the main thread.
 #[derive(Debug)]
 pub(crate) struct Midi {
     devices: Devices,
-    /// The inputs a stream reads, while one plays, for a plugin that takes
+    /// The inputs that a stream reads while one plays, if the plugin takes
     /// MIDI.
     inputs: Option<Inputs>,
-    /// The outputs a stream writes to, while one plays, for a plugin that
+    /// The outputs that a stream writes to while one plays, if the plugin
     /// sends MIDI.
     outputs: Option<Outputs>,
-    /// What the lines last said of each device.
+    /// What the last line for each device said.
     said: Said,
-    /// The devices that left, and when, kept out of what opens while the
-    /// list may still show them.
+    /// The devices that left and when, kept from opening while the list might
+    /// still show them.
     departed: Vec<(DeviceId, Instant)>,
     routing: MidiDevices,
     /// The routing's changes applied so far.
@@ -48,7 +51,7 @@ pub(crate) struct Midi {
 
 impl Midi {
     /// Reads the system's list, opening nothing yet, for a plugin that
-    /// `takes` MIDI or `sends` it, as `routing` says.
+    /// `takes` MIDI or `sends` it, as `routing` selects.
     pub(crate) fn new(name: &'static str, takes: bool, sends: bool, routing: MidiDevices) -> Midi {
         Midi {
             devices: Devices::new(),
@@ -64,10 +67,11 @@ impl Midi {
         }
     }
 
-    /// Opens the devices the filters pass again for a new stream, and
-    /// returns the reader it plays into its blocks and the writer it plays
-    /// out of them. An older stream's devices close first: WinMM lets one
-    /// opener at a time hold a device.
+    /// Opens the devices that the filters pass again for a new stream, and
+    /// returns the stream's reader and writer.
+    ///
+    /// An older stream's devices close first, because WinMM lets one opener
+    /// at a time hold a device.
     pub(crate) fn streams(&mut self) -> (Option<InputsReader>, Option<OutputsWriter>) {
         self.stop();
         let (applied, takes, sends) = self.routing.filters();
@@ -103,24 +107,27 @@ impl Midi {
         (reader, writer)
     }
 
-    /// Closes every device as the audio stops: their ports go back to other
-    /// apps, and each output's reset ends the notes it was told to play.
-    /// Nothing is said: the next stream opens them again, unsaid.
+    /// Closes every device when the audio stops.
+    ///
+    /// The ports go back to other apps, and each output's reset ends its
+    /// notes. No line is printed, and the next stream opens the devices again
+    /// without one.
     pub(crate) fn stop(&mut self) {
         drop(self.inputs.take());
         drop(self.outputs.take());
         self.report();
     }
 
-    /// Follows the system's list and the routing: opens what came or now
-    /// passes, and closes what went, left or no longer passes. Call it once
-    /// per tick.
+    /// Opens the devices that were added or now pass, and closes the ones
+    /// that were removed, left or no longer pass.
+    ///
+    /// Call it once per tick.
     pub(crate) fn tick(&mut self, now: Instant) {
         let changes = self.devices.tick(now);
         let (count, takes, sends) = self.routing.filters();
         let reapply = count != self.applied;
         let mut moved = !changes.is_empty() || reapply;
-        // A device that came again, or whose wait is over, may open again.
+        // A device that was added again, or whose wait is over, can open.
         let kept = self.departed.len();
         self.departed.retain(|(id, left)| {
             now.duration_since(*left) < LEFT_WAIT && !changes.added.iter().any(|d| d.id() == id)
@@ -167,7 +174,7 @@ impl Midi {
         self.report();
     }
 
-    /// Tells the routing what is listed and open now.
+    /// Reports to the routing which devices are listed and open now.
     fn report(&self) {
         let open = self
             .inputs
@@ -180,9 +187,10 @@ impl Midi {
     }
 }
 
-/// Opens the `listed` devices that pass and are not open, and closes the
-/// open ones that do not pass or are not listed, saying so for each. A
-/// device is the same one by its id, whatever its name.
+/// Opens the `listed` devices that pass and aren't open, and closes the open
+/// ones that don't pass or aren't listed, with a line for each.
+///
+/// Devices match by id, whatever their names.
 fn follow(name: &str, listed: &[(&Device, bool)], ends: &mut impl OpenDevices, said: &mut Said) {
     let keyed: Vec<(DeviceId, bool)> = listed
         .iter()
@@ -206,8 +214,10 @@ fn follow(name: &str, listed: &[(&Device, bool)], ends: &mut impl OpenDevices, s
     }
 }
 
-/// What the lines last said of each device: that it opened, or why it did
-/// not. A stream that starts again, or keeps failing to, says nothing new.
+/// The last line printed for each device, saying that it opened or why it
+/// didn't.
+///
+/// A stream that starts again, or keeps failing to, prints no new line.
 #[derive(Debug)]
 struct Said<K = DeviceId>(Vec<(K, Result<(), OpenError>)>);
 
@@ -218,8 +228,8 @@ impl<K> Default for Said<K> {
 }
 
 impl Said {
-    /// Says that `device` opened, or why it did not, unless that is what
-    /// was said of it last.
+    /// Prints that `device` opened, or why it didn't, unless the last line
+    /// for it said the same.
     fn open(&mut self, name: &str, device: &Device, opened: Result<(), OpenError>) {
         if self.due(device.id(), opened) {
             say(name, device, opened);
@@ -228,8 +238,8 @@ impl Said {
 }
 
 impl<K: PartialEq + Clone> Said<K> {
-    /// Whether a line is due for `id` that `opened` says, which it is unless
-    /// it was said last, and keeps it as said.
+    /// Records `opened` as the last line for `id`, and returns whether it
+    /// differs from the line before.
     fn due(&mut self, id: &K, opened: Result<(), OpenError>) -> bool {
         let due = !self.0.contains(&(id.clone(), opened));
         self.forget(id);
@@ -237,14 +247,14 @@ impl<K: PartialEq + Clone> Said<K> {
         due
     }
 
-    /// Forgets what was said of `id`, which closed or left with a line of
+    /// Forgets the last line for `id`, which closed or left with a line of
     /// its own.
     fn forget(&mut self, id: &K) {
         self.0.retain(|(said, _)| said != id);
     }
 }
 
-/// The line for `device`: MIDI in from it, or out to it.
+/// Returns the line for `device`, MIDI in from it or out to it.
 fn line(device: &Device) -> String {
     match device.direction() {
         Direction::Input => format!("MIDI in from {}", device.name()),
@@ -252,7 +262,7 @@ fn line(device: &Device) -> String {
     }
 }
 
-/// Says that `device` opened, or why it did not.
+/// Prints that `device` opened, or why it didn't.
 fn say(name: &str, device: &Device, opened: Result<(), OpenError>) {
     match opened {
         Ok(()) => eprintln!("{name}: {}", line(device)),

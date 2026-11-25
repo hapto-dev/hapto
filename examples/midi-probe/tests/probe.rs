@@ -1,4 +1,4 @@
-//! The probe through the C interface, as the JUCE adapter drives it: a note
+//! The probe through the C interface, as the JUCE adapter drives it. A note
 //! sounds, every message comes back out as it came, and a released note
 //! falls silent and lets the block sleep.
 
@@ -10,7 +10,7 @@ use hapto_host::midi::{Channel, Group, Key, Message, NoteOn, packets_of};
 
 const FRAMES: usize = 256;
 
-/// The packets `messages` go out as, as a host hands them in.
+/// Returns the packets that `messages` become, as a host hands them in.
 fn packets<'m>(messages: impl IntoIterator<Item = (usize, Message<'m>)>) -> Vec<HaptoPacket> {
     packets_of(messages)
         .into_iter()
@@ -18,8 +18,8 @@ fn packets<'m>(messages: impl IntoIterator<Item = (usize, Message<'m>)>) -> Vec<
         .collect()
 }
 
-/// One block with `midi_in`, the host taking MIDI 2.0 out: its status, its
-/// loudest sample, and what came back out.
+/// Plays one block with `midi_in`, taking MIDI 2.0 out, and returns its
+/// status, its loudest sample and what came back out.
 fn play(host: &TestHost<MidiProbe>, midi_in: &[HaptoPacket]) -> (u32, f32, Vec<HaptoPacket>) {
     let (mut left, mut right) = ([0.0_f32; FRAMES], [0.0_f32; FRAMES]);
     let mut out = [HaptoPacket::NONE; 16];
@@ -69,7 +69,7 @@ fn a_released_note_falls_silent_and_the_block_sleeps() {
     play(&host, &packets([(0, note.into())]));
     let (_, _, out) = play(&host, &packets([(0, note.off(0.5).into())]));
     assert_eq!(out.len(), 1, "the note-off comes back out");
-    // Its release falls 60 dB in a fifth of a second: under 40 blocks.
+    // Its release falls 60 dB in a fifth of a second, under 40 blocks.
     let mut last = (0, f32::MAX);
     for _ in 0..60 {
         let (status, peak, _) = play(&host, &[]);

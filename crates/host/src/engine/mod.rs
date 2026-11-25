@@ -638,8 +638,8 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
         (automation.points().to_vec(), automation.dropped())
     }
 
-    /// What `read` makes of the last block's MIDI, decoded as its processor
-    /// read it; `None` while inactive.
+    /// Returns what `read` makes of the last block's MIDI, decoded as its
+    /// processor read it, or `None` while inactive.
     #[cfg(all(test, feature = "vst3"))]
     pub(crate) fn heard<T>(&self, read: impl FnOnce(hapto_midi::Midi<'_>) -> T) -> Option<T> {
         self.audio.hold().as_ref().map(|audio| read(audio.midi()))

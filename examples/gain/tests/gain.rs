@@ -247,7 +247,7 @@ fn the_page_s_learn_button_arms_learn_at_the_next_idle() {
     tick(&mut plugin);
     assert_eq!(plugin.learn_state(), "off");
 
-    // The page's button asks; the next idle arms learn.
+    // The page's button requests learn, and the next idle arms it.
     plugin.ask_to_learn();
     tick(&mut plugin);
     assert_eq!(plugin.learn_state(), "armed");

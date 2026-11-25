@@ -1,37 +1,37 @@
-//! The slots inputs and outputs keep their devices in, and what the two
+//! The slots that inputs and outputs keep their devices in, and what the two
 //! share.
 
 use crate::error::OpenError;
 use crate::id::{Device, DeviceId};
 
-/// A backend's open device, an input or an output, over the room it reads
-/// into or sends from.
+/// A backend's open input or output, with the room it reads into or sends
+/// from.
 pub(crate) trait Port: Sized {
-    /// The room: a ring's producer for an input, its consumer for an
-    /// output.
+    /// A ring's producer for an input, or its consumer for an output.
     type Room;
 
-    /// Whether the device left while open.
+    /// Returns whether the device left while open.
     fn has_left(&self) -> bool;
 
-    /// Closes it, handing its room back; `None` when the system would not
-    /// close it, and the room went with it.
+    /// Closes the device and returns its room, or `None` if the system would
+    /// not close it and the room was lost.
     fn close(self) -> Option<Self::Room>;
 }
 
 /// One room, and what holds it.
 enum Slot<P: Port> {
-    /// No device: the room waits for one.
+    /// No device, so the room is free.
     Free(P::Room),
-    /// A device, open on the room.
+    /// A device open on the room.
     Open(Device, P),
-    /// A device the system would not close, or whose thread ended, whose
+    /// A device that the system would not close, or whose thread ended. Its
     /// room went with it.
     Lost,
 }
 
 impl<P: Port> Slot<P> {
-    /// Its room, when it is free, leaving it held until the device opens.
+    /// Takes the room if the slot is free, leaving the slot `Lost` until the
+    /// caller sets it.
     fn take_free(&mut self) -> Option<P::Room> {
         match std::mem::replace(self, Slot::Lost) {
             Slot::Free(room) => Some(room),
@@ -42,7 +42,7 @@ impl<P: Port> Slot<P> {
         }
     }
 
-    /// Closes its device, if one is open, and takes back the room.
+    /// Closes the slot's device, if one is open, and takes back the room.
     fn shut(&mut self) {
         *self = match std::mem::replace(self, Slot::Lost) {
             Slot::Open(_, port) => port.close().map_or(Slot::Lost, Slot::Free),
@@ -70,9 +70,11 @@ impl<P: Port> Ports<P> {
         }
     }
 
-    /// Opens `device` in the first free room, by `open`, which takes the
-    /// room's place and the room and hands back the port, or why not, with
-    /// the room if it is whole. A device open already stays open.
+    /// Opens `device` in the first free room with `open`, unless it is
+    /// already open.
+    ///
+    /// `open` takes the room's place and the room, and returns the port, or
+    /// the error and the room unless the room was lost.
     pub(crate) fn open(
         &mut self,
         device: &Device,
@@ -101,7 +103,8 @@ impl<P: Port> Ports<P> {
         }
     }
 
-    /// Closes the device `id` names, if it is open, and says whether it was.
+    /// Closes the device that `id` names, if it is open, and returns whether
+    /// it was.
     pub(crate) fn close(&mut self, id: &DeviceId) -> bool {
         let Some(slot) = self
             .slots
@@ -114,17 +117,17 @@ impl<P: Port> Ports<P> {
         true
     }
 
-    /// The devices open now.
+    /// Returns the open devices.
     pub(crate) fn devices(&self) -> impl Iterator<Item = &Device> {
         self.slots.iter().filter_map(Slot::device)
     }
 
-    /// Whether the device `id` names is open.
+    /// Returns whether the device that `id` names is open.
     pub(crate) fn is_open(&self, id: &DeviceId) -> bool {
         self.devices().any(|device| device.id() == id)
     }
 
-    /// Closes the devices that left while open, and returns them.
+    /// Closes and returns the devices that left while open.
     pub(crate) fn tick(&mut self) -> Vec<Device> {
         let mut left = Vec::new();
         for slot in &mut self.slots {
@@ -138,7 +141,7 @@ impl<P: Port> Ports<P> {
         left
     }
 
-    /// The room at `place`, when no device is open on it.
+    /// Returns the room at `place` if it is free.
     pub(crate) fn free_mut(&mut self, place: usize) -> Option<&mut P::Room> {
         match self.slots.get_mut(place) {
             Some(Slot::Free(room)) => Some(room),
@@ -147,9 +150,8 @@ impl<P: Port> Ports<P> {
     }
 }
 
-/// What [`Inputs`](crate::Inputs) and [`Outputs`](crate::Outputs) share:
-/// the devices one direction has open, and opening and closing them, for
-/// code that follows both alike.
+/// What [`Inputs`](crate::Inputs) and [`Outputs`](crate::Outputs) share, for
+/// code that handles both alike.
 ///
 /// # Examples
 ///
@@ -170,20 +172,22 @@ impl<P: Port> Ports<P> {
 /// open_all(&mut outs, devices.outputs());
 /// ```
 pub trait OpenDevices {
-    /// The devices open now.
+    /// Returns the open devices.
     fn devices(&self) -> impl Iterator<Item = &Device>;
 
-    /// Opens `device`. A device open already stays open.
+    /// Opens `device`, unless it is already open.
     ///
     /// # Errors
     ///
-    /// Returns why it did not open: an [`OpenError`].
+    /// Returns an [`OpenError`] if the device did not open.
     fn open(&mut self, device: &Device) -> Result<(), OpenError>;
 
-    /// Closes the device `id` names, if it is open, and says whether it was.
+    /// Closes the device that `id` names, if it is open, and returns whether
+    /// it was.
     fn close(&mut self, id: &DeviceId) -> bool;
 
-    /// Closes the devices that left while open, and returns them. Call it
-    /// once per tick.
+    /// Closes and returns the devices that left while open.
+    ///
+    /// Call it once per tick.
     fn tick(&mut self) -> Vec<Device>;
 }

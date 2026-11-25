@@ -53,10 +53,11 @@ extern "C" {
 // moves only when the interface does.
 #define HAPTO_ABI_VERSION 3u
 
-// In `HaptoProcess`'s `flags`: the caller takes MIDI 1.0 out alone, as
-// JUCE's `MidiBuffer` does, so the plugin downgrades what it sends, by
-// the specification's Default Translation, and writes MIDI 1.0's
-// packets alone: channel and system messages, and 7-bit SysEx.
+// A `HaptoProcess` flag for a caller that takes only MIDI 1.0 out, as
+// JUCE's `MidiBuffer` does.
+//
+// The plugin then downgrades what it sends with the specification's
+// Default Translation, to channel and system messages and 7-bit SysEx.
 #define HAPTO_MIDI_OUT_1 1u
 
 // A parameter whose value is a number in a range, continuous or
@@ -102,9 +103,10 @@ extern "C" {
 // pieces.
 #define HAPTO_MAX_FRAMES 65536u
 
-// The most MIDI packets one block carries each way: room past it in
-// `midi_in` or `midi_out` goes unused, and a block's packets past it
-// are dropped.
+// The most MIDI packets that one block carries each way.
+//
+// Room past it in `midi_in` or `midi_out` goes unused, and a block's
+// packets past it are dropped.
 #define HAPTO_MAX_EVENTS 2048u
 
 // `tail` answers this when the output falls silent with the input.
@@ -157,18 +159,18 @@ typedef struct HaptoLayout {
     uint32_t outputs;
 } HaptoLayout;
 
-// One packet of a block's MIDI: a Universal MIDI Packet at a frame of
-// the block.
+// A Universal MIDI Packet at a frame of a block.
 typedef struct HaptoPacket {
-    // The frame of the block it is at, from 0.
+    // The packet's frame in the block, from 0.
     uint32_t frame;
-    // The packet's words, the first holding its message type; a
+    // The packet's words, the first of which holds its message type. A
     // packet shorter than four words leaves the rest 0.
     uint32_t words[4];
 } HaptoPacket;
 
-// One block of audio and MIDI. A host processing in place passes the
-// same buffers in both lists.
+// One block of audio and MIDI.
+//
+// A host that processes in place passes the same buffers in both lists.
 typedef struct HaptoProcess {
     // `input_count` channels, each `frames` long; any may be null.
     const float* const* inputs;
@@ -184,24 +186,27 @@ typedef struct HaptoProcess {
     uint32_t frames;
     // How many packets `midi_in` holds.
     uint32_t midi_in_count;
-    // The block's MIDI in: `midi_in_count` packets, MIDI 1.0 or MIDI 2.0
-    // as the host sends it, which the plugin upgrades; null for none.
-    // They may come in any order, but those at one frame are read in
-    // the order given. A packet at or past the block's end plays at its
-    // last frame.
+    // The block's MIDI in, as `midi_in_count` packets of MIDI 1.0 or
+    // MIDI 2.0, or null for none.
+    //
+    // The plugin upgrades MIDI 1.0. The packets may come in any order,
+    // but those at one frame are read in the order given. A packet at or
+    // past the block's end plays at the last frame.
     const HaptoPacket* midi_in;
-    // Room for the block's MIDI out: `midi_out_capacity` packets, which
-    // the plugin writes in the order it sent them, each at a frame of
-    // the block; null for none.
+    // Room for the block's MIDI out, as `midi_out_capacity` packets, or
+    // null for none.
+    //
+    // The plugin writes them in the order that it sent them, each at a
+    // frame of the block.
     HaptoPacket* midi_out;
-    // Where the plugin answers how many packets it wrote to
-    // `midi_out`, every block; null when `midi_out` is.
+    // Where the plugin writes how many packets it wrote to `midi_out`
+    // each block, or null if `midi_out` is.
     uint32_t* midi_out_count;
     // How many packets `midi_out` has room for. Past it, a packet is
     // dropped.
     uint32_t midi_out_capacity;
-    // `HAPTO_MIDI_OUT_1` for a caller that takes MIDI 1.0 out alone;
-    // otherwise 0.
+    // `HAPTO_MIDI_OUT_1` for a caller that takes only MIDI 1.0 out, else
+    // 0.
     uint32_t flags;
 } HaptoProcess;
 

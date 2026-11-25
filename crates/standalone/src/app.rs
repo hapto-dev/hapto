@@ -59,12 +59,12 @@ pub(crate) enum Wake {
 }
 
 /// Runs `P` standalone until its window closes, opening the MIDI devices
-/// `routing` says.
+/// that `routing` selects.
 ///
 /// # Errors
 ///
-/// Returns why it could not run: no audio device, an activation refused, no
-/// window.
+/// Returns an error if there is no audio device or window, or an activation
+/// is refused.
 pub(crate) fn run<P: Plugin>(options: &Options, routing: MidiDevices) -> Result<ExitCode> {
     let event_loop = EventLoop::<Wake>::with_user_event()
         .build()
@@ -81,9 +81,9 @@ pub(crate) fn run<P: Plugin>(options: &Options, routing: MidiDevices) -> Result<
     if let Some(line) = silence_note(P::INFO.name, hapto_host::first_width::<P>(), options.signal) {
         eprintln!("{line}");
     }
-    // Only a plugin that takes MIDI opens the computer's inputs, and only
-    // one that sends it its outputs: WinMM lets one app at a time hold a
-    // device.
+    // Only a plugin that takes MIDI opens the computer's inputs, and only one
+    // that sends MIDI its outputs, because WinMM lets one app at a time hold
+    // a device.
     let (takes, sends) = (P::INFO.midi_input, P::INFO.midi_output);
     let mut midi = (takes || sends).then(|| Midi::new(P::INFO.name, takes, sends, routing));
     let audio = start_audio(&plugin, options.signal, midi.as_mut())?;
@@ -117,15 +117,16 @@ pub(crate) fn run<P: Plugin>(options: &Options, routing: MidiDevices) -> Result<
 }
 
 /// Opens the system's default output, activates `plugin` at its rate in its
-/// first layout, and starts the output playing it, with `signal` on its
-/// inputs, `midi`'s inputs, opened again for the stream, in its blocks, and
-/// its blocks' MIDI out to `midi`'s outputs, opened again too. A
-/// device that does not start leaves the plugin deactivated again.
+/// first layout, and starts the output playing it.
+///
+/// The plugin's inputs get `signal`, and its blocks get `midi`'s inputs and
+/// send to `midi`'s outputs, both opened again for the stream. A device that
+/// doesn't start leaves the plugin deactivated again.
 ///
 /// # Errors
 ///
-/// Returns why it did not start: no device, an activation refused, or a
-/// device that did not start.
+/// Returns an error if there is no device, an activation is refused, or a
+/// device doesn't start.
 fn start_audio<P: Plugin>(
     plugin: &Standalone<P>,
     signal: Signal,
@@ -148,7 +149,7 @@ fn start_audio<P: Plugin>(
     let player = player.with_midi(reader).with_midi_out(writer);
     let stream = output.start(rate, player).inspect_err(|_| {
         plugin.deactivate();
-        // No stream plays the devices: they go back to other apps.
+        // No stream plays the devices, so they go back to other apps.
         if let Some(midi) = midi {
             midi.stop();
         }
@@ -445,7 +446,7 @@ impl<P: Plugin> App<P> {
     fn silence(&mut self) {
         drop(self.audio.take());
         self.plugin.deactivate();
-        // No stream reads or writes the devices now: they go back to other
+        // No stream reads or writes the devices now, so they go back to other
         // apps, and the outputs' notes end.
         if let Some(midi) = &mut self.midi {
             midi.stop();

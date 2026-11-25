@@ -734,9 +734,11 @@ fn a_teardown_while_the_audio_thread_plays_leaks_the_engine_and_silences_it() {
     );
 }
 
-/// Writes its MIDI into its audio, so a test reads what reached it without
-/// a lock: on the left, how many packets each frame carries, and on the
-/// right, how many of them were upgraded from MIDI 1.0.
+/// A processor that writes its MIDI into its audio, so a test reads what
+/// reached it without a lock.
+///
+/// The left channel counts each frame's packets, and the right counts those
+/// upgraded from MIDI 1.0.
 struct Counts;
 
 impl Processor for Counts {
@@ -778,7 +780,7 @@ impl Plugin for Listener {
     }
 }
 
-/// Sends on every message it reads, at its frame: MIDI thru.
+/// MIDI thru, which sends on every message that it reads at its frame.
 struct Forwarding;
 
 impl Processor for Forwarding {
@@ -830,7 +832,7 @@ fn what_the_plugin_sends_comes_back_at_its_frames_of_the_block_once_it_has_playe
         |packets| sent.extend_from_slice(packets),
     );
     assert_eq!(sent, []);
-    // Blocks of at most 4: the note-on is sent by the second piece.
+    // Blocks of at most 4 frames, so the second piece sends the note-on.
     assert_eq!(app.activate(48_000.0, 4, Width::STEREO), Ok(()));
     audio.process(
         StandaloneBlock::new(&[], &mut [&mut left[..], &mut right[..]])

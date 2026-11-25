@@ -1,6 +1,7 @@
-//! Which of the computer's MIDI devices the app opens: a filter for each
-//! direction, which the author's code sets before the app runs and may
-//! change while it runs, from any thread.
+//! Which of the computer's MIDI devices the app opens.
+//!
+//! The author's code sets a filter for each direction before the app runs,
+//! and can change it from any thread while it runs.
 
 #[cfg(test)]
 mod tests;
@@ -11,25 +12,28 @@ use std::sync::{Arc, Mutex, PoisonError};
 use hapto_midi_devices::{Device, Timing};
 use hapto_params::audio_thread;
 
-/// A filter: whether the app opens a device.
+/// A filter, which returns whether the app opens a device.
 type Filter = Arc<dyn Fn(&Device) -> bool + Send + Sync>;
 
-/// The app's MIDI devices, as the author's code reaches them: which ones
-/// the app opens, when its outputs send, and which are listed and open
-/// now. Made by [`App::midi`](crate::App::midi), and cheap to clone and
-/// send to another thread, where a plugin's page or a thread of the
-/// author's own changes them while the app runs. Each call takes a lock the
-/// app's main thread holds a moment each tick, so none runs on the audio
-/// thread: a debug build panics there. It lists and opens nothing for a
-/// plugin that neither takes MIDI nor sends it, nor under `--host`, where
-/// the plugin's format gets no MIDI from the app.
+/// The app's MIDI devices, as the author's code reaches them.
 ///
-/// A filter is asked of each device the system lists, and of each that
-/// appears later. A change applies at the app's next tick, on its main
-/// thread: the devices that now pass open, and the ones open that no longer
-/// pass close. Every input opens by default, and no output, and only for a
-/// plugin that takes MIDI, or sends it. The outputs send each block's MIDI
-/// as soon as it has played, at the least latency, unless
+/// It sets which devices the app opens and when its outputs send, and
+/// reports which are listed and open now. [`App::midi`](crate::App::midi)
+/// makes it, and it's cheap to clone and send to another thread, where a
+/// plugin's page or the author's own thread can change them.
+///
+/// Each call takes a lock that the main thread holds briefly each tick, so
+/// no call may run on the audio thread, where a debug build panics.
+/// It lists and opens nothing for a plugin that neither takes nor sends
+/// MIDI, or under `--host`, where the plugin's format gets no MIDI from the
+/// app.
+///
+/// A filter is called for each device that the system lists, now or later.
+/// A change applies at the app's next tick, on its main thread, so the
+/// devices that now pass open and the open ones that no longer pass close.
+/// By default, every input opens and no output, only for a plugin that takes
+/// or sends MIDI. The outputs send each block's MIDI as soon as it has
+/// played, for the least latency, unless
 /// [`set_timing`](Self::set_timing) has them keep each message's frame.
 ///
 /// # Examples
@@ -37,8 +41,8 @@ type Filter = Arc<dyn Fn(&Device) -> bool + Send + Sync>;
 /// ```
 /// use hapto_standalone::MidiDevices;
 ///
-/// // In a thread of the author's own, or as a page asks: from now on, the
-/// // plugin's MIDI goes to a virtual port and the system's synth.
+/// // From now on, the plugin's MIDI goes to a virtual port and the system's
+/// // synth, from the author's own thread or at a page's request.
 /// fn send_to_ports(midi: &MidiDevices) {
 ///     midi.set_outputs(|device| {
 ///         device.name().starts_with("loopMIDI") || device.name() == "Microsoft GS Wavetable Synth"
@@ -57,7 +61,7 @@ struct Routing {
     inputs: Filter,
     outputs: Filter,
     timing: Timing,
-    /// Counts the changes, so the app applies each once.
+    /// The number of changes, so the app applies each once.
     changes: u64,
     /// The system's devices, and the ones open, as of the app's last tick.
     listed: Vec<Device>,
@@ -75,7 +79,7 @@ impl fmt::Debug for MidiDevices {
 }
 
 impl MidiDevices {
-    /// Every input, and no output.
+    /// Creates the routing that opens every input and no output.
     pub(crate) fn new() -> MidiDevices {
         MidiDevices {
             shared: Arc::new(Mutex::new(Routing {
@@ -89,8 +93,8 @@ impl MidiDevices {
         }
     }
 
-    /// From now on, opens the inputs `filter` passes: a plugin that takes
-    /// MIDI hears them.
+    /// Opens the inputs that `filter` passes from now on, for a plugin that
+    /// takes MIDI.
     ///
     /// Thread: any but audio.
     pub fn set_inputs(&self, filter: impl Fn(&Device) -> bool + Send + Sync + 'static) {
@@ -100,8 +104,8 @@ impl MidiDevices {
         routing.changes = routing.changes.wrapping_add(1);
     }
 
-    /// From now on, opens the outputs `filter` passes: a plugin that sends
-    /// MIDI sends to them.
+    /// Opens the outputs that `filter` passes from now on, for a plugin that
+    /// sends MIDI.
     ///
     /// Thread: any but audio.
     pub fn set_outputs(&self, filter: impl Fn(&Device) -> bool + Send + Sync + 'static) {
@@ -111,7 +115,7 @@ impl MidiDevices {
         routing.changes = routing.changes.wrapping_add(1);
     }
 
-    /// From now on, has the outputs send as `timing` says.
+    /// Sets the outputs' timing to `timing` from now on.
     ///
     /// Thread: any but audio.
     pub fn set_timing(&self, timing: Timing) {
@@ -121,7 +125,7 @@ impl MidiDevices {
         routing.changes = routing.changes.wrapping_add(1);
     }
 
-    /// When the outputs send.
+    /// Returns when the outputs send.
     ///
     /// Thread: any but audio.
     pub fn timing(&self) -> Timing {
@@ -129,8 +133,8 @@ impl MidiDevices {
         self.lock().timing
     }
 
-    /// The system's MIDI devices, inputs and outputs, as of the app's last
-    /// tick.
+    /// Returns the system's MIDI devices, inputs and outputs, as of the
+    /// app's last tick.
     ///
     /// Thread: any but audio.
     pub fn listed(&self) -> Vec<Device> {
@@ -138,7 +142,7 @@ impl MidiDevices {
         self.lock().listed.clone()
     }
 
-    /// The devices open now, inputs and outputs, as of the app's last
+    /// Returns the open devices, inputs and outputs, as of the app's last
     /// tick.
     ///
     /// Thread: any but audio.
@@ -147,9 +151,11 @@ impl MidiDevices {
         self.lock().open.clone()
     }
 
-    /// The filters, and how many changes they are past: the app's main
-    /// thread calls them with no lock held, so a filter may reach this.
-    /// The timing comes with [`timing`](Self::timing).
+    /// Returns the filters and their change count.
+    ///
+    /// The main thread calls the filters with no lock held, so a filter can
+    /// call this routing. The timing comes from
+    /// [`timing`](Self::timing).
     #[cfg_attr(
         all(not(windows), not(test)),
         expect(dead_code, reason = "the app that applies them runs on Windows alone")
@@ -163,8 +169,8 @@ impl MidiDevices {
         )
     }
 
-    /// Says what the app's tick found: the system's devices, and the ones
-    /// open.
+    /// Records the system's devices and the open ones, as the app's tick
+    /// found them.
     #[cfg_attr(
         not(windows),
         expect(dead_code, reason = "the app that reports runs on Windows alone")
@@ -181,10 +187,12 @@ impl MidiDevices {
     }
 }
 
-/// What a filter's change asks of one direction: of `listed`, each with
-/// whether the filter passes it, the ones to open, which are not `open`,
-/// and of `open`, the ones to close, which it no longer passes or the
-/// system no longer lists.
+/// Returns the devices to open and close in one direction after a filter
+/// changes.
+///
+/// `listed` pairs each listed device with whether the filter passes it. A
+/// device opens if it passes and isn't in `open`, and an open one closes if
+/// it no longer passes or isn't listed.
 #[cfg_attr(
     all(not(windows), not(test)),
     expect(dead_code, reason = "the app that applies it runs on Windows alone")

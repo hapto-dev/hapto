@@ -3,33 +3,34 @@
 //! A plugin crate exports its [`Plugin`] with
 //! [`export_vst3!`](crate::export_vst3) and builds as a `cdylib`, which a
 //! bundle step puts in a `.vst3` bundle. The host sees one class, an audio
-//! processor that is its own edit controller, so the host, the processor and
+//! processor that is its own edit controller. So the host, the processor and
 //! the plugin share one parameter set, listed in declaration order and
 //! identified by a fixed hash of each key.
 //!
-//! - A controller write while the host is processing is ignored: the host
-//!   sends the same value through `process`, in order with its automation.
+//! - A controller write while the host is processing is ignored, because the
+//!   host sends the same value through `process`, in order with its
+//!   automation.
 //! - Edits the plugin makes on the main thread reach the host after each
 //!   tick as `beginEdit`, `performEdit` and `endEdit`.
 //! - One timer per instance calls [`Plugin::idle`] about 60 times a second
-//!   from `initialize` to release: a message-only window on Windows, a run
-//!   loop timer on macOS. There is none elsewhere, so the macro refuses to
-//!   build there.
+//!   from `initialize` to release, through a message-only window on Windows
+//!   and a run loop timer on macOS. Other platforms have none, so the macro
+//!   refuses to build there.
 //! - The plugin is built at `initialize`, and the thread that calls it
 //!   becomes the instance's main thread, whichever thread created the
-//!   instance. A call [`Plugin`]'s threading rule refuses, a release on
-//!   another thread among them, counts as a fault
+//!   instance. A call that breaks [`Plugin`]'s threading rule, such as a
+//!   release on another thread, counts as a fault
 //!   ([`boundary_faults`](crate::boundary_faults)), as a panic does.
 //! - A plugin that takes MIDI gets its host's notes, note expressions and
-//!   SysEx as MIDI 2.0, each note named by VST3's `noteId`, and its
-//!   controllers through hidden proxy parameters, one for each channel and
-//!   controller, which `IMidiMapping` names. What a plugin that declares
-//!   MIDI out sends goes back as VST3's own note events and note
-//!   expressions, its controllers as MIDI 1.0.
+//!   SysEx as MIDI 2.0, each note under VST3's `noteId`, and its controllers
+//!   through hidden proxy parameters, one for each channel and controller,
+//!   mapped through `IMidiMapping`.
+//! - What a plugin that declares MIDI output sends goes back as VST3's note
+//!   events and note expressions, and its controllers as MIDI 1.0.
 //! - On Windows the module stays loaded until the process ends once an
-//!   instance has leaked, since its timer's window outlives it, and once an
-//!   editor has opened, since its toolkit may leave the host something that
-//!   points into the module.
+//!   instance has leaked, because its timer's window outlives it, or once an
+//!   editor has opened, because its toolkit may leave the host something
+//!   that points into the module.
 //!
 //! With the `test-host` feature, `TestHost` drives a plugin through these
 //! interfaces in a test.
@@ -187,15 +188,18 @@ impl Message {
     }
 }
 
-/// Exports a [`Plugin`] as a VST3 module: `GetPluginFactory` and the platform's
-/// module entry and exit points.
+/// Exports a [`Plugin`] as a VST3 module, with `GetPluginFactory` and the
+/// platform's module entry and exit points.
 ///
-/// Use it once, at the root of a `cdylib` crate. A binary links one plugin's
-/// exports, as two would define the same symbols: a crate that depends on two
-/// plugin crates turns their `vst3` features off. It refuses to build a
-/// plugin that declares no layout or a bus wider than stereo. It also
-/// refuses a crate built with `panic = "abort"`, under which a panic ends
-/// the host, and any platform but Windows and macOS.
+/// Use it once, at the root of a `cdylib` crate. A binary links only one
+/// plugin's exports, because two would define the same symbols, so a crate
+/// that depends on two plugin crates turns off their `vst3` features.
+///
+/// It refuses to build for:
+///
+/// - A plugin that declares no layout or a bus wider than stereo.
+/// - A crate built with `panic = "abort"`, under which a panic ends the host.
+/// - Any platform but Windows and macOS.
 ///
 /// # Examples
 ///

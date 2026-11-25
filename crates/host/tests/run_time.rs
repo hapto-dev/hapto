@@ -621,7 +621,7 @@ fn saved_block(ids: &[u64]) -> Vec<u8> {
 fn never_a_host_parameter() {
     let vst3 = hapto_host::vst3::TestHost::<Mixer>::new();
     // The mixer takes MIDI for learn, so the host also lists the hidden
-    // proxies its controllers come through, and shows none of them.
+    // proxies that its controllers come through, but shows none.
     let shown = (0..vst3.parameter_count())
         .filter_map(|index| vst3.parameter(index))
         .filter(|info| !info.is_hidden)

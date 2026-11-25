@@ -644,7 +644,8 @@ impl AudioSide<'_> {
             .0
     }
 
-    /// As [`TestHost::process_with_midi`], on this side's thread.
+    /// Processes one block as [`TestHost::process_with_midi`] does, on this
+    /// side's thread.
     ///
     /// # Panics
     ///
@@ -680,8 +681,8 @@ impl AudioSide<'_> {
         unsafe { (self.table.set)(self.instance, index, normalized) }
     }
 
-    /// One block through the plugin's table, with `midi`: the status, and
-    /// how many packets the plugin wrote.
+    /// Runs one block through the plugin's table with `midi`, and returns the
+    /// status and how many packets the plugin wrote.
     fn run(
         &self,
         inputs: *const *const f32,
@@ -691,7 +692,7 @@ impl AudioSide<'_> {
         frames: usize,
         midi: MidiBlock<'_>,
     ) -> (u32, usize) {
-        // Not 0, so a block that does not answer how many it wrote shows.
+        // Not 0, so a block that does not write its count shows.
         let mut sent = u32::MAX;
         let block = HaptoProcess {
             inputs,
@@ -711,8 +712,8 @@ impl AudioSide<'_> {
         // pointers into buffers of at least `frames` floats. They borrow the
         // buffers for this call, mutably for the outputs, so nothing else
         // touches them. In place, one buffer is in both lists, which the
-        // header allows. The MIDI lists are borrowed for this call, the room
-        // out mutably, and `sent` lives to its end.
+        // header allows. The MIDI lists are borrowed for the call too, the
+        // room out mutably, and `sent` outlives it.
         let status = unsafe { (self.table.process)(self.instance, &block) };
         (status, sent as usize)
     }
@@ -824,10 +825,10 @@ pub struct MidiBlock<'a> {
     /// The packets in. They may come in any order, but those at one frame
     /// are read in the order given.
     pub midi_in: &'a [HaptoPacket],
-    /// The room for the packets out, which the plugin writes from the
-    /// first.
+    /// The room for the packets out, which the plugin fills from the first
+    /// slot.
     pub midi_out: &'a mut [HaptoPacket],
-    /// Whether the host takes MIDI 1.0 out alone, as JUCE's `MidiBuffer`
+    /// Whether the host takes only MIDI 1.0 out, as JUCE's `MidiBuffer`
     /// does.
     pub midi_1_out: bool,
 }

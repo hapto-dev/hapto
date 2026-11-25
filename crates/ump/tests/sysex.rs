@@ -61,14 +61,15 @@ fn a_packet_holds_six_bytes_of_seven_bits_on_its_group() {
     assert_eq!(Event::new(0, [0x10F8_0000, 0, 0, 0]).sysex7(), None);
 }
 
-/// `data`'s packets on `group`, as events.
+/// Returns `data`'s packets on `group`, as events.
 fn message(group: u8, data: &[u8]) -> Vec<Event> {
     let mut packets = Vec::new();
     SysEx7::packets(group, data, |words| packets.push(Event::new(0, words)));
     packets
 }
 
-/// What each packet came to: the data it made whole, and what it dropped.
+/// Returns, for each packet, the data that it made whole and how many
+/// messages it dropped.
 fn join_all(join: &mut SysExJoin, packets: &[Event]) -> Vec<(Option<Vec<u8>>, u32)> {
     packets
         .iter()
@@ -113,7 +114,8 @@ fn another_groups_sysex_under_way_is_dropped_at_its_start() {
         join_all(&mut join, &sent),
         [(None, 0), (None, 1), (None, 0), (Some(vec![1; 8]), 0)]
     );
-    // The rest of the one dropped passes unread, after the first ends too.
+    // The rest of the dropped SysEx is skipped, even after the first one
+    // ends.
     let sent = [first[0], second[0], first[1], second[1]];
     assert_eq!(
         join_all(&mut join, &sent),

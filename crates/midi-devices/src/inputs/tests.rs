@@ -2,8 +2,8 @@ use hapto_ump::{ChannelMessage, Origin, SysExForm, scale};
 
 use super::*;
 
-/// A song select whose song is `tag`: a system message, which the upgrade
-/// passes as it is, so a test can follow it.
+/// Returns a song select for song `tag`, a system message that the upgrade
+/// passes unchanged, so a test can follow it.
 fn tagged(tag: u32) -> [u32; 4] {
     [0x10F3_0000 | tag << 8, 0, 0, 0]
 }
@@ -16,8 +16,8 @@ fn at(millis: u64) -> Instant {
     Instant::from_nanos(millis * 1_000_000)
 }
 
-/// A reader over `MAX_INPUTS` rings of room `room`, and the producers that
-/// fill them.
+/// Returns a reader over `MAX_INPUTS` rings of `room` packets, and their
+/// producers.
 fn rig(room: usize) -> (Vec<Producer>, InputsReader) {
     let (producers, consumers): (Vec<_>, Vec<_>) = (0..MAX_INPUTS).map(|_| ring(room)).unzip();
     (producers, InputsReader::new(consumers))
@@ -29,7 +29,7 @@ fn read(reader: &mut InputsReader, now: Instant, frames: usize) -> Vec<Event> {
     out.as_slice().to_vec()
 }
 
-/// Each tagged message read, with its frame.
+/// Returns the frame and tag of each tagged message read.
 fn tags(events: &[Event]) -> Vec<(u32, u32)> {
     events
         .iter()
@@ -40,11 +40,12 @@ fn tags(events: &[Event]) -> Vec<(u32, u32)> {
 #[test]
 fn the_time_since_the_last_block_maps_onto_this_one() {
     let (mut producers, mut reader) = rig(8);
-    // The first block places everything at its first frame: it has no
-    // last block to measure from.
+    // With no last block to measure from, the first block places everything
+    // at its first frame.
     producers[0].push(at(1), tagged(1));
     assert_eq!(tags(&read(&mut reader, at(10), 100)), [(0, 1)]);
-    // The next block spans 10 ms to 20 ms: 12.5 ms is a quarter of it.
+    // The next block spans 10 ms to 20 ms, so 12.5 ms is a quarter of the
+    // way in.
     producers[0].push(at(12), tagged(2));
     producers[0].push(Instant::from_nanos(12_500_000), tagged(3));
     producers[0].push(at(19), tagged(4));
@@ -59,8 +60,8 @@ fn a_message_that_comes_after_the_block_starts_waits_for_the_next() {
     producers[0].push(at(15), tagged(1));
     producers[0].push(at(25), tagged(2));
     assert_eq!(tags(&read(&mut reader, at(20), 64)), [(32, 1)]);
-    // A message older than the last block lands at the first frame.
     assert_eq!(tags(&read(&mut reader, at(30), 64)), [(32, 2)]);
+    // A message older than the last block lands at the first frame.
     producers[0].push(at(5), tagged(3));
     assert_eq!(tags(&read(&mut reader, at(40), 64)), [(0, 3)]);
 }
@@ -115,8 +116,8 @@ fn every_input_arrives_on_group_1_upgraded_to_midi_2() {
 #[test]
 fn each_input_keeps_its_own_parameter_numbers() {
     let (mut producers, mut reader) = rig(8);
-    // One device selects NRPN 300; another sends a data entry, which on its
-    // own input selects nothing.
+    // One device selects NRPN 300, and another sends a data entry, which
+    // does nothing on its own input.
     producers[0].push(at(1), cc(99, 2));
     producers[0].push(at(1), cc(98, 44));
     producers[1].push(at(2), cc(6, 64));
@@ -140,13 +141,14 @@ fn a_new_device_on_an_input_starts_its_translation_over() {
     producers[0].push(at(1), cc(99, 2));
     producers[0].push(at(1), cc(98, 44));
     read(&mut reader, at(10), 10);
-    // Another device takes the input, and sends a data entry alone.
+    // Another device takes the input and sends only a data entry.
     producers[0].renew();
     producers[0].push(at(12), cc(6, 10));
     assert_eq!(read(&mut reader, at(20), 10), []);
 }
 
-/// A 7-bit SysEx packet of `form`: `count` bytes of `tag`, held to 7 bits.
+/// Returns a 7-bit SysEx packet of `form` with `count` bytes of `tag`,
+/// masked to 7 bits.
 fn sysex(form: SysExForm, count: usize, tag: u32) -> [u32; 4] {
     SysEx7::new(0, form, &[(tag & 0x7F) as u8; 6][..count]).words()
 }
@@ -163,7 +165,7 @@ fn a_sysex_waits_until_whole_while_other_inputs_go_on() {
     producers[0].push(at(14), sysex(SysExForm::End, 2, 3));
     producers[1].push(at(16), tagged(8));
     let second = read(&mut reader, at(20), 10);
-    // The whole SysEx, at the frame its end came, then the rest in order.
+    // The whole SysEx at the frame that its end came, then the rest in order.
     let statuses: Vec<_> = second
         .iter()
         .map(|event| (event.offset, sysex_form(event.words)))
@@ -202,7 +204,7 @@ fn a_real_time_message_inside_a_sysex_goes_with_it() {
 
 #[test]
 fn a_sysex_longer_than_the_room_goes_out_as_it_comes() {
-    // Room for 4 packets, all of them the SysEx so far.
+    // Room for 4 packets, all filled by the unfinished SysEx.
     let (mut producers, mut reader) = rig(4);
     producers[0].push(at(1), sysex(SysExForm::Start, 6, 1));
     for tag in 2..5 {
@@ -213,8 +215,8 @@ fn a_sysex_longer_than_the_room_goes_out_as_it_comes() {
 
 #[test]
 fn a_held_sysex_goes_out_while_a_devices_next_buffer_still_fits() {
-    // Room for 512 packets: a SysEx held for its end goes out as it comes
-    // once fewer than a burst's packets of room are left, past 340 held.
+    // With room for 512, a held SysEx goes out as it comes once more than 340
+    // are held, which leaves less room than `BURST`.
     let held = |count: u32| {
         let (mut producers, mut reader) = rig(512);
         producers[0].push(at(1), sysex(SysExForm::Start, 6, 1));

@@ -118,9 +118,10 @@ impl<'a, L: Layout> Audio<'a, L> {
         self.frames
     }
 
-    /// Splits it at frame `at`: the first part holds every channel's frames
-    /// before it, the second the rest, both in the same layout. Past its
-    /// end, the second is empty. Nothing is copied.
+    /// Splits the audio at frame `at`, without copying.
+    ///
+    /// The first part holds the frames before `at`, and the second holds the
+    /// rest, which is empty if `at` is past the end. Both keep the layout.
     ///
     /// # Examples
     ///
@@ -153,11 +154,12 @@ impl<'a, L: Layout> Audio<'a, L> {
         (part(first, at), part(second, rest))
     }
 
-    /// Each frame in turn, one moment across every channel. In a
-    /// [`Bus`](crate::layout::Bus) a frame is an array of the channels'
-    /// samples, so `for [left, right] in audio.frames_mut()` destructures it;
-    /// in [`AnyLayout`] it is a [`Frame`](crate::Frame). Either takes a mono
-    /// voice's sample into every channel with
+    /// Returns each frame, one moment across every channel.
+    ///
+    /// In a [`Bus`](crate::layout::Bus) a frame is an array, so
+    /// `for [left, right] in audio.frames_mut()` destructures it.
+    /// In [`AnyLayout`] it is a [`Frame`](crate::Frame). Both add a mono
+    /// voice's sample to every channel with
     /// [`AddSample::add`](crate::AddSample::add).
     ///
     /// # Examples

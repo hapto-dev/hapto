@@ -1,5 +1,5 @@
-//! The app as its binary says it in code: what the builder says reaches the
-//! MIDI devices' handle, and where the app does not run, it says so.
+//! Tests that the builder's settings reach the MIDI devices' handle, and
+//! that the app fails with a reason where it doesn't run.
 
 use hapto_host::layout::Stereo;
 use hapto_host::{AuCodes, Block, Category, Parts, PluginInfo, ProcessSetup, Processor, Status};
@@ -26,7 +26,7 @@ impl Processor for Pass {
     }
 }
 
-/// A plugin that does nothing, for the app to be of.
+/// A plugin that does nothing, for the app to run.
 struct Quiet;
 
 impl Plugin for Quiet {

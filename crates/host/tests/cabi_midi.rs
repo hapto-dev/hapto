@@ -1,6 +1,6 @@
-//! MIDI through the C interface, as the JUCE adapter passes it: packets in,
-//! MIDI 1.0 or 2.0, upgraded before the plugin reads them, and packets out,
-//! downgraded for a caller that takes MIDI 1.0 alone.
+//! MIDI through the C interface, as the JUCE adapter passes it. Packets in,
+//! in MIDI 1.0 or 2.0, are upgraded before the plugin reads them, and packets
+//! out are downgraded for a caller that takes only MIDI 1.0.
 
 #![cfg(all(feature = "cabi", feature = "test-host"))]
 
@@ -10,7 +10,7 @@ use hapto_host::{
     AuCodes, Block, Category, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
 };
 
-/// Passes every message it reads on, at its frame: MIDI thru.
+/// MIDI thru, each message at its frame.
 struct Thru;
 
 struct ThruProcessor;
@@ -59,7 +59,7 @@ impl Plugin for Thru {
     }
 }
 
-/// Sends on every packet it gets, whatever its type.
+/// Sends on every packet that it gets, whatever its type.
 struct Echo;
 
 struct EchoProcessor;
@@ -103,8 +103,8 @@ fn packet(frame: u32, first: u32) -> HaptoPacket {
     }
 }
 
-/// One block of 16 frames with `midi_in`, room for `room` packets out, and
-/// what came out.
+/// Plays one block of 16 frames with `midi_in` and room for `room` packets
+/// out, and returns what came out.
 fn play<P: Plugin>(
     host: &TestHost<P>,
     midi_in: &[HaptoPacket],

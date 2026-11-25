@@ -1,5 +1,5 @@
-//! What MIDI says, decoded: notes and controllers in MIDI 2.0's meanings,
-//! each value in the type it stands for.
+//! Decoded notes and controllers in MIDI 2.0's meanings, each value in the
+//! type that it stands for.
 
 use std::fmt;
 
@@ -23,23 +23,23 @@ use crate::values::{Centred, Channel, Group, Key, NoteId, Pitch, Program};
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NoteOn {
-    /// The note, until it ends.
+    /// The note's id, until it ends.
     pub id: NoteId,
-    /// The group it came on.
+    /// Its group.
     pub group: Group,
-    /// The channel it came on.
+    /// Its channel.
     pub channel: Channel,
     /// The key.
     pub key: Key,
-    /// From 0 to 1. A MIDI 2.0 note-on at velocity 0 is still a note-on; a
-    /// MIDI 1.0 one is a note-off, as its upgrade reads it.
+    /// From 0 to 1. A MIDI 2.0 note-on at velocity 0 is still a note-on, but
+    /// the upgrade turns a MIDI 1.0 one into a note-off.
     pub velocity: f32,
     pub(crate) attribute: Attribute,
 }
 
 impl NoteOn {
-    /// A note-on for `key` on the first group and channel, with no
-    /// attribute, for testing a voice on its own: the plugin's own note 0.
+    /// Returns a note-on for `key` on the first group and channel, as the
+    /// plugin's own note 0 with no attribute, for testing a voice on its own.
     pub fn new(key: Key, velocity: f32) -> Self {
         NoteOn {
             id: NoteId::own(0),
@@ -51,12 +51,13 @@ impl NoteOn {
         }
     }
 
-    /// This note moved to `key`, as a transposer sends it. A pitch of its
-    /// own, MIDI 2.0's pitch attribute, moves by the same interval, held to
-    /// MIDI's range, so it sounds where its key says. It keeps its id, so
-    /// its host knows it as the note it came from: send it in that note's
-    /// place. A note sent beside the one it came from takes an id of the
-    /// plugin's own, with [`with_id`](Self::with_id).
+    /// Returns this note moved to `key`, as a transposer sends it.
+    ///
+    /// A pitch attribute moves by the same interval, clamped to MIDI's range,
+    /// so the note sounds at `key`. The note keeps its id, so its host takes
+    /// it for the original, and a plugin sends it in that note's place. A
+    /// note sent beside the original takes an id of the plugin's own, with
+    /// [`with_id`](Self::with_id).
     ///
     /// # Examples
     ///
@@ -81,14 +82,14 @@ impl NoteOn {
         }
     }
 
-    /// This note under `id`: a note sent beside the one it came from, under
-    /// an id of the plugin's own, [`NoteId::own`].
+    /// Returns this note under `id`, for a note sent beside the original
+    /// under an id of the plugin's own ([`NoteId::own`]).
     #[must_use]
     pub fn with_id(self, id: NoteId) -> Self {
         NoteOn { id, ..self }
     }
 
-    /// The note-off that ends this note, at `velocity`.
+    /// Returns the note-off that ends this note, at `velocity`.
     pub fn off(&self, velocity: f32) -> NoteOff {
         NoteOff {
             id: self.id,
@@ -99,9 +100,8 @@ impl NoteOn {
         }
     }
 
-    /// The pitch the note asks for: its key in equal temperament, unless
-    /// the note-on carries a pitch of its own, as MIDI 2.0's pitch attribute
-    /// does.
+    /// Returns the note's pitch, which is its key in equal temperament
+    /// unless the note-on carries MIDI 2.0's pitch attribute.
     pub fn pitch(&self) -> Pitch {
         match self.attribute.semitones() {
             Some(semitones) => Pitch::new(semitones as f32),
@@ -109,8 +109,8 @@ impl NoteOn {
         }
     }
 
-    /// The same note asking for `pitch`, through MIDI 2.0's pitch
-    /// attribute, whatever its key.
+    /// Returns the same note at `pitch`, through MIDI 2.0's pitch attribute,
+    /// whatever its key.
     ///
     /// # Examples
     ///
@@ -129,8 +129,8 @@ impl NoteOn {
         }
     }
 
-    /// The note's attribute as it came, for one Hapto does not read itself;
-    /// `None` for a note-on with none.
+    /// Returns the note's attribute as it came, for one that Hapto doesn't
+    /// read, or `None` if there is none.
     pub fn attribute(&self) -> Option<Attribute> {
         (self.attribute != Attribute::NONE).then_some(self.attribute)
     }
@@ -151,27 +151,31 @@ impl NoteOn {
 pub struct NoteOff {
     /// The note that ends.
     pub id: NoteId,
-    /// The group it came on.
+    /// Its group.
     pub group: Group,
-    /// The channel it came on.
+    /// Its channel.
     pub channel: Channel,
     /// Its key.
     pub key: Key,
-    /// From 0 to 1, and 0.5 when the sender gave none, as a MIDI 1.0
-    /// note-on at velocity 0 upgrades.
+    /// From 0 to 1, or 0.5 if the sender gave none, as a MIDI 1.0 note-on at
+    /// velocity 0 upgrades.
     pub velocity: f32,
 }
 
-/// The key a per-note message names, and the note sounding on it. Match a
-/// voice by its [`id`](Self::id), which the decoder has already found, not by
-/// its key: two notes may sound on one key.
+/// The key that a per-note message names, and the note sounding on it.
 ///
-/// MIDI 2.0 names a per-note message by its key, and lets it come before
-/// the key's note does, so a message may name a key with no note. With two
-/// notes on one key, it is for the newer: the older takes no more per-note
-/// messages, as MIDI 2.0's per-note management reads it. A host that names
-/// its notes, as VST3 does, names the note itself, older or not, and a
-/// message for a note no longer sounding, or one detached, names none.
+/// Match a voice by its [`id`](Self::id), which the decoder has found, not
+/// by its key, because two notes can sound on one key.
+///
+/// MIDI 2.0 addresses a per-note message by key, and the message can come
+/// before the key's note, so it can name a key with no note. The note that
+/// it names:
+///
+/// - With two notes on one key, it is the newer, because under MIDI 2.0's
+///   per-note management the older takes no more per-note messages.
+/// - A host that names its notes, as VST3 does, names the note itself, older
+///   or not.
+/// - A note that no longer sounds, or that is detached, gives none.
 ///
 /// # Examples
 ///
@@ -189,23 +193,21 @@ pub struct NoteOff {
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct NoteKey {
-    /// The group it came on.
+    /// Its group.
     pub group: Group,
-    /// The channel it came on.
+    /// Its channel.
     pub channel: Channel,
-    /// The key it names.
+    /// The key.
     pub key: Key,
-    /// The note it is for: the one its host named, or else the newest
-    /// sounding on the key; `None` when that one does not sound or is
-    /// detached.
+    /// The note that it is for, or `None` if there is none.
     pub id: Option<NoteId>,
 }
 
-/// What MIDI says, decoded: one note or controller change, in MIDI 2.0's
-/// meanings. Its `Display` is one line in the numbering musicians use.
+/// One decoded note or controller change, in MIDI 2.0's meanings.
 ///
-/// A value from 0 to 1 is an `f32`, and one that rests at a centre is
-/// [`Centred`]. A note's own messages name their [`NoteKey`].
+/// Its `Display` writes one line in musicians' numbering. A value from 0 to
+/// 1 is an `f32`, and one that rests at a centre is [`Centred`]. A per-note
+/// message names its [`NoteKey`].
 ///
 /// # Examples
 ///
@@ -229,11 +231,10 @@ pub struct NoteKey {
 pub enum Message<'a> {
     /// A note starting.
     NoteOn(NoteOn),
-    /// A note ending: one for each note a note-off ends, so a note-off for
-    /// a key with two notes on it is two.
+    /// A note ending, one for each note that a note-off ends.
     NoteOff(NoteOff),
-    /// A note's pitch, absolute, so no bend range applies: MIDI 2.0's
-    /// registered per-note controller 3.
+    /// A note's absolute pitch, to which no bend range applies (MIDI 2.0's
+    /// registered per-note controller 3).
     NotePitch {
         /// The key, and its note.
         note: NoteKey,
@@ -247,25 +248,24 @@ pub enum Message<'a> {
         /// The bend.
         value: Centred,
     },
-    /// A note's own pressure, polyphonic aftertouch.
+    /// A note's own pressure (polyphonic aftertouch).
     NotePressure {
         /// The key, and its note.
         note: NoteKey,
         /// From 0 to 1.
         value: f32,
     },
-    /// One of a note's own registered controllers, numbered as the
-    /// channel's are: 74 its brightness, 10 its pan.
+    /// A registered per-note controller, numbered as a channel's are, so 74
+    /// is brightness and 10 pan.
     NoteControl {
         /// The key, and its note.
         note: NoteKey,
-        /// The controller, 0 to 255; [`controller`] names them.
+        /// The controller, 0 to 255, which [`controller`] names.
         controller: u8,
         /// From 0 to 1.
         value: f32,
     },
-    /// One of a note's own assignable controllers, which the instrument
-    /// defines.
+    /// An assignable per-note controller, which the instrument defines.
     NoteAssignable {
         /// The key, and its note.
         note: NoteKey,
@@ -285,49 +285,49 @@ pub enum Message<'a> {
     },
     /// The channel's pitch bend, at rest at the centre.
     Bend {
-        /// The group it came on.
+        /// Its group.
         group: Group,
-        /// The channel it came on.
+        /// Its channel.
         channel: Channel,
         /// The bend.
         value: Centred,
     },
-    /// How far a full bend reaches, in semitones either way: registered
-    /// parameter 0.
+    /// How far a full bend reaches, in semitones either way (registered
+    /// parameter 0).
     BendRange {
-        /// The group it came on.
+        /// Its group.
         group: Group,
-        /// The channel it came on.
+        /// Its channel.
         channel: Channel,
         /// The semitones, cents as a fraction.
         semitones: f32,
     },
-    /// The channel's pressure, channel aftertouch.
+    /// The channel's pressure (channel aftertouch).
     Pressure {
-        /// The group it came on.
+        /// Its group.
         group: Group,
-        /// The channel it came on.
+        /// Its channel.
         channel: Channel,
         /// From 0 to 1.
         value: f32,
     },
     /// A control change.
     Control {
-        /// The group it came on.
+        /// Its group.
         group: Group,
-        /// The channel it came on.
+        /// Its channel.
         channel: Channel,
-        /// The controller, 0 to 127; [`controller`] names them.
+        /// The controller, 0 to 127, which [`controller`] names.
         controller: u8,
         /// From 0 to 1.
         value: f32,
     },
-    /// A registered controller (MIDI 1.0's RPN), but for the bend range,
-    /// which is its own message.
+    /// A registered controller (MIDI 1.0's RPN), except the bend range,
+    /// which has its own message.
     Registered {
-        /// The group it came on.
+        /// Its group.
         group: Group,
-        /// The channel it came on.
+        /// Its channel.
         channel: Channel,
         /// The bank, 0 to 127.
         bank: u8,
@@ -339,9 +339,9 @@ pub enum Message<'a> {
     /// An assignable controller (MIDI 1.0's NRPN), which the instrument
     /// defines.
     Assignable {
-        /// The group it came on.
+        /// Its group.
         group: Group,
-        /// The channel it came on.
+        /// Its channel.
         channel: Channel,
         /// The bank, 0 to 127.
         bank: u8,
@@ -350,20 +350,20 @@ pub enum Message<'a> {
         /// From 0 to 1.
         value: f32,
     },
-    /// A program change, with the bank it selects, if any.
+    /// A program change, with the bank that it selects, if any.
     Program {
-        /// The group it came on.
+        /// Its group.
         group: Group,
-        /// The channel it came on.
+        /// Its channel.
         channel: Channel,
         /// The program.
         program: Program,
-        /// The bank: its two 7-bit halves as one number, 0 to 16383.
+        /// The bank, its two 7-bit halves as one number, 0 to 16383.
         bank: Option<u16>,
     },
     /// A whole SysEx message, without its F0 and F7.
     SysEx {
-        /// The group it came on.
+        /// Its group.
         group: Group,
         /// Its bytes, from the decoder's buffer.
         data: &'a [u8],
@@ -382,11 +382,11 @@ impl From<NoteOff> for Message<'_> {
     }
 }
 
-/// Where a channel's message came: ", channel 1, group 1".
+/// A message's group and channel, written as ", channel 1, group 1".
 struct On(Group, Channel);
 
 impl<'a> Message<'a> {
-    /// The group it came on.
+    /// Returns the message's group.
     ///
     /// # Examples
     ///
@@ -422,7 +422,7 @@ impl<'a> Message<'a> {
         }
     }
 
-    /// The channel it came on; `None` for a SysEx, which has none.
+    /// Returns the message's channel, or `None` for a SysEx.
     ///
     /// # Examples
     ///
@@ -430,7 +430,7 @@ impl<'a> Message<'a> {
     /// use hapto_midi::{Channel, Decoder, Message};
     /// use hapto_ump::Event;
     ///
-    /// // Listening on channel 2 alone.
+    /// // Listening only on channel 2.
     /// let event = Event::new(0, [0x40B1_0700, u32::MAX, 0, 0]);
     /// let mut decoder = Decoder::new();
     /// let mine = |message: &Message<'_>| message.channel() == Some(Channel::number(2));
@@ -453,8 +453,8 @@ impl<'a> Message<'a> {
         })
     }
 
-    /// The key and note a note's message names, a note-on's and a
-    /// note-off's included; `None` for a channel's message or a SysEx.
+    /// Returns the key and note that a note's message names, including a
+    /// note-on or note-off, or `None` for a channel's message or a SysEx.
     ///
     /// # Examples
     ///
@@ -490,9 +490,9 @@ impl<'a> Message<'a> {
         }
     }
 
-    /// The controller a channel's control change, registered or assignable
-    /// controller sets, and its value from 0 to 1; `None` for any other
-    /// message, a note's own controllers included.
+    /// Returns the controller that a control change, registered or assignable
+    /// controller sets, and its value from 0 to 1, or `None` for any other
+    /// message, including a per-note controller.
     ///
     /// # Examples
     ///
@@ -551,10 +551,10 @@ impl fmt::Display for Named {
     }
 }
 
-/// The most of a SysEx message's bytes its line shows.
+/// The most bytes of a SysEx message that its line shows.
 const SHOWN_BYTES: usize = 16;
 
-/// A note-on or note-off as its line.
+/// Writes a note-on or note-off as its line.
 fn fmt_event(
     f: &mut fmt::Formatter<'_>,
     what: &str,
@@ -566,7 +566,7 @@ fn fmt_event(
     write!(f, "{what} {key}, velocity {velocity:.3}{on}, {id}")
 }
 
-/// One line in musicians' numbers, as a [`Message::NoteOn`] reads.
+/// One line in musicians' numbers, the same as a [`Message::NoteOn`]'s.
 impl fmt::Display for NoteOn {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let on = On(self.group, self.channel);
@@ -574,7 +574,7 @@ impl fmt::Display for NoteOn {
     }
 }
 
-/// One line in musicians' numbers, as a [`Message::NoteOff`] reads.
+/// One line in musicians' numbers, the same as a [`Message::NoteOff`]'s.
 impl fmt::Display for NoteOff {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let on = On(self.group, self.channel);
@@ -672,7 +672,7 @@ impl fmt::Display for Message<'_> {
 }
 
 impl Message<'_> {
-    /// A note's message as its line: the rest go through `Display`.
+    /// Writes a per-note message as its line.
     fn fmt_note(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             Message::NotePitch { note, pitch } => write!(f, "pitch {pitch} for {note}"),

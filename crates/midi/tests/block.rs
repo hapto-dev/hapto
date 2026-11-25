@@ -1,5 +1,5 @@
-//! A block's MIDI: decoded once into a list, read whole or in parts, and
-//! the MIDI a block sends, encoded back into packets.
+//! Tests a block's MIDI, decoded once into a list and read whole or in parts,
+//! and the MIDI that a block sends, encoded back into packets.
 
 use hapto_midi::{
     Centred, Channel, Decoder, Group, Key, Message, Midi, MidiList, MidiOut, NoteId, NoteKey,
@@ -41,7 +41,8 @@ fn a_part_of_the_block_has_its_messages_at_frames_from_its_own_start() {
 fn a_packet_past_the_block_or_before_the_one_before_it_keeps_time_order() {
     let mut list = MidiList::new();
     list.read(&block(&[(10, on(60)), (4, on(62)), (99, on(64))]), 16);
-    // The second at the first's frame, the third at the block's last.
+    // The second lands at the first's frame, and the third at the last
+    // frame.
     assert_eq!(frames(list.midi()), [10, 10, 15]);
 }
 
@@ -54,9 +55,9 @@ fn the_blocks_drops_come_with_the_part_that_starts_it() {
     list.read(&packets, 8);
     assert_eq!(list.midi().dropped(), 2);
     assert_eq!(list.midi().between(4, 8).dropped(), 0);
-    // The key has two notes now, one from the block before. With room for
-    // one message and one packet, the note-off's packet has no room, nor
-    // have the two note-offs it decodes to.
+    // The key now has two notes, one from the block before. With room for
+    // one message and one packet, the list has no room for the note-off's
+    // packet or its two note-offs.
     list.read(&block(&[(0, on(60)), (1, [0x4080_3C00, 0])]), 8);
     assert_eq!((list.midi().len(), list.midi().dropped()), (1, 3));
 }
@@ -143,8 +144,8 @@ fn what_a_block_sends_goes_out_in_order_and_past_the_room_is_counted() {
 
 #[test]
 fn a_note_its_host_named_goes_out_under_the_hosts_id_and_one_made_up_under_none() {
-    // A host's note 7 on C4, a pressure on it, and its note-off, as a block
-    // decodes them, then a note the decoder makes up.
+    // The host's note 7 on C4, a pressure on it and its note-off, as a block
+    // decodes them, then a note with a made-up id.
     let named = |words: [u32; 2]| Event {
         origin: Origin::Note { id: 7 },
         ..Event::new(0, [words[0], words[1], 0, 0])
@@ -176,7 +177,7 @@ fn place() -> impl Strategy<Value = (Group, Channel)> {
     (1_u8..=16, 1_u8..=16).prop_map(|(g, c)| (Group::number(g), Channel::number(c)))
 }
 
-/// A note's own key, on no note the decoder holds.
+/// Generates a note's own key that names no note the decoder holds.
 fn note_key() -> impl Strategy<Value = NoteKey> {
     (place(), 0_u8..128).prop_map(|((group, channel), key)| NoteKey {
         group,
@@ -186,13 +187,14 @@ fn note_key() -> impl Strategy<Value = NoteKey> {
     })
 }
 
-/// Every message the decoder makes but SysEx, which comes back as sent:
-/// a note under an id the decoder makes up, which is never the sender's.
+/// Generates every message that the decoder makes except SysEx.
+///
+/// Each comes back as sent, except a note's id, which the decoder makes up.
 fn any_message() -> impl Strategy<Value = Message<'static>> {
     prop_oneof![note_message(), channel_message()]
 }
 
-/// A note, or a note's own message.
+/// Generates a note, or a note's own message.
 fn note_message() -> impl Strategy<Value = Message<'static>> {
     prop_oneof![
         (place(), 0_u8..128, any::<u16>()).prop_map(|((group, channel), key, velocity)| {
@@ -210,8 +212,8 @@ fn note_message() -> impl Strategy<Value = Message<'static>> {
                 velocity: f32::from(velocity) / f32::from(u16::MAX),
             })
         }),
-        // A note's registered controllers but its pitch, which comes back as
-        // NotePitch.
+        // A note's registered controllers except its pitch, which comes back
+        // as `NotePitch`.
         (
             note_key(),
             (0_u8..=255).prop_filter("not the pitch", |i| *i != 3),
@@ -235,7 +237,7 @@ fn note_message() -> impl Strategy<Value = Message<'static>> {
     ]
 }
 
-/// A channel's message, or a note's pressure or pitch.
+/// Generates a channel's message, or a note's pressure or pitch.
 fn channel_message() -> impl Strategy<Value = Message<'static>> {
     prop_oneof![
         (place(), centred()).prop_map(|((group, channel), value)| Message::Bend {
@@ -318,12 +320,12 @@ fn channel_message() -> impl Strategy<Value = Message<'static>> {
     ]
 }
 
-/// Whether two messages say the same, values within what 32 bits and an
-/// `f32` keep.
+/// Returns whether two messages are the same, within the precision that 32
+/// bits and an `f32` keep.
 fn alike(sent: &Message<'_>, back: &Message<'_>) -> bool {
     let near = |a: f32, b: f32| (a - b).abs() <= 1e-6;
     match (sent, back) {
-        // A note's id is the decoder's to make up.
+        // The decoder makes up a note's id.
         (Message::NoteOn(a), Message::NoteOn(b)) => {
             (a.group, a.channel, a.key) == (b.group, b.channel, b.key)
                 && near(a.velocity, b.velocity)
@@ -357,7 +359,7 @@ fn alike(sent: &Message<'_>, back: &Message<'_>) -> bool {
     }
 }
 
-/// The same message with its values at rest, to compare the rest.
+/// Returns the message with its values at rest, to compare its other fields.
 fn shape(message: Message<'_>) -> Message<'_> {
     match message {
         Message::NotePitch { note, .. } => Message::NotePitch {
@@ -446,8 +448,8 @@ proptest! {
         ..ProptestConfig::default()
     })]
 
-    /// A message sent and read back says what it said, its values within
-    /// what 32 bits and an `f32` keep.
+    /// A message sent and read back is unchanged, its values within the
+    /// precision that 32 bits and an `f32` keep.
     #[test]
     fn a_message_sent_reads_back_as_itself(message in any_message()) {
         let mut sent = EventList::with_capacity(4);
@@ -462,7 +464,7 @@ proptest! {
         }
     }
 
-    /// A SysEx of any length sent and read back is itself.
+    /// A SysEx of any length, sent and read back, is unchanged.
     #[test]
     fn a_sysex_sent_reads_back_whole(data in prop::collection::vec(0_u8..0x80, 0..40)) {
         let mut sent = EventList::with_capacity(16);
@@ -474,7 +476,7 @@ proptest! {
     }
 }
 
-/// `data` sent as SysEx on `group`, its packets.
+/// Returns the packets that carry `data` as SysEx on `group`.
 fn sysex_packets(group: Group, data: &[u8]) -> Vec<Event> {
     let mut sent = EventList::with_capacity(16);
     MidiOut::new(&mut sent).send(0, Message::SysEx { group, data });
@@ -513,7 +515,7 @@ fn a_sysex_split_across_two_blocks_comes_whole_in_the_second() {
 fn a_new_sysex_on_its_group_cuts_the_one_under_way_short() {
     let (first, second) = ([1_u8; 12], [2_u8; 3]);
     let mut packets = sysex_packets(Group::FIRST, &first);
-    // The first's start alone, then the second whole.
+    // The first SysEx's start only, then the whole second one.
     packets.truncate(1);
     packets.extend(sysex_packets(Group::FIRST, &second));
     let mut list = MidiList::new();

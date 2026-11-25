@@ -1,18 +1,17 @@
-//! The one clock every device's messages are stamped on.
+//! The one clock that every device's messages are timestamped on.
 
 use std::sync::OnceLock;
 use std::time::Duration;
 
-/// When the clock started: the first look at it in this process.
+/// The clock's start, the first time this process reads it.
 static START: OnceLock<std::time::Instant> = OnceLock::new();
 
-/// A moment on the clock every device's messages are stamped on, in
-/// nanoseconds since the process first looked at it: the system's monotonic
-/// clock, which on Windows is the performance counter.
+/// A moment on the clock of every device's messages, in nanoseconds since
+/// the process first read it.
 ///
-/// A block's reader takes the time its block starts with
-/// [`now`](Self::now), and places each message by how long before it the
-/// message came.
+/// It is the system's monotonic clock, the performance counter on Windows.
+/// A reader takes its block's start with [`now`](Self::now), and places each
+/// message by how long before that it came.
 ///
 /// # Examples
 ///
@@ -31,24 +30,27 @@ static START: OnceLock<std::time::Instant> = OnceLock::new();
 pub struct Instant(u64);
 
 impl Instant {
-    /// Now. Thread: any. Allocates nothing.
+    /// Returns the moment now.
+    ///
+    /// Thread: any. Allocates nothing.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
     pub fn now() -> Instant {
         let elapsed = START.get_or_init(std::time::Instant::now).elapsed();
         Instant(u64::try_from(elapsed.as_nanos()).unwrap_or(u64::MAX))
     }
 
-    /// The moment `nanos` nanoseconds after the clock started.
+    /// Returns the moment `nanos` nanoseconds after the clock started.
     pub const fn from_nanos(nanos: u64) -> Instant {
         Instant(nanos)
     }
 
-    /// How many nanoseconds after the clock started it is.
+    /// Returns the nanoseconds since the clock started.
     pub const fn nanos(self) -> u64 {
         self.0
     }
 
-    /// The moment `by` later, or the clock's last moment for one past it.
+    /// Returns the moment `by` later, or the clock's last moment if that is
+    /// past it.
     pub const fn after(self, by: Duration) -> Instant {
         let nanos = by.as_nanos();
         let nanos = if nanos > u64::MAX as u128 {
@@ -59,7 +61,7 @@ impl Instant {
         Instant(self.0.saturating_add(nanos))
     }
 
-    /// How long after `earlier` it is: zero if it is not after it.
+    /// Returns how long after `earlier` this is, or zero if it is not later.
     pub const fn since(self, earlier: Instant) -> Duration {
         Duration::from_nanos(self.0.saturating_sub(earlier.0))
     }

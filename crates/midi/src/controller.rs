@@ -1,7 +1,8 @@
-//! The controllers MIDI 1.0 defines, as MIDI 2.0 keeps them: each a
-//! [`Controller`] typed by the value it carries, so a pan reads as
-//! [`Centred`] and the damper as a [`Pedal`], and by [`number`] for a match
-//! on a message, with their names.
+//! MIDI 1.0's controllers, as MIDI 2.0 keeps them.
+//!
+//! Each is a [`Controller`] typed by its value, so a pan reads as
+//! [`Centred`] and the damper as a [`Pedal`]. [`number`] has their numbers
+//! for a match on a message, and [`name`] has their names.
 //!
 //! # Examples
 //!
@@ -27,13 +28,13 @@ use hapto_ump::scale::up_7_to_32;
 use crate::message::{Message, NoteKey};
 use crate::values::{Centred, Channel, Group, Pedal, held};
 
-/// A controller, typed by the value it carries: a channel's control
-/// change, or a registered or assignable controller (MIDI 1.0's RPN and
-/// NRPN), with the value it rests at before any message sets it.
+/// A controller, typed by its value, with the value that it rests at before
+/// any message sets it.
 ///
-/// MIDI 1.0's own are in this module; a profile's come with it, and a
-/// plugin names its own, an assignable block of its product's say, with the
-/// value type of its own if it has one.
+/// It is a control change, or a registered or assignable controller (MIDI
+/// 1.0's RPN and NRPN). MIDI 1.0's are in this module, and a profile's come
+/// with the profile. A plugin defines its own, such as an assignable block
+/// for its product, with its own value type if it needs one.
 ///
 /// # Examples
 ///
@@ -42,7 +43,7 @@ use crate::values::{Centred, Channel, Group, Pedal, held};
 /// use hapto_midi::{Channel, Group, Message, MidiOut, Pedal};
 /// use hapto_ump::EventList;
 ///
-/// // A plugin's own: its cutoff, on assignable controller 1/7, half open.
+/// // The plugin's cutoff, on assignable controller 1/7, half open.
 /// const CUTOFF: Controller<f32> = Controller::assignable(1, 7, 0.5);
 ///
 /// fn hear(message: &Message<'_>, cutoff: &mut f32, held: &mut bool) {
@@ -58,7 +59,7 @@ use crate::values::{Centred, Channel, Group, Pedal, held};
 /// hear(&controller::SUSTAIN.message(Group::FIRST, Channel::FIRST, Pedal::DOWN), &mut cutoff, &mut held);
 /// assert!(held);
 ///
-/// // Sent, it is the message's packets.
+/// // Sending it writes its packets.
 /// let mut sent = EventList::with_capacity(4);
 /// let message = CUTOFF.message(Group::FIRST, Channel::FIRST, 0.25);
 /// MidiOut::new(&mut sent).send(0, message);
@@ -70,7 +71,7 @@ pub struct Controller<T> {
     default: T,
 }
 
-/// Where a [`Controller`] is in MIDI.
+/// A [`Controller`]'s address in MIDI.
 ///
 /// # Examples
 ///
@@ -86,17 +87,17 @@ pub struct Controller<T> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum Address {
-    /// A control change, 0 to 127, and a note's own registered controller
-    /// of the same number.
+    /// A control change, 0 to 127, and the registered per-note controller of
+    /// the same number.
     Control(u8),
-    /// A registered controller, MIDI 1.0's RPN.
+    /// A registered controller (MIDI 1.0's RPN).
     Registered {
         /// The bank, 0 to 127.
         bank: u8,
         /// The controller in its bank, 0 to 127.
         index: u8,
     },
-    /// An assignable controller, MIDI 1.0's NRPN, which the instrument
+    /// An assignable controller (MIDI 1.0's NRPN), which the instrument
     /// defines.
     Assignable {
         /// The bank, 0 to 127.
@@ -106,16 +107,17 @@ pub enum Address {
     },
 }
 
-/// A value a [`Controller`] carries, as a message holds it: a number from 0
-/// to 1. A plugin implements it for a type of its own, an enum of a
-/// controller's positions say.
+/// A [`Controller`]'s value, which a message holds as a number from 0 to 1.
+///
+/// A plugin implements it for its own type, such as an enum of a
+/// controller's positions.
 ///
 /// # Examples
 ///
 /// ```
 /// use hapto_midi::controller::{Controller, ControllerValue};
 ///
-/// /// A three-way switch, as a plugin defines it.
+/// /// A plugin's three-way switch.
 /// #[derive(Debug, Clone, Copy, PartialEq)]
 /// enum Mode {
 ///     Low,
@@ -146,10 +148,10 @@ pub enum Address {
 /// assert_eq!(MODE.default(), Mode::Mid);
 /// ```
 pub trait ControllerValue: Copy {
-    /// The value `unit`, from 0 to 1, stands for.
+    /// Returns the value that `unit`, from 0 to 1, stands for.
     fn from_unit(unit: f32) -> Self;
 
-    /// The number from 0 to 1 that stands for `self`.
+    /// Returns the number from 0 to 1 that stands for `self`.
     fn to_unit(self) -> f32;
 }
 
@@ -164,10 +166,10 @@ impl ControllerValue for f32 {
     }
 }
 
-/// -1 to 1, 0 at the middle, MIDI 2.0's centre.
+/// From -1 to 1, with 0 at MIDI 2.0's centre.
 impl ControllerValue for Centred {
     fn from_unit(unit: f32) -> Self {
-        // Not a number is the centre, as `Centred::new` reads it.
+        // `Centred::new` returns the centre for NaN.
         Centred::new(unit.mul_add(2.0, -1.0))
     }
 
@@ -176,7 +178,7 @@ impl ControllerValue for Centred {
     }
 }
 
-/// On from the middle up, as MIDI 1.0 reads a switch.
+/// On from the middle up, like a MIDI 1.0 switch.
 impl ControllerValue for bool {
     fn from_unit(unit: f32) -> Self {
         unit >= 0.5
@@ -199,7 +201,7 @@ impl ControllerValue for Pedal {
 }
 
 impl<T: Copy> Controller<T> {
-    /// Control change `number`, 0 to 127, at rest at `default`.
+    /// Returns control change `number`, 0 to 127, at rest at `default`.
     pub const fn control(number: u8, default: T) -> Self {
         Controller {
             address: Address::Control(number),
@@ -207,13 +209,14 @@ impl<T: Copy> Controller<T> {
         }
     }
 
-    /// Registered controller `index` of `bank`, at rest at `default`.
+    /// Returns registered controller `index` of `bank`, at rest at
+    /// `default`.
     ///
     /// # Panics
     ///
-    /// For registered controller 0/0, the pitch bend's range, which the
-    /// decoder reads as [`Message::BendRange`], so a controller of it would
-    /// never read: read and send that message instead.
+    /// For registered controller 0/0, the pitch bend range, because the
+    /// decoder reads it as [`Message::BendRange`]. Read and send that message
+    /// instead.
     pub const fn registered(bank: u8, index: u8, default: T) -> Self {
         assert!(
             bank != 0 || index != 0,
@@ -225,7 +228,8 @@ impl<T: Copy> Controller<T> {
         }
     }
 
-    /// Assignable controller `index` of `bank`, at rest at `default`.
+    /// Returns assignable controller `index` of `bank`, at rest at
+    /// `default`.
     pub const fn assignable(bank: u8, index: u8, default: T) -> Self {
         Controller {
             address: Address::Assignable { bank, index },
@@ -233,30 +237,35 @@ impl<T: Copy> Controller<T> {
         }
     }
 
-    /// Where it is in MIDI.
+    /// Returns its address in MIDI.
     pub const fn address(&self) -> Address {
         self.address
     }
 
-    /// What it rests at before a message sets it, as a channel resets it.
+    /// Returns its value before a message sets it, or after a channel resets
+    /// it.
     pub const fn default(&self) -> T {
         self.default
     }
 }
 
 impl<T: ControllerValue> Controller<T> {
-    /// Its value, if `message` is a channel's message that sets it: on any
-    /// group and channel, which [`read_channel`](Self::read_channel) names
-    /// too. A note's own controller is read with
-    /// [`read_note`](Self::read_note).
+    /// Returns its value if `message` is a channel's message that sets it, on
+    /// any group and channel.
+    ///
+    /// [`read_channel`](Self::read_channel) also returns the group and
+    /// channel, and [`read_note`](Self::read_note) reads a per-note
+    /// controller.
     pub fn read(&self, message: &Message<'_>) -> Option<T> {
         let (address, value) = message.controller()?;
         (address == self.address).then(|| T::from_unit(value))
     }
 
-    /// Its value, and the group and channel it came on, if `message` is a
-    /// channel's message that sets it: for a plugin that keeps a value for
-    /// each channel, in a [`PerChannel`](crate::PerChannel) say.
+    /// Returns its value, with the message's group and channel, if `message`
+    /// is a channel's message that sets it.
+    ///
+    /// It's for a plugin that keeps a value for each channel, such as in a
+    /// [`PerChannel`](crate::PerChannel).
     ///
     /// # Examples
     ///
@@ -278,8 +287,9 @@ impl<T: ControllerValue> Controller<T> {
         Some((message.group(), message.channel()?, value))
     }
 
-    /// Its value for one note, and the note, if `message` is a note's own
-    /// registered controller of its number: a key's own brightness or pan.
+    /// Returns its value for one note, and the note, if `message` is the
+    /// registered per-note controller of the same number, such as a key's
+    /// brightness or pan.
     pub fn read_note(&self, message: &Message<'_>) -> Option<(NoteKey, T)> {
         match (self.address, message) {
             (
@@ -294,8 +304,8 @@ impl<T: ControllerValue> Controller<T> {
         }
     }
 
-    /// The message that sets it to `value` on `group` and `channel`, for
-    /// [`MidiOut::send`](crate::MidiOut::send).
+    /// Returns the message that sets it to `value` on `group` and `channel`,
+    /// for [`MidiOut::send`](crate::MidiOut::send).
     pub fn message(&self, group: Group, channel: Channel, value: T) -> Message<'static> {
         let value = value.to_unit();
         match self.address {
@@ -323,8 +333,8 @@ impl<T: ControllerValue> Controller<T> {
     }
 }
 
-/// What MIDI 1.0's 7-bit `value` is, from 0 to 1, upgraded as a MIDI 1.0
-/// device's is: so a default reads as a keyboard's value of it does.
+/// Returns MIDI 1.0's 7-bit `value` from 0 to 1, upgraded as a device's
+/// value is, so a default matches a keyboard's.
 const fn sent(value: u8) -> f32 {
     (up_7_to_32(value) as f64 / u32::MAX as f64) as f32
 }
@@ -342,7 +352,7 @@ pub const BALANCE: Controller<Centred> = Controller::control(number::BALANCE, Ce
 /// Where the sound sits between the speakers, -1 left to 1 right, at the
 /// middle.
 pub const PAN: Controller<Centred> = Controller::control(number::PAN, Centred::CENTRE);
-/// The expression pedal, a fraction of the volume, all of it.
+/// The expression pedal, a fraction of the volume, at full.
 pub const EXPRESSION: Controller<f32> = Controller::control(number::EXPRESSION, 1.0);
 /// The damper pedal, up.
 pub const SUSTAIN: Controller<Pedal> = Controller::control(number::SUSTAIN, Pedal::UP);
@@ -356,19 +366,18 @@ pub const SOFT: Controller<Pedal> = Controller::control(number::SOFT, Pedal::UP)
 pub const LEGATO: Controller<bool> = Controller::control(number::LEGATO, false);
 /// The second hold pedal, off.
 pub const HOLD_2: Controller<bool> = Controller::control(number::HOLD_2, false);
-/// The fifth sound controller: brightness, MPE's timbre, at the middle.
+/// The fifth sound controller, brightness (MPE's timbre), at the middle.
 pub const BRIGHTNESS: Controller<Centred> =
     Controller::control(number::BRIGHTNESS, Centred::CENTRE);
-/// Registered controller 1: the channel's fine tuning, a semitone either
+/// The channel's fine tuning (registered controller 1), a semitone either
 /// way, at none.
 pub const FINE_TUNING: Controller<Centred> = Controller::registered(0, 1, Centred::CENTRE);
-/// Registered controller 2: the channel's coarse tuning, from 64 semitones
+/// The channel's coarse tuning (registered controller 2), from 64 semitones
 /// down to 63 up, at none.
 pub const COARSE_TUNING: Controller<Centred> = Controller::registered(0, 2, Centred::CENTRE);
 
-/// MIDI 1.0's controllers by number, for a match on a message's controller
-/// and for the ones that are commands rather than values, such as all notes
-/// off.
+/// MIDI 1.0's controllers by number, for a match on a message and for the
+/// commands, such as all notes off.
 ///
 /// # Examples
 ///
@@ -385,7 +394,7 @@ pub const COARSE_TUNING: Controller<Centred> = Controller::registered(0, 2, Cent
 /// # let _ = stops_every_note;
 /// ```
 pub mod number {
-    /// Bank select's first half, which a program change carries in MIDI 2.0.
+    /// The bank select high byte, which MIDI 2.0's program change carries.
     pub const BANK_SELECT: u8 = 0;
     /// The modulation wheel.
     pub const MOD_WHEEL: u8 = 1;
@@ -399,7 +408,7 @@ pub mod number {
     pub const BALANCE: u8 = 8;
     /// Where the sound sits between the speakers.
     pub const PAN: u8 = 10;
-    /// The expression pedal: a fraction of the volume.
+    /// The expression pedal, a fraction of the volume.
     pub const EXPRESSION: u8 = 11;
     /// The damper pedal.
     pub const SUSTAIN: u8 = 64;
@@ -413,7 +422,7 @@ pub mod number {
     pub const LEGATO: u8 = 68;
     /// The second hold pedal.
     pub const HOLD_2: u8 = 69;
-    /// The fifth sound controller: brightness, MPE's timbre.
+    /// The fifth sound controller, brightness (MPE's timbre).
     pub const BRIGHTNESS: u8 = 74;
     /// All sound off, at once.
     pub const ALL_SOUND_OFF: u8 = 120;
@@ -423,8 +432,10 @@ pub mod number {
     pub const ALL_NOTES_OFF: u8 = 123;
 }
 
-/// The controller's name as MIDI 1.0 gives it, or `None` for one it leaves
-/// undefined. Controllers 32 to 63 are the low halves of 0 to 31.
+/// Returns a controller's name in MIDI 1.0, or `None` if MIDI 1.0 leaves it
+/// undefined.
+///
+/// Controllers 32 to 63 are the low bytes of 0 to 31.
 ///
 /// # Examples
 ///

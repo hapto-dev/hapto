@@ -45,9 +45,8 @@ pub(crate) fn write_param_map(workspace: &Workspace, plugin: &Plugin) -> Result<
     )
 }
 
-/// The `page_params` test of `package`, run from `root`, with `ci` the value
-/// of `CI`, as [`generating_test`] runs it: it writes the map, or in CI
-/// checks it.
+/// Returns the `page_params` test of `package`, run from `root` by
+/// [`generating_test`] with `ci` as the value of `CI`.
 fn param_map_test(package: &str, root: &Path, ci: Option<&OsStr>) -> Command {
     generating_test(package, "page_params", root, ci)
 }

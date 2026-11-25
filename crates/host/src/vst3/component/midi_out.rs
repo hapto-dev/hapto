@@ -1,23 +1,24 @@
-//! The component's MIDI out: what the plugin sent in a block, written to
-//! the host's output event list in VST3's own events.
+//! Writes what the plugin sent in a block to the host's output event list as
+//! VST3's own events.
 //!
-//! A note goes out as VST3's note events, under the host's `noteId` where
-//! the host named it and under none (-1) where the plugin made it up, and a
-//! note's pressure as a poly pressure event. A note's own registered
-//! controllers that VST3's six note expressions stand for go out as note
-//! expressions, for a note its host named: the absolute pitch as the tuning,
-//! from the note-on's pitch. VST3 carries everything else only as MIDI 1.0
-//! controllers, so it is downgraded by the specification's Default
-//! Translation, and a system message as the legacy controller event VST3
-//! numbers it by. A SysEx goes out whole, from room the component makes
-//! when it is built. What VST3 has no event for is dropped and counted: a
-//! note's assignable controllers, its pitch bend and its management, a
-//! note's own message for a note no host named, the timing clock and a
-//! reset.
+//! - A note goes out as note events under the host's `noteId`, or under -1 if
+//!   the plugin made it up, and its pressure as a poly pressure event.
+//! - A note's registered controllers that VST3's six note expressions stand
+//!   for go out as expressions, for a note with a host id, with absolute
+//!   pitch as the tuning from the note-on's pitch.
+//! - Everything else goes out as MIDI 1.0 controllers, downgraded by the
+//!   specification's Default Translation, and a system message as the legacy
+//!   controller event under VST3's number for it.
+//! - A SysEx message goes out whole, from room allocated when the component
+//!   is built.
+//!
+//! A note's assignable controllers, pitch bend and management, a note's own
+//! message for a note without a host id, the timing clock and a reset have no
+//! VST3 event, so they are dropped and counted.
 
-// Audio-path code: a panic here ends a host, so indexing, unwrap, expect,
-// panic and unchecked arithmetic are refused, and a site that is provably
-// safe says why in an `#[expect]`.
+// A panic in audio-path code ends the host, so these lints reject indexing,
+// unwrap, expect, panic and unchecked arithmetic. A provably safe site gives
+// its reason in an `#[expect]`.
 #![cfg_attr(
     not(test),
     deny(
@@ -50,22 +51,23 @@ const PRESSURE: uint8 = ControllerNumbers_::kAfterTouch as uint8;
 const BEND: uint8 = ControllerNumbers_::kPitchBend as uint8;
 const PROGRAM: uint8 = ControllerNumbers_::kCtrlProgramChange as uint8;
 
-/// What the component keeps to send a plugin's MIDI, from block to block.
+/// What the component keeps from block to block to send a plugin's MIDI.
 pub(crate) struct Out {
     /// The notes the plugin sent under a host's id, with their key and
     /// tuning, so a tuning goes out from its note-on's pitch.
     notes: Notes,
-    /// A SysEx being joined, which may span blocks.
+    /// A SysEx message being joined, which can run across blocks.
     joining: SysExJoin,
-    /// The block's whole SysEx messages, which the host may read until
-    /// `process` returns, so a block's room is cleared at the next one.
+    /// The block's whole SysEx messages, which the host can read until
+    /// `process` returns, so they are cleared at the next block.
     block: Vec<u8>,
-    /// What VST3 had no event for, or the host refused, since it was made.
+    /// How many messages VST3 had no event for, or the host refused, since
+    /// `Out` was made.
     lost: u64,
 }
 
 impl Out {
-    /// Room for a plugin that `sends` MIDI; none for one that does not.
+    /// Allocates room for a plugin that `sends` MIDI, or none.
     pub(crate) fn new(sends: bool) -> Self {
         let room = |bytes| if sends { bytes } else { 0 };
         Out {
@@ -76,13 +78,14 @@ impl Out {
         }
     }
 
-    /// Forgets the notes and any SysEx under way, as at an activation.
+    /// Clears the notes and any SysEx message under way, as at an activation.
     pub(crate) fn clear(&mut self) {
         self.notes.clear();
         self.joining.reset();
     }
 
-    /// What VST3 had no event for, or the host refused, since it was made.
+    /// Returns how many messages VST3 had no event for, or the host refused,
+    /// since `Out` was made.
     #[cfg(test)]
     pub(crate) fn lost(&self) -> u64 {
         self.lost
@@ -97,8 +100,7 @@ impl std::fmt::Debug for Out {
     }
 }
 
-/// Writes `sent`, what the plugin sent in a block, to `events`, in the order
-/// the plugin sent it.
+/// Writes `sent`, the plugin's packets from a block, to `events` in order.
 ///
 /// # Safety
 ///
@@ -107,15 +109,15 @@ impl std::fmt::Debug for Out {
 pub(super) unsafe fn write_events(events: ComRef<'_, IEventList>, sent: &[Event], out: &mut Out) {
     out.block.clear();
     let mut add = |mut event: VstEvent| {
-        // SAFETY: the caller's contract; the host copies the event, and a
-        // SysEx's bytes stay in `out.block` until the next block.
+        // SAFETY: the caller's contract. The host copies the event, and a
+        // SysEx message's bytes stay in `out.block` until the next block.
         unsafe { events.addEvent(&mut event) == kResultOk }
     };
     let downgrade = Downgrade::new();
     let mut lost = 0_u64;
     for packet in sent {
-        // Every packet goes through the join, so one on a SysEx's group
-        // ends it.
+        // Every packet goes through the join, so a packet on a SysEx
+        // message's group ends it.
         let joined = out.joining.push(packet);
         let mut dropped = joined.dropped;
         if packet.message_type() == MessageType::SYSEX7 {
@@ -149,7 +151,7 @@ pub(super) unsafe fn write_events(events: ComRef<'_, IEventList>, sent: &[Event]
     out.lost = out.lost.saturating_add(lost);
 }
 
-/// The host's name for the packet's note, or -1, VST3's none.
+/// Returns the host's id for the packet's note, or -1 for none, as in VST3.
 fn note_id(packet: &Event) -> int32 {
     match packet.origin {
         Origin::Note { id } => int32::try_from(id).unwrap_or(-1),
@@ -157,16 +159,16 @@ fn note_id(packet: &Event) -> int32 {
     }
 }
 
-/// What a MIDI 2.0 packet comes to in VST3's own events.
+/// What a MIDI 2.0 packet becomes in VST3's own events.
 enum Native {
     /// VST3's event for it.
     Event(VstEvent),
-    /// Nothing: VST3 has no event for it, or no note to put it on.
+    /// Nothing, because VST3 has no event for it or no note to put it on.
     Lost,
 }
 
-/// A MIDI 2.0 note, a note's pressure or its own message, in VST3's own
-/// events; `None` for any other packet, which goes out downgraded.
+/// Converts a MIDI 2.0 note, a note's pressure or its own message to a VST3
+/// event, or returns `None` for another packet, which goes out downgraded.
 fn native(packet: &Event, notes: &mut Notes) -> Option<Native> {
     let voice = packet.channel_voice()?;
     let (offset, channel, id) = (packet.offset, voice.channel, note_id(packet));
@@ -187,9 +189,9 @@ fn native(packet: &Event, notes: &mut Notes) -> Option<Native> {
                     cents,
                 });
             }
-            // A host that turns it into MIDI 1.0 rounds a velocity under
-            // half a step to 0, a note-off, so it goes out at the least
-            // MIDI 1.0 has, as the Default Translation does.
+            // A host that converts it to MIDI 1.0 rounds a velocity below
+            // half a step to 0, a note-off, so the velocity goes out at least
+            // at MIDI 1.0's lowest step, as the Default Translation does.
             let velocity = (scale::unit_of_16(velocity) as f32).max(1.0 / 127.0);
             Native::Event(note_on(offset, channel, note, velocity, cents, id))
         }
@@ -223,8 +225,8 @@ fn native(packet: &Event, notes: &mut Notes) -> Option<Native> {
     })
 }
 
-/// A note-on: its velocity 0 to 1, its tuning in cents from its key, and
-/// its host's id, or -1 for none.
+/// Returns a note-on with velocity from 0 to 1, tuning in cents from its
+/// key, and the host's `id`, or -1 for none.
 fn note_on(offset: u32, channel: u8, pitch: u8, velocity: f32, tuning: f32, id: int32) -> VstEvent {
     let mut event = blank(offset, NOTE_ON);
     event.__field0.noteOn = NoteOnEvent {
@@ -238,7 +240,7 @@ fn note_on(offset: u32, channel: u8, pitch: u8, velocity: f32, tuning: f32, id: 
     event
 }
 
-/// A note-off, as [`note_on`] takes a note-on.
+/// Returns a note-off, with the arguments that [`note_on`] takes.
 fn note_off(
     offset: u32,
     channel: u8,
@@ -258,7 +260,7 @@ fn note_off(
     event
 }
 
-/// A note's pressure, 0 to 1.
+/// Returns a poly pressure event, with `pressure` from 0 to 1.
 fn poly_pressure(offset: u32, channel: u8, pitch: u8, pressure: f32, id: int32) -> VstEvent {
     let mut event = blank(offset, POLY_PRESSURE);
     event.__field0.polyPressure = PolyPressureEvent {
@@ -270,8 +272,8 @@ fn poly_pressure(offset: u32, channel: u8, pitch: u8, pressure: f32, id: int32) 
     event
 }
 
-/// A legacy controller out: a MIDI 1.0 controller, or a system message, by
-/// the number VST3 gives it, its values held to 7 bits.
+/// Returns a legacy controller output event under VST3's `number` for a
+/// MIDI 1.0 controller or system message, with values masked to 7 bits.
 fn legacy_cc(offset: u32, channel: u8, number: uint8, value: u8, value2: u8) -> VstEvent {
     let mut event = blank(offset, LEGACY_CC_OUT);
     event.__field0.midiCCOut = LegacyMIDICCOutEvent {
@@ -283,8 +285,8 @@ fn legacy_cc(offset: u32, channel: u8, number: uint8, value: u8, value2: u8) -> 
     event
 }
 
-/// A note's registered controller as the note expression it stands for,
-/// for a note its host named; `None` for any other.
+/// Converts a note's registered controller to its note expression, or
+/// returns `None` if the note has no host id or the controller no expression.
 fn expression(
     id: int32,
     note: u8,
@@ -304,9 +306,11 @@ fn expression(
     })
 }
 
-/// A packet the downgrade sent, as the VST3 event it is: MIDI 1.0 as note
-/// events and controllers, and a system message as its controller; `None`
-/// for one VST3 has no event for.
+/// Converts a packet from the downgrade to its VST3 event, or returns `None`
+/// if VST3 has none.
+///
+/// MIDI 1.0 becomes note events and controllers, and a system message its
+/// controller.
 fn midi_1(packet: &Event) -> Option<VstEvent> {
     match packet.message_type() {
         MessageType::MIDI1 => midi_1_event(packet.offset, packet.midi1_voice()?),
@@ -315,15 +319,17 @@ fn midi_1(packet: &Event) -> Option<VstEvent> {
     }
 }
 
-/// A system message, from its packet's first word, as the legacy
-/// controller event VST3 numbers it by; `None` for the timing clock and a
-/// reset, which VST3 has no number for, and for anything undefined.
+/// Converts a system message, from its packet's first word, to the legacy
+/// controller event under VST3's number for it.
+///
+/// Returns `None` for the timing clock, a reset and anything undefined,
+/// which VST3 has no number for.
 fn system_event(offset: u32, word: u32) -> Option<VstEvent> {
     let [_, status, first, second] = word.to_be_bytes();
     let (first, second) = (first & 0x7F, second & 0x7F);
     let (number, value, value2) = match status {
         0xF1 => (ControllerNumbers_::kCtrlQuarterFrame, first, 0),
-        // The song position's low 7 bits first, as the bend's.
+        // The song position's low 7 bits go first, as the pitch bend's do.
         0xF2 => (ControllerNumbers_::kSystemSongPointer, first, second),
         0xF3 => (ControllerNumbers_::kSystemSongSelect, first, 0),
         0xF6 => (ControllerNumbers_::kSystemTuneRequest, 0, 0),
@@ -336,7 +342,8 @@ fn system_event(offset: u32, word: u32) -> Option<VstEvent> {
     Some(legacy_cc(offset, 0, number as uint8, value, value2))
 }
 
-/// A MIDI 1.0 message as VST3 carries it; `None` for one it does not.
+/// Converts a MIDI 1.0 message to its VST3 event, or returns `None` if VST3
+/// doesn't carry it.
 fn midi_1_event(offset: u32, voice: Midi1Voice) -> Option<VstEvent> {
     let channel = voice.channel;
     let unit = |value: u8| f32::from(value) / 127.0;
@@ -363,8 +370,8 @@ fn midi_1_event(offset: u32, voice: Midi1Voice) -> Option<VstEvent> {
     })
 }
 
-/// A whole SysEx, framed by its F0 and F7, out from the block's room;
-/// false when the room or the host refuses it.
+/// Sends a whole SysEx message, framed by F0 and F7, from the block's room,
+/// and returns false if it doesn't fit or the host refuses it.
 fn sysex(
     block: &mut Vec<u8>,
     framed: &[u8],
@@ -375,7 +382,7 @@ fn sysex(
     if start.saturating_add(framed.len()) > block.capacity() {
         return false;
     }
-    // Within the room, so it never allocates.
+    // The message fits, so this never allocates.
     block.extend_from_slice(framed);
     let whole = block.get(start..).unwrap_or(&[]);
     let mut event = blank(offset, DATA);

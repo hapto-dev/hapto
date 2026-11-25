@@ -315,8 +315,8 @@ impl Faults {
         })
     }
 
-    /// Runs `body`, recording a panic in it as [`guard`](Self::guard) does,
-    /// and answers whether it panicked.
+    /// Runs `body`, records a panic in it as [`guard`](Self::guard) does, and
+    /// returns whether it panicked.
     pub(crate) fn caught(&self, body: impl FnOnce()) -> bool {
         self.guard(true, || {
             body();
