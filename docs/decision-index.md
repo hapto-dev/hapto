@@ -164,7 +164,10 @@ move its line here; when a decision gains code, add one.
 [Record section](decisions.md#d16-where-the-webview-pieces-live)
 
 - `crates/webview/Cargo.toml`: module
-- `crates/webview/build.rs`: module
+- `crates/webview/build.rs`: module, `SYSTEMS`
+- `crates/testkit/src/systems.rs`: module, `assert_target_tables_match`
+- test `crates/webview/src/lib.rs`: `the_dependency_tables_name_the_systems_that_the_build_script_lists`
+- test `crates/testkit/src/systems.rs`: `tables_that_name_the_listed_systems_in_any_order_agree`, `a_table_for_a_system_that_is_not_listed_fails`, `a_listed_system_with_no_table_fails`, `an_empty_list_fails`
 - `scripts/check-core-deps.py`: `LAYERS`
 
 ### D17. Learning notes
@@ -1148,6 +1151,7 @@ move its line here; when a decision gains code, add one.
 - `crates/host/src/vst3/test_host/view.rs`: `TestView`, `Frame`
 - `crates/host/src/vst3/test_host/window.rs`: `HiddenWindow`
 - `crates/host/src/vst3/test_host/window/win32.rs`: `Window::hidden`, `Window::child`
+- `crates/host/src/vst3/test_host/window/x11.rs`: module, `Window::hidden`, `Window::child`, `Window::shown_children`
 - test `crates/host/src/vst3/tests.rs`: `off_windows_a_plugin_with_an_editor_offers_no_view`
 - test `crates/host/src/vst3/view/tests.rs`: module, `the_instance_released_before_its_view_lives_until_the_view_goes`, `a_view_released_while_attached_closes_its_editor`, `an_editor_that_panics_as_it_drops_is_a_fault_and_the_host_goes_on`, `an_editor_that_panics_in_close_and_as_it_drops_is_two_faults_and_the_host_goes_on`, `a_view_call_from_another_thread_is_refused_and_counted`, `an_editor_that_fails_to_open_is_a_fault_with_its_reason`, `an_editor_that_panics_in_open_is_a_fault_and_stays_closed`, `a_resize_and_a_tick_from_inside_open_wait_until_it_returns`, `a_removal_from_inside_open_closes_the_editor_once_it_returns`, `an_attach_after_a_removal_inside_open_is_refused_and_counted`, `an_attach_while_the_editor_closes_is_refused_and_counted`, `an_attach_after_a_removal_inside_a_tick_is_refused_and_counted`, `a_view_the_host_releases_from_inside_open_lets_its_editor_go_after_it`, `a_new_scale_while_open_asks_the_frame_for_the_editors_size_there`, `a_resize_reaches_the_editor_in_logical_pixels`
 
@@ -1156,14 +1160,17 @@ move its line here; when a decision gains code, add one.
 [Record section](decisions.md#d102-a-pages-files-and-a-build-without-them)
 
 - `crates/webview/src/assets.rs`: `Asset`, `serve`, `content_type`, `page_url`, `dev_url`, `SCHEME`
+- `crates/webview/src/wry_page.rs`: `builder`
 - `crates/webview/src/platform/windows.rs`: `WebView2::ORIGIN`
+- `crates/webview/src/helper.rs`: `ORIGIN`
 - `crates/webview/src/lib.rs`: module, `Page`, `Page::into_editor`
 - `examples/gain/build.rs`: `BUILT`, `main`
 - `examples/gain/src/page.rs`: module, `PAGE`, `editor`
 - `.github/workflows/ci.yml`: `page:`
 - test `crates/webview/src/lib.rs`: `a_page_with_no_files_is_an_editor_only_where_a_dev_server_serves_it`
-- test `crates/webview/src/assets.rs`: `the_root_and_each_file_are_served_with_their_content_type`, `anything_else_is_not_found`, `the_embedded_page_unless_a_dev_server_is_given`
+- test `crates/webview/src/assets.rs`: `the_root_and_each_file_are_served_with_their_content_type`, `anything_else_is_not_found`, `the_embedded_page_at_the_scheme_unless_a_dev_server_is_given`
 - test `crates/webview/src/platform/windows.rs`: `the_page_built_in_is_the_page_at_webview2s_origin`
+- test `crates/webview/src/helper.rs`: `the_page_built_in_is_the_page_at_webkitgtks_origin`
 - test `examples/gain/tests/page.rs`: `the_built_page_renders_and_calls_the_plugin_once_answered`
 - test `examples/gain/tests/page_params.rs`: `the_pages_parameter_map_matches_the_gains_declarations`
 
@@ -1171,29 +1178,39 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d103-the-webviews-data-folder)
 
-- `crates/host/src/data_folder.rs`: module, `data_folder`, `plugin_folder`, `NoDataFolder`, `user_data`
-- `crates/webview/src/platform.rs`: `WebEngine::FOLDER`
-- `crates/webview/src/platform/windows.rs`: `WebView2::FOLDER`
+- `crates/host/src/data_folder.rs`: module, `data_folder`, `plugin_folder`, `NoDataFolder`, `user_data`, `runtime_folder`, `xdg`
+- `crates/webview/src/platform.rs`: `WebEngine::FOLDER`, `WebEngine::fallback`
+- `crates/webview/src/platform/windows.rs`: `WebView2::FOLDER`, `WebView2::fallback`
+- `crates/webview/src/platform/linux.rs`: `WebKitGtk::FOLDER`, `WebKitGtk::fallback`, `Helper::running`
+- `crates/webview/src/helper.rs`: `DataFolder`, `DataFolder::new`, `lock`, `temporary_folder`, `remove_left_behind`, `LOCK`, `TEMPORARY`
 - `crates/webview/src/editor.rs`: `engine_folder`, `PageEditor::new`, `PageEditor::open`
 - `crates/standalone/src/session.rs`: `Session::open`
 - test `crates/host/src/data_folder/tests.rs`: `each_system_s_data_folder_comes_from_its_own_variable`, `an_unset_empty_or_relative_xdg_folder_falls_back_to_the_home_s`, `an_unset_or_empty_variable_names_no_folder_and_the_error_names_it`, `the_plugins_folder_is_its_own_below_the_base`
 - test `crates/webview/src/editor.rs`: `the_engine_keeps_its_data_in_its_own_folder_in_the_plugins`
 - test `crates/webview/src/platform/windows.rs`: `webview2_s_folder_keeps_its_name`
+- test `crates/webview/src/platform/linux.rs`: `webkitgtk_s_folder_keeps_its_name`
+- test `crates/webview/src/helper.rs`: `a_second_helper_on_a_locked_folder_keeps_its_data_apart_and_removes_it`, `a_temporary_folder_that_no_helper_holds_is_removed`
+- test `crates/host/src/data_folder/tests.rs`: `the_runtime_folder_is_xdg_s_unless_it_is_unset_empty_or_relative`
 - test `crates/webview/tests/hidden_window.rs`: `sixteen_editors_open_in_one_process`
 
 ### D104. The WebView's messages and what it takes
 
 [Record section](decisions.md#d104-the-webviews-messages-and-what-it-takes)
 
-- `crates/webview/src/editor.rs`: module, `ToPage`, `deliver`, `respond`, `answer`, `FAILED`, `PageEditor::open`, `PageEditor::close`, `PageEditor::tick`
+- `crates/webview/src/editor.rs`: module, `ToPage`, `deliver`, `PageEditor::open`, `PageEditor::close`, `PageEditor::tick`
+- `crates/webview/src/wry_page.rs`: module, `builder`, `respond`, `answer`, `FAILED`
 - `crates/webview/src/native.rs`: module, `script`, `Native`, `Native::deliver`, `Native::end_session`, `Native::catch_up`
-- `crates/webview/src/platform.rs`: module, `WebEngine`, `Engine`
-- `crates/webview/src/platform/windows.rs`: `WebView2::ORIGIN`, `WebView2::configure`
-- test `crates/webview/src/editor.rs`: `a_file_is_served_and_a_panic_while_serving_answers_500`, `closing_the_editor_ends_the_pages_session`
+- `crates/webview/src/platform.rs`: module, `WebEngine`
+- `crates/webview/src/platform/windows.rs`: `WebView2::ORIGIN`, `WebView2::open`
+- `crates/webview/src/platform/linux.rs`: `WebKitGtk::open`, `WebKitGtk::evaluate`, `WebKitGtk::poll`, `Helper::receive`, `Helper::route`
+- `crates/webview/src/helper.rs`: `ORIGIN`, `Pages::open`, `NO_CONTEXT_MENU`, `ToEditor::send`, `Pages::apply`, `OpenPage::evaluate`
+- test `crates/webview/src/helper.rs`: `the_page_built_in_is_the_page_at_webkitgtks_origin`
+- test `crates/webview/src/wry_page.rs`: `a_file_is_served_and_a_panic_while_serving_answers_500`
+- test `crates/webview/src/editor.rs`: `closing_the_editor_ends_the_pages_session`
 - test `crates/webview/src/native.rs`: `a_message_reaches_the_transport_as_a_javascript_string`, `a_message_held_while_a_command_runs_keeps_its_place`, `a_close_while_a_command_runs_ends_the_session_as_it_returns`
 - `crates/webview/src/assets.rs`: `is_page`, `origin`
 - `page/src/transport.ts`: `webviewTransport`, `WebViewGlobals`
-- test `crates/webview/tests/hidden_window.rs`: module, `a_page_in_a_hidden_window_is_answered_and_its_set_reaches_the_parameter`, `a_page_that_cannot_start_leaves_nothing_shown_in_the_window`
+- test `crates/webview/tests/hidden_window.rs`: module, `a_page_in_a_hidden_window_is_answered_and_its_set_reaches_the_parameter`, `a_page_whose_data_folder_cant_be_made_fails_to_open_and_shows_nothing`
 - test `crates/webview/src/assets.rs`: `only_the_page_is_the_page`, `a_dev_servers_page_is_the_page_only_when_it_is_given`
 - test `page/test/webviewTransport.test.ts`: `sends each message as JSON text through ipc`, `delivers what the native side posts to every listener, in order`, `carries a client's handshake both ways`
 
@@ -1233,11 +1250,16 @@ move its line here; when a decision gains code, add one.
 - `page/src/keys.ts`: module, `HAND_BACK`, `needsKeys`, `watchKeys`, `KeyScope`, `POINTER_INPUTS`
 - `page/src/transport.ts`: `webviewTransport`, `WebViewGlobals`, `isKeyScope`
 - `crates/webview/src/editor.rs`: module, `from_page`, `hand_back`, `HandBack`, `PageEditor::open`
+- `crates/webview/src/platform.rs`: `WebEngine::focus_host`
+- `crates/webview/src/platform/windows.rs`: `WebView2::focus_host`
+- `crates/webview/src/platform/linux.rs`: `WebKitGtk::focus_host`
+- `crates/webview/src/helper.rs`: `take_keys_at_a_click`, `select_keys`, `Keyboard`, `Keyboard::give_to_page`, `Keyboard::give_to_host`, `Keyboard::send`, `XEmbed`
 - `crates/webview/src/native.rs`: `HAND_BACK`, `Native::in_call`
 - `crates/webview/src/lib.rs`: module
 - `crates/webview/tests/fixtures/shell.json`: module
 - `examples/gain/page/src/main.tsx`: `LabelField`
 - test `crates/webview/src/editor.rs`: `the_hand_back_reaches_no_dispatcher_and_any_other_text_does`, `a_hand_back_with_no_webview_open_does_nothing`, `a_hand_back_while_a_command_runs_is_dropped`
+- test `crates/webview/tests/hidden_window.rs`: `a_key_over_the_page_reaches_the_host_unless_the_page_holds_the_keyboard`
 - test `crates/webview/src/native.rs`: `the_hand_back_is_the_fixtures_text`, `it_is_in_a_call_while_a_command_runs_and_not_after`
 - test `page/test/keys.test.ts`: module
 - test `page/test/webviewTransport.test.ts`: `the hand-back is the shell fixture's text`, `gives the keyboard back through ipc, before the snapshot too, never held by the client`, `watches nothing outside a plugin's window, with no ipc`, `the memory transport gives nothing back`
@@ -1521,6 +1543,20 @@ move its line here; when a decision gains code, add one.
 
 - `crates/standalone/src/device.rs`: `AudioSystem`, `AudioSystem::new`
 - `crates/host/src/data_folder.rs`: `user_data`
+- `crates/webview/Cargo.toml`: `helper`, `hapto-webview-helper`
+- `crates/webview/src/bin/hapto-webview-helper.rs`: module, `main`
+- `crates/webview/src/lib.rs`: `Page::with_hardware_acceleration`
+- `crates/webview/src/platform/linux.rs`: module, `WebKitGtk`, `WebKitGtk::drop`, `Helper`, `Helper::start`, `Helper::open_page`, `Helper::drop`, `HELPERS`, `HOST_ONLY`, `command`, `exits_within`, `x11_window`, `Answer`, `Connection`, `Connection::new`, `Connection::send`, `Connection::answer`, `Connection::route`, `Connection::close_page`, `Connection::stopped`, `Connection::end`, `Connection::drop`, `set_helper`, `program`, `module`, `TIMEOUT`, `CLOSE_TIMEOUT`
+- `crates/webview/src/helper.rs`: module, `run`, `serve`, `connect`, `read_setup`, `start_gtk`, `Pages`, `Pages::run`, `Pages::poll`, `OpenPage`, `OpenPage::place`, `OpenPage::close`, `sync`, `plug_in`, `show`, `is_on_server`, `asset`, `DataFolder`, `lock`
+- `crates/webview/src/wire.rs`: module, `HELPER`, `PROTOCOL`, `Frame`, `Frame::decode`, `Setup`, `Start`, `PageId`, `Request`, `Request::page`, `Open`, `Place`, `FromHelper`, `read_on_a_thread`, `write_frame`, `read_frame`
+- `crates/webview/src/platform.rs`: `WebEngine::poll`, `Load`
+- `crates/webview/src/editor.rs`: `PageEditor::create_folder`
+- `.github/workflows/ci.yml`: `hapto-webview/helper`
+- test `crates/webview/tests/hidden_window.rs`: `exporter`, `a_page_in_a_mapped_window_draws_its_pixels`
+- test `crates/webview/src/platform/linux.rs`: `this_code_s_module_is_the_running_test`, `a_frame_to_a_helper_that_has_gone_is_an_error_and_ends_the_connection`
+- test `crates/webview/src/wire.rs`: `every_frame_reads_back_as_it_was_written`, `the_reader_passes_on_each_frame_wakes_after_each_and_then_disconnects`, `a_frame_cut_short_out_of_turn_or_of_another_version_is_an_error`, `a_length_longer_than_what_arrives_is_an_error`, `a_signal_while_a_frame_is_awaited_does_not_end_the_read`
+- test `crates/webview/src/platform/linux.rs`: `a_close_waits_for_its_own_answer_and_routes_the_rest_to_their_pages`, `the_helper_starts_without_the_host_s_library_paths_and_draws_in_software_by_default`
+- test `crates/webview/tests/hidden_window.rs`: `the_helper_is_built_under_the_name_that_the_editor_looks_for`
 
 ## Parameters
 

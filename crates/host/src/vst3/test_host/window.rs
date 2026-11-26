@@ -1,22 +1,26 @@
 //! Windows that a test makes for an editor's view. `HiddenWindow` is never
 //! shown, and `ChildWindow` sits inside another window, as a host's does when
 //! the view doesn't fill it. Each system's code is in a file of its own, such
-//! as `window/win32.rs`, and a system that the test host makes no windows on
-//! uses `window/none.rs`.
+//! as `window/win32.rs` and `window/x11.rs`, and a system that the test host
+//! makes no windows on uses `window/none.rs`.
 
 use std::marker::PhantomData;
 
 use raw_window_handle::{HandleError, HasWindowHandle, WindowHandle};
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux")))]
 mod none;
 #[cfg(windows)]
 mod win32;
+#[cfg(target_os = "linux")]
+mod x11;
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux")))]
 use none as system;
 #[cfg(windows)]
 use win32 as system;
+#[cfg(target_os = "linux")]
+use x11 as system;
 
 /// A window of the test's own that is never shown: a real editor opens in
 /// it with no window on the screen, no focus taken and no input sent.
@@ -48,8 +52,8 @@ pub struct HiddenWindow {
 
 impl HiddenWindow {
     /// Makes the window: a top-level one of 800 by 600 pixels that is never
-    /// shown. `None` when the system refuses one, and on a system that the
-    /// test host makes no windows on.
+    /// shown. `None` when the system refuses one, on Linux when there is no X
+    /// server, and on a system that the test host makes no windows on.
     pub fn new() -> Option<Self> {
         let window = system::Window::hidden(800, 600)?;
         Some(HiddenWindow {

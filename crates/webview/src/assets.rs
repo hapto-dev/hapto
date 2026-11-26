@@ -6,7 +6,7 @@
 /// it.
 pub(crate) const SCHEME: &str = "hapto";
 
-/// The URL of the page built into the plugin.
+/// The URL of the page built into the plugin, at [`SCHEME`].
 const EMBEDDED: &str = "hapto://localhost/index.html";
 
 /// One file of a page built into the plugin: its path below the page's
@@ -81,8 +81,8 @@ fn content_type(path: &str) -> &'static str {
 
 /// The URL the page loads: `dev`, a dev server's, when there is one, and
 /// the page built into the plugin otherwise.
-pub(crate) fn page_url(dev: Option<String>) -> String {
-    dev.unwrap_or_else(|| EMBEDDED.to_owned())
+pub(crate) fn page_url(dev: Option<&str>) -> String {
+    dev.unwrap_or(EMBEDDED).to_owned()
 }
 
 /// Whether a document at `url` is the page. That is either the page built
@@ -182,10 +182,10 @@ mod tests {
     }
 
     #[test]
-    fn the_embedded_page_unless_a_dev_server_is_given() {
-        assert_eq!(page_url(None), "hapto://localhost/index.html");
+    fn the_embedded_page_at_the_scheme_unless_a_dev_server_is_given() {
+        assert_eq!(page_url(None), format!("{SCHEME}://localhost/index.html"));
         assert_eq!(
-            page_url(Some("http://localhost:5173/".into())),
+            page_url(Some("http://localhost:5173/")),
             "http://localhost:5173/"
         );
     }

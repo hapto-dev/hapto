@@ -75,11 +75,16 @@ reading how Hapto works inside, start with
   values a plugin binds for it in `Values`), and the TypeScript generated from
   it.
 - `crates/webview`: the shell that shows a plugin's page in the host's
-  window, on Windows: `Page` makes the `Editor`, a WebView2 child window
-  through wry, which serves the page from bytes built into the plugin and
-  joins it to a `Dispatcher` (`editor.rs`). The page's native side is in
-  `native.rs`. `platform.rs` defines the `WebEngine` trait, and each system's
-  engine implements it in `platform/`.
+  window, on Windows and Linux. `Page` makes the `Editor`, a WebView through
+  wry (WebView2 on Windows, WebKitGTK on Linux), which serves the page from
+  bytes built into the plugin and joins it to a `Dispatcher` (`editor.rs`).
+  Both engines build the WebView through `wry_page.rs`. The page's native
+  side is in `native.rs`. `platform.rs` defines the `WebEngine` trait, and
+  each system's engine implements it in `platform/`. On Linux the engine is a
+  helper program, `hapto-webview-helper` (`helper.rs` and `src/bin/`), which
+  shows every open page of a plugin in the host's process. The first editor
+  to open starts it, and the editors talk to it over a socket in `wire.rs`'s
+  frames.
 - `crates/midi-devices`: `hapto-midi-devices`, the computer's MIDI devices as
   UMP, for the app: the system's list and its changes (`devices.rs`), what names
   a device (`id.rs`), the inputs open on the main thread and read into each
@@ -281,10 +286,11 @@ with `cargo doc -p hapto-host --features vst3,cabi,test-host
 - Generated files (the page's protocol types, its test parameter map, `hapto.h`,
   the example EQ's JUCE settings) are committed and compared byte for byte in
   CI ([what runs the generator][generator], [keeping the header true][header]).
-- A page in a plugin's window exists on Windows only: elsewhere
+- A page in a plugin's window exists on Windows and Linux. Elsewhere
   `hapto-webview` offers no editor, and a host shows its own controls ([where
-  the WebView pieces live][webview]). So does the standalone app, which says
-  so and ends elsewhere ([the standalone exporter and app][standalone]).
+  the WebView pieces live][webview]). The standalone app runs only on Windows,
+  and elsewhere it says so and ends ([the standalone exporter and
+  app][standalone]).
 
 ## Threads
 

@@ -299,8 +299,9 @@ jobs:
           test -f dist/assets/index.css
 
   # Everything Hapto supports on Linux: the core, the bridge, the C interface
-  # and the example EQ through it. The VST3 exporter refuses to build here by
-  # design (it has no main-thread timer), and a check proves the refusal.
+  # and the example EQ through it, and the page in WebKitGTK. The VST3
+  # exporter refuses to build here by design (it has no main-thread timer),
+  # and a check proves the refusal.
   linux:
     name: linux
     if: ${{ !github.event.pull_request.draft }}
@@ -308,7 +309,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       PACKAGES: --workspace
-      FEATURES: --no-default-features --features hapto-host/cabi,hapto-host/test-host,hapto-example-eq/cabi,hapto-bridge/typescript,xtask/generate
+      FEATURES: --no-default-features --features hapto-host/cabi,hapto-host/test-host,hapto-example-eq/cabi,hapto-bridge/typescript,xtask/generate,hapto-webview/helper
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Toolchain
@@ -320,10 +321,12 @@ jobs:
       # tests stand in for devices with sequencer clients of their own, but
       # the runner's Azure kernel is built with no sound, so they run in a VM
       # booted with Ubuntu's generic kernel, on the runner's KVM.
-      - name: alsa-lib, and a kernel with the ALSA sequencer
+      # WebKitGTK and GTK for the page's helper process, and Xvfb for an X
+      # server to open the page in.
+      - name: alsa-lib, WebKitGTK, Xvfb, and a kernel with the ALSA sequencer
         run: |
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev virtme-ng qemu-system-x86 linux-image-virtual-hwe-24.04
+          sudo apt-get install -y libasound2-dev libwebkit2gtk-4.1-dev libgtk-3-dev xvfb virtme-ng qemu-system-x86 linux-image-virtual-hwe-24.04
           sudo chmod a+r /boot/vmlinuz-*
           sudo chmod a+rw /dev/kvm
       # Here as well as in `rust`, whose Format step a pull request skips.
@@ -338,6 +341,9 @@ jobs:
           PROPTEST_CASES: ${{ github.event_name == 'workflow_dispatch' && '4096' || '256' }}
       - name: The ALSA backend against the sequencer
         run: scripts/run-sequencer-tests.sh
+      # docs/testing.md says what the page's tests check.
+      - name: The page in WebKitGTK
+        run: xvfb-run -a cargo test $PACKAGES $FEATURES --test hidden_window --locked -- --ignored
       - name: Allocation gates (release)
         run: cargo test $PACKAGES $FEATURES --release --test alloc_gate --locked
       - name: Gate matrix (release)
@@ -437,7 +443,7 @@ jobs:
       # The repository's tools are not measured: xtask, and cargo-hapto, which
       # runs Cargo, npm and Node as processes.
       PACKAGES: --workspace --exclude hapto-testkit --exclude xtask --exclude cargo-hapto
-      FEATURES: --no-default-features --features hapto-host/cabi,hapto-host/test-host,hapto-example-eq/cabi
+      FEATURES: --no-default-features --features hapto-host/cabi,hapto-host/test-host,hapto-example-eq/cabi,hapto-webview/helper
       # Tests, benchmarks and the test hosts are not measured. Nor are the
       # VST3 editor view and the slot that drives an editor for it: Linux
       # builds both, but the exporter offers a view on Windows alone, so
@@ -457,10 +463,10 @@ jobs:
       # tests stand in for devices with sequencer clients of their own, but
       # the runner's Azure kernel is built with no sound, so they run in a VM
       # booted with Ubuntu's generic kernel, on the runner's KVM.
-      - name: alsa-lib, and a kernel with the ALSA sequencer
+      - name: alsa-lib, WebKitGTK, Xvfb, and a kernel with the ALSA sequencer
         run: |
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev virtme-ng qemu-system-x86 linux-image-virtual-hwe-24.04
+          sudo apt-get install -y libasound2-dev libwebkit2gtk-4.1-dev libgtk-3-dev xvfb virtme-ng qemu-system-x86 linux-image-virtual-hwe-24.04
           sudo chmod a+r /boot/vmlinuz-*
           sudo chmod a+rw /dev/kvm
       - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
@@ -474,6 +480,7 @@ jobs:
           cargo llvm-cov clean --workspace
           cargo test $PACKAGES $FEATURES --locked -- --skip alsa::tests
           scripts/run-sequencer-tests.sh
+          xvfb-run -a cargo test $PACKAGES $FEATURES --test hidden_window --locked -- --ignored
           cargo llvm-cov report --ignore-filename-regex "$EXCLUDE" --fail-under-lines "$COVERAGE_LINES" --lcov --output-path lcov.info
       # In Measure's environment, which says where the coverage was written.
       - name: Summary

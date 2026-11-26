@@ -23,13 +23,43 @@ hapto-params.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
-# wry, on the same systems where build.rs sets `hapto_webview`. Linux and
-# macOS build this crate without it, and a page there offers no editor.
-[target.'cfg(windows)'.dependencies]
+[features]
+# The page's helper on Linux, `hapto-webview-helper`, which runs WebKitGTK in a
+# process of its own. A plugin's own build leaves it off, so the plugin links
+# no GTK, and the helper is built in a cargo invocation of its own.
+helper = ["dep:gtk", "dep:rustix", "dep:wry", "dep:x11rb"]
+
+[[bin]]
+name = "hapto-webview-helper"
+path = "src/bin/hapto-webview-helper.rs"
+required-features = ["helper"]
+
+# The web engines. These tables must name the systems that `SYSTEMS` in
+# build.rs lists.
+[target.'cfg(target_os = "windows")'.dependencies]
 wry.workspace = true
 
+# The host's window, whose X11 id the editor sends its helper. Then what only
+# the helper links: WebKitGTK through wry, in a GTK plug inside the host's X11
+# window, GTK itself, and a connection to the X server for the plugs' XEmbed
+# messages.
+[target.'cfg(target_os = "linux")'.dependencies]
+raw-window-handle.workspace = true
+gtk = { workspace = true, optional = true }
+wry = { workspace = true, optional = true, features = ["os-webview"] }
+x11rb = { workspace = true, optional = true }
+rustix = { workspace = true, optional = true }
+
 [dev-dependencies]
-hapto-host = { workspace = true, features = ["vst3", "test-host"] }
+# The test hosts and their windows, and on Linux the standalone exporter that
+# the page's tests open the editor through.
+hapto-host = { workspace = true, features = ["vst3", "test-host", "standalone"] }
+hapto-testkit.workspace = true
+
+# A connection of the page test's own to the X server, which maps a window,
+# reads the page's pixels back and sends input through XTest.
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+x11rb = { workspace = true, features = ["xtest"] }
 
 [lints]
 workspace = true

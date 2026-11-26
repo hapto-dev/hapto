@@ -37,9 +37,9 @@ versioning](https://semver.org/): before 1.0, a minor version may break the API.
   and the standalone app's devices, the example gain, the example EQ, the MIDI
   probe, the standalone app on Windows, `cargo hapto`, and the comparison
   against plain JUCE.
-- **Not built:** the CLAP exporter, and a page in a plugin window anywhere but
-  Windows, where `hapto-webview` shows it. [ROADMAP.md](ROADMAP.md) says what
-  comes next.
+- **Not built:** the CLAP exporter, and a page in a plugin window on macOS.
+  `hapto-webview` shows it on Windows and Linux. [ROADMAP.md](ROADMAP.md) says
+  what comes next.
 
 ## Start here
 

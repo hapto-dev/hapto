@@ -1,7 +1,7 @@
 //! Test tools shared by the Hapto crates.
 //!
 //! A dev-dependency only: nothing a plugin ships links it. Each module is one
-//! rule of `docs/testing.md`:
+//! rule of `docs/testing.md`, or one check that several crates share:
 //!
 //! - [`alloc`]: the zero-allocation gate for the code the audio thread runs
 //!   in a [block].
@@ -12,6 +12,8 @@
 //!   assertion fails too.
 //! - [`drift`]: a generated file in the repository matches what the code
 //!   generates now.
+//! - [`systems`]: a build script's list of systems and its manifest's target
+//!   tables name the same systems.
 //!
 //! [block]: https://github.com/hapto-dev/hapto/blob/main/docs/glossary.md#block
 //!
@@ -46,3 +48,4 @@ pub mod alloc;
 pub mod contract;
 pub mod drift;
 pub mod sync;
+pub mod systems;

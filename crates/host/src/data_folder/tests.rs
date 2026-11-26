@@ -4,7 +4,7 @@
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
-use super::{NoDataFolder, plugin_folder, user_data};
+use super::{NoDataFolder, plugin_folder, runtime, user_data};
 
 /// Returns an environment that holds `vars` and nothing else.
 fn env(vars: &[(&'static str, &str)]) -> impl Fn(&'static str) -> Option<OsString> {
@@ -43,6 +43,22 @@ fn an_unset_empty_or_relative_xdg_folder_falls_back_to_the_home_s() {
             user_data("linux", env(&vars)),
             Ok(shared.clone()),
             "{xdg:?}"
+        );
+    }
+}
+
+#[test]
+fn the_runtime_folder_is_xdg_s_unless_it_is_unset_empty_or_relative() {
+    assert_eq!(
+        runtime(env(&[("XDG_RUNTIME_DIR", "/run/user/1000")])),
+        Some(PathBuf::from("/run/user/1000"))
+    );
+    assert_eq!(runtime(env(&[])), None);
+    for relative in ["", "run/user/1000"] {
+        assert_eq!(
+            runtime(env(&[("XDG_RUNTIME_DIR", relative)])),
+            None,
+            "{relative:?}"
         );
     }
 }
