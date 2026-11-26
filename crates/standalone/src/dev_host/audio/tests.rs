@@ -10,6 +10,7 @@
 //! or a Reactivate, and a move clears the note of an earlier refusal.
 
 use std::cell::{Cell, RefCell};
+use std::marker::PhantomData;
 use std::rc::Rc;
 
 use anyhow::{Context as _, Result, anyhow, bail};
@@ -20,7 +21,7 @@ use hapto_host::{
 };
 use hapto_params::{Declarer, Params};
 
-use super::{Audio, Device};
+use super::{Audio, Device, System};
 use crate::block::{Player, Render};
 use crate::dev_host::format::Format;
 use crate::dev_host::hosted::{Hosted, host};
@@ -68,17 +69,10 @@ impl Device for Silent {
     fn error((): &mut ()) -> Option<DeviceError> {
         None
     }
-
-    fn default_id(&self) -> Option<()> {
-        Some(())
-    }
-
-    fn reopen(&self) -> Result<Silent> {
-        Ok(Silent::default())
-    }
 }
 
 /// A device at 48 kHz that refuses every start.
+#[derive(Default)]
 struct Broken;
 
 impl Device for Broken {
@@ -112,19 +106,32 @@ impl Device for Broken {
     fn error((): &mut ()) -> Option<DeviceError> {
         None
     }
+}
 
-    fn default_id(&self) -> Option<()> {
+/// A system whose default output never changes, and opens as a new `D`.
+struct Fixed<D>(PhantomData<D>);
+
+impl<D: Device<Id = ()> + Default> System for Fixed<D> {
+    type Output = D;
+
+    fn default_output_id(&self) -> Option<()> {
         Some(())
     }
 
-    fn reopen(&self) -> Result<Broken> {
-        Ok(Broken)
+    fn open_default_output(&self) -> Result<D> {
+        Ok(D::default())
     }
+}
+
+/// The audio of a plugin on `D`, which is always the default output, with
+/// `kept` settings.
+fn on<D: Device<Id = ()> + Default>(kept: Option<&str>) -> Audio<Fixed<D>> {
+    Audio::open(Fixed(PhantomData), Width::STEREO, Signal::Silence, kept).expect("a default")
 }
 
 /// What a test's system says of its outputs, shared by every device opened
 /// from it, as the system's own state is.
-struct System {
+struct TestSystem {
     /// The number of the default output; `None` when there is none.
     default: Cell<Option<u32>>,
     /// The rate the device opened next plays at.
@@ -141,25 +148,11 @@ struct System {
 struct Changing {
     number: u32,
     rate: u32,
-    system: Rc<System>,
+    system: Rc<TestSystem>,
     stream: RefCell<Option<Rc<RefCell<Option<DeviceError>>>>>,
 }
 
 impl Changing {
-    /// Opens the system's default output.
-    fn opened(system: &Rc<System>) -> Result<Changing> {
-        let number = system
-            .default
-            .get()
-            .context("there is no audio output device")?;
-        Ok(Changing {
-            number,
-            rate: system.next_rate.get(),
-            system: Rc::clone(system),
-            stream: RefCell::new(None),
-        })
-    }
-
     /// Has the stream playing now report an error of `kind`.
     fn report(&self, kind: ErrorKind) {
         if let Some(stream) = &*self.stream.borrow() {
@@ -209,19 +202,32 @@ impl Device for Changing {
     fn error(stream: &mut Self::Stream) -> Option<DeviceError> {
         stream.borrow_mut().take()
     }
+}
 
-    fn default_id(&self) -> Option<u32> {
-        self.system.default.get()
+impl System for Rc<TestSystem> {
+    type Output = Changing;
+
+    fn default_output_id(&self) -> Option<u32> {
+        self.default.get()
     }
 
-    fn reopen(&self) -> Result<Changing> {
-        Changing::opened(&self.system)
+    fn open_default_output(&self) -> Result<Changing> {
+        let number = self
+            .default
+            .get()
+            .context("there is no audio output device")?;
+        Ok(Changing {
+            number,
+            rate: self.next_rate.get(),
+            system: Rc::clone(self),
+            stream: RefCell::new(None),
+        })
     }
 }
 
 /// A system whose default output is Device 1, at 48 kHz.
-fn system() -> Rc<System> {
-    Rc::new(System {
+fn system() -> Rc<TestSystem> {
+    Rc::new(TestSystem {
         default: Cell::new(Some(1)),
         next_rate: Cell::new(48_000),
         busy: Cell::new(false),
@@ -231,9 +237,13 @@ fn system() -> Rc<System> {
 
 /// The audio of a plugin started through `hosted` on `system`'s default
 /// output, with `kept` settings, and the start's log taken.
-fn started(hosted: &dyn Hosted, system: &Rc<System>, kept: Option<&str>) -> Audio<Changing> {
-    let device = Changing::opened(system).expect("a default");
-    let mut audio = Audio::with(device, Width::STEREO, Signal::Silence, kept);
+fn started(
+    hosted: &dyn Hosted,
+    system: &Rc<TestSystem>,
+    kept: Option<&str>,
+) -> Audio<Rc<TestSystem>> {
+    let mut audio =
+        Audio::open(Rc::clone(system), Width::STEREO, Signal::Silence, kept).expect("a default");
     audio.start_first(hosted);
     let _started = audio.events();
     audio
@@ -344,7 +354,7 @@ const OWN: Settings = Settings {
 fn a_start_the_plugin_refuses_brings_back_the_settings_that_last_ran() {
     for format in Format::ALL {
         let hosted = host::<Picky>(format);
-        let mut audio = Audio::with(Silent::default(), Width::STEREO, Signal::Silence, None);
+        let mut audio = on::<Silent>(None);
         audio.start_first(&*hosted);
         assert_eq!(audio.running(), Some(OWN), "{format:?}");
         audio.stop(&*hosted);
@@ -369,7 +379,7 @@ fn kept_settings_the_plugin_refuses_fall_back_to_the_device_s_own() {
     for format in Format::ALL {
         let hosted = host::<Picky>(format);
         let kept = Some("192000 512 device");
-        let mut audio = Audio::with(Silent::default(), Width::STEREO, Signal::Silence, kept);
+        let mut audio = on::<Silent>(kept);
         assert_eq!(audio.settings().rate, 192_000, "the kept ones");
         audio.start_first(&*hosted);
         assert_eq!(audio.running(), Some(OWN), "{format:?}");
@@ -382,7 +392,7 @@ fn a_plugin_refused_even_at_the_device_s_own_settings_still_lets_the_dev_host_st
         let hosted = host::<Watched>(format);
         REFUSES.set(true);
         let kept = Some("96000 512 device");
-        let mut audio = Audio::with(Silent::default(), Width::STEREO, Signal::Silence, kept);
+        let mut audio = on::<Silent>(kept);
         audio.start_first(&*hosted);
         REFUSES.set(false);
         assert_eq!(audio.running(), None, "{format:?}: stopped");
@@ -402,7 +412,7 @@ fn a_plugin_refused_even_at_the_device_s_own_settings_still_lets_the_dev_host_st
 fn a_device_that_does_not_start_leaves_the_plugin_stopped() {
     for format in Format::ALL {
         let hosted = host::<Watched>(format);
-        let mut audio = Audio::with(Broken, Width::STEREO, Signal::Silence, None);
+        let mut audio = on::<Broken>(None);
         audio.start_first(&*hosted);
         assert!(!ACTIVE.get(), "{format:?}: deactivated again");
         assert_eq!(audio.running(), None, "{format:?}");
@@ -417,7 +427,7 @@ fn logged(events: &[String], text: &str) -> bool {
 }
 
 /// The note the Audio tab shows, empty for none.
-fn note<D: Device>(audio: &Audio<D>) -> String {
+fn note<S: System>(audio: &Audio<S>) -> String {
     audio.shown().note.map(str::to_owned).unwrap_or_default()
 }
 
@@ -576,7 +586,7 @@ fn after_stop_a_new_default_is_taken_and_not_started_and_start_plays_on_it() {
 
 #[test]
 fn a_stop_a_start_or_a_reactivation_ends_the_wait_for_a_device() {
-    type End = fn(&mut Audio<Changing>, &dyn Hosted);
+    type End = fn(&mut Audio<Rc<TestSystem>>, &dyn Hosted);
     let ends: [(&str, End); 3] = [
         ("Stop", Audio::stop),
         ("Start", Audio::resume),

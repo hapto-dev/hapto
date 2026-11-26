@@ -49,7 +49,7 @@ impl Signal {
     }
 
     /// Returns the name a person reads.
-    #[cfg(all(windows, feature = "dev-host"))]
+    #[cfg(all(hapto_app, feature = "dev-host"))]
     pub(crate) fn label(self) -> &'static str {
         match self {
             Signal::Sine => "Sine, 440 Hz",

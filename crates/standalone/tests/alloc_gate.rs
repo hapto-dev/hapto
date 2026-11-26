@@ -7,12 +7,12 @@
 //! every way of cutting blocks, every test signal, and devices of fewer and
 //! more channels than the plugin.
 //!
-//! The app runs only on Windows, so the gate does too.
+//! The gate runs on the systems that the app runs on.
 
 hapto_testkit::install_alloc_gate!();
 
-#[cfg(windows)]
-mod on_windows {
+#[cfg(hapto_app)]
+mod where_the_app_runs {
     use hapto_host::layout::{AnyLayout, Width};
     use hapto_host::standalone::Standalone;
     use hapto_host::{

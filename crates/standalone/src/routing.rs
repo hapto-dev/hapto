@@ -157,8 +157,11 @@ impl MidiDevices {
     /// call this routing. The timing comes from
     /// [`timing`](Self::timing).
     #[cfg_attr(
-        all(not(windows), not(test)),
-        expect(dead_code, reason = "the app that applies them runs on Windows alone")
+        not(any(hapto_app, test)),
+        expect(
+            dead_code,
+            reason = "the app that applies them isn't built on this system"
+        )
     )]
     pub(crate) fn filters(&self) -> (u64, Filter, Filter) {
         let routing = self.lock();
@@ -172,8 +175,8 @@ impl MidiDevices {
     /// Records the system's devices and the open ones, as the app's tick
     /// found them.
     #[cfg_attr(
-        not(windows),
-        expect(dead_code, reason = "the app that reports runs on Windows alone")
+        not(hapto_app),
+        expect(dead_code, reason = "the app that reports isn't built on this system")
     )]
     pub(crate) fn report(&self, listed: &[Device], open: Vec<Device>) {
         let mut routing = self.lock();
@@ -194,8 +197,11 @@ impl MidiDevices {
 /// device opens if it passes and isn't in `open`, and an open one closes if
 /// it no longer passes or isn't listed.
 #[cfg_attr(
-    all(not(windows), not(test)),
-    expect(dead_code, reason = "the app that applies it runs on Windows alone")
+    not(any(hapto_app, test)),
+    expect(
+        dead_code,
+        reason = "the app that applies it isn't built on this system"
+    )
 )]
 pub(crate) fn plan<K: PartialEq + Clone>(listed: &[(K, bool)], open: &[K]) -> (Vec<K>, Vec<K>) {
     let to_open = listed

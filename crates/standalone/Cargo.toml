@@ -38,9 +38,9 @@ hapto-learn = { workspace = true, optional = true }
 # called under; and the dev host's parameters.
 hapto-params.workspace = true
 
-# The window and the audio device, on Windows alone for now: the page shows
-# there only, and elsewhere `main` says so and ends.
-[target.'cfg(windows)'.dependencies]
+# The window, the audio device and the dev host's pages. This table must name
+# the systems that `SYSTEMS` in build.rs lists.
+[target.'cfg(target_os = "windows")'.dependencies]
 cpal = { version = "0.18.2", features = ["realtime"] }
 winit = { version = "0.30.13", default-features = false, features = ["rwh_06"] }
 # The dev host's bar and settings window: their pages, and the JSON they

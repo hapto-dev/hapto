@@ -91,7 +91,7 @@ impl PageEditor {
         let dispatcher = Dispatcher::new(page.ui, page.commands, page.values, outbox);
         PageEditor {
             name: page.name,
-            folder: Engine::data_folder(page.id),
+            folder: engine_folder(page.id),
             assets: page.assets,
             size: page.size,
             scale: 1.0,
@@ -212,6 +212,16 @@ impl Editor for PageEditor {
     }
 }
 
+/// Returns the folder where the engine keeps its data for the plugin whose
+/// id is `id`, which every instance of the plugin shares. It is the engine's
+/// own folder in the plugin's data folder, or below the temporary folder when
+/// the user's data folder is unknown, so the editor still opens.
+fn engine_folder(id: &str) -> PathBuf {
+    hapto_host::data_folder(id)
+        .unwrap_or_else(|_| hapto_host::plugin_folder(&std::env::temp_dir(), id))
+        .join(Engine::FOLDER)
+}
+
 /// Takes a message the page posted: the hand-back, or one for the
 /// dispatcher.
 fn from_page(
@@ -315,6 +325,7 @@ impl std::fmt::Debug for PageEditor {
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
+    use std::path::Path;
     use std::rc::Rc;
 
     use hapto_bridge::Refusals;
@@ -397,6 +408,16 @@ mod tests {
         assert_eq!(
             failed.headers().get(CONTENT_TYPE),
             Some(&HeaderValue::from_static("text/plain; charset=utf-8"))
+        );
+    }
+
+    #[test]
+    fn the_engine_keeps_its_data_in_its_own_folder_in_the_plugins() {
+        let folder = engine_folder("a/b");
+        assert!(
+            folder.ends_with(Path::new("a_b").join(Engine::FOLDER)),
+            "{}",
+            folder.display()
         );
     }
 }

@@ -1,6 +1,8 @@
 //! Tests that the builder's settings reach the MIDI devices' handle, and
 //! that the app fails with a reason where it doesn't run.
 
+use std::collections::BTreeSet;
+
 use hapto_host::layout::Stereo;
 use hapto_host::{AuCodes, Block, Category, Parts, PluginInfo, ProcessSetup, Processor, Status};
 use hapto_params::{Declarer, Params};
@@ -83,9 +85,24 @@ fn what_the_builder_says_reaches_the_handle_the_app_hands_out() {
     assert!(format!("{plain:?}").contains("Quiet"));
 }
 
-#[cfg(not(windows))]
+#[cfg(not(hapto_app))]
 #[test]
 fn where_the_app_does_not_run_it_fails_and_says_why() {
     assert_eq!(App::<Quiet>::new().run(), ExitCode::FAILURE);
     assert_eq!(main::<Quiet>(), ExitCode::FAILURE);
+}
+
+/// The target tables in Cargo.toml name the systems that build.rs lists, and
+/// no others.
+#[test]
+fn the_dependency_table_names_the_systems_that_the_build_script_lists() {
+    let listed: BTreeSet<&str> = env!("HAPTO_APP_SYSTEMS").split(',').collect();
+    let named: BTreeSet<&str> = include_str!("../Cargo.toml")
+        .lines()
+        .filter(|line| line.starts_with("[target."))
+        // Each piece after `target_os = "` starts with a system's name.
+        .flat_map(|line| line.split("target_os = \"").skip(1))
+        .filter_map(|rest| rest.split_once('"').map(|(system, _)| system))
+        .collect();
+    assert_eq!(named, listed);
 }

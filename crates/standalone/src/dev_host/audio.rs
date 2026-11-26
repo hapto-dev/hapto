@@ -31,13 +31,13 @@ use super::hosted::Hosted;
 use super::message::AudioShown;
 use crate::block::{Plan, Player, Render};
 use crate::device::{
-    Answer, DeviceError, Look, Output, Playing, answer, default_output_id, look, say_once,
+    Answer, AudioSystem, DeviceError, Look, Output, Playing, answer, look, say_once,
 };
 use crate::settings::{MAX_BLOCKS, Settings};
 use crate::signal::Signal;
 
-/// An audio output the dev host plays the plugin to: the system's default
-/// output, or a test's.
+/// An audio output that the dev host plays the plugin to, which a [`System`]
+/// opens.
 pub(crate) trait Device {
     /// What plays the blocks, until it drops.
     type Stream;
@@ -62,18 +62,22 @@ pub(crate) trait Device {
     fn start(&self, rate: u32, player: Player<Box<dyn Render>>) -> Result<Self::Stream>;
     /// Returns the newest error `stream` reported since the last call.
     fn error(stream: &mut Self::Stream) -> Option<DeviceError>;
-    /// Returns the id of the system's default output now, `None` when there
-    /// is none.
-    fn default_id(&self) -> Option<Self::Id>;
-    /// Opens the system's default output again, which may be another
-    /// device now.
+}
+
+/// An audio system that the dev host finds the default output in: the
+/// computer's, or a test's.
+pub(crate) trait System {
+    /// The outputs that it opens.
+    type Output: Device;
+    /// Returns the id of the default output now, `None` when there is none.
+    fn default_output_id(&self) -> Option<<Self::Output as Device>::Id>;
+    /// Opens the default output now, which may be another device than the
+    /// one opened before.
     ///
     /// # Errors
     ///
     /// Returns why there is none to play to.
-    fn reopen(&self) -> Result<Self>
-    where
-        Self: Sized;
+    fn open_default_output(&self) -> Result<Self::Output>;
 }
 
 impl Device for Output {
@@ -107,19 +111,24 @@ impl Device for Output {
     fn error(stream: &mut Playing) -> Option<DeviceError> {
         stream.error()
     }
+}
 
-    fn default_id(&self) -> Option<DeviceId> {
-        default_output_id()
+impl System for AudioSystem {
+    type Output = Output;
+
+    fn default_output_id(&self) -> Option<DeviceId> {
+        AudioSystem::default_output_id(self)
     }
 
-    fn reopen(&self) -> Result<Output> {
-        Output::system_default()
+    fn open_default_output(&self) -> Result<Output> {
+        AudioSystem::open_default_output(self)
     }
 }
 
-/// The device, the settings the plugin runs with, and the stream playing it.
-pub(crate) struct Audio<D: Device = Output> {
-    output: D,
+/// The device, the audio system it came from, the settings the plugin runs
+/// with, and the stream playing it.
+pub(crate) struct Audio<S: System = AudioSystem> {
+    output: S::Output,
     device: String,
     /// The sample rates the device takes, which alone are offered.
     rates: Vec<u32>,
@@ -130,7 +139,7 @@ pub(crate) struct Audio<D: Device = Output> {
     /// brings back.
     ran: Option<Settings>,
     /// The stream playing the plugin's blocks, while it processes.
-    stream: Option<D::Stream>,
+    stream: Option<<S::Output as Device>::Stream>,
     /// Why processing is stopped, or what the last change refused; cleared
     /// when the plugin processes again.
     note: Option<String>,
@@ -140,32 +149,35 @@ pub(crate) struct Audio<D: Device = Output> {
     /// the start again, until it processes or the author stops, starts or
     /// reactivates it.
     waits: bool,
+    /// The audio system that a look asks for its default output, last so
+    /// that it drops after the stream.
+    system: S,
 }
 
-impl Audio {
-    /// Opens the system's default output for a plugin laid out as `layout`,
+impl<S: System> Audio<S> {
+    /// Opens `system`'s default output for a plugin laid out as `layout`,
     /// with `signal` on its inputs and `kept`, the settings a session kept,
     /// where the device still takes them, and else its own rate.
     ///
     /// # Errors
     ///
     /// Returns why there is no device to play to.
-    pub(crate) fn open(layout: Width, signal: Signal, kept: Option<&str>) -> Result<Audio> {
-        Ok(Audio::with(Output::system_default()?, layout, signal, kept))
-    }
-}
-
-impl<D: Device> Audio<D> {
-    /// Plays to `output`, as [`open`](Audio::open) does to the system's.
-    pub(crate) fn with(output: D, layout: Width, signal: Signal, kept: Option<&str>) -> Self {
+    pub(crate) fn open(
+        system: S,
+        layout: Width,
+        signal: Signal,
+        kept: Option<&str>,
+    ) -> Result<Self> {
+        let output = system.open_default_output()?;
         let rates = output.rates();
         let settings = kept
             .and_then(|text| Settings::read(text, &rates))
             .unwrap_or_else(|| Settings::starting(output.sample_rate()));
-        Audio {
+        Ok(Audio {
             device: output.name(),
             plan: Plan::new(settings.blocks, signal),
             output,
+            system,
             rates,
             layout,
             settings,
@@ -174,7 +186,7 @@ impl<D: Device> Audio<D> {
             note: None,
             events: Vec::new(),
             waits: false,
-        }
+        })
     }
 
     /// Returns the settings the plugin runs with.
@@ -342,7 +354,7 @@ impl<D: Device> Audio<D> {
     /// log; any other [stops](Self::halt) the plugin at once, and the next
     /// [look](Self::look) starts it again on the default output.
     pub(crate) fn check(&mut self, hosted: &dyn Hosted) {
-        let Some(error) = self.stream.as_mut().and_then(D::error) else {
+        let Some(error) = self.stream.as_mut().and_then(S::Output::error) else {
             return;
         };
         match answer(error.kind) {
@@ -364,7 +376,7 @@ impl<D: Device> Audio<D> {
     /// default, so the Audio tab and its rates are true, and starts nothing.
     pub(crate) fn look(&mut self, hosted: &dyn Hosted) -> bool {
         let before = self.running();
-        let default = self.output.default_id();
+        let default = self.system.default_output_id();
         if self.is_processing() || self.waits {
             let playing = self.is_processing().then(|| self.output.id());
             match look(playing, default.as_ref()) {
@@ -439,7 +451,7 @@ impl<D: Device> Audio<D> {
     ///
     /// Returns why there is no default output to take.
     fn adopt(&mut self) -> Result<()> {
-        let output = self.output.reopen()?;
+        let output = self.system.open_default_output()?;
         let moved = output.id() != self.output.id();
         self.rates = output.rates();
         self.device = output.name();
@@ -464,7 +476,7 @@ impl<D: Device> Audio<D> {
 
     /// Returns the device, for a test that changes it.
     #[cfg(test)]
-    pub(crate) fn output(&self) -> &D {
+    pub(crate) fn output(&self) -> &S::Output {
         &self.output
     }
 
