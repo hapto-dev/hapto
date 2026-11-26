@@ -52,7 +52,7 @@ pub(crate) struct Options {
 /// the bundle does not pass.
 pub(crate) fn run(options: Options) -> Result<()> {
     let (workspace, plugin) = Workspace::find(options.package.as_deref())?;
-    let bundle = bundle::build(&workspace, &plugin, options.page, Profile::Release)?;
+    let bundle = bundle::build(&workspace, &plugin, options.page, Profile::Release)?.path;
     let pluginval = options
         .pluginval
         .or_else(|| std::env::var_os("PLUGINVAL"))

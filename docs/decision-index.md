@@ -1244,12 +1244,14 @@ move its line here; when a decision gains code, add one.
 - `crates/cli/src/main.rs`: module, `Cli`, `Command`, `command_line`, `main`, `parse_as`
 - test `crates/cli/src/tests.rs`: `the_declarations_are_sound`, `each_command_is_read_by_its_name_and_says_its_help`
 - `crates/cli/src/workspace.rs`: `Workspace::find`, `Workspace::plugin`, `Package::plugin`, `Workspace::warn_of_another_version`, `locked_version`
-- `crates/cli/src/bundle.rs`: module, `Line`, `build`, `layout`, `file_name`, `arch_folder`, `windows_only`, `head`, `module_of`, `install`, `copy_error`, `BUILD_DOES`
+- `crates/cli/src/bundle.rs`: module, `Line`, `build`, `Bundle`, `file_name`, `module_of`, `install`, `copy_error`
+- `crates/cli/src/bundle/layout.rs`: module, `Folder`, `Layout`, `PE`, `Layout::of`, `Layout::paths`, `Layout::install_folder`
+- `crates/cli/src/bundle/format.rs`: module, `Format`, `Arch`, `Format::of_system`, `Format::read_file`, `Format::read`
 - `crates/cli/src/tool.rs`: `Artifact`, `Artifact::read`, `build`
 - `crates/cli/src/page.rs`: `build`, `install`, `packages`, `scripts`
 - `crates/cli/src/validate.rs`: module, `Options`, `PLUGINVAL_ARGS`, `pluginval_command`, `run_pluginval`
 - `.github/workflows/ci.yml`: `validators:`
-- `crates/cli/src/dev.rs`: module, `Line`, `App::of`, `Copies`, `RELAUNCH`, `Ended`, `Ended::of`, `Seen`, `Build`, `Next`, `after_build`, `build_app`, `app_command`, `PageSource`, `page_source`, `in_app`, `Running::ended`, `Running::quit`, `DEV_DOES`
+- `crates/cli/src/dev.rs`: module, `Line`, `App::of`, `Copies`, `RELAUNCH`, `Ended`, `Ended::of`, `Seen`, `Build`, `Next`, `after_build`, `build_app`, `app_command`, `PageSource`, `page_source`, `in_app`, `Running::ended`, `Running::quit`, `windows_only`
 - `crates/cli/src/serve.rs`: module, `Options`, `run`
 - `crates/cli/src/watch.rs`: module, `Watch::fingerprint`, `TEMPORARY`, `WORKSPACE`, `walk`
 - `crates/cli/src/page.rs`: `DevServer::start`, `DevServer::wait`, `PAGE_DEV_URL`, `prepare`, `claim`, `write_param_map`, `param_map_test`, `linked`
@@ -1263,7 +1265,9 @@ move its line here; when a decision gains code, add one.
 - `.cargo/config.toml`: `hapto = "run --quiet --package cargo-hapto --"`
 - test `crates/cli/src/workspace/tests.rs`: `with_no_name_the_plugin_is_the_one_the_folder_is_in_or_the_only_one`, `a_crate_that_is_no_plugin_is_refused_by_name`, `the_locked_version_is_the_one_line_after_the_name`
 - test `crates/cli/src/page/tests.rs`: `packages_are_installed_only_when_missing_or_stale`, `a_page_with_no_lockfile_resolves_its_packages`, `a_page_is_type_checked_before_it_is_built`
-- test `crates/cli/src/bundle/tests.rs`: `the_bundle_holds_the_module_under_its_architecture`, `the_module_goes_under_the_architecture_it_was_built_for`, `a_module_built_here_reads_as_this_machine_s`, `the_module_is_the_one_cargo_wrote_for_the_cdylib`, `a_held_module_says_to_quit_the_host`, `a_name_no_file_can_hold_still_lays_the_bundle_out_in_its_folder`, `a_name_is_written_as_a_file_name_or_refused`
+- test `crates/cli/src/bundle/tests.rs`: `build_looks_up_the_layout_before_it_starts_anything`, `the_module_is_the_one_cargo_wrote_for_the_cdylib`, `a_held_module_says_to_quit_the_host`, `a_name_no_file_can_hold_still_lays_the_bundle_out_in_its_folder`, `a_name_is_written_as_a_file_name_or_refused`
+- test `crates/cli/src/bundle/layout/tests.rs`: `the_bundle_holds_the_module_under_its_architecture`, `only_pe_modules_have_a_bundle_layout_yet`, `each_install_folder_is_under_its_variable`
+- test `crates/cli/src/bundle/format/tests.rs`: `each_format_s_machine_number_reads_as_its_processor`, `a_module_for_another_processor_is_refused_with_its_machine`, `a_32_bit_or_big_endian_elf_module_is_refused`, `unknown_or_truncated_headers_are_refused`, `each_system_builds_modules_of_its_own_format`, `a_module_built_here_reads_as_this_system_s`
 - test `crates/cli/src/tool/tests.rs`: `a_binary_s_executable_and_freshness_are_read`, `a_library_s_files_are_read`, `a_message_that_names_no_artifact_is_passed_over`
 - `crates/cli/template/build.rs.tmpl`: `cargo::warning=`
 - `.github/workflows/ci.yml`: `template:`

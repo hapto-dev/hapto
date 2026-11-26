@@ -21,9 +21,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::time::{Duration, Instant};
 
-use anyhow::{Context as _, Result};
+use anyhow::{Context as _, Result, ensure};
 
-use crate::bundle::{Profile, windows_only};
+use crate::bundle::Profile;
 use crate::page::{self, DEV_PORT, DevServer, PAGE_DEV_URL, write_param_map};
 use crate::tool::{self, cargo};
 use crate::watch::Watch;
@@ -214,9 +214,20 @@ pub(crate) struct Options {
     pub(crate) profile: Profile,
 }
 
-/// What `dev` does, on Windows alone so far: elsewhere the standalone app
-/// ends at once, after the page's packages and the build.
-pub(crate) const DEV_DOES: &str = "dev runs the plugin's standalone app";
+/// Returns an error on any system but Windows, because the standalone app
+/// runs only on Windows. [`run`] calls it first, so it fails before the page's
+/// packages are installed and the plugin is built.
+///
+/// # Errors
+///
+/// Returns an error that names `os`.
+fn windows_only(os: &str) -> Result<()> {
+    ensure!(
+        os == "windows",
+        "dev runs the plugin's standalone app on Windows only, not yet on {os}"
+    );
+    Ok(())
+}
 
 /// Runs `cargo hapto dev` with `options`, until the plugin's window closes.
 ///
@@ -224,7 +235,7 @@ pub(crate) const DEV_DOES: &str = "dev runs the plugin's standalone app";
 ///
 /// Returns the step that failed and why.
 pub(crate) fn run(options: &Options) -> Result<()> {
-    windows_only(std::env::consts::OS, DEV_DOES)?;
+    windows_only(std::env::consts::OS)?;
     let (workspace, plugin) = Workspace::find(options.package.as_deref())?;
     // A crate with no standalone binary is told so before the page's
     // packages and server, which take time.
