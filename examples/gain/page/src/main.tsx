@@ -1,6 +1,6 @@
 // The gain's page: a slider on the gain, which drags it as a user would, a
-// field for the plugin's label, a value the plugin binds, and the plugin's
-// version, through a command.
+// field for the plugin's label, a value the plugin binds, a button that arms
+// MIDI learn on the gain, and the plugin's version, through a command.
 
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -12,11 +12,13 @@ import "./styles.css";
 /** The commands `examples/gain/src/page.rs` adds. */
 interface Commands {
   version: { args: void; returns: string };
+  learn: { args: void; returns: null };
 }
 
 /** The values `examples/gain/src/page.rs` binds. */
 interface Values {
   label: string;
+  learn: "off" | "armed" | "learned";
 }
 
 const client = createClient(webviewTransport());
@@ -79,6 +81,29 @@ function LabelField() {
   );
 }
 
+/** What the page says of the gain's MIDI learn, as the plugin reports it. */
+const LEARN_SAYS = {
+  off: "No controller drives the gain",
+  armed: "Move a controller on your MIDI device",
+  learned: "A controller drives the gain",
+} as const;
+
+/** MIDI learn on the gain: the button arms it, and the next controller moved
+ * drives the gain. */
+function LearnButton() {
+  const state = useValue("learn").value ?? "off";
+  const { run } = useCommand("learn");
+  return (
+    <div className="row">
+      <span className="name">MIDI</span>
+      <span className="note">{LEARN_SAYS[state]}</span>
+      <button type="button" disabled={state === "armed"} onClick={() => run().catch(() => {})}>
+        Learn
+      </button>
+    </div>
+  );
+}
+
 function Version() {
   const { run, data } = useCommand("version");
   useEffect(() => {
@@ -98,6 +123,7 @@ function Gain() {
       </header>
       <GainSlider />
       <LabelField />
+      <LearnButton />
     </main>
   );
 }

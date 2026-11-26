@@ -69,6 +69,9 @@ pub(crate) struct Plugin {
     /// Whether the crate has the `page_params` test, which rewrites the
     /// page's parameter map when run with `HAPTO_BLESS=1`.
     pub(crate) has_param_map_test: bool,
+    /// Whether the crate has the `juce_settings` test, which rewrites its
+    /// JUCE adapter settings when run with `HAPTO_BLESS=1`.
+    pub(crate) has_juce_settings_test: bool,
 }
 
 impl Plugin {
@@ -231,10 +234,9 @@ impl Package {
             .iter()
             .find(|t| t.is("bin") && t.required_features.iter().any(|f| f == "standalone"))
             .map(|t| t.name.clone());
-        let has_param_map_test = self
-            .targets
-            .iter()
-            .any(|t| t.is("test") && t.name == "page_params");
+        let has_test = |name: &str| self.targets.iter().any(|t| t.is("test") && t.name == name);
+        let has_param_map_test = has_test("page_params");
+        let has_juce_settings_test = has_test("juce_settings");
         Ok(Plugin {
             package: self.name.clone(),
             name,
@@ -242,6 +244,7 @@ impl Package {
             dir: self.dir.clone(),
             standalone,
             has_param_map_test,
+            has_juce_settings_test,
         })
     }
 }

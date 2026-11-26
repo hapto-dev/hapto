@@ -41,14 +41,18 @@ use hapto_params::ParamId;
 use hapto_params::{AudioParams, HostEvent, HostEventDrain, ParamSet};
 
 use automation::Automation;
-pub(crate) use automation::Points;
+#[cfg(feature = "vst3")]
+pub(crate) use automation::MAX_SKIPPED_QUEUES;
 #[cfg(all(test, feature = "vst3"))]
-pub(crate) use automation::{MAX_SKIPPED_QUEUES, Point};
+pub(crate) use automation::Point;
+pub(crate) use automation::Points;
 #[cfg(any(feature = "vst3", feature = "standalone"))]
 pub(crate) use editor::{EditorSlot, Opened};
 #[cfg(any(feature = "vst3", feature = "cabi", feature = "standalone"))]
 pub(crate) use process::Outcome;
 use process::{Active, PendingReset, install};
+#[cfg(feature = "vst3")]
+pub(crate) use process::{MidiIn, Rank};
 #[cfg(feature = "vst3")]
 use timer::{Handle, Timer};
 
@@ -57,7 +61,9 @@ use crate::boundary::Patience;
 use crate::boundary::{AudioSlot, Lent, MainThread, Refused};
 use crate::faults::{Fault, Faults, report_refused_declarations};
 use crate::layout::Width;
-use crate::{Driver, LoadError, MAX_FRAMES, Parts, Plugin, SavedState, Tail, first_width, widths};
+use crate::{
+    Driver, LoadError, MAX_EVENTS, MAX_FRAMES, Parts, Plugin, SavedState, Tail, first_width, widths,
+};
 
 /// What `tail` answers for a plugin whose output falls silent with its
 /// input; VST3's `kNoTail` and the C interface's `HAPTO_TAIL_NONE`.
@@ -65,10 +71,6 @@ pub(crate) const TAIL_NONE: u32 = 0;
 /// What `tail` answers for a plugin that may never fall silent; VST3's
 /// `kInfiniteTail` and the C interface's `HAPTO_TAIL_INFINITE`.
 pub(crate) const TAIL_INFINITE: u32 = u32::MAX;
-
-/// The most MIDI events one block carries each way, for a plugin that takes
-/// or sends MIDI.
-const MAX_EVENTS: usize = 2048;
 
 /// How long a main-thread call waits for a plugin bound to no thread that
 /// another thread's call has on loan, before it is refused.
@@ -635,6 +637,13 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
     pub(crate) fn carried(&self) -> (Vec<Point>, u64) {
         let automation = self.automation.hold();
         (automation.points().to_vec(), automation.dropped())
+    }
+
+    /// Returns what `read` makes of the last block's MIDI, decoded as its
+    /// processor read it, or `None` while inactive.
+    #[cfg(all(test, feature = "vst3"))]
+    pub(crate) fn heard<T>(&self, read: impl FnOnce(hapto_midi::Midi<'_>) -> T) -> Option<T> {
+        self.audio.hold().as_ref().map(|audio| read(audio.midi()))
     }
 
     /// Reports the faults not reported yet, as [`faults`](crate::faults)

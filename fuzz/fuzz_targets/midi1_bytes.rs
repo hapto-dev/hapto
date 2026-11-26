@@ -10,7 +10,7 @@
 //! The input ends with an end of SysEx, so no SysEx is left part sent.
 #![no_main]
 
-use hapto_ump::{ByteStream, Bytes};
+use hapto_ump::{ByteStream, Bytes, Event};
 use libfuzzer_sys::fuzz_target;
 
 fn read(bytes: &[u8], cut: usize) -> Vec<[u32; 4]> {
@@ -41,5 +41,5 @@ fuzz_target!(|data: &[u8]| {
 fn apart(packets: &[[u32; 4]]) -> (Vec<[u32; 4]>, Vec<[u32; 4]>) {
     packets
         .iter()
-        .partition(|words| words[0] >> 28 == 1 && (words[0] >> 16) & 0xFF >= 0xF8)
+        .partition(|&&words| Event::new(0, words).is_real_time())
 }

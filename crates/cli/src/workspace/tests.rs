@@ -65,6 +65,7 @@ fn a_plugin_crate_is_read_from_the_metadata() {
             dir: PathBuf::from("/w/examples/gain"),
             standalone: None,
             has_param_map_test: false,
+            has_juce_settings_test: false,
         }
     );
 }

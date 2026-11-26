@@ -23,6 +23,7 @@ fn gain(standalone: Option<&str>) -> Plugin {
         dir: PathBuf::from("/w/examples/gain"),
         standalone: standalone.map(str::to_owned),
         has_param_map_test: true,
+        has_juce_settings_test: false,
     }
 }
 

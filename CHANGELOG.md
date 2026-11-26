@@ -7,9 +7,8 @@ may break the API.
 
 ## [Unreleased]
 
-Nothing is released yet. Not built: the CLAP exporter, a page in a plugin
-window anywhere but Windows, and MIDI delivered to a plugin through an
-exporter.
+Nothing is released yet. Not built: the CLAP exporter, and a page in a plugin
+window anywhere but Windows.
 
 ### Changed
 
@@ -31,31 +30,84 @@ exporter.
   struct is `layout::Width`, and `manifest_info!` takes `layouts` only for a
   processor in `AnyLayout`. The audio types are in a new core crate,
   `hapto-audio`, which `hapto-host` re-exports, with `AudioBuf`, audio of its
-  own for tests.
+  own for tests. Every layout's frame takes a mono voice's sample into each
+  of its channels with `AddSample::add`. `Width` names the layouts' widths,
+  `STEREO_OUT`, `MONO_TO_STEREO` and `NO_AUDIO` beside `MONO` and `STEREO`,
+  and the C interface's test host's `activate` takes its frames as a `usize`,
+  as a block counts them.
 - **Breaking.** `ProcessSetup` is made with `ProcessSetup::new`, with room for
   no MIDI until a test sets `max_events` or `max_out_events`, so the buses
   beyond the main one can join it later without breaking a caller.
+- **Breaking.** `StandaloneAudio::process` takes a `StandaloneBlock`, the
+  block's channels, frames and MIDI in, and `sent`, which it hands what the
+  plugin sent once the block has played, at the block's frames, for an app to
+  send to its devices. `StandaloneBlock::new` makes a block of audio alone, as
+  long as its shortest channel, and `with_midi` gives it MIDI and its length,
+  so a plugin with no channels plays its MIDI.
+- The VST3 exporter sends a plugin's MIDI to its host, for a plugin that
+  declares MIDI out: notes as VST3's note events, under the host's `noteId`
+  where the host named the note and none where the plugin made it up, a
+  note's pressure, the note expressions of a note its host named, and a whole
+  SysEx. A controller, channel pressure, the bend and a program change go out
+  as MIDI 1.0 controllers, downgraded, and so do the system messages VST3
+  numbers, from start and stop to song position. `MidiOut::send` keeps a
+  host's note id in the packet's origin, and `midi_out.extend(midi)` is MIDI
+  thru. The VST3 test host gains `sent`, `BusEvent::Controller` and
+  `parameters`, which lists those a host shows, without the 2,080 hidden
+  proxies for a plugin that takes MIDI.
+- The VST3 exporter brings a host's MIDI in, for a plugin that takes MIDI:
+  notes, a note's pressure and VST3's note expressions as MIDI 2.0, each note
+  named by the host's `noteId`, and SysEx. A MIDI 1.0 controller, channel
+  pressure and the pitch bend come through hidden proxy parameters, 16
+  channels by 130, which `IMidiMapping` names; a host lists them after the
+  plugin's own, and each shows its MIDI 1.0 value as text. `Origin::Note`
+  carries a format's note id beside its packet, and the decoder names the note
+  by it: its note-off ends that note alone. An exporter may hand the engine a
+  block's MIDI in any order; the block takes it in time order. The VST3 test
+  host gains `process_events`, `process_claiming`, `BusEvent`, `midi_mapping`,
+  `note_expressions` and `ParamInfo::is_hidden`.
+- **Breaking.** The C interface carries a block's MIDI as Universal MIDI
+  Packets both ways, so `HAPTO_ABI_VERSION` is 3. `HaptoProcess` gains the
+  packets in and the room for packets out, each a `HaptoPacket` of a frame and
+  four words, with `HAPTO_MIDI_OUT_1` for a caller that takes MIDI 1.0 out
+  alone, which then gets MIDI 1.0's packets alone, and `HaptoProcess::NONE`
+  fills what a Rust caller leaves out. The JUCE adapter passes the host's
+  `MidiBuffer` in and the plugin's MIDI back, in room it makes before the
+  first block.
+- **Breaking.** A processor reads its block's MIDI decoded: `block.midi` is
+  a `Midi`, each `Message` at its frame with the packets it came in, and
+  `block.midi_out` a `MidiOut`, which sends messages or packets, in place of
+  `block.events` and `block.out_events`. `Block::new` takes the two, and
+  `Midi::default()` is a block with no MIDI. The engine decodes every block
+  once, and a block in pieces hands each piece its share. `hapto_host::midi`
+  re-exports `hapto-midi`. `block.spans()` cuts a block into `Span`s at each
+  frame a message arrives at, each with its audio and the messages at its
+  first frame, and `Spans::at_most` caps their length;
+  `block.spans_and_out()` hands the block's MIDI out back beside them, for a
+  plugin that sends too. `Audio::split_at` splits audio at a
+  frame.
 - **Breaking.** MIDI is MIDI 2.0 inside. `ChannelVoice` reads and writes MIDI
   2.0's channel voice messages alone, a `ChannelMessage` for each status MIDI
   2.0 has, and `Voice` with its MIDI 1.0 variants is gone. MIDI 1.0 becomes
   MIDI 2.0 through `Upgrade`, by the specification's Default Translation, and
   `Midi1Voice` reads and writes the MIDI 1.0 messages it translates;
-  `Downgrade` translates back for a destination that takes MIDI 1.0 alone.
-  Each `Event` keeps its `Origin`, and `scale` moves values between the
-  widths. An RPN or NRPN's data entry high byte goes out at its own frame, and
-  its low byte joins it there or refines it later, so where a host cuts its
-  blocks changes nothing. Controllers 0 and 32 pass on as controllers as well
-  as riding the next program change, so a fader on them learns, and MIDI 1.0
-  sent back through `Downgrade` repeats its bank select before the program.
-  Learn reads MIDI 2.0 alone: a MIDI 1.0 controller learns and plays as before
-  once upgraded, but for four rules of NRPN data entry. A low byte refines its
-  number's high byte when the address is sent again between them, where learn
-  dropped the entry; an address byte sent alone keeps the other one held, as a
-  MIDI 1.0 receiver does, where learn forgot the low byte at a lone 99; a
-  binding that is not coarse skips a high byte sent alone and moves when its
-  low byte comes, so a pair a block cuts never dips; and a coarse binding
-  reads the high byte of a data entry that carries its low byte too, where
-  learn wrote nothing. A packet's message type is a `MessageType`, whose
+  `Downgrade` translates back for a destination that takes MIDI 1.0 alone,
+  passing only what MIDI 1.0 carries and returning how many packets it
+  dropped. Each `Event` keeps its `Origin`, and `scale` moves values between
+  the widths. An RPN or NRPN's data entry high byte goes out at its own frame,
+  and its low byte joins it there or refines it later, so where a host cuts
+  its blocks changes nothing. Controllers 0 and 32 pass on as controllers as
+  well as riding the next program change, so a fader on them learns, and MIDI
+  1.0 sent back through `Downgrade` repeats its bank select before the
+  program. Learn reads MIDI 2.0 alone: a MIDI 1.0 controller learns and plays
+  as before once upgraded, but for four rules of NRPN data entry. A low byte
+  refines its number's high byte when the address is sent again between them,
+  where learn dropped the entry; an address byte sent alone keeps the other
+  one held, as a MIDI 1.0 receiver does, where learn forgot the low byte at a
+  lone 99; a binding that is not coarse skips a high byte sent alone and moves
+  when its low byte comes, so a pair a block cuts never dips; and a coarse
+  binding reads the high byte of a data entry that carries its low byte too,
+  where learn wrote nothing. A packet's message type is a `MessageType`, whose
   constants name the UMP table's types and whose `words` replaces
   `packet_words`.
 
@@ -129,8 +181,39 @@ exporter.
   `TargetId`, a `ParamId`, a `CustomId` or a typed parameter. A parameter made
   at run time is a target of its own, `TargetId::RunTime`, named by an opaque
   `RunTimeId`.
+- `hapto-midi`: MIDI in musicians' terms. `Decoder` reads a block's MIDI 2.0
+  packets into `Message`s: notes with a `NoteId` from note-on to note-off,
+  their own messages naming their `NoteKey`, controllers, bend and its range,
+  pressure, programs with their bank, and SysEx joined whole. Values from 0
+  to 1 are `f32`, values with a centre `Centred`, and `Key`, `Group`,
+  `Channel` and `Program` show as musicians count them. Decoding allocates
+  nothing; what overflows its tables is counted. A `Controller<T>` is read
+  typed and sent: `controller::PAN` as `Centred`, `controller::SUSTAIN` as a
+  `Pedal`, which keeps half pedal, and a plugin's own with a value type of
+  its own by `ControllerValue`; `controller::number` keeps the plain
+  numbers. `Controller::read_channel` reads a value with the group and
+  channel it came on, for a `PerChannel`, which keeps a value for each of the
+  256. `packets_of` turns messages into the packets they go out as, for a
+  test or a tool to hand a host. `NoteOn::with_key` moves a note, its own
+  pitch with it, and `NoteOn::with_id` with `NoteId::own` names a note a
+  plugin sends beside the host's.
+- `hapto-midi-devices`: the computer's MIDI devices as UMP, for an app that runs
+  a plugin with no host. A device is named by an id that survives the system's
+  renumbering, the list's changes are told at the main thread's tick, and each
+  input open is read on the system's thread into a ring that never waits, locks
+  or allocates, then into each block at the frames its messages came at. Every
+  device is merged on group 1, as a host hands a plugin its MIDI, each upgraded
+  to MIDI 2.0 with a translation of its own, and a SysEx reaches a block whole.
+  `Outputs` opens devices to send to, and `OutputsWriter` hands each block's
+  MIDI to them from the audio thread, downgraded to MIDI 1.0, sent by a thread
+  of its output's own as soon as the block has played or, by `Timing`, each
+  message at its frame's time. WinMM is its
+  backend, on Windows.
+- `hapto-ump`: `Upgrade::reset` forgets what an upgrade holds, in place, for a
+  new source.
 - `hapto-ump`: Universal MIDI Packets: a fixed-capacity event list per block,
   the channel voice messages and 7-bit SysEx read from it and written back,
+  SysEx joined back into messages by the specification's rules,
   the translation between MIDI 1.0 and MIDI 2.0, and MIDI 1.0's byte stream
   read into packets and written back.
 - `hapto-host`: the `Plugin` and `Processor` traits and `PluginInfo`, and
@@ -265,24 +348,35 @@ exporter.
   undoable label saved with the plugin, and a gain MIDI learn can drive, as a
   VST3 module. Its page, a Vite and React app, shows a slider on the gain, a
   field for the label, which shows a load or an undo at once and drops an
-  edit on Escape, and the version, in the host's window on Windows, when it
+  edit on Escape, a Learn button that arms MIDI learn on the gain and says
+  where learn is, and the version, in the host's window on Windows, when it
   was built in. It runs standalone too, under `cargo hapto dev`.
   [docs/first-plugin.md](docs/first-plugin.md) walks through it.
 - `examples/eq`: an EQ of six biquad bands and an output gain, as a VST3 module
   or a static library for the adapter.
+- `examples/midi-probe`: a plugin that makes a host's MIDI heard, for checks by
+  hand: a sine for each note, which its own pitch, bend, pressure and volume
+  move, the channel's bend and volume, and every message sent back out as it
+  came. It builds as a VST3 module, through the JUCE adapter, and as an app of
+  its own on the computer's MIDI devices.
 - `xtask`: `cargo xtask gen` writes every generated file, and CI fails when one
   drifts. `cargo xtask wrap` holds comments and docs to 80 columns.
 - `cargo-hapto`: the plugin author's command, for a plugin crate in any
   workspace. `cargo hapto init` writes a new plugin crate, a gain with its
   page, a standalone binary and tests, with fresh ids, its Hapto crates from
-  a checkout. `cargo hapto dev` runs the plugin's standalone binary with its
-  page from Vite, and rebuilds and restarts it after each change to Rust with
-  its saved block kept; `--host` runs it in the dev host. `cargo hapto serve`
-  runs the page's dev server alone, for the debug bundle in a real host.
+  a checkout; `--instrument` writes an instrument instead, a sine for each
+  note with no page. `cargo hapto dev` runs the plugin's standalone binary
+  with its page from Vite, and rebuilds and restarts it after each change to
+  Rust with its saved block kept; `--host` runs it in the dev host. `cargo
+  hapto serve` runs the page's dev server alone, for the debug bundle in a
+  real host.
   `cargo hapto build` writes a plugin crate's page map, builds its page and
   the crate in release, lays out its VST3 bundle under `target/bundle/` and
   installs it, per user or for every user, on Windows. `cargo hapto validate`
-  runs pluginval on that bundle as CI does: CI's validator lane runs it. Each
+  runs pluginval on that bundle as CI does: CI's validator lane runs it.
+  `cargo hapto juce` writes the crate's settings for the JUCE adapter through
+  its `juce_settings` test, which `init` writes with a `cabi` feature, and
+  prints the CMake that builds it through JUCE. Each
   command's `--help` says its flags.
 - `hapto-host`: the standalone exporter, behind the `standalone` feature: a
   plugin driven by an app of its own with no host, through the same engine.
@@ -291,7 +385,14 @@ exporter.
 - `hapto-standalone`: a plugin as an app of its own, on Windows, which a plugin
   crate's binary runs: its editor in a window, a test signal through it to the
   system's audio output, which it follows to a new default output, and its
-  saved block kept between runs. Its title counts the plugin's faults. Its dev
+  saved block kept between runs. A plugin that takes MIDI hears every MIDI
+  input the computer has, merged as a host merges them, opened and closed as
+  devices come and go, and a line names each, and one that sends MIDI sends
+  it to the outputs its binary chooses, as soon as each block has played or
+  each message at its frame. `App` says in code which devices open, a filter
+  for each direction, every input and no output by default, and when they
+  send, and its `MidiDevices` handle changes them while the app runs, from
+  any thread. Its title counts the plugin's faults. Its dev
   host, `cargo hapto dev --host`, runs the plugin through the VST3 exporter or
   the C interface in process, in a window of the plugin's own with a bar that
   names the format, and a settings window of what the host sees, a tab each,

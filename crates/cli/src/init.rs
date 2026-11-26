@@ -29,6 +29,10 @@ pub(crate) const FILES: &[(&str, &str)] = &[
     ("README.md", include_str!("../template/README.md.tmpl")),
     (".gitignore", include_str!("../template/gitignore.tmpl")),
     ("build.rs", include_str!("../template/build.rs.tmpl")),
+    (
+        "hapto-juce.cmake",
+        include_str!("../template/hapto-juce.cmake.tmpl"),
+    ),
     ("src/lib.rs", include_str!("../template/src/lib.rs.tmpl")),
     ("src/page.rs", include_str!("../template/src/page.rs.tmpl")),
     (
@@ -42,6 +46,10 @@ pub(crate) const FILES: &[(&str, &str)] = &[
     (
         "tests/plugin.rs",
         include_str!("../template/tests/plugin.rs.tmpl"),
+    ),
+    (
+        "tests/juce_settings.rs",
+        include_str!("../template/tests/juce_settings.rs.tmpl"),
     ),
     (
         "page/package.json",
@@ -73,6 +81,40 @@ pub(crate) const FILES: &[(&str, &str)] = &[
     ),
 ];
 
+/// Each file that the instrument template writes, with MIDI in, no audio in
+/// and no page, as [`FILES`] holds the effect's.
+pub(crate) const INSTRUMENT_FILES: &[(&str, &str)] = &[
+    (
+        "Cargo.toml",
+        include_str!("../template/instrument/Cargo.toml.tmpl"),
+    ),
+    (
+        "README.md",
+        include_str!("../template/instrument/README.md.tmpl"),
+    ),
+    (".gitignore", include_str!("../template/gitignore.tmpl")),
+    (
+        "hapto-juce.cmake",
+        include_str!("../template/instrument/hapto-juce.cmake.tmpl"),
+    ),
+    (
+        "src/lib.rs",
+        include_str!("../template/instrument/src/lib.rs.tmpl"),
+    ),
+    (
+        "src/bin/standalone.rs",
+        include_str!("../template/instrument/src/bin/standalone.rs.tmpl"),
+    ),
+    (
+        "tests/plugin.rs",
+        include_str!("../template/instrument/tests/plugin.rs.tmpl"),
+    ),
+    (
+        "tests/juce_settings.rs",
+        include_str!("../template/tests/juce_settings.rs.tmpl"),
+    ),
+];
+
 /// What the template appends to a plugin's type for the other types it
 /// makes: its parameters and its processor.
 const MADE: [&str; 3] = ["", "Params", "Processor"];
@@ -81,17 +123,21 @@ const MADE: [&str; 3] = ["", "Params", "Processor"];
 /// template's imports, which a test reads, the names of Rust's prelude it
 /// uses, which the type would shadow, and `Self`.
 const TAKEN: &[&str] = &[
+    "AddSample",
     "Asset",
     "Block",
     "Bool",
     "Box",
+    "BusEvent",
     "Changes",
     "Clone",
     "Debug",
     "Editor",
     "Err",
     "Float",
+    "Message",
     "None",
+    "NoteId",
     "Ok",
     "Option",
     "Page",
@@ -110,8 +156,11 @@ const TAKEN: &[&str] = &[
     "Some",
     "Status",
     "Stereo",
+    "StereoOut",
+    "TAU",
     "TestHost",
     "UiParams",
+    "Voice",
 ];
 
 /// Rust's keywords, of edition 2024, reserved ones included: a one-word
@@ -158,6 +207,10 @@ pub(crate) struct Options {
     /// The Hapto checkout to take the crates from.
     #[arg(long, value_name = "CHECKOUT")]
     pub(crate) hapto: Option<PathBuf>,
+    /// An instrument in place of the gain, with MIDI in, no audio in, a sine
+    /// for each note and no page.
+    #[arg(long)]
+    pub(crate) instrument: bool,
 }
 
 /// Who the new plugin is, and the names its code uses.
@@ -397,7 +450,12 @@ pub(crate) fn run(options: &Options) -> Result<()> {
         random,
     )?;
     let hapto = checkout(options.hapto.as_deref())?;
-    write(&options.folder, &identity, &hapto)?;
+    let files = if options.instrument {
+        INSTRUMENT_FILES
+    } else {
+        FILES
+    };
+    write(&options.folder, &identity, &hapto, files)?;
     println!(
         "wrote {} ({}, {}) in {}\n\nnext:\n{}  cargo hapto dev",
         identity.name,
@@ -451,7 +509,7 @@ fn folder_name(folder: &Path) -> Result<String> {
 /// # Errors
 ///
 /// Returns why it is no checkout.
-fn checkout(checkout: Option<&Path>) -> Result<String> {
+pub(crate) fn checkout(checkout: Option<&Path>) -> Result<String> {
     let built_from = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let dir = checkout.unwrap_or(&built_from);
     let dir = std::path::absolute(dir).with_context(|| dir.display().to_string())?;
@@ -473,7 +531,7 @@ fn checkout(checkout: Option<&Path>) -> Result<String> {
 ///
 /// Returns why it did not: a folder with something in it, or a write that
 /// failed.
-fn write(folder: &Path, identity: &Identity, hapto: &str) -> Result<()> {
+fn write(folder: &Path, identity: &Identity, hapto: &str, files: &[(&str, &str)]) -> Result<()> {
     // A folder with only `.git` in it is empty still, as after `git init`.
     let has_files = fs::read_dir(folder)
         .is_ok_and(|mut entries| entries.any(|e| e.is_ok_and(|e| e.file_name() != ".git")));
@@ -483,7 +541,7 @@ fn write(folder: &Path, identity: &Identity, hapto: &str) -> Result<()> {
             folder.display()
         );
     }
-    for (path, text) in FILES {
+    for (path, text) in files {
         let file = folder.join(path);
         if let Some(parent) = file.parent() {
             fs::create_dir_all(parent).with_context(|| parent.display().to_string())?;

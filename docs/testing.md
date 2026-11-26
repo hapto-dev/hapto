@@ -33,9 +33,13 @@ cd page && npm ci && npm run typecheck && npm test                   # pull requ
 cd examples/gain/page && npm ci && npm run typecheck && npm run build   # pull request: the gain's page
 cargo test -p hapto-webview --test hidden_window -- --ignored          # by hand, Windows: the page in a real WebView2, in windows never shown (one test leaves a dialog open, as its doc says)
 cargo test -p hapto-example-gain --test page -- --ignored              # by hand, Windows, with the gain's page built: the same, for its page
+cargo test -p hapto-midi-devices --test by_hand -- --ignored --nocapture --test-threads 1   # by hand, Windows: the computer's MIDI devices: their list, a chord on the system's synth at its times, every output, what a keyboard plays, a device replugged past every slot, a SysEx longer than an input's room through a loopback port, and a device unplugged while notes go out to it
+cargo hapto build -p hapto-example-midi-probe --install   # by hand, Windows: the MIDI probe in a real host, its notes, expressions and controllers heard and every message echoed back out
+cmake -S .github/juce-adapter -B <folder> -DHAPTO_CHECK_PLUGIN=midi-probe -DHAPTO_CHECK_JUCE_COMMIT=<the commit bench/ pins>   # by hand, Windows: the same probe through the JUCE adapter, built with `cmake --build <folder> --config Release`
+cargo run -p hapto-example-midi-probe --features standalone   # by hand, Windows: the probe as an app on the computer's MIDI devices, its echo sent to the system's synth
 cargo hapto dev -p hapto-example-gain   # by hand, Windows: the gain standalone with its page from Vite, restarted with its saved block after a change to Rust
 cargo hapto dev -p hapto-example-gain --host   # by hand, Windows: the same through the dev host, in VST3 and, after its switch, the C interface
-cargo test -p cargo-hapto -- --ignored   # full run, Windows: `cargo hapto init` writes a crate with this checkout's crates, which builds and passes its tests
+cargo test -p cargo-hapto -- --ignored   # full run, Windows: `cargo hapto init` writes a gain and an instrument with this checkout's crates, and each builds and passes its tests
 cargo hapto validate -p hapto-example-eq   # full run (the validator lane), Windows, with pluginval 1.0.4 on the PATH or in PLUGINVAL
 ```
 
@@ -99,7 +103,7 @@ real-time sanitizer, which needs Linux.
 | `page`: Typecheck, Test | The page compiles against the committed generated types, and its tests pass. |
 | `page`: the gain's page | The example gain's page installs, type-checks against the package and the gain's generated parameter map, and builds the files the gain embeds, under the names it embeds them by. No lane compiles the gain with them built in. |
 | `JUCE adapter` (macOS, started by hand) | The example EQ builds through the adapter as VST3 and AU, at the JUCE commit `bench/` pins, and both the Rust library and the plugin binaries hold arm64 and x86_64. It does not load the plugin. |
-| `JUCE adapter` (Windows, started by hand) | The example EQ's VST3 build through the adapter passes the Steinberg validator, built from the VST3 SDK at the pinned commit, as the native `plugin validators (windows)` lane passes Hapto's own. |
+| `JUCE adapter` (Windows, started by hand) | The example EQ's VST3 build through the adapter passes the Steinberg validator, built from the VST3 SDK at the pinned commit, as the native `plugin validators (windows)` lane passes Hapto's own. Open: no lane runs MIDI through the adapter's own code, its SysEx split and join among it; the C interface's tests stand in for the plugin's side, and the MIDI probe built through the adapter checks it in a real host by hand. |
 | Nightly: `miri` | `hapto-host`'s tests, on Linux and on Windows, the core crates' unit tests and some integration tests find no undefined behaviour under Stacked Borrows and Tree Borrows (see [Miri](#miri)). |
 | Nightly: `rtsan` (Linux) | A canary that allocates inside a marked call aborts, and the allocation gates and the gate matrix pass under RealtimeSanitizer. See [Real-time sanitizer](#real-time-sanitizer). |
 | Nightly: `fuzz` | Each of six `cargo-fuzz` targets ran ten minutes with no crash, no panic and no broken fixpoint (see [Fuzzing](#fuzzing)). |
@@ -161,18 +165,22 @@ What keeps that true:
 
 ## 2. The audio path does not allocate
 
-Code the audio thread runs never allocates, frees, locks or makes a system call.
-Every buffer it touches has a fixed capacity, sized when the plugin is activated
-on the main thread and never grown.
+Code the audio thread runs never allocates, frees, locks or makes a system call,
+but for one: the standalone app's MIDI out sets each output's signal, an event
+whose setting never blocks, once a block has handed it MIDI, and the sanitizer
+lane cannot see it, since Linux builds no signal. Every buffer it touches has a
+fixed capacity, sized when the plugin is activated on the main thread and never
+grown.
 
 Allocation is checked by test. Each crate with audio-thread code has a test
 target named `alloc_gate` (`tests/alloc_gate.rs`): `hapto-host`, `hapto-learn`,
-`hapto-params`, `hapto-ump`, `hapto-audio`, `hapto-standalone`, and the example
-EQ and gain. `hapto-testkit` has one too, which checks the gate itself, and so
-does `hapto-bridge`, whose tick runs on every main-thread tick of an open editor
-and allocates nothing while nothing moved. `hapto-standalone`'s audio path is
-private to the crate, so its gate reaches it through `hapto_standalone::gate`, a
-hidden module open to the gate alone. Each:
+`hapto-params`, `hapto-ump`, `hapto-midi`, `hapto-midi-devices`, `hapto-audio`,
+`hapto-standalone`, and the example EQ and gain. `hapto-testkit` has one too,
+which checks the gate itself, and so does `hapto-bridge`, whose tick runs on
+every main-thread tick of an open editor and allocates nothing while nothing
+moved. `hapto-standalone`'s audio path is private to the crate, so its gate
+reaches it through `hapto_standalone::gate`, a hidden module open to the gate
+alone. Each:
 
 1. installs the counting allocator once: `hapto_testkit::install_alloc_gate!();`
 2. builds and activates what it tests outside the gate, where allocating is
@@ -218,7 +226,9 @@ attributes on the module or the function. The lints are `indexing_slicing`,
 are the UMP readers and event list, learn's dispatch, and the parameter store
 and its host event queue. The rest are the exporter core's process path,
 automation walk and channel staging (`crates/host/src/boundary/channels.rs`),
-and the example EQ's filters and block. A site that cannot fail says why in an
+the VST3 exporter's MIDI in and out, the MIDI crate's decoder, block lists and
+encoder, the devices crate's rings, reader and writer, and the example EQ's
+filters and block. A site that cannot fail says why in an
 `#[expect(..., reason = "...")]`.
 
 `examples/eq/tests/matrix.rs` runs the example EQ through both exporters under
@@ -235,9 +245,9 @@ held. The matrix covers:
 Each block must equal the processor driven directly after the same last points,
 sample for sample. The exception is below -400 dBFS, where the exporters flush
 denormals and the direct processor does not. `overflow.rs` sends far more points
-than the exporter's room, so the walk's room-full branches run. The exporters
-hand a plugin no MIDI yet, so the matrix fills the event lists to capacity on
-the processor-driven side only. `matrix.rs`'s `soak` test, ignored in a normal
+than the exporter's room, so the walk's room-full branches run. The example EQ
+takes no MIDI, so the matrix fills the event lists to capacity on the
+processor-driven side only. `matrix.rs`'s `soak` test, ignored in a normal
 run, plays the matrix at random for `HAPTO_SOAK_SECONDS` and prints the seed it
 used (`HAPTO_SOAK_SEED` repeats a run).
 
@@ -296,14 +306,18 @@ audio thread's entry points. These carry it, in `hapto-host`:
   marks are compiled on Windows and macOS and never run under the sanitizer.
 
 The parameter store's audio-side reads and writes (`crates/params/src/set.rs`,
-`host_events.rs`), learn's audio side (`crates/learn/src/audio.rs`) and the UMP
+`host_events.rs`), learn's audio side (`crates/learn/src/audio.rs`), the UMP
 crate's event list and readers (`crates/ump/src/lib.rs`, `packets.rs`,
-`voice.rs`) carry marks of their own. The lane runs every crate's allocation
-gate, so the gates of the parameters, learn and UMP crates check those marks
-under the sanitizer too, as well as through the exporters. The plugin's
-processor runs below the exporters' marks in the lane's tests. A processor's
-`process` is a trait method, so a plugin would mark its own impl, as the
-example EQ's block could.
+`voice.rs`), the MIDI crate's decoder and block lists
+(`crates/midi/src/decoder.rs`, `midi.rs`) and the devices crate's clock, rings,
+reader, writer and output signal (`crates/midi-devices/src/clock.rs`, `ring.rs`,
+`inputs.rs`, `outputs.rs`, `winmm/signal.rs`, `none.rs`) carry marks of their
+own. The lane runs every crate's allocation gate, so the gates of the
+parameters, learn, UMP, MIDI and devices crates check those marks under the
+sanitizer too, as well as through the exporters. The plugin's processor runs
+below the exporters' marks in the lane's tests. A processor's `process` is a
+trait method, so a plugin would mark its own impl, as the example EQ's block
+could.
 
 A panic on the audio path allocates its payload, and std's hook writes it to
 stderr, inside a marked call, so the sanitizer reports it. It happens only
@@ -377,8 +391,9 @@ Two tools cover what real threads cannot make happen on demand:
   every interleaving its atomics allow. `scripts/run-loom.py` finds the models
   in every Rust file of the repository and counts them, by crate, module and
   name, and fails unless each one ran. A model outside the `src/` of the
-  lane's crates (params, learn and host) fails it too, since the lane would
-  never run it. This list says what each checks, and a new model adds a line:
+  lane's crates (params, learn, host and midi-devices) fails it too, since the
+  lane would never run it. This list says what each checks, and a new model
+  adds a line:
   - learn's staging slot: the newest staged value is the last one taken
     (`crates/learn/src/target.rs`);
   - learn's capture staging: a poll racing two blocks, an NRPN high byte and
@@ -413,7 +428,18 @@ Two tools cover what real threads cannot make happen on demand:
     (`crates/host/src/boundary/loom_models.rs`);
   - the same state shared by two threads: it drops on whichever thread lets it
     go last, after both loans end, and exactly once
-    (`crates/host/src/boundary/loom_models.rs`).
+    (`crates/host/src/boundary/loom_models.rs`);
+  - a MIDI device's ring: the audio thread takes what the device's thread
+    pushed, in order and never torn, and what found no room is counted
+    (`crates/midi-devices/src/ring.rs`);
+  - the same ring cleared as a device takes it, while the audio thread
+    pushes: what is left is whole packets, in order
+    (`crates/midi-devices/src/ring.rs`);
+  - the same ring read by place, as a held SysEx is looked over: every packet
+    the length counts reads whole, in order
+    (`crates/midi-devices/src/ring.rs`);
+  - the same ring renewed for a new device: a packet it pushed comes with its
+    new generation (`crates/midi-devices/src/ring.rs`).
 
   A model fails when the ordering that publishes its data is weakened, with one
   exception: the queue's `dirty` flag. Its release and acquire are needed under
@@ -422,10 +448,12 @@ Two tools cover what real threads cannot make happen on demand:
   `HostQueue::mark_dirty` (`crates/params/src/host_events.rs`).
 
 The `loom models` lane runs `RUSTFLAGS="--cfg loom" cargo test -p hapto-params
--p hapto-learn -p hapto-host --release --locked --lib loom_`. The host's models
-need no feature, since its core builds without one. The cfg swaps the modelled
-atomics for loom's, which work only inside a model, so the lane runs the models
-alone (the `loom_` prefix). `loom` is pulled in only under `cfg(loom)`.
+-p hapto-learn -p hapto-host -p hapto-midi-devices --release --locked --lib
+loom_`.
+The host's models need no feature, since its core builds without one. The cfg
+swaps the modelled atomics for loom's, which work only inside a model, so the
+lane runs the models alone (the `loom_` prefix). `loom` is pulled in only under
+`cfg(loom)`.
 
 ### Miri
 
@@ -509,7 +537,9 @@ The generated files are:
   second plugin would bring two sets of VST3 entry points into one binary;
 - the C header the `cabi` feature generates for the JUCE adapter
   (`crates/host/include/hapto.h`);
-- the example EQ's JUCE settings (`examples/eq/hapto-juce.cmake`).
+- the example EQ's JUCE settings (`examples/eq/hapto-juce.cmake`);
+- the MIDI probe's JUCE settings (`examples/midi-probe/hapto-juce.cmake`),
+  whose drift gate is its own `tests/juce_settings.rs`, as the gain's is.
 
 ## 5. A check that finds nothing fails
 
@@ -678,8 +708,8 @@ exporter's save and load.
 `fuzz/` (outside the Cargo workspace; it needs a nightly compiler) holds six
 `cargo-fuzz` targets, one per input boundary:
 
-- `ump_packets`: splitting a stream, decoding each voice message, and encoding
-  it back;
+- `ump_packets`: splitting a stream, decoding each voice message and encoding
+  it back, and reading each packet into messages as a plugin's are;
 - `midi1_bytes`: a MIDI 1.0 device's byte stream read into packets, cut into
   reads anywhere, and written back as bytes that read the same;
 - `midi1_translation`: a host's MIDI 1.0 cut into blocks anywhere, upgraded,

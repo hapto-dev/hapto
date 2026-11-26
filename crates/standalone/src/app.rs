@@ -22,7 +22,9 @@ use winit::window::{Window, WindowId};
 
 use crate::block::{Plan, Player};
 use crate::device::{self, Answer, LOOK, Look, Output, Playing, answer, say_once};
+use crate::midi::Midi;
 use crate::options::Options;
+use crate::routing::MidiDevices;
 use crate::session::Session;
 use crate::settings::Blocks;
 use crate::signal::Signal;
@@ -56,13 +58,14 @@ pub(crate) enum Wake {
     Tick,
 }
 
-/// Runs `P` standalone until its window closes.
+/// Runs `P` standalone until its window closes, opening the MIDI devices
+/// that `routing` selects.
 ///
 /// # Errors
 ///
-/// Returns why it could not run: no audio device, an activation refused, no
-/// window.
-pub(crate) fn run<P: Plugin>(options: &Options) -> Result<ExitCode> {
+/// Returns an error if there is no audio device or window, or an activation
+/// is refused.
+pub(crate) fn run<P: Plugin>(options: &Options, routing: MidiDevices) -> Result<ExitCode> {
     let event_loop = EventLoop::<Wake>::with_user_event()
         .build()
         .context("the window's event loop")?;
@@ -78,9 +81,15 @@ pub(crate) fn run<P: Plugin>(options: &Options) -> Result<ExitCode> {
     if let Some(line) = silence_note(P::INFO.name, hapto_host::first_width::<P>(), options.signal) {
         eprintln!("{line}");
     }
-    let audio = start_audio(&plugin, options.signal)?;
+    // Only a plugin that takes MIDI opens the computer's inputs, and only one
+    // that sends MIDI its outputs, because WinMM lets one app at a time hold
+    // a device.
+    let (takes, sends) = (P::INFO.midi_input, P::INFO.midi_output);
+    let mut midi = (takes || sends).then(|| Midi::new(P::INFO.name, takes, sends, routing));
+    let audio = start_audio(&plugin, options.signal, midi.as_mut())?;
     let mut app = App {
         audio: Some(audio),
+        midi,
         editor: None,
         window: None,
         failed: None,
@@ -108,14 +117,21 @@ pub(crate) fn run<P: Plugin>(options: &Options) -> Result<ExitCode> {
 }
 
 /// Opens the system's default output, activates `plugin` at its rate in its
-/// first layout, and starts the output playing it, with `signal` on its
-/// inputs. A device that does not start leaves the plugin deactivated again.
+/// first layout, and starts the output playing it.
+///
+/// The plugin's inputs get `signal`, and its blocks get `midi`'s inputs and
+/// send to `midi`'s outputs, both opened again for the stream. A device that
+/// doesn't start leaves the plugin deactivated again.
 ///
 /// # Errors
 ///
-/// Returns why it did not start: no device, an activation refused, or a
-/// device that did not start.
-fn start_audio<P: Plugin>(plugin: &Standalone<P>, signal: Signal) -> Result<Audio> {
+/// Returns an error if there is no device, an activation is refused, or a
+/// device doesn't start.
+fn start_audio<P: Plugin>(
+    plugin: &Standalone<P>,
+    signal: Signal,
+    mut midi: Option<&mut Midi>,
+) -> Result<Audio> {
     let output = Output::system_default()?;
     let (rate, layout) = (output.sample_rate(), hapto_host::first_width::<P>());
     plugin
@@ -129,9 +145,15 @@ fn start_audio<P: Plugin>(plugin: &Standalone<P>, signal: Signal) -> Result<Audi
         BLOCK,
         Plan::new(Blocks::Device, signal),
     );
-    let stream = output
-        .start(rate, player)
-        .inspect_err(|_| plugin.deactivate())?;
+    let (reader, writer) = midi.as_deref_mut().map_or((None, None), Midi::streams);
+    let player = player.with_midi(reader).with_midi_out(writer);
+    let stream = output.start(rate, player).inspect_err(|_| {
+        plugin.deactivate();
+        // No stream plays the devices, so they go back to other apps.
+        if let Some(midi) = midi {
+            midi.stop();
+        }
+    })?;
     Ok(Audio { stream, output })
 }
 
@@ -266,6 +288,9 @@ pub(crate) fn tick_from_a_thread(proxy: EventLoopProxy<Wake>) {
 struct App<P: Plugin> {
     /// The audio, while a device plays the plugin.
     audio: Option<Audio>,
+    /// The computer's MIDI inputs and outputs, for a plugin that takes MIDI
+    /// or sends it.
+    midi: Option<Midi>,
     editor: Option<StandaloneEditor<P>>,
     window: Option<Window>,
     /// Why the app could not go on, once its loop ends.
@@ -389,7 +414,7 @@ impl<P: Plugin> App<P> {
     /// not open leaves the audio stopped, which the window's title says, and
     /// a line says why, once, and again only when the reason changes.
     fn open_audio(&mut self) -> Option<String> {
-        match start_audio(&self.plugin, self.signal) {
+        match start_audio(&self.plugin, self.signal, self.midi.as_mut()) {
             Ok(audio) => {
                 let place = audio.place();
                 self.audio = Some(audio);
@@ -421,6 +446,11 @@ impl<P: Plugin> App<P> {
     fn silence(&mut self) {
         drop(self.audio.take());
         self.plugin.deactivate();
+        // No stream reads or writes the devices now, so they go back to other
+        // apps, and the outputs' notes end.
+        if let Some(midi) = &mut self.midi {
+            midi.stop();
+        }
     }
 
     /// Says in the window's title whether the audio is `stopped`.
@@ -440,6 +470,9 @@ impl<P: Plugin> App<P> {
         if now >= self.next_tick {
             self.plugin.tick();
             self.check_audio();
+            if let Some(midi) = &mut self.midi {
+                midi.tick(now);
+            }
             let faults = self.plugin.faults();
             if faults != self.shows.faults {
                 self.shows.faults = faults;

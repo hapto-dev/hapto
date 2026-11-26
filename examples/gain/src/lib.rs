@@ -6,8 +6,8 @@
 //! saved state, undo, the session, learn and the VST3 export. The guide
 //! `docs/first-plugin.md` walks through it.
 //!
-//! Open: no exporter delivers MIDI events yet, so learn works only in a test
-//! that runs learn's audio side itself.
+//! The page's Learn button arms learn on the gain, and from then on the next
+//! controller that a host or the app's MIDI inputs send drives it.
 
 #[cfg(feature = "vst3")]
 hapto_host::export_vst3!(Gain);
@@ -15,6 +15,9 @@ hapto_host::export_vst3!(Gain);
 mod page;
 
 pub use page::PAGE;
+
+use std::cell::Cell;
+use std::rc::Rc;
 
 use hapto_host::layout::Stereo;
 use hapto_host::{Block, Editor, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status};
@@ -24,6 +27,10 @@ use hapto_undo::{Bound, History};
 
 const LABEL_KEY: &str = "label";
 const DEFAULT_LABEL: &str = "Untitled";
+/// The gain's MIDI learn state, as the page reads it.
+const LEARN_OFF: &str = "off";
+const LEARN_ARMED: &str = "armed";
+const LEARN_LEARNED: &str = "learned";
 
 /// What each mode does to the sound.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Choices)]
@@ -58,6 +65,12 @@ pub struct Gain {
     params: GainParams,
     history: History,
     label: Value<String>,
+    /// Set by the page's Learn button, so that the next idle arms learn on the
+    /// gain.
+    learn_asked: Rc<Cell<bool>>,
+    /// The gain's MIDI learn state, `off`, `armed` or `learned`, for the page
+    /// to show.
+    learn_state: Value<String>,
 }
 
 impl Gain {
@@ -97,6 +110,18 @@ impl Gain {
     pub fn gain_is_learned(&self) -> bool {
         self.parts.learn().mapping(self.params.gain.id()).is_some()
     }
+
+    /// Requests learn on the gain at the next idle, as the page's Learn
+    /// button does.
+    pub fn ask_to_learn(&self) {
+        self.learn_asked.set(true);
+    }
+
+    /// Returns the gain's MIDI learn state, `off`, `armed` or `learned`, as
+    /// the page shows it.
+    pub fn learn_state(&self) -> String {
+        self.learn_state.get()
+    }
 }
 
 impl Plugin for Gain {
@@ -118,11 +143,14 @@ impl Plugin for Gain {
             .expect("a free key");
         history.enroll(&label, "Rename").expect("a new value");
 
+        let learn_state = Value::new(LEARN_OFF.to_owned(), parts.set());
         Gain {
             parts,
             params,
             history,
             label,
+            learn_asked: Rc::new(Cell::new(false)),
+            learn_state,
         }
     }
 
@@ -132,6 +160,26 @@ impl Plugin for Gain {
 
     fn editor(&mut self) -> Option<Box<dyn Editor>> {
         page::editor(self)
+    }
+
+    /// Arms learn if the page requested it, and writes learn's state for the
+    /// page.
+    fn idle(&mut self) {
+        if self.learn_asked.take() {
+            // Learn is on from `new`, and the gain is a parameter, so arming
+            // it is never refused.
+            let _ = self.learn_gain();
+        }
+        let state = if self.parts.learn().armed().is_some() {
+            LEARN_ARMED
+        } else if self.gain_is_learned() {
+            LEARN_LEARNED
+        } else {
+            LEARN_OFF
+        };
+        if self.learn_state.get() != state {
+            self.learn_state.set(state.to_owned());
+        }
     }
 }
 

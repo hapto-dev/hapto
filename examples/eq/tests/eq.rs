@@ -5,7 +5,9 @@ use std::sync::Arc;
 
 use hapto_example_eq::EqProcessor;
 use hapto_host::layout::Width;
-use hapto_host::{Audio, Block, EventList, Plugin, ProcessSetup, Processor, SavedState};
+use hapto_host::{
+    Audio, Block, EventList, Midi, MidiOut, Plugin, ProcessSetup, Processor, SavedState,
+};
 use hapto_params::{Kind, ParamDecl};
 
 mod common;
@@ -20,7 +22,6 @@ fn setup() -> ProcessSetup {
 
 /// Runs both channels through in blocks of at most [`MAX_FRAMES`].
 fn run(processor: &mut EqProcessor, left: &mut [f32], right: &mut [f32]) {
-    let events = EventList::with_capacity(0);
     let mut out = EventList::with_capacity(0);
     for (left, right) in left
         .chunks_mut(MAX_FRAMES)
@@ -30,8 +31,8 @@ fn run(processor: &mut EqProcessor, left: &mut [f32], right: &mut [f32]) {
         let mut channels: [&mut [f32]; 2] = [left, right];
         processor.process(Block::new(
             Audio::new(&mut channels, frames),
-            &events,
-            &mut out,
+            Midi::default(),
+            MidiOut::new(&mut out),
         ));
     }
 }
@@ -321,10 +322,13 @@ fn a_short_block_leaves_the_rest_of_the_buffer_alone() {
     set(&saved, "out.gain", -6.0);
     let mut processor = plugin.activate(&setup());
     let (mut left, mut right) = (vec![0.5f32; 64], vec![0.5f32; 64]);
-    let events = EventList::with_capacity(0);
     let mut out = EventList::with_capacity(0);
     let mut channels: [&mut [f32]; 2] = [&mut left, &mut right];
-    processor.process(Block::new(Audio::new(&mut channels, 32), &events, &mut out));
+    processor.process(Block::new(
+        Audio::new(&mut channels, 32),
+        Midi::default(),
+        MidiOut::new(&mut out),
+    ));
     for samples in [&left, &right] {
         assert!(samples[32..].iter().all(|&sample| sample == 0.5));
         assert!(samples[..32].iter().all(|&sample| sample != 0.5));

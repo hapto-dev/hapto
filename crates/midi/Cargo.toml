@@ -1,0 +1,23 @@
+[package]
+name = "hapto-midi"
+description = "MIDI in musicians' terms: the messages a block's packets say, decoded, with keys, channels and programs shown as musicians count them"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords = ["midi", "midi2", "ump", "audio", "plugin"]
+categories = ["multimedia::audio"]
+publish.workspace = true
+
+[dependencies]
+hapto-ump.workspace = true
+
+[dev-dependencies]
+hapto-testkit.workspace = true
+proptest.workspace = true
+
+[lints]
+workspace = true

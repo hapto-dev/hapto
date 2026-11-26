@@ -856,18 +856,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "hapto-example-midi-probe"
+version = "0.1.0"
+dependencies = [
+ "hapto-host",
+ "hapto-standalone",
+ "hapto-testkit",
+]
+
+[[package]]
 name = "hapto-host"
 version = "0.1.0"
 dependencies = [
  "hapto-audio",
  "hapto-learn",
  "hapto-macros",
+ "hapto-midi",
  "hapto-params",
  "hapto-session",
  "hapto-testkit",
  "hapto-ump",
  "hapto-undo",
  "loom",
+ "proptest",
  "raw-window-handle",
  "serde",
  "serde_json",
@@ -901,6 +912,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "hapto-midi"
+version = "0.1.0"
+dependencies = [
+ "hapto-testkit",
+ "hapto-ump",
+ "proptest",
+]
+
+[[package]]
+name = "hapto-midi-devices"
+version = "0.1.0"
+dependencies = [
+ "hapto-testkit",
+ "hapto-ump",
+ "loom",
+ "windows",
+]
+
+[[package]]
 name = "hapto-params"
 version = "0.1.0"
 dependencies = [
@@ -928,6 +958,7 @@ dependencies = [
  "cpal",
  "hapto-host",
  "hapto-learn",
+ "hapto-midi-devices",
  "hapto-params",
  "hapto-testkit",
  "serde_json",

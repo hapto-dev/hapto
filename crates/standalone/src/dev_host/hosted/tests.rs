@@ -6,6 +6,7 @@
 use std::cell::RefCell;
 
 use hapto_host::layout::{AnyLayout, Width};
+use hapto_host::standalone::StandaloneBlock;
 use hapto_host::{
     AuCodes, Block, Category, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status,
 };
@@ -122,7 +123,11 @@ impl Plugin for Knobs {
 fn play(render: &mut dyn Render, frames: usize) {
     let input = vec![0.5_f32; frames];
     let (mut left, mut right) = (vec![0.0_f32; frames], vec![0.0_f32; frames]);
-    render.render(&[&input, &input], &mut [&mut left, &mut right]);
+    let outputs = &mut [&mut left[..], &mut right[..]];
+    render.render(
+        StandaloneBlock::new(&[&input, &input], outputs),
+        &mut |_| {},
+    );
 }
 
 #[test]

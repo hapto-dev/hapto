@@ -76,19 +76,20 @@ fn upgrade(sent: &[Vec<Event>]) -> Vec<Vec<Event>> {
 
 /// Downgrades `upgraded` one block at a time.
 fn downgrade(upgraded: &[Vec<Event>]) -> Vec<Vec<Event>> {
-    let mut downgrade = Downgrade::new();
+    let downgrade = Downgrade::new();
+    let mut lost = 0;
     let back = upgraded
         .iter()
         .map(|block| {
             // A program change with its bank becomes three messages, and a
             // controller becomes four.
             let mut out = EventList::with_capacity(block.len() * 4);
-            downgrade.block(block, &mut out);
+            lost += downgrade.block(block, &mut out);
             assert_eq!(out.dropped(), 0);
             out.as_slice().to_vec()
         })
         .collect();
-    assert_eq!(downgrade.lost(), 0, "MIDI 1.0 carries all an upgrade makes");
+    assert_eq!(lost, 0, "MIDI 1.0 carries all an upgrade makes");
     back
 }
 

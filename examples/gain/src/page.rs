@@ -1,8 +1,13 @@
-//! The gain's page: a slider on the gain, a field for the label and the
-//! plugin's version, in the host's window. Its source is `page/`, a Vite and
-//! React app; `npm run build` there writes the files below, which the plugin
-//! is built with. A build that finds them missing says so, and the plugin
-//! offers no editor, unless a debug build loads the page from a dev server.
+//! The gain's page in the host's window, with a slider on the gain, a field
+//! for the label, a button that arms MIDI learn on the gain, and the plugin's
+//! version.
+//!
+//! Its source is `page/`, a Vite and React app, and `npm run build` there
+//! writes the files below, which the plugin is built with. If they are
+//! missing, the build says so and the plugin offers no editor, unless a debug
+//! build loads the page from a dev server.
+
+use std::rc::Rc;
 
 use hapto_host::{Editor, Plugin, Size};
 use hapto_webview::{Asset, Page};
@@ -39,9 +44,17 @@ pub(crate) fn editor(gain: &Gain) -> Option<Box<dyn Editor>> {
     Page::new(&Gain::INFO, gain.ui().clone(), PAGE.unwrap_or_default())
         .with_size(Size {
             width: 420,
-            height: 220,
+            height: 260,
         })
         .value("label", &gain.label)
+        .value("learn", &gain.learn_state)
         .command("version", |()| Ok(Gain::INFO.version))
+        .command("learn", {
+            let asked = Rc::clone(&gain.learn_asked);
+            move |()| {
+                asked.set(true);
+                Ok(())
+            }
+        })
         .into_editor()
 }

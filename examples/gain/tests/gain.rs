@@ -6,10 +6,11 @@ use std::sync::Arc;
 
 use hapto_example_gain::Gain;
 use hapto_host::layout::Width;
+use hapto_host::midi::MidiList;
 use hapto_host::vst3::TestHost;
 use hapto_host::{
-    AuCodes, Audio, Block, Category, Driver, EventList, Parts, Plugin, PluginInfo, ProcessSetup,
-    Processor, SavedState,
+    AuCodes, Audio, Block, Category, Driver, EventList, MidiOut, Parts, Plugin, PluginInfo,
+    ProcessSetup, Processor, SavedState,
 };
 use hapto_params::host_id;
 use hapto_ump::{Midi1Message, Midi1Voice, Upgrade};
@@ -196,14 +197,20 @@ fn a_learned_controller_drives_the_gain() {
         Upgrade::new().block(&[sent], &mut events);
         events
     };
+    let mut midi = MidiList::new();
     let mut run = |processor: &mut _, events: &EventList| {
         learn.process(events);
+        midi.read(events, 8);
         let (mut left, mut right) = ([0.5_f32; 8], [0.5_f32; 8]);
         let mut out = EventList::with_capacity(0);
         let mut channels = [&mut left[..], &mut right[..]];
         Processor::process(
             processor,
-            Block::new(Audio::new(&mut channels, 8), events, &mut out),
+            Block::new(
+                Audio::new(&mut channels, 8),
+                midi.midi(),
+                MidiOut::new(&mut out),
+            ),
         );
         left[0]
     };
@@ -223,5 +230,44 @@ fn a_learned_controller_drives_the_gain() {
     saved.load(&block).expect("a saved block");
     driver.tick();
     assert!(reopened.gain_is_learned());
+    plugin.deactivate(processor);
+}
+
+#[test]
+fn the_page_s_learn_button_arms_learn_at_the_next_idle() {
+    let (mut plugin, driver, _saved) = built();
+    let mut setup = ProcessSetup::new(48_000.0, 8, Width::STEREO);
+    setup.max_events = 4;
+    let processor = plugin.activate(&setup);
+    let mut learn = driver.learn_audio().expect("learn is on");
+    let tick = |plugin: &mut Gain| {
+        driver.tick();
+        plugin.idle();
+    };
+    tick(&mut plugin);
+    assert_eq!(plugin.learn_state(), "off");
+
+    // The page's button requests learn, and the next idle arms it.
+    plugin.ask_to_learn();
+    tick(&mut plugin);
+    assert_eq!(plugin.learn_state(), "armed");
+
+    // A controller in a block, then the tick that commits it.
+    let mut events = EventList::with_capacity(1);
+    let message = Midi1Message::ControlChange {
+        controller: 7,
+        value: 64,
+    };
+    let sent = Midi1Voice {
+        group: 0,
+        channel: 0,
+        message,
+    }
+    .event(0);
+    Upgrade::new().block(&[sent], &mut events);
+    learn.process(&events);
+    tick(&mut plugin);
+    assert_eq!(plugin.learn_state(), "learned");
+    assert!(plugin.gain_is_learned());
     plugin.deactivate(processor);
 }

@@ -29,6 +29,9 @@ crate-type = ["cdylib", "rlib"]
 default = ["vst3"]
 # The VST3 module's entry points, through Hapto's exporter.
 vst3 = ["hapto-host/vst3"]
+# The C interface's one symbol, for the JUCE adapter, which defines the VST3
+# entry points itself: built without `vst3`.
+cabi = ["hapto-host/cabi"]
 # The plugin as an app of its own, which `cargo hapto dev` runs; the module
 # never links it.
 standalone = ["dep:hapto-standalone"]
@@ -42,7 +45,7 @@ hapto-standalone = { path = "{{hapto}}/crates/standalone", optional = true }
 hapto-webview = { path = "{{hapto}}/crates/webview" }
 
 [dev-dependencies]
-hapto-host = { path = "{{hapto}}/crates/host", features = ["vst3", "test-host"] }
+hapto-host = { path = "{{hapto}}/crates/host", features = ["vst3", "cabi", "test-host"] }
 hapto-bridge = { path = "{{hapto}}/crates/bridge", features = ["typescript"] }
 hapto-testkit = { path = "{{hapto}}/crates/testkit" }
 

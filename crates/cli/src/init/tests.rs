@@ -5,8 +5,8 @@
 use std::path::{Path, PathBuf};
 
 use super::{
-    FILES, Identity, Options, TAKEN, au_code, cd_line, class_id, crate_name, folder_name, render,
-    write,
+    FILES, INSTRUMENT_FILES, Identity, Options, TAKEN, au_code, cd_line, class_id, crate_name,
+    folder_name, render, write,
 };
 
 fn identity(folder: &str) -> Identity {
@@ -156,7 +156,8 @@ fn imported(text: &str) -> Vec<String> {
 #[test]
 fn every_type_a_template_file_imports_is_taken() {
     let mut read = 0;
-    for (path, text) in FILES.iter().filter(|(path, _)| path.ends_with(".rs")) {
+    let files = FILES.iter().chain(INSTRUMENT_FILES);
+    for (path, text) in files.filter(|(path, _)| path.ends_with(".rs")) {
         for name in imported(text) {
             assert!(TAKEN.contains(&name.as_str()), "{path} imports {name}");
             read += 1;
@@ -200,7 +201,7 @@ fn an_au_code_is_four_characters_with_a_capital() {
 #[test]
 fn every_placeholder_of_every_file_is_filled() {
     let made = identity("my-plugin");
-    for (path, text) in FILES {
+    for (path, text) in FILES.iter().chain(INSTRUMENT_FILES) {
         let rendered = render(text, &made, "C:/src/hapto");
         assert!(!rendered.contains("{{"), "{path} keeps a placeholder");
     }
@@ -214,11 +215,14 @@ fn every_placeholder_of_every_file_is_filled() {
 fn a_new_crate_is_written_only_into_a_new_or_empty_folder() {
     let dir = temp("write");
     let made = identity("write");
-    write(&dir, &made, "C:/src/hapto").expect("a new folder");
+    write(&dir, &made, "C:/src/hapto", FILES).expect("a new folder");
     for (path, _) in FILES {
         assert!(dir.join(path).is_file(), "{path}");
     }
-    assert!(write(&dir, &made, "C:/src/hapto").is_err(), "not empty now");
+    assert!(
+        write(&dir, &made, "C:/src/hapto", FILES).is_err(),
+        "not empty now"
+    );
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -227,7 +231,7 @@ fn a_folder_git_alone_holds_takes_the_new_crate() {
     // As after `git init`, then `cargo hapto init .`.
     let dir = temp("git-only");
     std::fs::create_dir_all(dir.join(".git")).expect("made");
-    write(&dir, &identity("git-only"), "C:/src/hapto").expect("only .git");
+    write(&dir, &identity("git-only"), "C:/src/hapto", FILES).expect("only .git");
     assert!(dir.join("Cargo.toml").is_file());
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -273,19 +277,14 @@ fn a_vendor_with_no_letters_cannot_make_the_default_id() {
     assert!(given.is_ok(), "an id given needs no vendor's letters");
 }
 
-/// Writes a crate with this checkout's crates, then builds and tests it: the
-/// template compiles, its page map matches its declarations, and its tests
-/// pass. The full CI run takes it on Windows, and by hand: `cargo test -p
-/// cargo-hapto -- --ignored`, minutes the first time, since the crate builds
-/// in a target folder of its own.
-#[test]
-#[ignore = "builds a whole plugin crate"]
-fn a_new_crate_builds_and_passes_its_tests() {
-    let dir = temp("e2e").join("e2e-plugin");
+/// Writes a crate from `files` with this checkout's crates, and checks that
+/// it builds, its generated files match its declarations and its tests pass.
+fn builds_and_passes_its_tests(name: &str, files: &[(&str, &str)]) {
+    let dir = temp("e2e").join(name);
     let checkout = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let checkout = std::path::absolute(checkout).expect("a path");
     let hapto = checkout.to_string_lossy().replace('\\', "/");
-    write(&dir, &identity("e2e-plugin"), &hapto).expect("written");
+    write(&dir, &identity(name), &hapto, files).expect("written");
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     let status = std::process::Command::new(cargo)
         .args(["test", "--quiet"])
@@ -294,6 +293,25 @@ fn a_new_crate_builds_and_passes_its_tests() {
         .status()
         .expect("cargo ran");
     assert!(status.success(), "the new crate's tests: {status}");
+}
+
+/// The gain that the template writes builds and passes its tests.
+///
+/// The full CI run runs it on Windows, and `cargo test -p cargo-hapto --
+/// --ignored` by hand, in minutes the first time because the crate builds in
+/// its own target folder.
+#[test]
+#[ignore = "builds a whole plugin crate"]
+fn a_new_crate_builds_and_passes_its_tests() {
+    builds_and_passes_its_tests("e2e-plugin", FILES);
+}
+
+/// The instrument that `--instrument` writes builds and passes its tests, in
+/// which a note sounds through the VST3 exporter until it is released.
+#[test]
+#[ignore = "builds a whole plugin crate"]
+fn a_new_instrument_builds_and_passes_its_tests() {
+    builds_and_passes_its_tests("e2e-synth", INSTRUMENT_FILES);
 }
 
 #[test]

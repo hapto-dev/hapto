@@ -1349,6 +1349,11 @@ which kept the round trip exact; the owner turned that down the same day,
 since a processor that drops controllers 0 and 32 would then lose the bank,
 and a receiver sent the bank select twice ends on the same bank.
 
+When the exporters came to send MIDI out, the downgrade came to pass only what
+MIDI 1.0's bytes carry, which drops utility, flex data, stream and 8-bit SysEx
+packets too: each place it serves writes MIDI 1.0 as bytes or as a host's MIDI
+1.0 events, and each had filtered what came out by a rule of its own.
+
 ## Rules
 
 ### P7. The host write: sanitise, clamp, convert, snap, store, publish

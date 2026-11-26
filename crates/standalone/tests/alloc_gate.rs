@@ -1,10 +1,13 @@
 //! The app's audio thread never allocates, from the first device buffer
-//! after activation on: the shipped app's callback, through the standalone
-//! exporter, and the dev host's, through the VST3 exporter and the C
-//! interface, for every way of cutting blocks, every test signal, and
-//! devices of fewer and more channels than the plugin's.
+//! after activation on.
 //!
-//! The app runs on Windows alone, so the gate does too.
+//! The gate covers the shipped app's callback, through the standalone
+//! exporter with MIDI in from every input and out to every output, and the
+//! dev host's, through the VST3 exporter and the C interface. Each runs for
+//! every way of cutting blocks, every test signal, and devices of fewer and
+//! more channels than the plugin.
+//!
+//! The app runs only on Windows, so the gate does too.
 
 hapto_testkit::install_alloc_gate!();
 
@@ -91,6 +94,44 @@ mod on_windows {
         }
     }
 
+    /// A processor that forwards each message at its frame.
+    struct Forwarding;
+
+    impl Processor for Forwarding {
+        type Layout = AnyLayout;
+
+        fn process(&mut self, block: Block<'_, AnyLayout>) -> Status {
+            let Block {
+                midi, mut midi_out, ..
+            } = block;
+            midi_out.extend(midi);
+            Status::Continue
+        }
+    }
+
+    /// A plugin that takes MIDI and sends it back out.
+    struct Thru;
+
+    impl Plugin for Thru {
+        const INFO: PluginInfo = PluginInfo {
+            name: "Thru",
+            id: "dev.hapto.thru",
+            midi_input: true,
+            midi_output: true,
+            ..Amp::INFO
+        };
+        type Params = Level;
+        type Processor = Forwarding;
+
+        fn new(_: Level, _: Parts) -> Self {
+            Thru
+        }
+
+        fn activate(&mut self, _: &ProcessSetup) -> Forwarding {
+            Forwarding
+        }
+    }
+
     #[test]
     fn the_apps_callback_does_not_allocate() {
         let mut buffer = vec![0.0f32; 4096 * 6];
@@ -119,6 +160,34 @@ mod on_windows {
                 }
             }
         }
+    }
+
+    #[test]
+    fn the_apps_callback_with_midi_in_and_out_does_not_allocate() {
+        let mut buffer = vec![0.0f32; 4096 * 2];
+        let plugin = Standalone::<Thru>::new();
+        assert_eq!(plugin.activate(48_000.0, 1024, Width::STEREO), Ok(()));
+        let (mut inputs, reader) = hapto_midi_devices::inputs(64);
+        let (mut outputs, writer) = hapto_midi_devices::outputs(4096);
+        // Every output is read, as open devices read them.
+        for output in 0..hapto_midi_devices::MAX_OUTPUTS {
+            outputs.take(output);
+        }
+        let mut callback = Callback::app_with_midi(&plugin, Width::STEREO, reader, writer);
+        let what = "the app's callback, with MIDI on every input sent to every output";
+        assert_no_allocations(what, || {
+            for frames in BUFFERS {
+                for input in 0..hapto_midi_devices::MAX_INPUTS {
+                    let at = hapto_midi_devices::Instant::from_nanos(0);
+                    inputs.push(input, at, [0x2090_3C7F, 0, 0, 0]);
+                }
+                callback.play(&mut buffer[..frames * 2]);
+            }
+        });
+        drop(callback);
+        assert_eq!(plugin.faults(), 0);
+        let sent = outputs.take(0).map_or(0, |taken| taken.len());
+        assert!(sent > 0, "the plugin's MIDI reached the outputs");
     }
 
     #[cfg(feature = "dev-host")]

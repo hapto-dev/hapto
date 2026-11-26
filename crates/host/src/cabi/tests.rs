@@ -230,7 +230,7 @@ impl Plugin for Probe {
 
 /// A host with the probe active at 48 kHz in stereo, `max_frames` per
 /// block.
-fn running(max_frames: u32) -> TestHost<Probe> {
+fn running(max_frames: usize) -> TestHost<Probe> {
     let host = TestHost::<Probe>::new();
     assert_eq!(host.activate(48_000.0, max_frames, Width::STEREO), Ok(()));
     host
@@ -747,11 +747,10 @@ fn null_pointers_are_answered_not_followed() {
         default_normalized: 0.0,
     };
     let block = HaptoProcess {
-        inputs: std::ptr::null(),
-        outputs: std::ptr::null(),
         input_count: 2,
         output_count: 2,
         frames: 64,
+        ..HaptoProcess::NONE
     };
     let stereo = HaptoLayout {
         inputs: 2,
@@ -802,9 +801,11 @@ fn null_pointers_are_answered_not_followed() {
 fn the_header_declares_every_struct_and_asserts_its_layout() {
     let text = header();
     assert!(text.starts_with("// hapto.h"));
-    assert!(text.contains("#define HAPTO_ABI_VERSION 2u"));
+    assert!(text.contains("#define HAPTO_ABI_VERSION 3u"));
     assert!(text.contains("#define HAPTO_TAIL_INFINITE 4294967295u"));
     assert!(text.contains("const HaptoPlugin* hapto_plugin(void);"));
+    // An array spells its length after the name, as C declares one.
+    assert!(text.contains("    uint32_t words[4];"));
     for item in super::abi::structs() {
         assert!(
             text.contains(&format!("typedef struct {} {{", item.name)),
@@ -1815,7 +1816,7 @@ fn an_activation_with_no_block_size_takes_the_fallbacks() {
     let setup = probe(|state| state.setups[0]);
     assert_eq!((setup.sample_rate, setup.max_frames), (96_000.0, 1024));
     assert_eq!(
-        host.activate(48_000.0, super::MAX_FRAMES, Width::STEREO),
+        host.activate(48_000.0, crate::MAX_FRAMES, Width::STEREO),
         Ok(()),
         "at the limit"
     );
@@ -1824,7 +1825,7 @@ fn an_activation_with_no_block_size_takes_the_fallbacks() {
 #[test]
 fn an_activation_past_the_block_size_limit_builds_for_the_limit() {
     let host = TestHost::<Probe>::new();
-    for promised in [super::MAX_FRAMES + 1, u32::MAX] {
+    for promised in [crate::MAX_FRAMES + 1, u32::MAX as usize, usize::MAX] {
         assert_eq!(
             host.activate(48_000.0, promised, Width::STEREO),
             Ok(()),

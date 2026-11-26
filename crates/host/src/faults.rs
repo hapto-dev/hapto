@@ -315,6 +315,15 @@ impl Faults {
         })
     }
 
+    /// Runs `body`, records a panic in it as [`guard`](Self::guard) does, and
+    /// returns whether it panicked.
+    pub(crate) fn caught(&self, body: impl FnOnce()) -> bool {
+        self.guard(true, || {
+            body();
+            false
+        })
+    }
+
     /// Whether a fault is waiting to be reported.
     pub(crate) fn pending(&self) -> bool {
         self.pending.load(Ordering::Relaxed) != 0

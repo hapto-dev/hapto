@@ -1,26 +1,28 @@
-//! The example EQ through both exporters across the conditions hosts make,
-//! under the allocation gate (debug and release) and the audio-thread mark
-//! the exporters hold around a block: the block sizes and sample rates
-//! below, every layout the EQ offers, every parameter moving with several
-//! points a block, and blocks longer than the setup promised, which play in
-//! pieces.
+//! The example EQ through both exporters, under the allocation gate (debug
+//! and release) and the audio-thread mark that the exporters hold around a
+//! block, across the conditions that hosts make:
+//!
+//! - The block sizes and sample rates below.
+//! - Every layout that the EQ offers.
+//! - Every parameter moving with several points a block.
+//! - Blocks longer than the setup promised, which play in pieces.
 //!
 //! Each block also plays through the processor driven directly, after the
-//! same values, and the two must agree sample for sample: an exporter applies
+//! same values, and the two must agree sample for sample. An exporter applies
 //! each queue's last point before the block, so many points per parameter
 //! compare with one write. The output must be finite and free of denormals.
 //!
 //! `soak` runs the grid at random for `HAPTO_SOAK_SECONDS` (default 10), and
-//! is ignored in a normal run. It prints its seed; `HAPTO_SOAK_SEED` repeats a
-//! run.
+//! is ignored in a normal run. It prints its seed, and `HAPTO_SOAK_SEED`
+//! repeats a run.
 //!
 //! ```sh
 //! HAPTO_SOAK_SECONDS=1800 cargo test --release -p hapto-example-eq \
 //!     --test matrix -- --ignored soak
 //! ```
 //!
-//! The exporters hand a plugin no MIDI yet, so only the processor-direct
-//! side fills its event lists, to capacity.
+//! The EQ takes no MIDI, so only the processor-direct side fills its event
+//! lists, to capacity.
 
 hapto_testkit::install_alloc_gate!();
 
@@ -30,8 +32,9 @@ use std::time::{Duration, Instant};
 use hapto_example_eq::ExampleEq;
 use hapto_host::cabi::TestHost as CHost;
 use hapto_host::layout::Width;
+use hapto_host::midi::{Decoder, MidiList};
 use hapto_host::vst3::TestHost as Vst3Host;
-use hapto_host::{Audio, Block, Event, EventList, Plugin, ProcessSetup, Processor};
+use hapto_host::{Audio, Block, Event, EventList, MidiOut, Plugin, ProcessSetup, Processor};
 use hapto_params::{ParamDecl, audio_thread, host_id};
 use hapto_testkit::alloc::assert_no_allocations;
 
@@ -123,6 +126,8 @@ struct Direct {
     processor: Option<<ExampleEq as Plugin>::Processor>,
     saved: std::sync::Arc<hapto_host::SavedState>,
     events: EventList,
+    /// `events`, decoded as the engine decodes a block's.
+    midi: MidiList,
     out_events: EventList,
 }
 
@@ -138,6 +143,7 @@ impl Direct {
             processor: Some(processor),
             saved,
             events: EventList::with_capacity(EVENT_ROOM),
+            midi: MidiList::with_room(EVENT_ROOM, 0, Decoder::new()),
             out_events: EventList::with_capacity(EVENT_ROOM),
         }
     }
@@ -164,11 +170,13 @@ impl Direct {
         }
         let _audio_thread = audio_thread::enter();
         let processor = self.processor.as_mut().expect("active");
+        let (events, midi) = (&self.events, &mut self.midi);
         assert_no_allocations("the processor driven directly", || {
+            midi.read(events, frames);
             processor.process(Block::new(
                 Audio::new(channels, frames),
-                &self.events,
-                &mut self.out_events,
+                midi.midi(),
+                MidiOut::new(&mut self.out_events),
             ));
         });
     }
@@ -233,7 +241,6 @@ impl Shell for CInterface {
 
     fn open(layout: Width, rate: f64, max_frames: usize) -> Self {
         let host = CHost::<ExampleEq>::new();
-        let max_frames = u32::try_from(max_frames).expect("small");
         assert_eq!(host.activate(rate, max_frames, layout), Ok(()));
         for (index, decl) in DECLARATIONS.iter().enumerate() {
             let info = host

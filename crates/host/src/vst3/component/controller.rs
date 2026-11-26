@@ -14,7 +14,8 @@ use ::vst3::Steinberg::{
 };
 use hapto_params::Kind;
 
-use super::{Component, view};
+use super::midi::Proxy;
+use super::{Component, midi, view};
 use crate::Plugin;
 use crate::engine::Engine;
 use crate::vst3::text::{copy_utf16, read_utf16};
@@ -37,8 +38,13 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
         kResultOk
     }
 
+    /// Counts the plugin's parameters and then, if it takes MIDI, its hidden
+    /// controller proxies.
     unsafe fn getParameterCount(&self) -> int32 {
-        let count = self.engine().map_or(0, |engine| engine.set().len());
+        let count = self.engine().map_or(0, |engine| {
+            let proxies = if P::INFO.midi_input { midi::GRID } else { 0 };
+            engine.set().len().saturating_add(proxies as usize)
+        });
         int32::try_from(count).unwrap_or(int32::MAX)
     }
 
@@ -52,11 +58,18 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
             let Some(set) = self.engine().map(Engine::set) else {
                 return kNotInitialized;
             };
-            let Some(id) = usize::try_from(index)
-                .ok()
-                .and_then(|index| set.id_at(index))
-            else {
+            let Ok(index) = usize::try_from(index) else {
                 return kInvalidArgument;
+            };
+            let Some(id) = set.id_at(index) else {
+                let proxy = Proxy::at(index.saturating_sub(set.len()));
+                return match proxy.filter(|_| P::INFO.midi_input) {
+                    Some(proxy) => {
+                        proxy.fill(info);
+                        kResultOk
+                    }
+                    None => kInvalidArgument,
+                };
             };
             let decl = set.decl(id);
             info.id = set.host_id(id);
@@ -91,8 +104,14 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
         self.guard(kInternalError, || {
             // SAFETY: the SDK's contract: `string` is null or valid for
             // writing one `String128` until this call returns.
-            let (Some(string), Some((_, decl))) = (unsafe { string.as_mut() }, self.param(id))
-            else {
+            let Some(string) = (unsafe { string.as_mut() }) else {
+                return kInvalidArgument;
+            };
+            if let Some(proxy) = Proxy::of::<P>(id) {
+                copy_utf16(&proxy.text(normalized), string);
+                return kResultOk;
+            }
+            let Some((_, decl)) = self.param(id) else {
                 return kInvalidArgument;
             };
             copy_utf16(&decl.format_real(decl.host_value(normalized)), string);
@@ -109,15 +128,25 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
         self.guard(kInternalError, || {
             // SAFETY: the SDK's contract: `normalized` is null or valid for
             // writing one value until this call returns.
-            let (Some(normalized), Some((param, decl))) =
-                (unsafe { normalized.as_mut() }, self.param(id))
-            else {
+            let Some(normalized) = (unsafe { normalized.as_mut() }) else {
                 return kInvalidArgument;
             };
             // SAFETY: the SDK's contract: `string` is null or a
             // NUL-terminated string of at most a `String128`, readable until
             // this call returns, as `read_utf16` requires.
             let Some(text) = (unsafe { read_utf16(string, 128) }) else {
+                return kInvalidArgument;
+            };
+            if let Some(proxy) = Proxy::of::<P>(id) {
+                return match proxy.parse(&text) {
+                    Some(value) => {
+                        *normalized = value;
+                        kResultOk
+                    }
+                    None => kResultFalse,
+                };
+            }
+            let Some((param, decl)) = self.param(id) else {
                 return kInvalidArgument;
             };
             let Some(engine) = self.engine() else {
@@ -147,15 +176,21 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
         })
     }
 
+    /// For a proxy, returns its default, because its value went to the block.
     unsafe fn getParamNormalized(&self, id: ParamID) -> ParamValue {
         self.guard(0.0, || match (self.engine(), self.param(id)) {
             (Some(engine), Some((param, _))) => engine.set().normalized(param),
-            _ => 0.0,
+            _ => Proxy::of::<P>(id).map_or(0.0, Proxy::default),
         })
     }
 
+    /// For a proxy, accepts the write and keeps nothing, because its
+    /// controller goes only through `process`.
     unsafe fn setParamNormalized(&self, id: ParamID, normalized: ParamValue) -> tresult {
         self.guard(kInternalError, || {
+            if Proxy::of::<P>(id).is_some() {
+                return kResultOk;
+            }
             let (Some(engine), Some((param, _))) = (self.engine(), self.param(id)) else {
                 return kInvalidArgument;
             };

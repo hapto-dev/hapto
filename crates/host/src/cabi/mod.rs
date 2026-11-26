@@ -38,23 +38,26 @@ use std::marker::PhantomData;
 
 use hapto_params::{Kind, ParamDecl, ParamId, audio_thread};
 
+use hapto_ump::Downgrade;
+
 pub use abi::{
-    ABI_VERSION, CChar, HaptoHost, HaptoInstance, HaptoLayout, HaptoParamInfo, HaptoPlugin,
-    HaptoProcess, HaptoStr, KIND_BOOL, KIND_CHOICE, KIND_CONTINUOUS, MAX_FRAMES, PARAM_BYPASS,
-    RESTART_LATENCY, RESTART_STATE, RESTART_VALUES, STATUS_CONTINUE, STATUS_CONTINUE_IF_NOT_QUIET,
-    STATUS_SLEEP, STATUS_TAIL, TAIL_INFINITE, TAIL_NONE, WriteFn,
+    ABI_VERSION, CChar, HaptoHost, HaptoInstance, HaptoLayout, HaptoPacket, HaptoParamInfo,
+    HaptoPlugin, HaptoProcess, HaptoStr, KIND_BOOL, KIND_CHOICE, KIND_CONTINUOUS, MAX_EVENTS,
+    MAX_FRAMES, MIDI_OUT_1, PARAM_BYPASS, RESTART_LATENCY, RESTART_STATE, RESTART_VALUES,
+    STATUS_CONTINUE, STATUS_CONTINUE_IF_NOT_QUIET, STATUS_SLEEP, STATUS_TAIL, TAIL_INFINITE,
+    TAIL_NONE, WriteFn,
 };
 pub use header::header;
 pub use juce::{juce_param_id, juce_settings};
 #[cfg(any(test, feature = "test-host"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "test-host")))]
-pub use test_host::{AudioSide, HostCall, ParamInfo, Refused, TestHost};
+pub use test_host::{AudioSide, HostCall, MidiBlock, ParamInfo, Refused, TestHost};
 
 use crate::boundary::guard;
 use crate::engine::{LOAN_WAIT, Outcome, Release, Setup};
 use crate::layout::Width;
-use crate::{Plugin, widths};
-use instance::{Callbacks, Instance, channel_list, silence, status_code};
+use crate::{Event, Plugin, widths};
+use instance::{Callbacks, Instance, lent, lent_mut, silence, status_code};
 
 /// Returns a table for `P` whose instances keep the thread that calls `create`
 /// as their main thread.
@@ -130,13 +133,19 @@ const fn table<P: Plugin>(create: Create) -> HaptoPlugin {
     }
 }
 
-/// Exports a [`Plugin`] through the C interface: the one symbol `hapto_plugin`.
+/// Exports a [`Plugin`] through the C interface, as the one symbol
+/// `hapto_plugin`.
 ///
 /// Use it once, at the root of a crate built as a static library for the JUCE
-/// adapter. Keep it apart from `export_vst3!`: JUCE's own VST3 wrapper defines
-/// the symbols that one does. This macro refuses to build a plugin that
-/// declares no layout, or a crate built with `panic = "abort"`, under which a
-/// panic ends the host.
+/// adapter.
+///
+/// - Keep it apart from `export_vst3!`, because JUCE's own VST3 wrapper
+///   defines the same symbols.
+/// - A binary links one plugin's exports, because two would define the same
+///   symbol, so a tool that needs a plugin's facts runs the plugin's own
+///   test, as `cargo hapto juce` does.
+/// - It rejects a plugin that declares no layout, and a crate built with
+///   `panic = "abort"`, under which a panic ends the host.
 ///
 /// # Examples
 ///
@@ -592,6 +601,44 @@ unsafe extern "C" fn reset<P: Plugin>(pointer: *mut HaptoInstance) {
     }
 }
 
+/// Writes what the block sent into the caller's room, and returns how many
+/// packets it wrote.
+///
+/// A packet past the room is dropped. For a caller that takes only MIDI 1.0,
+/// the packets are downgraded, which drops what MIDI 1.0 has no message for,
+/// as [`Downgrade`] says. The caller gets no count of it, because its host
+/// could not take it.
+///
+/// # Safety
+///
+/// `block.midi_out` is null or valid for writing `block.midi_out_capacity`
+/// packets until the call that lends them returns.
+#[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
+unsafe fn send_out(block: &HaptoProcess, sent: &[Event]) -> u32 {
+    // SAFETY: the caller's contract above.
+    let room = unsafe { lent_mut(block.midi_out, block.midi_out_capacity) };
+    let mut written = 0;
+    let mut put = |event: Event| {
+        if let Some(slot) = room.get_mut(written) {
+            *slot = event.into();
+            written += 1;
+        }
+    };
+    if block.flags & MIDI_OUT_1 != 0 {
+        let downgrade = Downgrade::new();
+        for event in sent {
+            // What MIDI 1.0 cannot carry is dropped, and the C interface
+            // reports no count of it.
+            downgrade.translate(event, &mut put);
+        }
+    } else {
+        for &event in sent {
+            put(event);
+        }
+    }
+    u32::try_from(written).unwrap_or(u32::MAX)
+}
+
 /// # Safety
 ///
 /// As [`HaptoPlugin::process`] and `hapto.h`'s pointer rules say.
@@ -608,21 +655,40 @@ unsafe extern "C" fn process<P: Plugin>(
     else {
         return STATUS_CONTINUE;
     };
-    // SAFETY: the header's contract for `HaptoProcess`: each list is null or
-    // holds its count of channel pointers for this call, as `channel_list`
-    // requires. The inputs are only read, so casting their pointers to
-    // `*mut` writes nothing.
-    let (inputs, outputs) = unsafe {
+    // SAFETY: by the header's contract for `HaptoProcess`, each list (the
+    // channels' and `midi_in`) is null or holds its count of items for this
+    // call, as `lent` requires. The inputs are only read, so casting their
+    // pointers to `*mut` writes nothing.
+    let (inputs, outputs, midi_in) = unsafe {
         (
-            channel_list(block.inputs.cast::<*mut f32>(), block.input_count),
-            channel_list(block.outputs, block.output_count),
+            lent(block.inputs.cast::<*mut f32>(), block.input_count),
+            lent(block.outputs, block.output_count),
+            lent(block.midi_in, block.midi_in_count),
         )
     };
+    // Every block writes its count, so a block that plays nothing writes 0.
+    let mut written = 0;
     // SAFETY: the header's contract for `HaptoProcess`: each channel is null
     // or valid for `frames` floats (the outputs for writing too) until this
     // call returns. The host touches none of them meanwhile, and any two are
     // one buffer or share no float.
-    let outcome = unsafe { instance.process(block.frames as usize, inputs, outputs, |_| {}) };
+    let outcome = unsafe {
+        instance.process(
+            block.frames as usize,
+            inputs,
+            outputs,
+            |_| {},
+            |into| into.extend(midi_in.iter().copied().map(Event::from)),
+            // Inside this `unsafe` block, the header's contract for
+            // `midi_out` gives what `send_out` requires.
+            |sent| written = send_out(block, sent),
+        )
+    };
+    // SAFETY: the header's contract: `midi_out_count` is null or valid for
+    // writing one `u32` until this call returns.
+    if let Some(count) = unsafe { block.midi_out_count.as_mut() } {
+        *count = written;
+    }
     match outcome {
         Outcome::Empty => STATUS_CONTINUE,
         Outcome::Silent => {

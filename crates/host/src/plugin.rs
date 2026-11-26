@@ -91,8 +91,8 @@ use crate::parts::Parts;
 /// ```
 /// use hapto_host::layout::{Stereo, Width};
 /// use hapto_host::{
-///     Audio, AuCodes, Block, Category, EventList, Parts, Plugin, PluginInfo, ProcessSetup,
-///     Processor, Status,
+///     Audio, AuCodes, Block, Category, EventList, Midi, MidiOut, Parts, Plugin, PluginInfo,
+///     ProcessSetup, Processor, Status,
 /// };
 /// use hapto_params::{Declarer, Float, FloatDecl, Params};
 ///
@@ -164,8 +164,9 @@ use crate::parts::Parts;
 ///
 /// let (mut left, mut right) = ([0.5_f32; 64], [0.5_f32; 64]);
 /// let mut channels = [&mut left[..], &mut right[..]];
-/// let (events, mut out) = (EventList::with_capacity(0), EventList::with_capacity(0));
-/// let block = Block::new(Audio::new(&mut channels, 64), &events, &mut out);
+/// // A block with no MIDI in, and room for none out.
+/// let mut out = EventList::with_capacity(0);
+/// let block = Block::new(Audio::new(&mut channels, 64), Midi::default(), MidiOut::new(&mut out));
 /// assert_eq!(processor.process(block), Status::Continue);
 /// assert_eq!(left[0], 0.5, "0 dB");
 /// # Ok::<(), hapto_params::DeclError>(())
@@ -309,7 +310,7 @@ pub trait Plugin: 'static {
     /// use hapto_params::{Declarer, Float, FloatDecl, Params};
     /// use hapto_undo::{Bound, History};
     /// # use hapto_host::layout::Width;
-    /// # use hapto_host::{Audio, AuCodes, Category, PluginInfo};
+    /// # use hapto_host::{Audio, AuCodes, Category, MidiOut, PluginInfo};
     /// # use hapto_ump::{EventList, Midi1Message, Midi1Voice, Upgrade};
     ///
     /// struct SynthParams {
@@ -410,8 +411,11 @@ pub trait Plugin: 'static {
     /// # let (mut left, mut right) = ([0.0_f32; 1], [0.0_f32; 1]);
     /// # let mut out = EventList::with_capacity(0);
     /// # let mut channels = [&mut left[..], &mut right[..]];
+    /// # let mut midi = hapto_host::midi::MidiList::new();
     /// learn.process(&events);
-    /// voices.process(Block::new(Audio::new(&mut channels, 1), &events, &mut out));
+    /// midi.read(&events, 1);
+    /// let block = Block::new(Audio::new(&mut channels, 1), midi.midi(), MidiOut::new(&mut out));
+    /// voices.process(block);
     /// assert!(!synth.cutoff_learned);
     /// tick(&mut synth);
     /// assert!(synth.cutoff_learned);
@@ -577,7 +581,7 @@ pub enum Tail {
 ///
 /// ```
 /// use hapto_host::layout::Mono;
-/// use hapto_host::{Audio, Block, EventList, Processor, Status};
+/// use hapto_host::{Audio, Block, EventList, Midi, MidiOut, Processor, Status};
 ///
 /// /// A one-pole low-pass: it carries one sample from block to block.
 /// struct OnePole {
@@ -603,8 +607,9 @@ pub enum Tail {
 /// let mut filter = OnePole { state: 0.0 };
 /// let mut samples = [1.0_f32; 4];
 /// let mut channels = [&mut samples[..]];
-/// let (events, mut out) = (EventList::with_capacity(0), EventList::with_capacity(0));
-/// filter.process(Block::new(Audio::new(&mut channels, 4), &events, &mut out));
+/// let mut out = EventList::with_capacity(0);
+/// let block = Block::new(Audio::new(&mut channels, 4), Midi::default(), MidiOut::new(&mut out));
+/// filter.process(block);
 /// assert_eq!(samples, [0.5, 0.75, 0.875, 0.9375]);
 /// filter.reset();
 /// assert_eq!(filter.state, 0.0);
@@ -629,9 +634,6 @@ pub trait Processor: Send + 'static {
     ///
     /// Learned controllers have written the parameters before this call, as
     /// the host's automation has: [`Parts::midi_learn`] says how.
-    ///
-    /// Open: no exporter carries a block's MIDI either way yet, as
-    /// [`PluginInfo::midi_input`] says.
     ///
     /// Thread: audio. Never allocates, locks or makes a system call.
     fn process(&mut self, block: Block<'_, Self::Layout>) -> Status;

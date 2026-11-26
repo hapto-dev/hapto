@@ -58,8 +58,8 @@ comments never cite an id: they state the reason in words, and
 | D19 | [Where do the restore counter and the applying-a-restore mark live? (U16, S6, S12)](#d19-the-restore-counter-and-the-applying-mark) | In a `RestoreClock` in `hapto-params`: a count of restores stored and a count completed. The applying mark is the applying thread's own, so only that thread's writes record nothing. | decided |
 | D20 | [What closes the window D13 opens between a restore's store and its apply? (U16, S5)](#d20-the-window-between-a-restores-store-and-its-apply) | Undo clears its history when either count has moved: at its first operation after a restore is stored, and again when that restore's apply completes. | decided |
 | D21 | [What does a learn binding record of where its MIDI came from? (L2, L9)](#d21-what-a-learn-binding-records-of-its-midi-source) | The UMP group and the channel, each with −1 meaning any, in the source and in every saved `midiLearn` entry from schema 1. | decided |
-| D22 | [How do controllers reach learn in VST3, which delivers them only as parameter changes? (L2, L3)](#d22-controllers-reaching-learn-in-vst3) | The VST3 exporter owns hidden proxy parameters in a reserved id range: a 16 × 130 grid listed through both `IMidiMapping` and `IMidiMapping2`, and a fixed pool for MIDI 2.0 assignable controllers. Checked in Cubase; still to build. | decided |
-| D23 | [How does the processor send MIDI?](#d23-how-the-processor-sends-midi) | `Processor::process` takes one `Block`: its audio in place, the events in, and an events-out list whose capacity `ProcessSetup::max_out_events` fixes at activation. | decided |
+| D22 | [How do controllers reach learn in VST3, which delivers them only as parameter changes? (L2, L3)](#d22-controllers-reaching-learn-in-vst3) | The VST3 exporter owns hidden proxy parameters in a reserved id range: a 16 × 130 grid listed through both `IMidiMapping` and `IMidiMapping2`, and a fixed pool for MIDI 2.0 assignable controllers. Checked in Cubase. The grid is built, through `IMidiMapping`; the second listing, `IMidiLearn2` and the pool wait on the bindings. | decided |
+| D23 | [How does the processor send MIDI?](#d23-how-the-processor-sends-midi) | `Processor::process` takes one `Block`: its audio in place, `midi`, the block's MIDI decoded once into messages with the packets they came in, and `midi_out`, which sends messages or packets into a list whose capacity `ProcessSetup::max_out_events` fixes at activation. | decided |
 | D24 | [Who answers MIDI-CI when a plugin must answer for itself?](#d24-answering-midi-ci) | A VST3 host speaks MIDI-CI for the plugin, so the VST3 exporter projects declarations onto VST3's interfaces. Everywhere else a core-tier crate, `hapto-ci`, answers, later. | decided |
 | D25 | [Who owns the SysEx manufacturer ID that a MIDI-CI identity needs? (D24)](#d25-the-sysex-manufacturer-id) | None: a business answer. The working group's helper uses `0x7D`, which is reserved for non-commercial use. | held |
 | D26 | [How does a debug build load the page from a dev server? (B5)](#d26-loading-the-page-from-a-dev-server) | `HAPTO_PAGE_DEV_URL`, read in debug builds only: set, `hapto-webview` loads that URL, so Vite's hot reload works; unset, it serves the bundled page. | decided |
@@ -95,12 +95,12 @@ comments never cite an id: they state the reason in words, and
 | D56 | [Which hash names a parameter to hosts, and which ids does D22 reserve? (D31, P10)](#d56-the-hash-that-names-a-parameter) | 32-bit FNV-1a over the key's UTF-8 bytes with the top bit cleared. The builder refuses a key whose id another key already has, or that falls in `0x7FFF_0000` to `0x7FFF_FFFF`, the ids D22's proxies take. | decided |
 | D57 | [From what does a stepped range lay out its lattice? (P2, P4)](#d57-the-lattice-of-a-stepped-range) | From the decimals the range was written with, in whole numbers of its finest place, so every point of a decimal range, 0 dB included, lands on the nearest `f32` to its decimal. | decided |
 | D58 | [What does the plugin trait tell every host, beyond its parameters and state? (H5)](#d58-what-the-plugin-trait-tells-every-host) | `PluginInfo` gains the vendor's addresses, a description, `Feature`s and the main bus widths (D112); `Plugin` gains `latency`, `tail` and `deactivate`; `Processor::process` returns a `Status`. Deferred: whether the host is rendering offline or in real time, which `ProcessSetup` has no field for. | decided |
-| D59 | [What shape does the VST3 exporter give a plugin? (D51, D53, P7, C2)](#d59-the-shape-of-the-vst3-exporter) | One object that is both the audio processor and its own edit controller, a thin shell over an exporter core it shares with the C interface. The plugin is built at `initialize`, on the thread that calls it. No MIDI events are delivered yet. | decided |
+| D59 | [What shape does the VST3 exporter give a plugin? (D51, D53, P7, C2)](#d59-the-shape-of-the-vst3-exporter) | One object that is both the audio processor and its own edit controller, a thin shell over an exporter core it shares with the C interface. The plugin is built at `initialize`, on the thread that calls it. The host's notes, note expressions and SysEx come in as MIDI 2.0, each note named by its `noteId`, and the plugin's go back out as VST3's own events, its controllers as MIDI 1.0. | decided |
 | D60 | [What happens when plugin code panics inside a host's call? (P9)](#d60-a-panic-inside-a-hosts-call) | It is caught at every entry point that can panic and never unwinds into the host. A panic in the processor silences the instance's output until the next activation. | decided |
 | D61 | [Who flushes denormals to zero? (the comparison's fairness row)](#d61-who-flushes-denormals) | Every exporter, around every `process` call: FTZ and DAZ on x86, FZ on AArch64, restoring the host's setting after, so no plugin has to. | decided |
-| D62 | [What shape is the C interface the JUCE adapter is driven by? (H5, D51, D60)](#d62-the-c-interface-for-the-juce-adapter) | One exported symbol, `hapto_plugin`, answering a table of function pointers, as CLAP's entry point does: the plugin's layouts and every call into an instance, each with the thread it may run on. No MIDI passes yet; it arrives as UMP both ways with the exporters' MIDI input. | decided |
+| D62 | [What shape is the C interface the JUCE adapter is driven by? (H5, D51, D60)](#d62-the-c-interface-for-the-juce-adapter) | One exported symbol, `hapto_plugin`, answering a table of function pointers, as CLAP's entry point does: the plugin's layouts and every call into an instance, each with the thread it may run on. A block's MIDI passes as UMP both ways: MIDI 1.0 or 2.0 in, and out downgraded for a caller that takes MIDI 1.0 alone. | decided |
 | D63 | [How is the C header kept true to the Rust side? (D27)](#d63-keeping-the-c-header-true) | Hapto's own generator writes `crates/host/include/hapto.h` from the Rust declarations, and the header asserts every struct's size and every field's offset as Rust laid them out. | decided |
-| D64 | [How does the JUCE adapter build a plugin? (H5, D18)](#d64-how-the-juce-adapter-builds-a-plugin) | It links the plugin crate as a static library built with only its `cabi` feature. `cargo xtask gen` writes a `hapto-juce.cmake` per plugin, and `hapto_add_juce_plugin` runs cargo and adds the adapter's one processor class. | decided |
+| D64 | [How does the JUCE adapter build a plugin? (H5, D18)](#d64-how-the-juce-adapter-builds-a-plugin) | It links the plugin crate as a static library built with only its `cabi` feature. A plugin's `hapto-juce.cmake` is its own `juce_settings` test's to write, which `cargo hapto juce` runs, and `hapto_add_juce_plugin` runs cargo and adds the adapter's one processor class. | decided |
 | D65 | [What does a host see of a plugin through JUCE? (D31, D53, D58, C4)](#d65-what-a-host-sees-through-juce) | What JUCE 9 makes of it, as of the JUCE EQ; checked with VST3 on Windows. Parameter ids are JUCE's hash of the key, not D31's, and the one program has the plugin's name. | decided |
 | D66 | [What does a load do with bytes after the block, and is the host told that a load failed? (H2)](#d66-bytes-after-the-block-and-a-failed-load) | Trailing NUL bytes are trimmed and the block loads, and JSON whitespace around the object loads too; any other byte after the object makes the block unrecognised. A load that fails is answered as failed, except through JUCE, whose `setStateInformation` answers nothing, so the adapter cannot tell its host. | decided |
 | D67 | [How are the rules checked that keep locking types off the audio thread? (P6, D39)](#d67-checking-the-audio-thread-locking-rule) | By a debug-build mark, `hapto_params::audio_thread`: a per-thread depth an exporter raises around everything its `process` call runs, and every call that locks asserts the mark is absent. | decided |
@@ -150,7 +150,9 @@ comments never cite an id: they state the reason in words, and
 | D111 | [How does a plugin's author see it through a plugin format while working on it, with no real host? (D109, D110)](#d111-the-dev-host) | The standalone app's dev host: the plugin through Hapto's own VST3 and C interface test hosts, in process, its editor as the exporter's view below a bar that names the format, with a settings window of what the host sees, a tab each. It changes the sample rate, of those the device takes, and the most frames a block holds by reactivating the plugin as a host does, cuts blocks by a plan, and logs what the plugin tells the host. A switch of format starts the app again with the saved block, and a block the plugin refused is kept for the next run. It stands in for no real host. | to confirm |
 | D112 | [How does a processor see its block's audio, and the widths it runs at? (D23, D97)](#d112-the-blocks-audio-and-the-layout-as-a-type) | As a type: `Processor::Layout` names the main bus's channels, a `Bus<IN, OUT>` at one width, with `Mono`, `Stereo` and the like for the common ones, or `AnyLayout` at each width `PluginInfo::layouts` lists. `Block::audio` lends the channels as `Audio`, walked by frame or by channel with no index or frame count, and in a `Bus` both are arrays that destructure. `Width` counts channels at run time, and `AudioBuf` owns audio for tests. | decided |
 | D113 | [Where do the audio types live? (D112)](#d113-the-audio-types-crate) | In `hapto-audio`, a core crate of layer 1 beside `hapto-params` and `hapto-ump`, which `hapto-host` re-exports, so code that only writes audio, such as a voice, needs no host. | decided |
-| D114 | [Which MIDI does Hapto pass inside, and how does MIDI 1.0 reach it? (D10, D23, D70)](#d114-midi-20-inside) | MIDI 2.0: `ChannelVoice` reads and writes MIDI 2.0's channel voice messages alone. An exporter is to upgrade MIDI 1.0 on the way in with `Upgrade`, and to downgrade with `Downgrade` only for a destination that takes MIDI 1.0 alone, both by the specification's Default Translation; no exporter passes MIDI yet. Each packet keeps its `Origin`, so learn reads a value upgraded from MIDI 1.0 at the width it was sent at. | to confirm |
+| D114 | [Which MIDI does Hapto pass inside, and how does MIDI 1.0 reach it? (D10, D23, D70)](#d114-midi-20-inside) | MIDI 2.0: `ChannelVoice` reads and writes MIDI 2.0's channel voice messages alone. The engine upgrades MIDI 1.0 on the way in with `Upgrade`, for every exporter, and an exporter downgrades with `Downgrade` only for a destination that takes MIDI 1.0 alone, both by the specification's Default Translation. Each packet keeps its `Origin`, so learn reads a value upgraded from MIDI 1.0 at the width it was sent at. | to confirm |
+| D115 | [How does the standalone app reach the computer's MIDI devices? (D110, D114)](#d115-the-computers-midi-devices) | Through `hapto-midi-devices`, Hapto's own device layer, which only the app links: UMP alone, a device named by an id that survives the system's renumbering, the list's changes told at the tick, and each input read on the system's thread into a ring that never blocks, its packets placed at frames on the audio thread. Every input is merged on group 1, as a host hands a plugin its MIDI, each upgraded with a translation of its own, and a SysEx reaches a block whole. WinMM is its only backend so far. | decided |
+| D116 | [What does a plugin read of MIDI, and in what terms? (D10, D114)](#d116-midi-in-musicians-terms) | `hapto-midi`'s `Message`s, decoded from MIDI 2.0 in its meanings: values from 0 to 1 as `f32`, values with a centre as `Centred`, and keys, channels, groups and programs as types shown as musicians count them. Each note has a `NoteId` from its note-on to its note-off, the host's where it names one, a note's own message names its key and the note its host named or else the newest on it, and a SysEx comes whole. The `Decoder` keeps its tables fixed, so decoding allocates nothing; what overflows them is counted. | decided |
 
 **Open.** D25 is held until `hapto-ci` needs it. It keeps its recommendation
 until decided, and no rule depends on it.
@@ -483,8 +485,23 @@ thread, from that proxy's next change.
 The exporter turns each proxy change into a UMP at its offset, so learn has one
 input path, and a proxy is never a target, so a learned write never reaches the
 host as an edit. A product's own controller block (a fixed NRPN range, say) is
-pre-mapped by that plugin, not built into Hapto. Still to build: it comes with
-the VST3 exporter's MIDI input.
+pre-mapped by that plugin, not built into Hapto.
+
+The grid is built. For a plugin that takes MIDI, the exporter lists its 2080
+proxies hidden and not automatable, after the plugin's own parameters, and names
+them through `IMidiMapping`. A proxy's value is its MIDI 1.0 controller's, which
+the host divided by 127, or by 16383 for the bend, and it shows as that number,
+so the exporter rounds it back to those bits and the engine upgrades it as it
+does any MIDI 1.0 (D114): learn then narrows it exactly. The proxies and the
+host's notes come in lists of their own, so the engine puts a block's MIDI in
+time order, those at one frame in the order the exporter handed them over: the
+controllers first, as JUCE's wrapper hands them. Each controller comes in a
+queue of its own, so at one frame a parameter's address, controllers 98 to 101,
+goes first and its data entry high byte, controller 6, next, so a data entry
+finds its address and a low byte its high byte whatever order the host lists the
+queues in; other controllers at one frame come in the queues' order. Open:
+`IMidiMapping2`'s lists, `IMidiLearn2` and the pool, which wait on the `vst3`
+crate's bindings for MIDI 2.0 (D59).
 
 A probe plugin checked the route in Cubase 16 on 2026-11-06. Cubase read both
 of `IMidiMapping2`'s lists at load and again inside every
@@ -508,12 +525,28 @@ the pool after the Cubase check, or no learn in VST3 until a later stage.
 `processBlock` takes one `MidiBuffer`, read as input and replaced as output.
 
 **Rust.** `Processor::process` takes one `Block`: its audio in place (D112),
-the events in, and an events-out list whose capacity
+`midi` and `midi_out`. `midi` is the block's MIDI, decoded once by the engine
+into messages, each at its frame, with the packets they came in beside them
+(D116). The engine decodes every block, read or not, with a decoder that lives
+with the processor, so a note or a SysEx that spans blocks stays right; a block
+in pieces hands each piece its share, at frames from its own start. `midi_out`
+sends a message encoded anew, one that arrived on, as MIDI thru, which is never
+implicit, a note its host named keeping the host's id, or packets as they are,
+all into one list in the order the plugin sends them, whose capacity
 `ProcessSetup::max_out_events` fixes at activation (past it, dropped and
-counted). A sidechain or transport joins `Block` later without changing the
+counted), a SysEx whole or not at all. One sent past its piece's end goes at the
+piece's last frame, as MIDI in does, so nothing lands in a later piece or past
+the block. `Block::spans` cuts a block at each frame a message arrives at, and
+`Spans::at_most` caps a span's length, so a plugin acts on each message and
+renders on to the next. A plugin that never asks keeps its block whole, so a
+convolver or an FFT is never cut short; one that sends while it spans makes its
+spans with `Spans::new` from the block's audio and MIDI and keeps the block's
+`midi_out`. A sidechain or transport joins `Block` later without changing the
 trait. `PluginInfo::midi_output` declares the output to the host. Parameter
-changes still reach the host through the exporter, never this list. No exporter
-sends the list's events yet, as none delivers MIDI in (D59, D62).
+changes still reach the host through the exporter, never this list. The C
+interface and the VST3 exporter carry the list to their host and MIDI in from
+it, and the standalone app brings MIDI in from the computer's inputs (D59, D62,
+D115).
 
 ### D24. Answering MIDI-CI
 
@@ -1205,13 +1238,49 @@ the transport plays, so a host that reads the value straight back sees the new
 one there and the old one here until its next block. A block longer than the
 setup promised plays in pieces.
 
+**MIDI.** For a plugin that takes MIDI, the host's events become MIDI 2.0
+packets (C5): a note-on, its tuning as its pitch attribute, a note-off, a note's
+pressure, and a whole SysEx as 7-bit SysEx packets. Each note carries VST3's
+`noteId` in its packet's `Origin::Note`, so a plugin knows it by the host's id
+(D116). The component lists the six note expressions VST3 defines through
+`INoteExpressionController`, and each becomes a registered per-note controller:
+the tuning as the note's absolute pitch, from its key and its note-on's tuning;
+the volume as controller 7 on its own curve, whose gain is its value squared, so
+VST3's 0 dB reads as 1 and its boost past it is held there; the pan, expression
+and brightness as the controllers of those numbers; and the vibrato as
+controller 77, vibrato depth. A note expression names its note alone, so the
+component keeps the channel and key of each note its host named, from block to
+block, and forgets them at an activation; one for a note it never saw is
+dropped. Controllers come through hidden proxies (D22).
+
+For a plugin that declares MIDI out, what it sent goes to the host's output
+events in the order it sent it, at or before the block's last frame. A note goes
+out as VST3's note events, under the host's `noteId` where the host named it and
+under none, -1, where the plugin made it up: a made-up id could meet one of the
+host's. A note's pressure goes out as a poly pressure event, and a note's
+registered controllers that the six note expressions stand for go out as note
+expressions, for a note its host named: its absolute pitch as the tuning, from
+its note-on's pitch, which the component keeps for each such note. VST3 carries
+everything else only as MIDI 1.0 controllers, so it is downgraded by the
+specification's Default Translation (D114): a controller, channel pressure, the
+bend, its low 7 bits first, and a program change, each a legacy controller
+event, as are the system messages VST3 numbers: quarter frame, song position,
+its low 7 bits first, song select, tune request, start, continue, stop and
+active sensing. A note-on's velocity goes out at 1/127 at least, so a host that
+turns it into MIDI 1.0 never reads a note-off, as the Default Translation lifts
+one. A SysEx goes out whole, joined from its packets in room the component makes
+when it is built, and kept until the next block, as the host reads its bytes
+until `process` returns. What VST3 has no event for is dropped and counted
+inside the component: a note's assignable controllers, its pitch bend and its
+management, a note's own message for a note no host named, the timing clock and
+a reset.
+
 Edits reach the host right after each tick (C2), and so does a latency that
 moved, an activation's included, as `kLatencyChanged`. D53's timer is a
 message-only window per instance on Windows. It asks for 15 ms, which the system
 clock's 15.6 ms tick gives: about 64 Hz, so learn's burst of 15 ticks lasts
 about 234 ms, not D53's 250. On macOS it is a run loop timer at 60 Hz, and for
-any other platform the exporter does not build (D74). No MIDI events are
-delivered yet.
+any other platform the exporter does not build (D74).
 
 **Alternatives.** The alternative was a separate controller class, as JUCE built
 it, which needs a second copy of every value kept in step through the host; for
@@ -1231,7 +1300,9 @@ processor silences the instance's output until the next activation, which builds
 a fresh processor: it is caught while the block still holds the processor's
 slot, and the mark stays with that processor, so an activation racing the block
 installs one that starts clean. A panic elsewhere in the block, in the
-automation walk say, silences that block alone.
+automation walk say, silences that block alone. One in the exporter's own
+hand-off of what the plugin sent comes after the block played, so it is
+counted and the block stands.
 
 Any other call answers the host with an error, or a neutral value where the call
 returns one. Each is counted for its instance, on whatever thread it happens,
@@ -1341,8 +1412,24 @@ the adapter checks and no other compatibility promise. Panics are caught at
 every entry point (D60), and the processor flushes denormals inside `process`
 (D61).
 
-**MIDI.** No MIDI passes yet; it arrives as UMP both ways with the exporters'
-MIDI input (C5).
+**MIDI.** A block's MIDI passes as Universal MIDI Packets both ways (C5), each a
+`HaptoPacket` of a frame and four words. The caller lends the packets in, MIDI
+1.0 or MIDI 2.0 as its host sends them, which the engine upgrades (D114), and
+room for the packets out, into which the plugin writes what it sent and answers
+how many, every block, each in the order it sent them at a frame of the block. A
+caller that takes MIDI 1.0 alone sets `HAPTO_MIDI_OUT_1`, and the plugin
+downgrades what it sends and writes MIDI 1.0's packets alone: channel and system
+messages, and 7-bit SysEx. The JUCE adapter does both, since a `MidiBuffer`
+holds MIDI 1.0: it reads the host's messages into packets on the first group,
+and writes the plugin's back, joining a SysEx again, all in room it makes in
+`prepareToPlay`. That room includes a `MidiBuffer` for the plugin's MIDI out,
+which the first block after swaps into the host's buffer: JUCE's wrappers keep
+one for an instance, so it keeps the room, and writing into it never allocates.
+A SysEx out is at most 65,529 bytes, since a `MidiBuffer` walks its messages by
+a 16-bit size that counts its 6-byte header too; a longer one is dropped. What a
+downgrade drops is what MIDI 1.0 has no message for, as the specification's
+Default Translation says, so the caller gets no count of it: its host could not
+take what was dropped.
 
 **Alternatives.** The alternatives were one exported function per call, or a
 table filled in by the adapter. For the main thread, they were:
@@ -1394,12 +1481,16 @@ Not applicable.
 plugin crate exports with `export_vst3!` behind a default `vst3` feature and
 `export_cabi!` behind `cabi`.
 
-JUCE's build-time facts come from a `hapto-juce.cmake` that `cargo xtask gen`
-writes per plugin from `PluginInfo`: names, the AU codes (D86; from which JUCE
-also derives its VST3 class id, so the adapter's build is a different plugin
-from Hapto's native one), the VST3 categories, MIDI. Writing it refuses keys
-whose JUCE ids collide, with each other or with JUCE's own bypass and program
-parameters.
+JUCE's build-time facts come from a `hapto-juce.cmake` written per plugin from
+`PluginInfo`: names, the AU codes (D86; from which JUCE also derives its VST3
+class id, so the adapter's build is a different plugin from Hapto's native one),
+the VST3 categories, MIDI. Writing it refuses keys whose JUCE ids collide, with
+each other or with JUCE's own bypass and program parameters. A plugin's settings
+are its own `juce_settings` test's to write, as its page's parameter map is its
+`page_params` test's (D109), since a tool that linked two plugins would carry
+two sets of entry points into one binary: `cargo hapto juce` runs the test,
+which `cargo hapto init` writes, and prints the CMake that builds the plugin
+through the adapter. `cargo xtask gen` writes the example EQ's.
 
 `hapto_add_juce_plugin` in `adapters/juce/HaptoJuce.cmake` reads them, runs
 cargo on the plugin's manifest (Hapto's workspace by default, or a product's
@@ -1675,7 +1766,11 @@ threads at once, cannot tell a repeat apart. There each queue writes its last
 point at once and counts toward the parameters, so a repeat's value stands and
 the walk ends a queue sooner for each.
 
-MIDI keeps 2,048 events each way per block, as before.
+MIDI keeps 2,048 events each way per block, as before. VST3's controllers
+come through their proxies' queues, read while the room lasts, a read that
+fails using it up too, so a host that claims more points than it can give is
+read no further than the room. They leave room for every event the event list
+claims, up to its 65,536, so dense controllers drop no note-off.
 
 **Alternatives.** The alternatives were other sizes, 256 MiB for the state say,
 room per queue rather than shared, or a setup past the frame limit refused
@@ -2649,10 +2744,10 @@ line in the manifest. The macro includes the manifest's text, so a change to
 it builds the crate again. A `PluginInfo` written by hand still works, as the
 rest of `hapto-host`'s doc examples write theirs.
 
-Open: `cargo xtask gen` still compiles the plugin to write the JUCE adapter's
-settings. With the identity in the manifest, a tool can read most of them
-through `cargo metadata`, though not the MIDI flags or the parameter keys the
-settings are checked against.
+Open: the JUCE adapter's settings are still written by compiling the plugin, in
+its `juce_settings` test. With the identity in the manifest, a tool can read
+most of them through `cargo metadata`, though not the MIDI flags or the
+parameter keys the settings are checked against.
 
 **Alternatives.** The alternatives were `PluginInfo` written in Rust alone,
 where the version and description repeat the manifest's and drift from it,
@@ -3165,7 +3260,11 @@ lockfile pins the crates it builds.
   from it. Its Hapto crates and `@hapto/page` come by path from a checkout,
   `--hapto` or the one the command was built from, until they are published. A
   test, in the full CI run on Windows, writes a crate with this checkout's
-  crates and builds and tests it.
+  crates and builds and tests it. `--instrument` writes an instrument from a
+  template of its own instead: no audio in, MIDI in, a sine for each note at a
+  level in dB, and no page, with a test through the VST3 exporter that plays a
+  note; it shares the JUCE settings' test with the gain, which a second test
+  builds as the first.
 - **`dev`** runs the plugin while its author edits it (D110): its standalone
   binary, a `bin` target that needs the crate's `standalone` feature, in debug
   by default. Off Windows, where the app does not run yet, it refuses at once,
@@ -3222,6 +3321,12 @@ lockfile pins the crates it builds.
   strictness level 5, in pluginval's own process and without its GUI tests,
   keeping its logs in a folder when asked. CI's validator lane runs it, so
   the options are written once, in the command.
+- **`juce`** writes the plugin's settings for the JUCE adapter (D64) through its
+  `juce_settings` test, as `build` writes the page's parameter map, or in CI
+  checks them, and prints the CMake that builds the plugin through the adapter:
+  the adapter's file in the checkout the command was built from, the package,
+  the settings and the workspace's manifest. A crate with no such test is
+  refused with how to add one.
 - **Versions.** The command warns when the workspace's lockfile pins a
   `hapto-host` of another version than its own, and goes on: before 1.0, a
   bundle's layout may change between versions.
@@ -3251,25 +3356,32 @@ against C++.
 **Rust.** Through two pieces.
 
 - **The standalone exporter**, `hapto_host::standalone`, behind the `standalone`
-  feature: `Standalone` drives the engine every exporter drives, so
-  activation, the block, the tick, the saved block, faults and teardown keep
-  their rules. The app is the host: an edit lands in the parameter store with
-  no one to tell, and no automation or MIDI reaches the plugin. `Standalone`
-  is made on the app's main thread and is not `Send`. Its `StandaloneAudio`
-  side is `Send` for the device's callback and allocates nothing: its channel
-  lists live on the stack, up to 32 each way, and a block is as long as its
-  shortest channel. Inputs that share part of a buffer are refused, as the
-  engine takes channels that are one buffer or share nothing. A teardown with
-  an audio side still alive leaks the instance rather than free the plugin
-  where that side could reach it, and the leak is a fault; an editor may
-  outlive it, and the last to drop frees the plugin on the main thread.
-  A refused load says why, with the state's own reason, and a panic in a
-  load or an activation is refused as a panic, not taken for a busy plugin.
-  `StandaloneEditor` drives the editor's slot as the VST3 view does, in a
-  window the app keeps until it closes the editor.
+  feature: `Standalone` drives the engine every exporter drives, so activation,
+  the block, the tick, the saved block, faults and teardown keep their rules.
+  The app is the host: an edit lands in the parameter store with no one to tell,
+  and no automation reaches the plugin; the computer's MIDI inputs reach one
+  that takes MIDI, and what one that sends MIDI sent comes back to the app once
+  its block has played, at its frames, for the devices the app sends to (D115).
+  `Standalone` is made on the app's main thread and is not `Send`. Its
+  `StandaloneAudio` side is `Send` for the device's callback and allocates
+  nothing: its channel lists live on the stack, up to 32 each way. A block is as
+  long as the app says, as through the C interface, so a plugin with no channels
+  plays its MIDI, and a channel shorter than that shortens it. The app says it
+  through the constructor of `StandaloneBlock` it picks: `new` takes the
+  shortest channel's length, and `with_midi` the length it gives with the MIDI.
+  Inputs that share part of a buffer are refused, as the engine takes channels
+  that are one buffer or share nothing. A teardown with an audio side still
+  alive leaks the instance rather than free the plugin where that side could
+  reach it, and the leak is a fault; an editor may outlive it, and the last to
+  drop frees the plugin on the main thread. A refused load says why, with the
+  state's own reason, and a panic in a load or an activation is refused as a
+  panic, not taken for a busy plugin. `StandaloneEditor` drives the editor's
+  slot as the VST3 view does, in a window the app keeps until it closes the
+  editor.
 - **The app**, `hapto-standalone`: `hapto_standalone::main::<P>()`, which a
   plugin crate's binary calls, behind a `standalone` feature of the crate's so
-  the module never links it. It opens the plugin's editor in a winit window,
+  the module never links it, or an `App` the binary builds, which says the MIDI
+  devices the app opens (D115). It opens the plugin's editor in a winit window,
   activates for the system's default output through cpal in its own
   configuration, at 32-bit floats and blocks of up to 1024 frames, and plays
   into every input what `--signal` asks for: silence by default, so nothing
@@ -3364,20 +3476,19 @@ hosts, in process, linked into the app.
   cannot resize fixes the window's size; one that can fills it below the
   bar. With no view, the bar fills the window and says the parameters are in
   the settings window, which opens with it.
-- **The settings window** is a WebView with its browser data in the
-  session's folder, shown ten times a second, a tab each: the audio; the
-  parameters as the host lists them, each with its kind, a control, the text
-  the plugin gives its value and the MIDI learn mappings in the saved block
-  that name it, matched by the host id a mapping's key hashes to; the
-  Activity log; the saved block; the faults; and MIDI and MIDI-CI, marked
-  planned, since no exporter passes MIDI yet. Its header switches the format
-  and shows whether the plugin processes, its latency and its faults; AU,
-  AUv3 and CLAP show there too, out of reach. It opens beside the main
-  window, and a close hides it, so it opens again as it was. Its page says
-  when it has loaded, and is told everything then: wry keeps no script run
-  before then. The bar's page and its own go to no other page, since each
-  posts to the dev host: navigation away, a dropped file and a new window
-  are refused.
+- **The settings window** is a WebView with its browser data in the session's
+  folder, shown ten times a second, a tab each: the audio; the parameters as the
+  host lists them, each with its kind, a control, the text the plugin gives its
+  value and the MIDI learn mappings in the saved block that name it, matched by
+  the host id a mapping's key hashes to; the Activity log; the saved block; the
+  faults; and MIDI and MIDI-CI, marked planned, since the dev host hands the
+  formats no MIDI yet. Its header switches the format and shows whether the
+  plugin processes, its latency and its faults; AU, AUv3 and CLAP show there
+  too, out of reach. It opens beside the main window, and a close hides it, so
+  it opens again as it was. Its page says when it has loaded, and is told
+  everything then: wry keeps no script run before then. The bar's page and its
+  own go to no other page, since each posts to the dev host: navigation away, a
+  dropped file and a new window are refused.
 - **The Activity log** is laid out as Windows MIDI Services' `midi endpoint
   monitor`: what the plugin told the host, each call by its name in the
   format with what it carried, and what the dev host did to the plugin, such
@@ -3535,13 +3646,17 @@ with no host below it.
 
 **Rust.** MIDI 2.0. Everything above the exporters reads MIDI 2.0's channel
 voice messages, a `ChannelMessage` per status at MIDI 2.0's widths, so a
-processor and learn read one protocol. An exporter is to upgrade MIDI 1.0 on
-the way in with `Upgrade`, by the Default Translation in appendix D of the UMP
-and MIDI 2.0 Protocol specification. Not built yet: no exporter passes MIDI
-(D59, D62). Values scale Min-Center-Max, a note-on at velocity 0 becomes a
-note-off at the centre velocity, controllers 0 and 32 wait for the program
-change that carries their bank, and an RPN or NRPN becomes one registered or
-assignable controller.
+processor and learn read one protocol. MIDI 1.0 is upgraded on the way in
+with `Upgrade`, by the Default Translation in appendix D of the UMP and MIDI
+2.0 Protocol specification. Values scale Min-Center-Max, a note-on at velocity
+0 becomes a note-off at the centre velocity, controllers 0 and 32 wait for the
+program change that carries their bank, and an RPN or NRPN becomes one
+registered or assignable controller.
+
+An exporter hands the engine its host's packets for each block as they come,
+and the engine upgrades them as they arrive, with an `Upgrade` of the
+activation's own, so every exporter shares the one edge, and a low byte in a
+later block refines the high byte that an earlier block sent.
 
 Controllers 0 and 32 also pass on as controllers when they come. That departs
 from appendix D.3.4, which carries them in the program change alone, and from
@@ -3565,15 +3680,15 @@ last saw, and the address and the departures from the Default Translation read
 as D70 states. A bank byte sent alone selects a bank with its partner at 0,
 since a program change carries the bank select values current.
 
-An exporter is to downgrade with `Downgrade` only for a destination that takes
-MIDI 1.0 alone, by the same appendix. Values cut their low bits, a note-on that
+An exporter downgrades with `Downgrade` only for a destination that takes MIDI
+1.0 alone, by the same appendix. Values cut their low bits, a note-on that
 would cut to velocity 0 goes out at 1, a registered or assignable controller
 becomes its four controllers, and a program change with a bank goes out after
 bank select. What MIDI 1.0 cannot carry is dropped and counted: relative and
 per-note controllers, per-note pitch bend and management, a note's attribute,
-whose note still goes out, and a MIDI 2.0 packet of a status the specification
-reserves. Packets of the other types pass, since a destination that takes
-MIDI 1.0 in UMP may take each of them.
+whose note still goes out, and any packet MIDI 1.0 has no bytes for: a utility,
+flex data or stream message, 8-bit SysEx, or a status left undefined. What
+passes is exactly what `Bytes::of` writes.
 
 A device or port that carries MIDI 1.0's byte stream meets UMP at the same
 edge. `ByteStream` reads its bytes into MIDI 1.0 packets as MIDI 1.0 says:
@@ -3607,6 +3722,253 @@ counted in frames across blocks, flushed before the group's next channel voice
 message, which keeps a pair spread over frames one message at about three
 times the code. Sending the high byte at once costs two messages for such a
 pair, as a MIDI 1.0 receiver of the sender sees it too.
+
+### D115. The computer's MIDI devices
+
+**Question and C++ Seam.** How does the standalone app reach the computer's
+MIDI devices? (D110, D114) The C++ Seam had no app. JUCE's standalone wrapper
+opens MIDI inputs through its own device layer and hands their messages to the
+audio thread through `MidiMessageCollector`, which takes a lock on both threads
+and may allocate. midir and RtMidi name a port by its place in the system's
+list, which moves when a device comes or goes, and say nothing when one does.
+
+**Rust.** Through `hapto-midi-devices`, Hapto's own device layer: a crate of
+layer 4 that only the app links, so a plugin in a host never sees a device. It
+speaks UMP alone, whatever the system's API carries, and builds the backends
+Hapto runs on: WinMM, MIDI 1.0 on Windows. Windows MIDI Services, MIDI 2.0 on
+Windows 11 25H2 and later, CoreMIDI and ALSA come when Hapto runs there; until
+then a platform has no backend and lists no devices. Its calls into the system
+are a boundary of their own: `unsafe` is allowed in the backend's module
+alone, under the exporters' rules.
+
+A device is named by a `DeviceId` that survives the system's renumbering. On
+WinMM it is the device's interface path, or its name for one that has none,
+such as the system's software synth, with its place among the devices that
+share that string, and its direction. Its name is kept apart, for showing.
+`Devices` holds the list on the main thread, and its `tick` reads it again
+when it may have changed and tells what came and went. On WinMM a system
+notification marks the list from any thread, and the tick reads it half a
+second, one, two and four seconds after, since WinMM's list lags the
+notification.
+
+`Inputs` opens a device on the main thread and closes it there, up to 16 at
+once. Every device's messages arrive on group 1, merged, as a host hands a
+plugin its MIDI: so a plugin hears in the app what it hears in a host, and a
+mapping learned in one plays in the other, whichever device opened first.
+Open: learn telling two devices apart, which a packet does not say.
+
+The system's thread reads each message as it arrives with `ByteStream`, stamps
+it on one clock, and pushes its packets into a ring made when `Inputs` was:
+one producer and one consumer, its slots atomics, so it never blocks, locks or
+allocates and needs no `unsafe`. Past its room a packet is dropped and
+counted. A SysEx goes out six bytes at a time as it arrives, whatever its
+length. On the audio thread `InputsReader` drains every input once a block,
+in time order across them: a packet lands at the frame its time takes in the
+block, as the time since the last block maps onto this one, so input plays a
+block late and keeps its own timing within one.
+
+Merging keeps each device whole. The reader upgrades each input with an
+`Upgrade` of its own, as D114 upgrades an exporter's MIDI, so two devices'
+parameter numbers never mix, and a device that takes an input over starts its
+translation afresh; the engine then has MIDI 2.0 to pass on. A SysEx waits in
+its input's ring until its end has come, and then reaches the block whole, at
+the frame its end came, with the real-time messages that fell inside it: another
+device's message never cuts it, and goes on meanwhile. One that leaves its
+input's ring less room than a device hands over at once, 172 packets for WinMM's
+buffer of 1,024 bytes, and fills at least half of it, goes out as it comes
+instead, so the device's next buffer of it still fits. The reader starts an
+input's translation over when a new device takes it, as it reads that device's
+first packets, and finds each input's next message once a block and again only
+once it read that input.
+
+On WinMM the callback only reads and pushes. A thread of the input's own hands
+SysEx buffers back to the system, since the callback may not call WinMM. A close
+stops the device, resets it, takes its buffers back and closes it, waits out a
+callback already running, and ends a SysEx it cut short, as a driver's error
+does too, so the reader never holds a start whose end will not come; a message
+the reset sends does nothing, and if the close fails the buffers are leaked
+rather than freed under the driver. A device that leaves while open is closed at
+the next tick: WinMM closed it as it left and said so, so its buffers and ring
+are freed whatever the close answers, and its input is free for the next device.
+A driver that answers that a buffer is still in use holds the close for at most
+ten waits of 20 ms, across all its buffers.
+
+`Outputs` opens a device on the main thread and closes it there, up to 16 at
+once, and `OutputsWriter` hands each block's MIDI to every open one on the
+audio thread. It downgrades the block to MIDI 1.0 by the Default Translation
+(D114), since every device reached now takes MIDI 1.0 alone, and stamps each
+packet with when it is due, as the outputs' `Timing` says. `Immediate`, the
+default, makes a block's MIDI due at once, so it goes out as soon as the block
+has played, as JUCE's standalone sends it. `AtFrames` makes each packet due
+when the block's first frame is, plus its frame at the block's rate. Each
+output has a ring, the inputs' ring the other way, which
+the writer fills only while a device reads it, and every group goes to every
+output, as a MIDI 1.0 device has none. What MIDI 1.0 has no message for is
+counted, and so is what finds no room.
+
+A thread of each output's own sends each packet once its time comes, at once if
+that has passed: never earlier, and never dropped for being late. Once a block
+has handed an output MIDI, the writer sets the output's signal, an event whose
+setting never blocks: the one call the audio thread makes, so a block's MIDI
+leaves the moment the block has played. The thread waits on that signal while
+nothing waits to be sent, and for a packet due later on a high-resolution timer
+of its own as well, which ends about a millisecond late, the same for every
+packet, so a block's spacing holds; a wait's own timeout follows the system's
+tick, about 15.6 ms. A SysEx is joined from its packets and sent whole as one
+long message, which that thread waits on while the driver sends it, so a slow
+port holds up only its own output. One that lost a packet to a full ring, or
+came on another group while one was under way, is dropped and counted rather
+than sent with a hole. A close resets the device, which hands a SysEx back, and
+waits a second for it: a driver that never does keeps the SysEx's room, which is
+left to it, and its device is taken as gone. The thread marks its ring read
+while it runs, however it ends. JUCE's standalone sends a block's MIDI from the
+audio thread instead, in one burst as the block ends, through calls that can
+block: a SysEx sleeps the audio thread until the driver has sent its last byte.
+Its scheduler, which the standalone does not start, takes a lock and allocates
+on the audio thread, and drops what is 200 ms late.
+
+Open: a device unplugged while a long message goes out to it. Through Windows
+10's WDM driver the send never returns: `midiOutLongMsg`, and `midiStreamOut`
+alike, waits on a write the driver never finishes, holding the device's handle.
+A reset from another thread waits behind it, and so does every later WinMM call
+that reads the list of devices again, for good: the app's tick hangs in the
+list, and the process cannot end until the driver lets go, which plugging the
+device back in does not make it do. Short messages are safe: once the device is
+gone each returns an error, and the list goes on. JUCE 9 hangs the same way, its
+writer in `sendMessageNow` and its message thread once its notice of the change
+reads the list again. A fix would keep WinMM's calls off the main thread, each
+with a time limit, and leave a stuck output behind; it waits for a decision.
+
+Neither timing is better at everything, so the app's binary chooses
+(decided 23 November). A message from an input is placed in a block by when it
+came, here as in JUCE, so it plays a block late and keeps its timing within
+one. Sent at once, it reaches a device from no time to a block after it came,
+half a block on average, as in JUCE, but a block's spacing is lost: an
+arpeggio's notes and a clock's ticks land on the block grid, up to a block
+early. Sent at its frame, every message keeps its place, and one from an input
+goes out a block after it came, every time: half a block more on average, which
+live playing through a plugin could feel at large buffers. No one schedule has
+both, since keeping a block's spacing means waiting for its last frame.
+
+Which devices the app opens is its binary's to say, in code: `App`'s
+`midi_inputs` and `midi_outputs` take a filter each, which the app asks of each
+device the system lists and of each that appears later, and `App::midi` hands
+out a `MidiDevices` handle that changes them while the app runs, from any thread
+but the audio thread, which a debug build checks, and tells which devices are
+listed and open. The plugin is made inside `App::run`, so its own code reaches
+the handle where the binary keeps it, a `static` say. A change applies at the
+app's next tick, on its main thread: the devices that now pass open and the ones
+open that no longer pass close, each with a line. Every input opens by default,
+as before, and no output, for a plugin that takes MIDI or sends it: opening
+every output would loop a plugin's MIDI back to it through a virtual port that
+is both an input and an output, drive gear no one asked it to, and hold every
+port from other apps. JUCE's standalone opens none either way until its settings
+dialog picks them, a single output among them. Hapto adds no command-line flags
+for it, as an app's command line is its author's, and no settings of its own.
+`App::with_midi_out_timing` sets the outputs' timing, and the handle changes it
+as it runs. The player stamps each block's MIDI out where its first frame falls
+in the device's stream: when the device asked for the buffer, plus the frames
+the parts of it before this one and the queue hold, so at frames, blocks
+rendered back to back keep the spacing of their audio. Each block reads MIDI in
+up to where its frames end on that timeline, a buffer back, so the blocks one
+buffer holds each read their own share of the time.
+
+The devices are open while a stream plays: when the audio stops, or a stream
+does not start, they close, so their ports go back to other apps and each
+output's reset ends its notes, and the next stream opens them again. A line
+says each device that opens, is refused, closes or leaves, once until that
+changes, so a stream that starts again, or keeps failing to, says nothing new.
+A device that left stays out of what opens for five seconds, while the
+system's list may still show it, and comes back sooner if the list does. The
+app matches devices by their id, whatever their names.
+
+Open: keeping a device's place in the app's settings from run to run, and MIDI
+out timed to land with the audio it goes with, which would add the output's
+latency to it.
+
+**Alternatives.** The alternatives were midir or RtMidi, whose MIDI 1.0 byte
+callbacks and list places fight both this design and D114; JUCE's lock and
+whole-message SysEx; a group for each device, the lowest free, as Windows
+MIDI Services gives each MIDI 1.0 port of an endpoint, which tells devices
+apart but makes a learned mapping hang on which device opened first and
+differ from what a host hands a plugin; holding every other device while one
+sends a SysEx, which stalls them for a slow device's whole dump; and handing
+SysEx buffers back inside the callback, as JUCE, midir and RtMidi do against
+WinMM's documentation.
+
+### D116. MIDI in musicians' terms
+
+**Question and C++ Seam.** What does a plugin read of MIDI, and in what terms?
+(D10, D114) JUCE hands a processor `MidiMessage`s, MIDI 1.0 bytes with
+accessors: channels from 1 to 16, but notes as numbers, values at MIDI 1.0's
+widths, and a note named only by its key. The C++ Seam read MIDI 1.0 alone.
+
+**Rust.** `hapto-midi`'s `Message`s, a crate of layer 2 on `hapto-ump`.
+`Decoder` reads MIDI 2.0, which is all that reaches a plugin, into messages in
+MIDI 2.0's meanings. A value from 0 to 1 is an `f32`, and a value that rests at
+a centre, a bend or a brightness, is `Centred`, from -1 to 1 with MIDI 2.0's
+centre at exactly 0. `Key`, `Group`, `Channel` and `Program` are types of their
+own, stored as MIDI sends them and shown as musicians count them: middle C as
+C4, channels and groups from 1 to 16, programs from 1 to 128 as General MIDI
+numbers them. Every message's `Display` is one line in those numbers.
+
+A controller is a `Controller<T>`, typed by the value it carries, so its key
+says how to read it: a control change, or a registered or assignable
+controller, with the value it rests at. `read` gives its value from a
+channel's message that sets it, `read_note` from a note's own controller of the
+same number, with the note, and `message` builds the one that sets it, to send.
+`controller` holds MIDI 1.0's own typed: the pan, the balance and the
+brightness as `Centred`, the wheels, the volume and the expression from 0 to 1,
+the damper, sostenuto and soft pedals as a `Pedal`, and the portamento, legato
+and hold switches as `bool`. A `Pedal` is down from the middle on, as MIDI 1.0
+reads a switch, and keeps its depth for half pedal. Each default is what a
+keyboard's own value of it reads as, so volume rests at General MIDI's 100 of
+127 exactly as a keyboard's 100 decodes. `controller::number` keeps the plain
+numbers, for a match on a message and for the controllers that are commands,
+such as all notes off. A type of a plugin's own carries a controller's value
+by `ControllerValue`, as a profile's enums will. The `http` crate's typed
+header names are the model: the typed key is the short name, and the plain
+number is reached beside it.
+
+A note is a `NoteId` from its note-on to its note-off: the host's own where its
+format names notes, which its exporter puts in the packet's `Origin::Note`,
+otherwise one the decoder makes up, with the top bit set so it never meets a
+host's. A note-off ends every note on its key, one message for each, or the note
+its host named alone, under the host's id whether or not the decoder holds it. A
+note-off for a key with no note the decoder knows of still comes, under one no
+note has, so a plugin that ends notes by key hears it. All Notes Off, All Sound
+Off and the mode messages end a channel's notes within its group, as MIDI 2.0's
+channel mode messages read. A note's own message names its `NoteKey`: its key,
+and the note its host named, if that one sounds there, and none if not; with no
+name, the newest note sounding on it, since MIDI 2.0 lets a note's controllers
+come before its note does and gives a key's older note no more of them. Per-note
+management's detach leaves the key's notes without them until its next note-on.
+Registered parameter 0 is `BendRange`, in semitones, and a note's pitch comes
+with its note-on, as MIDI 2.0's pitch attribute, or on its own, as registered
+per-note controller 3. Relative registered and assignable controllers are not
+decoded: a plugin that steps by them reads its packets. A plugin moves a note to
+another key with `NoteOn::with_key`, its own pitch moving with it, and keeps its
+id, so its host knows it as the note it came from. A note it sends beside one it
+read, a chord's say, takes an id of its own, `NoteId::own`, which never meets a
+host's or one the decoder makes up. `Controller::registered` refuses 0/0, the
+bend range, which would never read.
+
+A SysEx comes whole once its last packet does, from a buffer the decoder made.
+The decoder's tables are made with it, so decoding allocates nothing and never
+panics: a note past its table takes the oldest's place, which is counted, so
+the newest notes are the ones a note-off finds, and a SysEx past its
+buffer, cut short, or begun on another group while one is under way is dropped
+and counted.
+
+The engine decodes every block's MIDI once into a `MidiList` that lives with
+the processor, and a block hands it out as `Midi` (D23).
+
+**Alternatives.** The alternatives were MIDI 1.0 bytes with accessors, as JUCE
+hands them, which D114 rules out; values at their widths, raw, which leaves
+every plugin to scale them and to know which rest at a centre; a note named by
+its key alone, which loses the second note on a key and a host's note ids; and
+a note's own message named by its id alone, which has nowhere to put a
+controller sent before its note.
 
 ## How to read this
 

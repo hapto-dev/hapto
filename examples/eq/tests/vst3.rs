@@ -7,7 +7,7 @@ use std::sync::LazyLock;
 use hapto_example_eq::ExampleEq;
 use hapto_host::layout::Width;
 use hapto_host::vst3::TestHost;
-use hapto_host::{Audio, Block, EventList, Plugin, ProcessSetup, Processor};
+use hapto_host::{Audio, Block, EventList, Midi, MidiOut, Plugin, ProcessSetup, Processor};
 use hapto_params::{Kind, ParamDecl, host_id};
 
 mod common;
@@ -61,7 +61,7 @@ fn audio_through_the_exporter_matches_the_processor_driven_directly() {
     let (mut plugin, saved) = built();
     let mut processor = plugin.activate(&ProcessSetup::new(RATE, MAX_FRAMES, Width::STEREO));
     let writes = saved.set().audio();
-    let (events, mut out_events) = (EventList::with_capacity(0), EventList::with_capacity(0));
+    let mut out_events = EventList::with_capacity(0);
 
     let mut noise = Noise(0x1234_5678);
     let mut chooser = Noise(0x9E37_79B9);
@@ -91,8 +91,8 @@ fn audio_through_the_exporter_matches_the_processor_driven_directly() {
         let mut channels: [&mut [f32]; 2] = [&mut expected_left, &mut expected_right];
         processor.process(Block::new(
             Audio::new(&mut channels, frames),
-            &events,
-            &mut out_events,
+            Midi::default(),
+            MidiOut::new(&mut out_events),
         ));
 
         let (mut got_left, mut got_right) = (vec![0.0f32; frames], vec![0.0f32; frames]);

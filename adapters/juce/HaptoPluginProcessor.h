@@ -101,6 +101,10 @@ private:
     static void onRestart (void* context, std::uint32_t flags) noexcept;
 
     Parameter* parameterAt (std::uint32_t index) const noexcept;
+    // Adds one packet the plugin sent, MIDI 1.0, to the host's buffer: a
+    // SysEx once its last packet comes.
+    void addMessage (juce::MidiBuffer& midi, const HaptoPacket& packet);
+    void addSysEx (juce::MidiBuffer& midi, const HaptoPacket& packet);
 
     // Message thread: tells the host of the plugin's latency, and the
     // bypassed path of the delay it then keeps.
@@ -120,6 +124,24 @@ private:
     // that, until the next prepareToPlay.
     juce::AudioBuffer<float> bypassDelay_;
     int bypassPosition_ = 0;
+    // The block's MIDI as the C interface carries it, sized in prepareToPlay
+    // so a block allocates nothing: the host's messages as packets in, the
+    // plugin's packets out, and a SysEx the plugin sends, joined again.
+    std::vector<HaptoPacket> midiIn_;
+    std::vector<HaptoPacket> midiOut_;
+    std::vector<juce::uint8> sysexOut_;
+    // The SysEx being joined: its group, -1 for none, and whether it outgrew
+    // its room and is dropped.
+    int sysexGroup_ = -1;
+    bool sysexOverflow_ = false;
+    // The groups whose SysEx was dropped part way, a bit each: the rest of it
+    // passes unread, to its end.
+    std::uint16_t sysexSkipping_ = 0;
+    // Room for a block's MIDI out in a MidiBuffer, made in prepareToPlay and
+    // swapped into the host's buffer at the next block, which then holds it.
+    juce::MidiBuffer midiOutRoom_;
+    bool swapOutRoom_ = false;
+
     // Whether the last block was bypassed, so a bypass that starts clears
     // the delay line instead of replaying the end of the last one. Audio
     // thread only.

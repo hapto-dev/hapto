@@ -9,6 +9,9 @@ A Hapto plugin: a gain in dB and a bypass, with its page in the host's window.
   host, and `cargo hapto serve` serves its page from Vite until Ctrl+C.
 - `cargo hapto build --install` lays out its VST3 bundle and installs it for
   the hosts on this machine; `cargo hapto validate` runs pluginval on it.
+- `cargo hapto juce` writes `hapto-juce.cmake`, its settings for Hapto's JUCE
+  adapter, and prints the CMake that builds it through JUCE: as AU, AAX or a
+  JUCE VST3.
 - `cargo test` drives it through the VST3 exporter, as a host does.
 
 Its identity is in `Cargo.toml`, under `[package.metadata.hapto]`: a host

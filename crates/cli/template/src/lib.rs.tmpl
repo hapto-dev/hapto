@@ -5,6 +5,8 @@
 
 #[cfg(feature = "vst3")]
 hapto_host::export_vst3!({{type}});
+#[cfg(feature = "cabi")]
+hapto_host::export_cabi!({{type}});
 
 mod page;
 

@@ -33,7 +33,8 @@ from pathlib import Path
 
 # A crate may depend only on crates of a lower layer. Learn is above session
 # because it reads the session's saved block; the WebView shell joins the
-# bridge to the host, and the standalone app runs a plugin with no host; the
+# bridge to the host, the device layer reads the computer's MIDI devices for
+# the app, and the standalone app runs a plugin with no host; the
 # plugins, which depend on everything, are on top; xtask drives the examples.
 # cargo-hapto links no Hapto crate (it runs Cargo), so it sits with the tools.
 LAYERS = {
@@ -44,9 +45,11 @@ LAYERS = {
     "hapto-audio": 1,
     "hapto-undo": 2,
     "hapto-session": 2,
+    "hapto-midi": 2,
     "hapto-learn": 3,
     "hapto-bridge": 3,
     "hapto-host": 4,
+    "hapto-midi-devices": 4,
     "hapto-webview": 5,
     "hapto-standalone": 5,
     "xtask": 7,

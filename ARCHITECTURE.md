@@ -42,16 +42,22 @@ reading how Hapto works inside, start with
   `mappings/session.rs`.
 - `crates/ump`: Universal MIDI Packets, the event list MIDI travels in, and
   MIDI 2.0's channel voice messages, which everything above the exporters
-  reads (`voice.rs`). An exporter is to translate MIDI 1.0's (`midi1.rs`) up
-  on the way in (`upgrade.rs`) and down on the way out (`downgrade.rs`), though
-  no exporter passes MIDI yet, and `scale.rs` moves values between the two
-  protocols' widths. A device's MIDI 1.0 byte stream becomes packets, and
-  packets bytes, in `bytes.rs`.
+  reads (`voice.rs`). An exporter translates MIDI 1.0's (`midi1.rs`) up on the
+  way in (`upgrade.rs`) and down on the way out (`downgrade.rs`), and
+  `scale.rs` moves values between the two protocols' widths. A device's MIDI
+  1.0 byte stream becomes packets, and packets bytes, in `bytes.rs`.
+- `crates/midi`: MIDI in musicians' terms: the values a message carries,
+  each its own type (`values.rs`), the messages (`message.rs`), the decoder
+  that reads packets into them (`decoder.rs`), a block's MIDI in and out,
+  `Midi` and `MidiOut` (`midi.rs`), the encoder that writes a message back as
+  packets (`encode.rs`), and the controllers, typed (`controller.rs`).
 - `crates/audio`: a block's audio as a processor sees it: the layouts, the
   channels a main bus has as a type (`layout.rs`); `Audio`, the channels a
   block lends, walked by frame or by channel (`audio.rs`, `frame.rs`); and
   `AudioBuf`, audio of its own for tests (`buf.rs`). `host` re-exports them.
-- `crates/host`: the `Plugin` trait, the [parts](docs/glossary.md#parts) Hapto
+- `crates/host`: the `Plugin` trait, a block and its
+  [spans](docs/glossary.md#span) (`audio.rs`, `spans.rs`), the
+  [parts](docs/glossary.md#parts) Hapto
   builds for each instance (`parts.rs`, with the parameters a plugin makes at
   run time in `parts/run_time.rs`), the saved block (`SavedState`), which
   keeps those parameters by [path](docs/glossary.md#path)
@@ -74,15 +80,23 @@ reading how Hapto works inside, start with
   joins it to a `Dispatcher` (`editor.rs`). The page's native side is in
   `native.rs`. `platform.rs` defines the `WebEngine` trait, and each system's
   engine implements it in `platform/`.
+- `crates/midi-devices`: `hapto-midi-devices`, the computer's MIDI devices as
+  UMP, for the app: the system's list and its changes (`devices.rs`), what names
+  a device (`id.rs`), the inputs open on the main thread and read into each
+  block on the audio thread (`inputs.rs`), the outputs each block's MIDI goes
+  to, sent by a thread of each output's own (`outputs.rs`), the ring between
+  the threads, either way (`ring.rs`), and the WinMM backend (`winmm/`).
 - `crates/standalone`: `hapto-standalone`, the plugin as an app of its own, on
-  Windows: the standalone exporter's instance, its editor in a winit window,
-  and a test signal through it to the system's audio output through cpal
-  (`app.rs`, `device.rs`, `block.rs`), with its saved block kept between runs
-  (`session.rs`). A plugin crate's binary calls its `main`, and its
-  allocation gate reaches the audio path through a hidden `gate` module
-  (`gate.rs`). Its dev host (`dev_host/`, the `dev-host` feature) runs the
-  plugin through the VST3 or C interface test host instead, below a bar that
-  names the format, with a settings window of what the host sees.
+  Windows: the standalone exporter's instance, its editor in a winit window, and
+  a test signal through it to the system's audio output through cpal (`app.rs`,
+  `device.rs`, `block.rs`), with the computer's MIDI inputs and outputs for a
+  plugin that takes or sends MIDI (`midi.rs`), which its author's code picks
+  (`routing.rs`), and its saved block kept between runs (`session.rs`). A plugin
+  crate's binary calls its `main`, and its allocation gate reaches the audio
+  path through a hidden `gate` module (`gate.rs`). Its dev host (`dev_host/`,
+  the `dev-host` feature) runs the plugin through the VST3 or C interface test
+  host instead, below a bar that names the format, with a settings window of
+  what the host sees.
 - `crates/testkit`: test tools: allocation gate, latches, expected assertions,
   drift check.
 - `examples/gain`: the example gain, which wires parameters, undo, a saved
@@ -91,6 +105,8 @@ reading how Hapto works inside, start with
   walks through it.
 - `examples/eq`: the example EQ, the reference for performance and parity, as a
   VST3 module or a static library for the adapter.
+- `examples/midi-probe`: a plugin that makes a host's MIDI heard and sends it
+  back out, for checking MIDI through a real host by hand, in each format.
 - `page`: React hooks for the page, over a pluggable transport: a memory
   one for tests, and `webviewTransport` for a page in a plugin's window. Its
   client holds writes made before the native side answers in `src/held.ts`,
@@ -128,14 +144,18 @@ Read these in order to change what happens to a block.
 3. A [block](docs/glossary.md#block) is `Engine::process` (`engine/process.rs`).
    On the audio thread it hands the exporter a `Points` over the engine's
    `Automation` to fill (step 4), applies it to the parameter set, and flushes
-   denormals. Then `run_held` takes the processor out of its `AudioSlot`.
+   denormals. Then `run_held` takes the processor out of its `AudioSlot`,
+   and the exporter hands over the block's MIDI through a `MidiIn`, which
+   upgrades MIDI 1.0 as it arrives with the activation's own `Upgrade`.
    When the plugin's parts have learn on, learn's audio side, which the
    activation took through the parts' `Driver`, runs once over the block's
    MIDI, so learned writes land before the processor reads. A learned write to
    a parameter made at run time goes through the store learn's table holds
-   for it. Then `pieces`
-   calls `Processor::process` with a `Block` (`crates/host/src/audio.rs`) in
-   [pieces](docs/glossary.md#piece) of at most the activation's `max_frames`.
+   for it. The block's MIDI is then decoded once into the activation's
+   `MidiList` (`crates/midi`), and `pieces` calls `Processor::process` with a
+   `Block` (`crates/host/src/audio.rs`) in
+   [pieces](docs/glossary.md#piece) of at most the activation's `max_frames`,
+   each with its share of the messages as `block.midi`.
    `Channels::run` (`boundary/channels.rs`) builds each piece's channels in
    place, and `pieces` lends them to the processor as `Audio` in its
    layout. Channel `c` is the host's output buffer `c` when that overlaps no
@@ -221,7 +241,8 @@ with `cargo doc -p hapto-host --features vst3,cabi,test-host
   and undoing it writes that value.
 - `unsafe` is denied workspace-wide. Only `host`'s `vst3`, `cabi` and
   `standalone` modules and the `boundary`, `engine` and `faults` modules they
-  share allow it, with a `// SAFETY:` comment on every block.
+  share allow it, and `midi-devices`' system backend (`winmm`), with a
+  `// SAFETY:` comment on every block.
 - A panic never unwinds into a host. An exporter catches it at the entry point,
   counts it as a fault, and a processor that panicked plays silence until the
   next activation. The first fault of each kind in an instance is reported as a
@@ -229,11 +250,13 @@ with `cargo doc -p hapto-host --features vst3,cabi,test-host
   ([`faults.rs`](crates/host/src/faults.rs) says when, and on which thread;
   [a panic in a host's call][panic], [making a fault visible][faults]).
 - The audio path never allocates, locks or makes a system call, except while a
-  panic unwinds (`faults.rs` says why). Allocation gates, and in a debug build
-  the exporters' audio-thread mark, check what the tests reach;
+  panic unwinds (`faults.rs` says why) and where the standalone app's MIDI out
+  sets each output's signal, an event whose setting never blocks, once a block
+  has handed it MIDI (`crates/midi-devices/src/outputs.rs`).
+  Allocation gates, and in a debug build the exporters' audio-thread mark, check
+  what the tests reach;
   [testing.md](docs/testing.md#2-the-audio-path-does-not-allocate) says what
-  each sees and what is left to review ([checking the audio-thread
-  rule][mark]).
+  each sees and what is left to review ([checking the audio-thread rule][mark]).
 - A saved block names two versions, each its own: `haptoStateVersion` for the
   frame Hapto gives it, and `pluginStateVersion` for the plugin's schema. A save
   writes the higher of the block's and the build's for each, and keeps the keys
@@ -261,8 +284,6 @@ with `cargo doc -p hapto-host --features vst3,cabi,test-host
   `hapto-webview` offers no editor, and a host shows its own controls ([where
   the WebView pieces live][webview]). So does the standalone app, which says
   so and ends elsewhere ([the standalone exporter and app][standalone]).
-  Absent: no exporter delivers MIDI events yet ([the VST3 exporter's
-  shape][vst3]).
 
 ## Threads
 
@@ -317,13 +338,11 @@ with `cargo doc -p hapto-host --features vst3,cabi,test-host
   through VST3's interfaces. Everywhere else a core crate, `hapto-ci`, answers
   with UMP in and out, SysEx7 included, through the C interface and CLAP. Open:
   the SysEx manufacturer ID its identity needs.
-- Learn in VST3: hidden proxy parameters in a reserved id range carry
-  controllers. They form a grid of 16 channels by 130 (the 128 control changes,
-  channel pressure, pitch bend), listed through both `IMidiMapping` and
-  `IMidiMapping2`, since Cubase asks only the second when a plugin has it. A
-  pool of them for MIDI 2.0 assignable controllers is bound through
-  `IMidiMapping2`. The
-  `vst3` crate's `Midi2Controller` is four bytes where the SDK's is two, so the
+- Learn in VST3 through MIDI 2.0: the proxy grid of 16 channels by 130, built
+  and listed through `IMidiMapping`, is to be listed through `IMidiMapping2`
+  too, since Cubase asks only the second when a plugin has it, with a pool of
+  proxies for MIDI 2.0 assignable controllers bound through it. The `vst3`
+  crate's `Midi2Controller` is four bytes where the SDK's is two, so the
   exporter must define its own.
 - Learn into a plain value: its target writes with `Origin::Learn` and opens
   no gesture, so a learned value is never an undo step and the target's

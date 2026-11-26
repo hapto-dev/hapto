@@ -66,4 +66,4 @@ pub mod layout;
 
 pub use audio::Audio;
 pub use buf::AudioBuf;
-pub use frame::Frame;
+pub use frame::{AddSample, Frame};

@@ -32,7 +32,7 @@ ANSI = re.compile(r"\x1b\[[0-9;]*m")
 NAME = re.compile(r'^name\s*=\s*"([^"]+)"', re.MULTILINE)
 
 # The crates under `crates/` whose library tests the run builds.
-LANE = ("params", "learn", "host")
+LANE = ("params", "learn", "host", "midi-devices")
 COMMAND = [
     "cargo", "test", *(arg for name in LANE for arg in ("-p", f"hapto-{name}")),
     "--release", "--locked", "--lib", "loom_",

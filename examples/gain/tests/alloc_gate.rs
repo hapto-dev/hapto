@@ -9,8 +9,11 @@ use std::sync::Arc;
 
 use hapto_example_gain::Gain;
 use hapto_host::layout::Width;
+use hapto_host::midi::MidiList;
 use hapto_host::vst3::TestHost;
-use hapto_host::{Audio, Block, Driver, EventList, Parts, Plugin, ProcessSetup, Processor};
+use hapto_host::{
+    Audio, Block, Driver, EventList, MidiOut, Parts, Plugin, ProcessSetup, Processor,
+};
 use hapto_params::host_id;
 use hapto_testkit::alloc::assert_no_allocations;
 use hapto_ump::{Midi1Message, Midi1Voice, Upgrade};
@@ -46,6 +49,8 @@ fn learning_and_a_learned_controller_never_allocate() {
     // As an activation takes it, and as each block runs it.
     let mut learn = driver.learn_audio().expect("learn is on");
     let mut events = EventList::with_capacity(4);
+    // The block's MIDI, decoded as the engine decodes it.
+    let mut midi = MidiList::new();
     let mut out = EventList::with_capacity(0);
     let (mut left, mut right) = (vec![0.25f32; 256], vec![-0.25f32; 256]);
 
@@ -53,11 +58,12 @@ fn learning_and_a_learned_controller_never_allocate() {
     control_change(&mut events, 7, 64);
     assert_no_allocations("the first block, capturing a controller to learn", || {
         learn.process(&events);
+        midi.read(&events, 256);
         let mut channels: [&mut [f32]; 2] = [&mut left, &mut right];
         processor.process(Block::new(
             Audio::new(&mut channels, 256),
-            &events,
-            &mut out,
+            midi.midi(),
+            MidiOut::new(&mut out),
         ));
     });
     driver.tick();
@@ -72,11 +78,12 @@ fn learning_and_a_learned_controller_never_allocate() {
         program.sync(bypass, f32::from(u8::from(round % 8 == 7)));
         assert_no_allocations("a block, the learned controller moving the gain", || {
             learn.process(&events);
+            midi.read(&events, 256);
             let mut channels: [&mut [f32]; 2] = [&mut left, &mut right];
             processor.process(Block::new(
                 Audio::new(&mut channels, 256),
-                &events,
-                &mut out,
+                midi.midi(),
+                MidiOut::new(&mut out),
             ));
         });
     }

@@ -8,11 +8,12 @@ use std::fmt;
 use hapto_host::Plugin;
 use hapto_host::layout::Width;
 use hapto_host::standalone::Standalone;
+use hapto_midi_devices::{InputsReader, OutputsWriter};
 
 pub use crate::settings::Blocks;
 pub use crate::signal::Signal;
 
-use crate::block::{Plan, Player};
+use crate::block::{Plan, Player, Render};
 
 /// What fills a device's buffer: a player the callback owns, of whatever
 /// audio side.
@@ -30,6 +31,13 @@ impl fmt::Debug for Callback {
 }
 
 impl Callback {
+    /// Returns the callback that plays `player`, which it owns.
+    fn of<R: Render>(mut player: Player<R>) -> Callback {
+        Callback {
+            play: Box::new(move |data| player.play(data)),
+        }
+    }
+
     /// The shipped app's, over an audio side of `plugin`, which the caller
     /// activated for `layout` at `sample_rate` and blocks of up to `max`:
     /// to a device of `device_channels`, cutting blocks as `blocks` says,
@@ -44,10 +52,31 @@ impl Callback {
         signal: Signal,
     ) -> Callback {
         let plan = Plan::new(blocks, signal);
-        let mut player = Player::of_app(plugin, layout, device_channels, sample_rate, max, plan);
-        Callback {
-            play: Box::new(move |data| player.play(data)),
-        }
+        Callback::of(Player::of_app(
+            plugin,
+            layout,
+            device_channels,
+            sample_rate,
+            max,
+            plan,
+        ))
+    }
+
+    /// Returns the shipped app's callback, as [`app`](Self::app) makes it,
+    /// with MIDI.
+    ///
+    /// It plays to a stereo device at 48 kHz, in silence, in blocks of up to
+    /// 1024 frames cut as the device requests. Its blocks get the MIDI that
+    /// `midi` reads, and their MIDI out goes to `out`.
+    pub fn app_with_midi<P: Plugin>(
+        plugin: &Standalone<P>,
+        layout: Width,
+        midi: InputsReader,
+        out: OutputsWriter,
+    ) -> Callback {
+        let plan = Plan::new(Blocks::Device, Signal::Silence);
+        let player = Player::of_app(plugin, layout, 2, 48_000.0, 1024, plan);
+        Callback::of(player.with_midi(Some(midi)).with_midi_out(Some(out)))
     }
 
     /// Fills `data`, the device's interleaved buffer.
@@ -104,7 +133,7 @@ pub mod dev {
             let layout = hapto_host::first_width::<P>();
             let render = hosted.start(sample_rate, max, layout)?;
             let plan = Plan::new(Blocks::Device, Signal::Silence);
-            let mut player = Player::new(
+            let player = Player::new(
                 render,
                 layout,
                 device_channels,
@@ -113,9 +142,7 @@ pub mod dev {
                 Arc::clone(&plan),
             );
             Ok(DevHost {
-                callback: Some(Callback {
-                    play: Box::new(move |data| player.play(data)),
-                }),
+                callback: Some(Callback::of(player)),
                 plan,
                 hosted,
             })

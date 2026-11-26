@@ -111,6 +111,99 @@ pub const fn down_32_to_14(value: u32) -> u16 {
     (value >> 18) as u16
 }
 
+/// Scales a value from 0 to 1, such as a velocity, to MIDI 2.0's 16 bits.
+/// The value is clamped to 0 to 1 and rounded, and NaN gives 0.
+///
+/// # Examples
+///
+/// ```
+/// use hapto_ump::scale;
+///
+/// assert_eq!(scale::unit_to_16(1.0), u16::MAX);
+/// assert_eq!(scale::unit_to_16(2.0), u16::MAX);
+/// assert_eq!(scale::unit_of_16(scale::unit_to_16(0.25)), 16384.0 / 65535.0);
+/// ```
+pub fn unit_to_16(value: f64) -> u16 {
+    (value.clamp(0.0, 1.0) * f64::from(u16::MAX)).round() as u16
+}
+
+/// Returns MIDI 2.0's 16 bits as a value from 0 to 1.
+///
+/// # Examples
+///
+/// ```
+/// use hapto_ump::scale;
+///
+/// assert_eq!(scale::unit_of_16(u16::MAX), 1.0);
+/// assert_eq!(scale::unit_of_16(0), 0.0);
+/// ```
+pub fn unit_of_16(bits: u16) -> f64 {
+    f64::from(bits) / f64::from(u16::MAX)
+}
+
+/// Scales a value from 0 to 1, such as a controller's, to MIDI 2.0's 32
+/// bits. The value is clamped to 0 to 1 and rounded, and NaN gives 0.
+///
+/// # Examples
+///
+/// ```
+/// use hapto_ump::scale;
+///
+/// assert_eq!(scale::unit_to_32(1.0), u32::MAX);
+/// assert_eq!(scale::unit_to_32(f64::NAN), 0);
+/// assert_eq!(scale::unit_of_32(u32::MAX), 1.0);
+/// ```
+pub fn unit_to_32(value: f64) -> u32 {
+    (value.clamp(0.0, 1.0) * f64::from(u32::MAX)).round() as u32
+}
+
+/// Returns MIDI 2.0's 32 bits as a value from 0 to 1.
+///
+/// # Examples
+///
+/// ```
+/// use hapto_ump::scale;
+///
+/// // A controller at its 32-bit centre is just past half.
+/// assert!(scale::unit_of_32(0x8000_0000) > 0.5);
+/// ```
+pub fn unit_of_32(bits: u32) -> f64 {
+    f64::from(bits) / f64::from(u32::MAX)
+}
+
+/// Returns a pitch in semitones, with key 0 at 0, as the 7.25 fixed point of
+/// a note's absolute pitch controller,
+/// [`ChannelMessage::PER_NOTE_PITCH`](crate::ChannelMessage::PER_NOTE_PITCH).
+/// The pitch is clamped to 0 to just under 128.
+///
+/// # Examples
+///
+/// ```
+/// use hapto_ump::scale;
+///
+/// // A4, 69, a quarter tone sharp.
+/// let bits = scale::pitch_7_25(69.5);
+/// assert_eq!(bits, 69 << 25 | 1 << 24);
+/// assert_eq!(scale::semitones_7_25(bits), 69.5);
+/// ```
+pub fn pitch_7_25(semitones: f64) -> u32 {
+    (semitones.clamp(0.0, 127.999_999) * f64::from(1_u32 << 25)).round() as u32
+}
+
+/// Returns a note's absolute pitch, in 7.25 fixed point, as semitones.
+///
+/// # Examples
+///
+/// ```
+/// use hapto_ump::scale;
+///
+/// // Middle C, 60, and a quarter of a semitone.
+/// assert_eq!(scale::semitones_7_25(60 << 25 | 1 << 23), 60.25);
+/// ```
+pub fn semitones_7_25(bits: u32) -> f64 {
+    f64::from(bits) / f64::from(1_u32 << 25)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

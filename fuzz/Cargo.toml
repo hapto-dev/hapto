@@ -23,6 +23,7 @@ name = "hapto_fuzz"
 [dependencies]
 libfuzzer-sys = "0.4"
 hapto-ump = { path = "../crates/ump" }
+hapto-midi = { path = "../crates/midi" }
 hapto-bridge = { path = "../crates/bridge" }
 hapto-host = { path = "../crates/host", features = ["cabi", "test-host"] }
 hapto-params = { path = "../crates/params" }

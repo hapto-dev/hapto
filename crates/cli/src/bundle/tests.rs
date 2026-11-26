@@ -112,6 +112,7 @@ fn the_module_is_the_one_cargo_wrote_for_the_cdylib() {
         dir: PathBuf::from("/w/gain"),
         standalone: None,
         has_param_map_test: false,
+        has_juce_settings_test: false,
     };
     let dll = format!(
         "{}gain{}",

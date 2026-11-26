@@ -20,9 +20,6 @@
 //!   a stream of words into events.
 //! - [`ByteStream`] and [`Bytes`] for a MIDI 1.0 device's bytes, at the edge.
 //!
-//! Open: no exporter fills a block's list from the host's MIDI yet, so a
-//! processor's list stays empty.
-//!
 //! The crate is in the core tier and depends on nothing. Every call except
 //! those that make a list or an [`Upgrade`] can run on the audio thread, and
 //! none panics.
@@ -85,7 +82,7 @@ pub use bytes::{ByteStream, Bytes};
 pub use downgrade::Downgrade;
 pub use midi1::{Midi1Message, Midi1Voice};
 pub use packets::{MessageType, Packets, Truncated};
-pub use sysex::{SysEx7, SysExForm};
+pub use sysex::{Joined, SysEx7, SysExForm, SysExJoin, SysExMessage};
 pub use upgrade::Upgrade;
 pub use voice::{Attribute, Bank, ChannelMessage, ChannelVoice};
 
@@ -140,6 +137,25 @@ pub enum Origin {
     /// [`Midi1`](Self::Midi1), so a reader can tell a sent low byte of 0 from
     /// a missing one.
     Midi1HighByte,
+    /// Sent as a format's own note event, such as VST3's, which names the
+    /// note (`noteId`). The packet is the note's message on its key, and `id`
+    /// holds the host's id for the note, because the words have no room for
+    /// it.
+    ///
+    /// ```
+    /// use hapto_ump::{Event, MessageType, Origin};
+    ///
+    /// // A note-on that the host named 7.
+    /// let event = Event {
+    ///     origin: Origin::Note { id: 7 },
+    ///     ..Event::new(0, [0x4090_3C00, 0xFFFF_0000, 0, 0])
+    /// };
+    /// assert_eq!(event.message_type(), MessageType::MIDI2);
+    /// ```
+    Note {
+        /// The host's id for the note, below `0x8000_0000`.
+        id: u32,
+    },
 }
 
 impl Event {
@@ -152,6 +168,24 @@ impl Event {
             words,
             origin: Origin::Midi2,
         }
+    }
+
+    /// Returns the offset of the last frame in a block of `frames` frames,
+    /// where a packet at or past the block's end goes. It's 0 for an empty
+    /// block, and the largest offset for a block longer than an offset can
+    /// reach.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hapto_ump::Event;
+    ///
+    /// assert_eq!(Event::last_offset(512), 511);
+    /// assert_eq!(Event::last_offset(0), 0);
+    /// ```
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
+    pub fn last_offset(frames: usize) -> u32 {
+        u32::try_from(frames.saturating_sub(1)).unwrap_or(u32::MAX)
     }
 
     /// Returns the packet's message type.

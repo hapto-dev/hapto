@@ -33,11 +33,13 @@ versioning](https://semver.org/): before 1.0, a minor version may break the API.
 - **Built:** the core crates, the VST3 exporter (Windows and macOS; a plugin's
   editor in the host's window on Windows), the C interface and the generic
   JUCE adapter, the page's React hooks and protocol and the native side that
-  answers the page, the example gain, the example EQ, the standalone app on
-  Windows, `cargo hapto`, and the comparison against plain JUCE.
-- **Not built:** the CLAP exporter; a page in a plugin window anywhere but
-  Windows, where `hapto-webview` shows it; and MIDI delivered to a plugin
-  through an exporter. [ROADMAP.md](ROADMAP.md) says what comes next.
+  answers the page, MIDI in and out through the VST3 exporter, the C interface
+  and the standalone app's devices, the example gain, the example EQ, the MIDI
+  probe, the standalone app on Windows, `cargo hapto`, and the comparison
+  against plain JUCE.
+- **Not built:** the CLAP exporter, and a page in a plugin window anywhere but
+  Windows, where `hapto-webview` shows it. [ROADMAP.md](ROADMAP.md) says what
+  comes next.
 
 ## Start here
 
@@ -48,16 +50,17 @@ export together. Read it first, then the crate overviews it links.
 ## Layout
 
 The Rust crates are in `crates/`: the core (`params`, `undo`, `session`,
-`learn`, `ump`, `audio`), the parameters' derives and the manifest reader
-(`macros`), the [exporters](docs/glossary.md#exporter) (`host`), the page
+`learn`, `ump`, `midi`, `audio`), the parameters' derives and the manifest
+reader (`macros`), the [exporters](docs/glossary.md#exporter) (`host`), the page
 protocol (`bridge`), the page in a plugin's window (`webview`), a plugin as an
-app of its own (`standalone`), the plugin author's command, `cargo hapto`
-(`cli`), and test tools (`testkit`). Beside them are the example gain
-(`examples/gain`), the example EQ (`examples/eq`), the page's React hooks
-(`page`), the generic JUCE adapter (`adapters/juce`), the repository's tasks
-(`xtask`), the fuzz targets (`fuzz`) and the comparison against plain JUCE
-(`bench`). The codemap in [ARCHITECTURE.md](ARCHITECTURE.md#codemap) says what
-each one is.
+app of its own (`standalone`) and the computer's MIDI devices it reads
+(`midi-devices`), the plugin author's command, `cargo hapto` (`cli`), and test
+tools (`testkit`). Beside them are the example gain (`examples/gain`), the
+example EQ (`examples/eq`), the MIDI probe for checks by hand
+(`examples/midi-probe`), the page's React hooks (`page`), the generic JUCE
+adapter (`adapters/juce`), the repository's tasks (`xtask`), the fuzz targets
+(`fuzz`) and the comparison against plain JUCE (`bench`). The codemap in
+[ARCHITECTURE.md](ARCHITECTURE.md#codemap) says what each one is.
 
 [ARCHITECTURE.md](ARCHITECTURE.md) has the codemap, the invariants and the
 thread model, and [docs/testing.md](docs/testing.md) the test rules and what

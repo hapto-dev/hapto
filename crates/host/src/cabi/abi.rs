@@ -5,6 +5,8 @@
 use std::ffi::{c_char, c_void};
 use std::marker::{PhantomData, PhantomPinned};
 
+use crate::Event;
+
 /// A struct as the header declares it.
 #[derive(Debug)]
 pub(super) struct CStruct {
@@ -84,6 +86,12 @@ impl<T: CType> CType for *const T {
             format!("const {pointee}")
         };
         named(&format!("{constant}*"), name)
+    }
+}
+
+impl<T: CType, const N: usize> CType for [T; N] {
+    fn declare(name: &str, _: &[&str]) -> String {
+        format!("{}[{N}]", T::declare(name, &[]))
     }
 }
 
@@ -227,7 +235,13 @@ c_consts! {
     /// The interface's version: the adapter refuses a plugin built against
     /// another. The header and the plugin are built from one commit, so it
     /// moves only when the interface does.
-    pub const ABI_VERSION = 2 => "HAPTO_ABI_VERSION";
+    pub const ABI_VERSION = 3 => "HAPTO_ABI_VERSION";
+    /// A `HaptoProcess` flag for a caller that takes only MIDI 1.0 out, as
+    /// JUCE's `MidiBuffer` does.
+    ///
+    /// The plugin then downgrades what it sends with the specification's
+    /// Default Translation, to channel and system messages and 7-bit SysEx.
+    pub const MIDI_OUT_1 = 1 => "HAPTO_MIDI_OUT_1";
     /// A parameter whose value is a number in a range, continuous or
     /// stepped; a stepped range stays continuous to the host.
     pub const KIND_CONTINUOUS = 0 => "HAPTO_KIND_CONTINUOUS";
@@ -259,6 +273,11 @@ c_consts! {
     /// this many, and one of 0 for 1,024 frames; a longer block plays in
     /// pieces.
     pub const MAX_FRAMES = crate::MAX_FRAMES as u32 => "HAPTO_MAX_FRAMES";
+    /// The most MIDI packets that one block carries each way.
+    ///
+    /// Room past it in `midi_in` or `midi_out` goes unused, and a block's
+    /// packets past it are dropped.
+    pub const MAX_EVENTS = crate::MAX_EVENTS as u32 => "HAPTO_MAX_EVENTS";
     /// `tail` answers this when the output falls silent with the input.
     pub const TAIL_NONE = 0 => "HAPTO_TAIL_NONE";
     /// `tail` answers this when the output may never fall silent.
@@ -472,8 +491,29 @@ c_structs! {
         pub outputs: u32,
     }
 
-    /// One block of audio. A host processing in place passes the same
-    /// buffers in both lists.
+    /// A Universal MIDI Packet at a frame of a block.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hapto_host::cabi::HaptoPacket;
+    ///
+    /// // A MIDI 1.0 note-on at frame 16, which a MIDI 1.0 host's bytes 0x90
+    /// // 0x3C 0x7F become.
+    /// let note = HaptoPacket { frame: 16, words: [0x2090_3C7F, 0, 0, 0] };
+    /// assert_eq!(note.words[0] >> 28, 2, "message type 2: MIDI 1.0");
+    /// ```
+    pub struct HaptoPacket {
+        /// The packet's frame in the block, from 0.
+        pub frame: u32,
+        /// The packet's words, the first of which holds its message type. A
+        /// packet shorter than four words leaves the rest 0.
+        pub words: [u32; 4],
+    }
+
+    /// One block of audio and MIDI.
+    ///
+    /// A host that processes in place passes the same buffers in both lists.
     ///
     /// # Examples
     ///
@@ -494,6 +534,7 @@ c_structs! {
     ///     input_count: 2,
     ///     output_count: 2,
     ///     frames: 4,
+    ///     ..HaptoProcess::NONE // no MIDI either way
     /// };
     /// // SAFETY: a host's calls, all on this thread; both lists hold two
     /// // channels of four frames that nothing else touches during the call.
@@ -518,6 +559,30 @@ c_structs! {
         /// The frames in this block. A block longer than the activation
         /// promised plays in pieces.
         pub frames: u32,
+        /// How many packets `midi_in` holds.
+        pub midi_in_count: u32,
+        /// The block's MIDI in, as `midi_in_count` packets of MIDI 1.0 or
+        /// MIDI 2.0, or null for none.
+        ///
+        /// The plugin upgrades MIDI 1.0. The packets may come in any order,
+        /// but those at one frame are read in the order given. A packet at or
+        /// past the block's end plays at the last frame.
+        pub midi_in: *const HaptoPacket,
+        /// Room for the block's MIDI out, as `midi_out_capacity` packets, or
+        /// null for none.
+        ///
+        /// The plugin writes them in the order that it sent them, each at a
+        /// frame of the block.
+        pub midi_out: *mut HaptoPacket,
+        /// Where the plugin writes how many packets it wrote to `midi_out`
+        /// each block, or null if `midi_out` is.
+        pub midi_out_count: *mut u32,
+        /// How many packets `midi_out` has room for. Past it, a packet is
+        /// dropped.
+        pub midi_out_capacity: u32,
+        /// `HAPTO_MIDI_OUT_1` for a caller that takes only MIDI 1.0 out, else
+        /// 0.
+        pub flags: u32,
     }
 
     /// What the plugin calls back, only inside `idle` or `destroy`, on the
@@ -630,6 +695,7 @@ c_structs! {
     ///     input_count: 2,
     ///     output_count: 2,
     ///     frames: 4,
+    ///     ..HaptoProcess::NONE
     /// };
     /// // SAFETY: all calls on this thread; the lists hold two channels of four
     /// // frames that nothing else touches during the call.
@@ -758,6 +824,49 @@ impl HaptoStr {
             length: text.len(),
         }
     }
+}
+
+impl HaptoPacket {
+    /// An empty packet, at frame 0 with every word 0, to fill a caller's room.
+    pub const NONE: HaptoPacket = HaptoPacket {
+        frame: 0,
+        words: [0; 4],
+    };
+}
+
+impl From<HaptoPacket> for Event {
+    /// Returns the packet as an event at its frame, marked as sent unchanged.
+    fn from(packet: HaptoPacket) -> Event {
+        Event::new(packet.frame, packet.words)
+    }
+}
+
+impl From<Event> for HaptoPacket {
+    /// Returns the event's packet at its frame, without the event's origin.
+    fn from(event: Event) -> HaptoPacket {
+        HaptoPacket {
+            frame: event.offset,
+            words: event.words,
+        }
+    }
+}
+
+impl HaptoProcess {
+    /// A block with no frames, no channels and no MIDI, for a caller to fill
+    /// in.
+    pub const NONE: HaptoProcess = HaptoProcess {
+        inputs: std::ptr::null(),
+        outputs: std::ptr::null(),
+        input_count: 0,
+        output_count: 0,
+        frames: 0,
+        midi_in_count: 0,
+        midi_in: std::ptr::null(),
+        midi_out: std::ptr::null_mut(),
+        midi_out_count: std::ptr::null_mut(),
+        midi_out_capacity: 0,
+        flags: 0,
+    };
 }
 
 impl HaptoHost {

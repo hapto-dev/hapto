@@ -40,10 +40,10 @@ jobs:
       fail-fast: false
       matrix:
         # A pull request takes macOS alone, and only the steps that show its
-        # code lints and passes: Clippy with all features, and the tests in
-        # debug. That leg is the gate's one build of the VST3 exporter; a
-        # developer's Windows machine shows the rest. The full run takes
-        # both systems and every step.
+        # code lints and passes: Clippy with all features, Clippy of the MIDI
+        # devices for Windows, and the tests in debug. That leg is the gate's
+        # one build of the VST3 exporter; a developer's Windows machine shows
+        # the rest. The full run takes both systems and every step.
         os: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '["windows-2025", "macos-15"]' || '["macos-15"]') }}
     runs-on: ${{ matrix.os }}
     env:
@@ -67,6 +67,14 @@ jobs:
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Clippy (all features)
         run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      # The MIDI devices' WinMM backend builds for Windows alone, so the
+      # macOS leg checks it for Windows too, with no linking: the crate's
+      # dependencies are Rust alone, which builds for any target from here.
+      - name: Clippy (the MIDI devices for Windows)
+        if: runner.os == 'macOS'
+        run: |
+          rustup target add x86_64-pc-windows-msvc
+          cargo clippy -p hapto-midi-devices --all-targets --target x86_64-pc-windows-msvc --locked -- -D warnings
       # Release builds drop debug assertions, so the code and the lints that
       # see it differ from the debug build's.
       - name: Clippy (release)
@@ -198,10 +206,10 @@ jobs:
       # And they build on a runner with no WebView or GTK development
       # libraries installed. Every workspace crate is built but the ones that
       # may need them (the host, the WebView shell, the standalone app, the
-      # two example plugins), the test tools and xtask, so a new crate is
+      # example plugins), the test tools and xtask, so a new crate is
       # built here until it is excluded.
       - name: Build the core alone
-        run: cargo build --workspace --exclude hapto-host --exclude hapto-webview --exclude hapto-standalone --exclude hapto-example-eq --exclude hapto-example-gain --exclude hapto-testkit --exclude xtask --locked
+        run: cargo build --workspace --exclude hapto-host --exclude hapto-webview --exclude hapto-standalone --exclude hapto-example-eq --exclude hapto-example-gain --exclude hapto-example-midi-probe --exclude hapto-testkit --exclude xtask --locked
 
   loom:
     name: loom models
@@ -215,8 +223,8 @@ jobs:
           rustup toolchain install
           rustup show active-toolchain
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      # The model checks of the lock-free hand-offs in params, learn and
-      # host; docs/testing.md lists what each checks. --cfg loom swaps their
+      # The model checks of the lock-free hand-offs in params, learn, host
+      # and midi-devices; docs/testing.md lists what each checks. --cfg loom swaps their
       # atomics for loom's, which work only inside a model, so only the
       # models run. The script counts the models in the source and fails
       # unless each one ran.
@@ -372,7 +380,7 @@ jobs:
           rustup show active-toolchain
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Core and bridge
-        run: cargo check --locked --target ${{ matrix.target }} --workspace --exclude hapto-host --exclude hapto-webview --exclude hapto-standalone --exclude hapto-example-eq --exclude hapto-example-gain --exclude hapto-testkit --exclude xtask
+        run: cargo check --locked --target ${{ matrix.target }} --workspace --exclude hapto-host --exclude hapto-webview --exclude hapto-standalone --exclude hapto-example-eq --exclude hapto-example-gain --exclude hapto-example-midi-probe --exclude hapto-testkit --exclude xtask
       - name: C interface and example EQ
         run: cargo check --locked --target ${{ matrix.target }} -p hapto-host -p hapto-example-eq --no-default-features --features hapto-host/cabi,hapto-example-eq/cabi
       - name: C interface alone

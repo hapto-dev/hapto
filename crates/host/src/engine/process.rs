@@ -23,7 +23,9 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 
 use hapto_learn::LearnAudio;
+use hapto_midi::{Decoder, MidiList, MidiOut};
 use hapto_params::audio_thread;
+use hapto_ump::Upgrade;
 
 use super::{Engine, HostLink, Points, Setup};
 use crate::boundary::{AudioSlot, Channels, FlushDenormals};
@@ -36,11 +38,21 @@ use crate::{Audio, Block, Event, EventList, Plugin, ProcessSetup, Processor, Sta
 pub(super) struct Active<R> {
     pub(super) processor: R,
     channels: Channels,
+    /// The block's MIDI in as the exporter hands it over, before it is put
+    /// in time order.
+    arrivals: Arrivals,
     /// The block's MIDI in, at frames from the block's start.
     events: EventList,
-    /// One piece's share of `events`, at frames from the piece's start. It
-    /// has the room `events` has, so a piece's share never drops.
-    piece_events: EventList,
+    /// The upgrade of the host's MIDI 1.0, as it arrives.
+    ///
+    /// It holds an NRPN's high byte from block to block, so it lives with the
+    /// processor.
+    upgrade: Upgrade,
+    /// The block's MIDI in, decoded once for all the pieces.
+    ///
+    /// It lives with the processor, because notes and a SysEx under way span
+    /// blocks.
+    midi: MidiList,
     /// The block's MIDI out. Every piece pushes to it, and what a piece
     /// pushed moves to the block's frames once the piece returns.
     out_events: EventList,
@@ -82,6 +94,12 @@ impl<R> Active<R> {
         )
     }
 
+    /// The last block's MIDI, decoded.
+    #[cfg(all(test, feature = "vst3"))]
+    pub(super) fn midi(&self) -> hapto_midi::Midi<'_> {
+        self.midi.midi()
+    }
+
     fn around(
         processor: R,
         layout: Width,
@@ -92,12 +110,186 @@ impl<R> Active<R> {
         Active {
             processor,
             channels: Channels::new(layout.inputs, layout.outputs, max_frames),
+            arrivals: Arrivals::with_room(max_events),
             events: EventList::with_capacity(max_events),
-            piece_events: EventList::with_capacity(max_events),
+            upgrade: Upgrade::new(),
+            // A note-off may end several notes, so there is room for twice as
+            // many messages as packets.
+            midi: MidiList::with_room(
+                max_events.saturating_mul(2),
+                hapto_midi::BLOCK_SYSEX_BYTES,
+                Decoder::new(),
+            ),
             out_events: EventList::with_capacity(max_out_events),
             learn: None,
             faulted: false,
         }
+    }
+}
+
+/// The block's MIDI in, which an exporter fills with its host's packets, each
+/// at a frame of the block, in any order.
+///
+/// The block takes them in time order, and those at one frame in the order
+/// that they came, because VST3 hands each controller over in a queue of its
+/// own and its notes in a list beside them. Once they are in order, MIDI 1.0
+/// is upgraded to MIDI 2.0, so nothing above reads MIDI 1.0.
+#[cfg_attr(
+    not(any(feature = "standalone", feature = "cabi", feature = "vst3", test)),
+    expect(dead_code, reason = "no exporter is built")
+)]
+pub(crate) struct MidiIn<'a> {
+    arrivals: &'a mut Arrivals,
+}
+
+impl MidiIn<'_> {
+    /// Adds the host's next packet, or drops and counts it past the block's
+    /// room.
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
+    #[cfg_attr(
+        not(any(feature = "standalone", feature = "cabi", feature = "vst3", test)),
+        expect(dead_code, reason = "no exporter is built")
+    )]
+    pub(crate) fn push(&mut self, event: Event) {
+        self.arrivals.push(event, Rank::Rest);
+    }
+
+    /// Adds a packet that goes at its frame by `rank`, then by the order that
+    /// it came in.
+    ///
+    /// It is for a host that hands controllers over in queues of their own,
+    /// as VST3 does, so that a data entry finds its address, and a low byte
+    /// its high byte, whatever order the queues come in. Past the block's
+    /// room, the packet is dropped and counted.
+    #[cfg_attr(
+        not(feature = "vst3"),
+        expect(dead_code, reason = "VST3 alone hands controllers over apart")
+    )]
+    pub(crate) fn push_ranked(&mut self, event: Event, rank: Rank) {
+        self.arrivals.push(event, rank);
+    }
+
+    /// Returns whether the block has room for another packet.
+    ///
+    /// An exporter stops reading there if its host claims more packets than
+    /// fit.
+    #[cfg_attr(
+        not(feature = "vst3"),
+        expect(dead_code, reason = "VST3 alone reads a host's claims")
+    )]
+    pub(crate) fn has_room(&self) -> bool {
+        self.room() > 0
+    }
+
+    /// Returns how many more packets the block has room for.
+    #[cfg_attr(
+        not(feature = "vst3"),
+        expect(dead_code, reason = "VST3 alone reads a host's claims")
+    )]
+    pub(crate) fn room(&self) -> usize {
+        self.arrivals
+            .packets
+            .capacity()
+            .saturating_sub(self.arrivals.packets.len())
+    }
+
+    /// Counts `count` packets that the host sent and the exporter did not
+    /// read for lack of room.
+    #[cfg_attr(
+        not(feature = "vst3"),
+        expect(dead_code, reason = "VST3 alone reads a host's claims")
+    )]
+    pub(crate) fn add_dropped(&mut self, count: u32) {
+        self.arrivals.dropped = self.arrivals.dropped.saturating_add(count);
+    }
+}
+
+impl Extend<Event> for MidiIn<'_> {
+    /// Adds each packet as [`push`](Self::push) does.
+    fn extend<I: IntoIterator<Item = Event>>(&mut self, events: I) {
+        for event in events {
+            self.push(event);
+        }
+    }
+}
+
+/// A packet's place among those at its frame, which sorts before the order
+/// that it came in.
+///
+/// The variants are in the order that a data entry needs a MIDI 1.0
+/// parameter number's controllers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(
+    not(feature = "vst3"),
+    expect(dead_code, reason = "VST3 alone hands controllers over apart")
+)]
+pub(crate) enum Rank {
+    /// A registered or assignable parameter's address (controllers 98 to
+    /// 101), which its data entry needs.
+    Address,
+    /// A data entry high byte (controller 6), which its low byte refines.
+    HighByte,
+    /// Every other packet.
+    Rest,
+}
+
+/// The block's MIDI in as the exporter hands it over.
+///
+/// Each packet keeps its rank and the order that it came in, so the packets
+/// sort by frame, rank and then that order, and no two are equal.
+#[derive(Debug)]
+struct Arrivals {
+    packets: Vec<(Event, Rank, usize)>,
+    /// The packets past the room.
+    dropped: u32,
+}
+
+impl Arrivals {
+    fn with_room(room: usize) -> Self {
+        Arrivals {
+            packets: Vec::with_capacity(room),
+            dropped: 0,
+        }
+    }
+
+    /// Adds `event` at `rank` if there is room, without allocating.
+    fn push(&mut self, event: Event, rank: Rank) {
+        if self.packets.len() < self.packets.capacity() {
+            let order = self.packets.len();
+            self.packets.push((event, rank, order));
+        } else {
+            self.dropped = self.dropped.saturating_add(1);
+        }
+    }
+
+    fn clear(&mut self) {
+        self.packets.clear();
+        self.dropped = 0;
+    }
+}
+
+/// Fills `audio`'s MIDI in for a block with what `midi` pushes, in time
+/// order.
+fn fill<R>(audio: &mut Active<R>, midi: impl FnOnce(&mut MidiIn<'_>)) {
+    let Active {
+        arrivals,
+        events,
+        upgrade,
+        ..
+    } = audio;
+    arrivals.clear();
+    midi(&mut MidiIn {
+        arrivals: &mut *arrivals,
+    });
+    // No two keys are equal, so an unstable sort, which sorts in place
+    // without allocating, keeps the order that they came in.
+    arrivals
+        .packets
+        .sort_unstable_by_key(|&(event, rank, order)| (event.offset, rank, order));
+    events.clear();
+    events.add_dropped(arrivals.dropped);
+    for (event, ..) in &arrivals.packets {
+        upgrade.event(event, events);
     }
 }
 
@@ -192,24 +384,35 @@ pub(crate) enum Outcome {
 }
 
 impl<P: Plugin, H: HostLink> Engine<P, H> {
-    /// One block of `frames` frames.
+    /// Processes one block of `frames` frames, in this order:
     ///
-    /// First comes the host's automation for it, which `automation` hands over
-    /// queue by queue and which lands before the block. Then learn's audio
-    /// side runs over the block's MIDI, when the plugin's parts have learn
-    /// on, and then the processor, in pieces when the block is longer than
-    /// the activation promised.
+    /// - `automation` hands over the host's automation queue by queue, which
+    ///   lands before the block.
+    /// - `midi` hands over the host's MIDI, which is upgraded as it arrives,
+    ///   and learn's audio side runs over it if the plugin's parts have learn
+    ///   on.
+    /// - The processor runs, in pieces if the block is longer than the
+    ///   activation promised.
+    /// - `sent` gets the MIDI that the processor sent, at the block's frames,
+    ///   for the exporter to pass to its host.
     ///
-    /// A panic in the processor is caught while it is still held (see
-    /// [`run_held`]): the block is silent, and so is every block until the
-    /// next activation's processor. A panic anywhere else in the block, the
-    /// automation walk say, is caught here and silences that block alone.
+    /// `midi` and `sent` are not called for a block of no frames, or if no
+    /// processor runs.
+    ///
+    /// - A panic in the processor is caught while it is still held (see
+    ///   [`run_held`]). The block is silent, and so is every block until the
+    ///   next activation's processor.
+    /// - A panic elsewhere, such as in the automation walk or `midi`, is
+    ///   caught here, and silences only that block and leaves the processor
+    ///   alone.
+    /// - A panic in `sent` comes after the block played, so it is counted and
+    ///   the block stands.
     ///
     /// The calling thread carries the params crate's audio-thread mark
     /// throughout, so a debug build panics, caught as above, at any lock or
-    /// audio-side drop the block reaches. Nothing here drops a processor:
-    /// one that panicked stays in its slot until the main thread replaces
-    /// or takes it.
+    /// audio-side drop that the block reaches. Nothing here drops a
+    /// processor, so one that panicked stays in its slot until the main
+    /// thread replaces or takes it.
     ///
     /// # Safety
     ///
@@ -225,17 +428,17 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
         inputs: &[*mut f32],
         outputs: &[*mut f32],
         automation: impl FnOnce(&mut Points<'_>),
+        midi: impl FnOnce(&mut MidiIn<'_>),
+        sent: impl FnOnce(&[Event]),
     ) -> Outcome {
         let _audio = audio_thread::enter();
         // SAFETY: this function's contract, passed on whole.
-        let block = || unsafe { self.play(frames, inputs, outputs, automation) };
-        panic::catch_unwind(AssertUnwindSafe(block)).unwrap_or_else(|_| {
-            self.faults.record(Fault::Panic);
-            Outcome::Silent
-        })
+        let block = || unsafe { self.play(frames, inputs, outputs, automation, midi, sent) };
+        self.faults.guard(Outcome::Silent, block)
     }
 
-    /// The block, with only the processor's panics caught.
+    /// Runs the block, and catches the panics of the processor, `midi` and
+    /// `sent`.
     ///
     /// # Safety
     ///
@@ -247,6 +450,8 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
         inputs: &[*mut f32],
         outputs: &[*mut f32],
         automation: impl FnOnce(&mut Points<'_>),
+        midi: impl FnOnce(&mut MidiIn<'_>),
+        sent: impl FnOnce(&[Event]),
     ) -> Outcome {
         {
             let mut room = self.automation.try_hold();
@@ -264,13 +469,21 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
             if self.reset.take() {
                 audio.processor.reset();
             }
-            // An exporter's MIDI in is to fill the list here; none does yet.
-            audio.events.clear();
+            // `fill` runs the exporter's code, not the processor's, so a panic
+            // in it silences the block without faulting the processor.
+            if self.faults.caught(|| fill(audio, midi)) {
+                return Outcome::Silent;
+            }
             // SAFETY: this function's contract.
-            unsafe { pieces(audio, frames, inputs, outputs) }
+            let status = unsafe { pieces(audio, frames, inputs, outputs) };
+            // `sent` is the exporter's code too. The block has already
+            // played, so a panic in it is counted and the block stands.
+            let out = audio.out_events.as_slice();
+            self.faults.caught(|| sent(out));
+            Outcome::Played(status)
         });
         match held {
-            Held::Ran(status) => Outcome::Played(status),
+            Held::Ran(outcome) => outcome,
             Held::Panicked => {
                 self.faults.record(Fault::AudioPanic);
                 Outcome::Silent
@@ -280,26 +493,30 @@ impl<P: Plugin, H: HostLink> Engine<P, H> {
     }
 }
 
-/// The processor over the block, in pieces of at most the activation's
-/// frames, answering the last piece's status.
+/// Runs the processor over the block in pieces of at most the activation's
+/// frames, and returns the last piece's status.
 ///
 /// Learn's audio side runs first, once, over the whole block's events, as the
-/// host's automation lands before the block: so every piece reads what a
-/// learned controller wrote, and learn counts a host's blocks, which times
-/// its wait for the second half of a 14-bit pair. In a block that plays in
+/// host's automation lands before the block. So every piece reads what a
+/// learned controller wrote, and learn counts host blocks, which time its
+/// wait for the second half of a 14-bit pair. In a block that plays in
 /// pieces, a controller in a later piece applies from the block's start.
 ///
-/// Each piece is handed the block's events that fall in it, at frames from
-/// its own start. An event past the block's end plays at its last frame, in
-/// the last piece: dropping it could lose a note-off and leave a note
-/// hanging. The first piece also reports the block's drops. They were lost
-/// before any piece ran, at frames no one knows, and the first piece is the
-/// earliest a processor can act on them. Reported once, they add up over the
-/// pieces to the block's count.
+/// The block's MIDI is decoded once, after learn, and each piece gets the
+/// messages and packets that fall in it, at frames from its own start. A
+/// message past the block's end plays at the last frame of the last piece,
+/// because dropping it could lose a note-off and leave a note hanging.
 ///
-/// Every piece sends into the block's list, and what it sent moves to the
-/// block's frames once it returns. A later piece finds the earlier pieces'
-/// events already there.
+/// The first piece also reports the block's drops, which were lost before
+/// any piece ran, at unknown frames. It is the earliest that a processor can
+/// act on them, and reporting them once keeps the pieces' total equal to the
+/// block's count.
+///
+/// Every piece sends into the block's list. When the piece returns, what it
+/// sent moves to the block's frames, and an event past the piece's end moves
+/// to its last frame, as MIDI in does, so nothing lands in a later piece or
+/// past the block. A later piece finds the earlier pieces' events already
+/// there.
 ///
 /// # Safety
 ///
@@ -314,7 +531,7 @@ unsafe fn pieces<R: Processor>(
         processor,
         channels,
         events,
-        piece_events,
+        midi,
         out_events,
         learn,
         ..
@@ -322,6 +539,7 @@ unsafe fn pieces<R: Processor>(
     if let Some(learn) = learn {
         learn.process(events);
     }
+    midi.read(events, frames);
     out_events.clear();
     let mut status = Status::Continue;
     let mut offset = 0;
@@ -331,7 +549,7 @@ unsafe fn pieces<R: Processor>(
         let length = frames
             .saturating_sub(offset)
             .min(channels.max_frames().get());
-        share(events, piece_events, frames, offset, length);
+        let piece = midi.midi().between(offset, offset.saturating_add(length));
         let sent = out_events.as_slice().len();
         // SAFETY: each non-null channel holds `frames` floats (this
         // function's contract), so `offset + length` of them, nothing else
@@ -340,36 +558,17 @@ unsafe fn pieces<R: Processor>(
         status = unsafe {
             channels.run(inputs, outputs, offset, length, |block| {
                 let audio = Audio::new(block, length);
-                processor.process(Block::new(audio, piece_events, out_events))
+                processor.process(Block::new(audio, piece, MidiOut::new(out_events)))
             })
         };
         let start = u32::try_from(offset).unwrap_or(u32::MAX);
+        let last = Event::last_offset(length);
         for event in out_events.as_mut_slice().iter_mut().skip(sent) {
-            event.offset = event.offset.saturating_add(start);
+            event.offset = event.offset.min(last).saturating_add(start);
         }
         offset = offset.saturating_add(length);
     }
     status
-}
-
-/// Fills `piece` with its share of a block of `frames` frames, for the
-/// piece of `length` frames from `offset`, as [`pieces`] says.
-fn share(block: &EventList, piece: &mut EventList, frames: usize, offset: usize, length: usize) {
-    piece.clear();
-    if offset == 0 {
-        piece.add_dropped(block.dropped());
-    }
-    let last = frames.saturating_sub(1);
-    let end = offset.saturating_add(length);
-    for event in block.as_slice() {
-        let at = usize::try_from(event.offset).map_or(last, |at| at.min(last));
-        if (offset..end).contains(&at) {
-            piece.push(Event {
-                offset: u32::try_from(at.saturating_sub(offset)).unwrap_or(u32::MAX),
-                ..*event
-            });
-        }
-    }
 }
 
 #[cfg(test)]

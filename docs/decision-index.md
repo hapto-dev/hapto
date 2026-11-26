@@ -236,6 +236,11 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d22-controllers-reaching-learn-in-vst3)
 
+- `crates/host/src/vst3/component/midi.rs`: module, `Proxy`, `Proxy::fill`, `read_controllers`, `Proxy::message`, `Proxy::text`, `Proxy::parse`
+- `crates/host/src/vst3/component/controller.rs`: `Component::getParameterCount`, `Component::getParameterInfo`
+- `crates/host/src/engine/process.rs`: `MidiIn`, `MidiIn::push_ranked`, `Rank`, `Arrivals`, `fill`
+- test `crates/host/src/vst3/tests/midi.rs`: `a_controller_comes_through_its_proxy_as_midi_1_upgraded_and_before_a_note_at_its_frame`, `every_channel_s_controllers_map_to_hidden_proxies_listed_after_the_plugin_s_own`, `a_host_claiming_more_than_the_block_has_room_for_is_read_as_far_as_there_is_room`, `a_parameter_s_address_comes_before_its_data_entry_at_one_frame_whatever_the_queues_order`, `a_data_entry_s_high_byte_comes_before_its_low_byte_at_one_frame_whatever_the_queues_order`, `a_proxy_shows_its_midi_value_as_text_and_reads_one_back`
+- test `crates/host/src/engine/process/tests.rs`: `packets_handed_over_out_of_order_reach_the_block_in_time_order_and_at_one_frame_as_they_came`, `a_packet_pushed_first_goes_before_the_rest_at_its_frame_and_never_to_an_earlier_one`, `a_high_byte_goes_before_a_low_byte_at_its_frame_whatever_order_they_come_in`
 - `crates/params/src/host_id.rs`: `RESERVED_HOST_IDS`
 - `crates/params/src/lib.rs`: module
 - `crates/params/src/set.rs`: `DeclError::ReservedHostId`
@@ -245,11 +250,18 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d23-how-the-processor-sends-midi)
 
+- test `crates/midi/tests/send.rs`: `a_sysex_goes_out_whole_or_not_at_all`
+- `crates/midi/src/midi.rs`: `MidiOut::send`, `named`
+- test `crates/midi/tests/block.rs`: `a_note_its_host_named_goes_out_under_the_hosts_id_and_one_made_up_under_none`
 - `crates/host/src/audio.rs`: `Block`
-- `crates/host/src/engine/process.rs`: `pieces`, `share`
+- `crates/host/src/engine/process.rs`: `pieces`
+- `crates/host/src/spans.rs`: module, `Spans`, `Spans::at_most`, `Span`, `Block::spans`
+- `crates/audio/src/audio.rs`: `Audio::split_at`
+- `crates/midi/src/midi.rs`: `MidiList::read`, `MidiList::between`, `Midi`, `Midi::between`, `MidiOut`
+- test `crates/host/tests/spans.rs`: module, `spans_cover_the_block_once_with_every_message_where_it_arrived`
 - `crates/host/src/lib.rs`: module
 - `crates/ump/src/lib.rs`: `EventList::as_mut_slice`, `EventList::add_dropped`
-- test `crates/host/src/engine/process/tests.rs`: `each_piece_gets_its_own_events_and_what_it_sends_lands_at_the_block_s_frames`, `a_block_of_one_piece_hands_its_events_on_and_the_next_starts_clean`
+- test `crates/host/src/engine/process/tests.rs`: `each_piece_gets_its_own_events_and_what_it_sends_lands_at_the_block_s_frames`, `a_block_of_one_piece_hands_its_events_on_and_the_next_starts_clean`, `what_a_piece_sends_past_its_end_goes_at_its_last_frame`
 
 ### D24. Answering MIDI-CI
 
@@ -614,6 +626,11 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d59-the-shape-of-the-vst3-exporter)
 
+- `crates/host/src/vst3/component/midi_out.rs`: module, `Out`, `write_events`, `native`, `expression`, `midi_1`, `system_event`, `midi_1_event`, `sysex`
+- `crates/host/src/vst3/component/midi.rs`: `volume_of_expression`, `expression_of_volume`
+- test `crates/host/src/vst3/tests/midi_out.rs`: module
+- `crates/host/src/vst3/component/midi.rs`: `read_events`, `note_on`, `expression`, `Notes`
+- test `crates/host/src/vst3/tests/midi.rs`: `a_note_reaches_the_plugin_as_midi_2_named_by_the_hosts_id`, `a_note_on_s_tuning_is_its_pitch_and_its_expressions_name_it`, `a_volume_expression_reads_on_controller_7_s_curve`, `a_sysex_reaches_the_plugin_whole`, `every_channel_offers_the_note_expressions_a_plugin_reads`, `a_note_expression_from_before_an_activation_names_no_note`
 - `crates/host/src/boundary.rs`: `MainThread`, `AudioSlot`
 - `crates/host/src/engine/automation.rs`: module, `Point`, `Points::queue`, `Points::apply`
 - `crates/host/src/engine/mod.rs`: module, `Engine`, `Engine::new`, `Engine::release`, `Engine::leave`, `Engine::controller_write`, `Engine::set_processing`, `Engine::tick`
@@ -636,6 +653,7 @@ move its line here; when a decision gains code, add one.
 - test `crates/host/src/engine/process.rs`: `loom_a_panicking_block_racing_an_activation_marks_only_its_own_processor`
 - test `crates/host/src/engine/tests.rs`: `an_activation_while_active_rebuilds_and_recovers_a_panicked_processor`
 - test `crates/host/src/vst3/tests.rs`: `a_panicking_entry_point_answers_an_error`, `an_inactive_or_panicking_processor_plays_silence`
+- test `crates/host/src/standalone/tests.rs`: `a_panic_in_what_is_handed_the_plugins_midi_is_counted_and_the_plugin_plays_on`
 
 ### D61. Who flushes denormals
 
@@ -650,6 +668,11 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d62-the-c-interface-for-the-juce-adapter)
 
+- `crates/host/src/cabi/abi.rs`: `HaptoPacket`, `HaptoProcess`, `MIDI_OUT_1`
+- `crates/host/src/cabi/mod.rs`: `process`, `send_out`
+- `adapters/juce/HaptoPluginProcessor.cpp`: `addPackets`, `PluginProcessor::addMessage`, `PluginProcessor::prepareToPlay`, `PluginProcessor::processBlock`, `midiOutBytes`, `sysexRoom`
+- test `crates/host/tests/cabi_midi.rs`: module, `midi_2_in_and_a_sysex_go_through_and_back_out`
+- test `crates/host/tests/alloc_gate.rs`: `midi_through_the_c_interface_with_learn_mapped_and_armed_does_not_allocate`
 - `crates/host/include/hapto.h`: module
 - `crates/host/src/boundary.rs`: `MainThread::bound`, `MainThread::unbound`, `MainThread::lend`, `MainThread::lend_or_wait`, `MainThread::is_owner`, `MainThread::owned`, `here`, `Wait`, `Lent`, `Refused`
 - `crates/host/src/cabi/abi.rs`: `HaptoPlugin`, `HaptoHost`
@@ -678,6 +701,8 @@ move its line here; when a decision gains code, add one.
 - `.github/workflows/juce-adapter.yml`: module
 - `adapters/juce/HaptoJuce.cmake`: `hapto_add_juce_plugin`, `_hapto_apple_build`
 - `crates/host/src/cabi/juce.rs`: `juce_settings`
+- `crates/cli/src/juce.rs`: module, `run_juce`, `cmake`
+- `crates/cli/template/tests/juce_settings.rs.tmpl`: module
 
 ### D65. What a host sees through JUCE
 
@@ -771,16 +796,18 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d72-how-much-a-host-may-ask)
 
-- `crates/host/src/audio.rs`: `MAX_FRAMES`
-- `crates/host/src/cabi/abi.rs`: `MAX_FRAMES`
+- `crates/host/src/audio.rs`: `MAX_FRAMES`, `MAX_EVENTS`
+- `crates/host/src/cabi/abi.rs`: `MAX_FRAMES`, `MAX_EVENTS`
 - `crates/host/src/engine/automation.rs`: module, `POINTS_PER_PARAMETER`, `MAX_SKIPPED_QUEUES`, `Automation::new`, `Points::queue`, `Points::walking`, `Points::skip`
-- `crates/host/src/engine/mod.rs`: `MAX_EVENTS`, `Setup::new`
+- `crates/host/src/engine/mod.rs`: `Setup::new`
 - `crates/host/src/state.rs`: `MAX_STATE_BYTES`, `SavedState::load`
 - `crates/host/src/vst3/component.rs`: `read_changes`
 - `crates/host/src/vst3/stream.rs`: `read_all`
+- `crates/host/src/vst3/component/midi.rs`: `read_controllers`, `event_count`
 - test `crates/host/src/cabi/tests.rs`: `an_activation_past_the_block_size_limit_builds_for_the_limit`
 - test `crates/host/src/engine/automation.rs`: `a_queue_whose_reads_fail_is_read_no_further_than_the_block_has_room`, `a_first_queue_whose_last_read_fails_still_wins_over_a_repeat`, `while_another_block_holds_the_room_a_repeat_stands_and_takes_a_place`, `a_queue_given_no_room_lands_its_last_point_and_counts_only_the_rest_dropped`
 - test `crates/host/src/vst3/tests.rs`: `a_host_claiming_more_queues_than_parameters_is_walked_no_further`, `queues_for_ids_the_plugin_does_not_know_never_starve_its_own`, `a_block_moving_every_proxy_of_learn_s_grid_still_reaches_the_plugin_s_own_queue`, `a_parameter_in_two_queues_takes_one_parameter_s_place_and_its_first_queue_wins`, `the_first_queue_for_a_parameter_wins_wherever_the_repeat_comes`, `a_host_claiming_millions_of_queues_it_does_not_know_is_walked_a_bounded_way`, `a_queue_claiming_millions_of_points_it_cannot_give_is_read_as_far_as_there_is_room`, `a_queue_claiming_millions_of_points_is_read_as_far_as_there_is_room`, `a_setup_with_no_block_size_keeps_its_rate_and_one_past_the_limit_is_built_for_the_limit`
+- test `crates/host/src/vst3/tests/midi.rs`: `a_host_claiming_more_than_the_block_has_room_for_is_read_as_far_as_there_is_room`, `a_host_whose_reads_fail_is_read_no_further_than_the_block_has_room`
 - test `crates/host/tests/state.rs`: `a_block_past_the_limit_is_refused_unread`
 - test `examples/eq/tests/overflow.rs`: `a_block_with_more_points_than_the_room_allocates_nothing_and_lands_each_last_point`
 
@@ -1250,12 +1277,14 @@ move its line here; when a decision gains code, add one.
 - `crates/cli/src/tool.rs`: `Artifact`, `Artifact::read`, `build`
 - `crates/cli/src/page.rs`: `build`, `install`, `packages`, `scripts`
 - `crates/cli/src/validate.rs`: module, `Options`, `PLUGINVAL_ARGS`, `pluginval_command`, `run_pluginval`
+- `crates/cli/src/juce.rs`: `Options`, `settings_test`
+- `crates/cli/src/tool.rs`: `generating_test`
 - `.github/workflows/ci.yml`: `validators:`
 - `crates/cli/src/dev.rs`: module, `Line`, `App::of`, `Copies`, `RELAUNCH`, `Ended`, `Ended::of`, `Seen`, `Build`, `Next`, `after_build`, `build_app`, `app_command`, `PageSource`, `page_source`, `in_app`, `Running::ended`, `Running::quit`, `windows_only`
 - `crates/cli/src/serve.rs`: module, `Options`, `run`
 - `crates/cli/src/watch.rs`: module, `Watch::fingerprint`, `TEMPORARY`, `WORKSPACE`, `walk`
 - `crates/cli/src/page.rs`: `DevServer::start`, `DevServer::wait`, `PAGE_DEV_URL`, `prepare`, `claim`, `write_param_map`, `param_map_test`, `linked`
-- `crates/cli/src/init.rs`: module, `Options`, `Identity::new`, `folder_name`, `class_id`, `subtype`, `au_code`, `render`, `write`, `checkout`, `crate_name`, `FILES`, `MADE`, `TAKEN`, `KEYWORDS`, `CRATES`, `cd_line`
+- `crates/cli/src/init.rs`: module, `Options`, `Identity::new`, `folder_name`, `class_id`, `subtype`, `au_code`, `render`, `write`, `checkout`, `crate_name`, `FILES`, `INSTRUMENT_FILES`, `MADE`, `TAKEN`, `KEYWORDS`, `CRATES`, `cd_line`
 - `crates/cli/template/Cargo.toml.tmpl`: `[package.metadata.hapto]`
 - test `crates/cli/src/init/tests.rs`: `a_folders_name_gives_the_crate_its_type_and_its_names`, `names_the_template_cannot_take_are_refused`, `names_the_generated_code_could_not_compile_are_refused`, `a_folder_git_alone_holds_takes_the_new_crate`, `the_folder_s_name_is_read_from_a_dot_or_a_dot_dot_too`, `every_type_a_template_file_imports_is_taken`, `init_refuses_a_name_the_bundle_or_the_module_cannot_take`, `a_vendor_with_no_letters_cannot_make_the_default_id`, `the_au_subtype_is_drawn_at_random_and_the_manufacturer_is_the_vendor_s`, `each_init_writes_a_fresh_version_4_class_id`, `every_placeholder_of_every_file_is_filled`, `a_new_crate_is_written_only_into_a_new_or_empty_folder`, `a_new_crate_builds_and_passes_its_tests`, `the_next_step_quotes_a_folder_with_a_space_and_skips_the_one_it_ran_in`
 - test `crates/cli/src/page/tests.rs`: `a_package_the_page_links_by_file_is_found`, `the_map_is_written_on_a_machine_and_checked_in_ci`, `a_port_something_listens_on_is_refused`, `a_held_port_is_refused_before_the_page_s_packages_are_installed`, `cargo_shows_its_progress_and_the_map_s_test_is_quiet`
@@ -1276,7 +1305,7 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d110-the-standalone-exporter-and-app)
 
-- `crates/host/src/standalone.rs`: module, `Standalone`, `Standalone::activate`, `Standalone::tick`, `Standalone::editor`, `Standalone::load`, `LoadRefused`, `StandaloneAudio::process`, `StandaloneEditor::open`, `StandaloneEditor::set_scale`, `MAX_CHANNELS`, `Link`, `partly_overlapping`
+- `crates/host/src/standalone.rs`: module, `Standalone`, `Standalone::activate`, `Standalone::tick`, `Standalone::editor`, `Standalone::load`, `LoadRefused`, `StandaloneAudio::process`, `StandaloneBlock`, `StandaloneBlock::new`, `StandaloneBlock::with_midi`, `StandaloneEditor::open`, `StandaloneEditor::set_scale`, `MAX_CHANNELS`, `Link`, `partly_overlapping`
 - `crates/host/src/engine/mod.rs`: `Engine::editor`, `Engine::tick_editors`
 - `crates/host/src/engine/editor.rs`: `EditorSlot::takes_scale`, `EditorSlot::set_scale`
 - test `crates/host/src/engine/editor/tests.rs`: `a_scale_that_is_no_positive_number_is_refused_by_the_slot_itself`
@@ -1288,8 +1317,8 @@ move its line here; when a decision gains code, add one.
 - `crates/standalone/src/session.rs`: module, `Session::open`, `Session::saved_block`, `Session::hold`, `Session::keep`, `Kept`, `write_whole`, `Session::saved_path`, `Session::held_note`
 - `crates/standalone/src/signal.rs`: `Signal`, `Generator::fill`, `LEVEL`
 - `examples/gain/src/bin/standalone.rs`: `main`
-- test `crates/host/src/standalone/tests.rs`: `a_block_before_an_activation_is_silence_and_after_it_plays`, `channels_past_the_most_are_passed_over`, `inputs_that_are_one_buffer_play_and_ones_that_share_part_of_one_do_not`, `the_editor_opens_in_the_apps_window_ticks_with_the_app_and_closes_as_it_drops`, `a_teardown_frees_the_plugin_only_once_no_audio_side_is_left`, `an_editor_may_outlive_the_app_and_frees_the_plugin_as_it_drops`, `a_teardown_while_the_audio_thread_plays_leaks_the_engine_and_silences_it`, `a_migration_that_panics_refuses_the_load_and_counts_a_fault`, `an_activation_that_panics_is_refused_as_a_panic`, `an_editor_that_panics_as_it_drops_is_a_fault_and_the_app_goes_on`, `a_plugin_that_panics_as_it_drops_is_a_fault_and_the_app_goes_on`, `a_panic_while_the_editor_opens_is_refused_as_one`, `an_open_refused_while_the_editor_is_still_in_a_call_is_a_fault`, `a_scale_that_is_no_positive_number_is_passed_over`, `a_block_of_no_frames_does_not_play_and_its_outputs_are_silence`
-- test `crates/standalone/src/block/tests.rs`: `the_sound_is_the_same_whatever_the_cut`, `a_mono_plugin_plays_on_every_channel_and_a_missing_output_is_silent`
+- test `crates/host/src/standalone/tests.rs`: `a_block_before_an_activation_is_silence_and_after_it_plays`, `channels_past_the_most_are_passed_over`, `inputs_that_are_one_buffer_play_and_ones_that_share_part_of_one_do_not`, `the_editor_opens_in_the_apps_window_ticks_with_the_app_and_closes_as_it_drops`, `a_teardown_frees_the_plugin_only_once_no_audio_side_is_left`, `an_editor_may_outlive_the_app_and_frees_the_plugin_as_it_drops`, `a_teardown_while_the_audio_thread_plays_leaks_the_engine_and_silences_it`, `a_migration_that_panics_refuses_the_load_and_counts_a_fault`, `an_activation_that_panics_is_refused_as_a_panic`, `an_editor_that_panics_as_it_drops_is_a_fault_and_the_app_goes_on`, `a_plugin_that_panics_as_it_drops_is_a_fault_and_the_app_goes_on`, `a_panic_while_the_editor_opens_is_refused_as_one`, `an_open_refused_while_the_editor_is_still_in_a_call_is_a_fault`, `a_scale_that_is_no_positive_number_is_passed_over`, `a_block_of_no_frames_does_not_play_and_its_outputs_are_silence`, `a_plugin_with_no_channels_plays_its_midi_for_the_frames_it_is_given`
+- test `crates/standalone/src/block/tests.rs`: `the_sound_is_the_same_whatever_the_cut`, `a_mono_plugin_plays_on_every_channel_and_a_missing_output_is_silent`, `a_plugin_with_no_channels_is_given_each_blocks_frames_and_its_midi`
 - test `crates/standalone/src/session/tests.rs`: `a_kept_block_is_there_at_the_next_run`, `an_unchanged_block_is_not_written_again`, `a_held_session_writes_nothing_over_its_block`, `a_block_that_cannot_be_read_is_held_not_taken_for_none`
 - test `crates/standalone/src/device/tests.rs`: `each_kind_of_error_either_plays_on_or_opens_the_default_again`, `each_kind_survives_the_atomic_and_an_unknown_place_reads_as_other`, `a_device_that_went_away_says_so_and_every_other_kind_keeps_cpal_s_text`, `a_look_keeps_moves_stops_opens_or_waits_by_the_two_ids`, `a_failure_repeated_at_every_look_is_said_once_and_again_when_it_changes`
 - test `crates/standalone/src/app/tests.rs`: `a_block_the_plugin_refuses_is_kept_as_it_was`, `a_block_the_plugin_takes_is_kept_as_it_changes`, `a_minimized_window_s_size_is_none_to_hand_an_editor`, `the_window_s_title_says_what_it_shows_of_the_editor`, `the_window_s_title_counts_the_faults_beside_what_else_it_says`, `the_window_s_title_says_the_audio_stopped_until_it_plays_again`, `an_effect_s_inputs_are_said_to_hear_silence_and_an_instrument_s_are_not`, `a_refused_block_s_line_says_where_it_is_and_how_to_start_afresh`, `a_block_the_plugin_takes_says_nothing`
@@ -1381,18 +1410,81 @@ move its line here; when a decision gains code, add one.
 - `crates/ump/src/voice.rs`: `ChannelVoice`, `ChannelMessage`
 - `crates/ump/src/midi1.rs`: module, `Midi1Voice`, `Midi1Message`
 - `crates/ump/src/upgrade.rs`: module, `Upgrade`, `Numbers::control`, `Channel::translate`, `Channel::control_change`, `Sender::refine`, `Entry::message`
-- `crates/ump/src/downgrade.rs`: module, `Downgrade`, `Downgrade::event`
+- `crates/ump/src/downgrade.rs`: module, `Downgrade`, `Downgrade::translate`
+- `crates/host/src/engine/process.rs`: `MidiIn`, `fill`
+- `crates/host/src/standalone.rs`: `StandaloneAudio::process`
 - `crates/ump/src/scale.rs`: module
 - `crates/ump/src/bytes.rs`: module, `ByteStream`, `Bytes`
 - `crates/learn/src/parse.rs`: module, `parse`, `Value::nrpn`, `Value::normalized`
 - `crates/learn/src/source.rs`: `Control::Cc`
 - `crates/learn/src/audio.rs`: `LearnAudio::process`
-- test `crates/ump/tests/translation.rs`: module, `midi_1_comes_back_from_midi_2_as_it_was_sent`, `a_high_byte_alone_goes_out_at_its_own_frame`, `a_high_byte_alone_goes_out_before_the_channel_s_later_messages`, `an_mpe_zone_s_configuration_goes_out_before_its_member_s_note`, `a_pair_a_block_cuts_goes_out_as_one_block_sends_it`, `a_low_byte_joins_its_high_byte_only_as_the_packet_just_sent`, `a_high_byte_sent_alone_is_marked_apart_from_a_low_byte_of_0`, `bank_select_passes_on_and_rides_the_next_program_change`, `a_program_change_from_midi_1_keeps_its_bank_when_its_controllers_are_dropped`, `a_bank_byte_sent_alone_selects_a_bank_with_its_partner_at_0`, `increment_and_decrement_are_controllers_of_their_own`, `what_midi_1_cannot_carry_is_dropped_and_counted`, `a_midi_2_packet_of_a_reserved_status_is_dropped_and_counted`, `the_types_a_midi_1_destination_takes_in_ump_pass_as_they_are`
+- test `crates/ump/tests/translation.rs`: module, `midi_1_comes_back_from_midi_2_as_it_was_sent`, `a_high_byte_alone_goes_out_at_its_own_frame`, `a_high_byte_alone_goes_out_before_the_channel_s_later_messages`, `an_mpe_zone_s_configuration_goes_out_before_its_member_s_note`, `a_pair_a_block_cuts_goes_out_as_one_block_sends_it`, `a_low_byte_joins_its_high_byte_only_as_the_packet_just_sent`, `a_high_byte_sent_alone_is_marked_apart_from_a_low_byte_of_0`, `bank_select_passes_on_and_rides_the_next_program_change`, `a_program_change_from_midi_1_keeps_its_bank_when_its_controllers_are_dropped`, `a_bank_byte_sent_alone_selects_a_bank_with_its_partner_at_0`, `increment_and_decrement_are_controllers_of_their_own`, `what_midi_1_cannot_carry_is_dropped_and_counted`, `a_packet_midi_1_has_no_bytes_for_is_dropped_and_counted`
 - test `crates/ump/tests/streams.rs`: module, `what_the_downgrade_sends_upgrades_to_the_same_messages`, `a_receiver_of_the_downgrade_ends_each_block_where_the_sender_put_it`, `any_stream_cut_into_blocks_anywhere_upgrades_as_one_block_does`
 - test `crates/ump/tests/bytes.rs`: module, `a_stream_reads_as_its_messages_however_it_is_cut`, `real_time_bytes_anywhere_leave_the_rest_alone`, `a_sysex_of_every_length_goes_out_six_bytes_at_a_time_and_writes_back`
 - test `crates/learn/src/parse.rs`: `upgraded_midi_1_parses_as_a_model_of_midi_1_0_reads_it`
 - test `crates/learn/tests/dispatch.rs`: `a_coarse_binding_reads_the_high_byte_of_every_data_entry_as_seven_bit`, `every_fourteen_bit_nrpn_value_reads_centre_anchored_fine_or_coarse`, `controllers_0_and_32_from_midi_1_drive_their_bindings`, `midi_1_handed_to_learn_unupgraded_is_a_contract_panic`
 - test `crates/learn/tests/capture.rs`: `a_low_byte_of_0_a_block_after_its_high_byte_learns_14_bit`, `controllers_0_and_32_from_midi_1_learn`
+
+### D115. The computer's MIDI devices
+
+[Record section](decisions.md#d115-the-computers-midi-devices)
+
+- `crates/midi-devices/src/lib.rs`: module
+- `crates/midi-devices/src/id.rs`: `DeviceId`, `named`
+- `crates/midi-devices/src/devices.rs`: `Devices`, `Devices::tick`, `Looks`
+- `crates/midi-devices/src/inputs.rs`: `Inputs`, `Inputs::open`, `InputsReader::read`, `ready`, `frame`, `MAX_INPUTS`, `BURST`
+- `crates/ump/src/upgrade.rs`: `Upgrade::reset`
+- `crates/midi-devices/src/ring.rs`: module, `Producer::push`, `Producer::renew`, `Consumer::peek_at`, `Consumer::generation`
+- `crates/midi-devices/src/winmm/mod.rs`: module, `interface`, `index_of`, `retry`
+- `crates/midi-devices/src/winmm/watch.rs`: `Watch`, `changed`
+- `crates/midi-devices/src/winmm/input.rs`: module, `Shared::message`, `Shared::cut`, `Shared::into_producer`, `Input::shut`, `hand_back`, `callback`
+- `crates/ump/src/bytes.rs`: `ByteStream::cut`
+- test `crates/ump/tests/bytes.rs`: `a_cut_ends_a_sysex_that_began_and_drops_one_that_did_not`
+- `crates/midi-devices/src/outputs.rs`: `Timing`, `Outputs`, `Outputs::open`, `OutputsWriter::write`, `MAX_OUTPUTS`
+- `crates/midi-devices/src/winmm/output.rs`: module, `Sysex::join`, `Sysex::send`, `Output::shut`, `send`, `Reading`, `RESET_WAIT`
+- `crates/midi-devices/src/winmm/signal.rs`: module, `Signal`, `Timer::wait`
+- `crates/standalone/src/midi.rs`: module, `Midi::streams`, `Midi::stop`, `Midi::tick`, `follow`, `Said`, `LEFT_WAIT`
+- test `crates/standalone/src/midi.rs`: `a_device_is_said_open_or_refused_once_until_it_changes`
+- `crates/standalone/src/app.rs`: `start_audio`, `App::silence`
+- `crates/standalone/src/routing.rs`: `MidiDevices`, `plan`
+- `crates/standalone/src/lib.rs`: `App`
+- `crates/standalone/src/block.rs`: `Render`, `Player::with_midi`, `Player::with_midi_out`, `Player::block_start`, `Player::input_until`, `Player::play_at`
+- test `crates/midi-devices/src/inputs/tests.rs`: module
+- test `crates/midi-devices/src/winmm/input/tests.rs`: module
+- test `crates/midi-devices/src/outputs/tests.rs`: module
+- test `crates/midi-devices/src/winmm/output/tests.rs`: module
+- test `crates/midi-devices/src/winmm/signal/tests.rs`: module
+- test `crates/midi-devices/tests/by_hand.rs`: module
+- `crates/host/src/standalone.rs`: `StandaloneAudio::process`
+- test `crates/host/src/standalone/tests.rs`: `what_the_plugin_sends_comes_back_at_its_frames_of_the_block_once_it_has_played`
+- test `crates/midi-devices/src/devices.rs`: `a_notice_brings_four_looks_each_wait_twice_the_last`, `with_no_notice_the_list_is_read_every_two_seconds`
+- test `crates/midi-devices/src/ring.rs`: `loom_the_audio_thread_takes_what_the_device_pushed_in_order_and_whole`, `loom_a_clear_racing_a_push_leaves_whole_packets_in_order`, `loom_every_packet_the_length_counts_reads_whole_by_its_place`, `loom_a_packet_a_new_device_pushed_comes_with_its_generation`
+- test `crates/midi-devices/tests/alloc_gate.rs`: module
+- test `crates/standalone/src/block/tests.rs`: `the_apps_midi_inputs_reach_the_plugin_in_its_blocks`, `at_frames_each_blocks_midi_is_due_where_its_frames_fall_in_the_devices_buffer`, `each_block_of_a_buffer_reads_its_own_share_of_the_time_since_the_last`, `at_frames_the_spacing_holds_across_a_buffers_parts_and_its_queue`
+- test `crates/standalone/src/routing/tests.rs`: module
+
+### D116. MIDI in musicians' terms
+
+[Record section](decisions.md#d116-midi-in-musicians-terms)
+
+- test `crates/midi/tests/block.rs`: `a_message_sent_reads_back_as_itself`, `a_sysex_split_across_two_blocks_comes_whole_in_the_second`, `a_new_sysex_on_its_group_cuts_the_one_under_way_short`
+- `crates/midi/src/values.rs`: `NoteId::own`
+- `crates/midi/src/message.rs`: `NoteOn::with_key`, `NoteOn::with_id`
+- `crates/midi/src/controller.rs`: `Controller::registered`
+- `crates/midi/src/encode.rs`: `bend_range`
+- test `crates/midi/tests/send.rs`: module, `a_note_moved_to_another_key_moves_its_own_pitch_with_it`, `a_note_of_the_plugins_own_never_meets_a_hosts_or_a_made_up_one`, `a_bend_range_carries_its_cents_and_a_nan_is_none`, `a_registered_controller_on_the_bend_range_is_refused`
+- `crates/ump/src/lib.rs`: `Origin`
+- test `crates/midi/tests/decode.rs`: `a_note_its_host_named_keeps_that_id_and_its_note_off_ends_it_alone`, `a_notes_own_message_its_host_named_finds_that_note_and_not_the_newest`
+- `crates/midi/src/lib.rs`: module
+- `crates/midi/src/values.rs`: `Key`, `Group`, `Channel`, `Program`, `Centred`, `Pedal`, `Pitch`, `NoteId`
+- `crates/midi/src/message.rs`: `Message`, `NoteOn`, `NoteOff`, `NoteKey`
+- `crates/midi/src/decoder.rs`: `Decoder`, `Decoder::decode`, `Messages`, `Decoder::note_on`, `Decoder::note_off`, `Decoder::forget`
+- `crates/midi/src/controller.rs`: module, `Controller`, `Address`, `ControllerValue`, `Controller::read`, `Controller::read_note`, `Controller::message`, `sent`, `number`, `name`
+- test `crates/midi/tests/controller.rs`: module
+- `crates/midi/src/midi.rs`: module, `MidiList`, `Midi`, `MidiOut`
+- `crates/midi/src/encode.rs`: module, `encode`
+- test `crates/midi/tests/decode.rs`: module, `a_note_off_ends_the_notes_its_key_has`, `a_notes_own_message_names_its_key_and_the_newest_note_on_it`, `a_sysex_too_long_cut_short_or_begun_elsewhere_is_dropped_and_counted`, `each_message_is_one_line_in_musicians_numbers`, `a_note_past_a_full_table_takes_the_oldest_notes_place`, `all_notes_off_ends_its_channels_notes_in_the_table_and_no_others`
+- test `crates/midi/tests/alloc_gate.rs`: module
 
 ## Parameters
 

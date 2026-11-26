@@ -16,7 +16,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::{Context as _, Result, anyhow, bail};
 
-use crate::tool::{cargo, npm, run};
+use crate::tool::{generating_test, npm, run};
 use crate::workspace::{Plugin, Workspace};
 
 /// The port the dev server listens on unless `--port` names another.
@@ -45,22 +45,10 @@ pub(crate) fn write_param_map(workspace: &Workspace, plugin: &Plugin) -> Result<
     )
 }
 
-/// The `page_params` test of `package`, run from `root`, with `ci` the value
-/// of `CI`. It writes the map, unless `CI` is set: there it checks the map,
-/// since Hapto's drift check refuses a test that rewrites its own file in CI,
-/// and a map that does not match fails the build. The variables' names are
-/// `hapto-testkit`'s, which this command does not link. Cargo shows its
-/// progress, since a new crate's first run compiles hundreds of crates here,
-/// and the test's own harness is quiet.
+/// Returns the `page_params` test of `package`, run from `root` by
+/// [`generating_test`] with `ci` as the value of `CI`.
 fn param_map_test(package: &str, root: &Path, ci: Option<&OsStr>) -> Command {
-    let mut command = cargo();
-    command
-        .args(["test", "-p", package, "--test", "page_params", "--", "-q"])
-        .current_dir(root);
-    if ci.is_none_or(OsStr::is_empty) {
-        command.env("HAPTO_BLESS", "1");
-    }
-    command
+    generating_test(package, "page_params", root, ci)
 }
 
 /// Writes `plugin`'s parameter map and builds its page, in `page`, as a

@@ -21,6 +21,7 @@ mod tests;
 mod bundle;
 mod dev;
 mod init;
+mod juce;
 mod page;
 mod serve;
 mod tool;
@@ -75,6 +76,13 @@ enum Command {
     /// Pluginval is `--pluginval`, else `PLUGINVAL`, else the one on the
     /// PATH.
     Validate(validate::Options),
+    /// Write the crate's JUCE adapter settings, `hapto-juce.cmake`, through
+    /// its `juce_settings` test, and print the CMake that builds the crate
+    /// through the adapter as AU, AAX or a JUCE VST3.
+    ///
+    /// In CI it checks the settings instead, and fails if they are out of
+    /// date with the plugin's `INFO`.
+    Juce(juce::Options),
 }
 
 /// The command line without the subcommand's name Cargo puts first.
@@ -94,6 +102,7 @@ fn main() -> ExitCode {
         Command::Serve(options) => serve::run(&options),
         Command::Build(line) => bundle::run(&line.into()),
         Command::Validate(options) => validate::run(options),
+        Command::Juce(options) => juce::run_juce(&options),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,

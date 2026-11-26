@@ -127,6 +127,7 @@ mod editor;
 mod info;
 mod parts;
 mod plugin;
+mod spans;
 mod state;
 
 // The core every exporter shares: an exporter drives it, and nothing else
@@ -165,16 +166,17 @@ pub mod vst3;
 // Inlined: `Event` and `EventList` are `hapto_ump`'s, shown here as this
 // crate's, so a plugin needs no `hapto_ump` import for its blocks.
 #[doc(inline)]
-pub use audio::{Block, Event, EventList, MAX_FRAMES, ProcessSetup, Status};
+pub use audio::{Block, Event, EventList, MAX_EVENTS, MAX_FRAMES, ProcessSetup, Status};
 pub use boundary::ParentWindow;
 pub use editor::{Editor, Size};
 #[cfg(any(feature = "vst3", feature = "cabi", feature = "standalone"))]
 pub use faults::boundary_faults;
 #[doc(hidden)]
 pub use faults::report_line;
+pub use spans::{Span, Spans};
 // Inlined: a block's audio is `hapto_audio`'s, shown here as this crate's.
 #[doc(inline)]
-pub use hapto_audio::{Audio, AudioBuf, Frame, layout};
+pub use hapto_audio::{AddSample, Audio, AudioBuf, Frame, layout};
 /// Writes a plugin's [`PluginInfo`]: who the plugin is from its manifest, and
 /// what its code relies on from the fields the macro is given.
 ///
@@ -230,6 +232,10 @@ pub use hapto_audio::{Audio, AudioBuf, Frame, layout};
 #[cfg(feature = "manifest")]
 #[cfg_attr(docsrs, doc(cfg(feature = "manifest")))]
 pub use hapto_macros::manifest_info;
+/// MIDI in musicians' terms: the messages that a block's [`Midi`] holds, and
+/// their values.
+pub use hapto_midi as midi;
+pub use hapto_midi::{Message, Midi, MidiOut};
 pub use info::{AuCodes, Category, Feature, PluginInfo};
 #[doc(hidden)]
 pub use info::{first_width, widths};

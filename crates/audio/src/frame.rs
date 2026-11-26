@@ -97,3 +97,41 @@ impl fmt::Debug for Frame<'_> {
             .finish()
     }
 }
+
+/// A frame that adds one sample to each of its channels, as a mono voice
+/// plays.
+///
+/// Every layout's frame, a [`Bus`](crate::layout::Bus)'s array or a
+/// [`Frame`], implements it, so code over any
+/// [`Layout`](crate::layout::Layout) adds a voice the same way.
+///
+/// # Examples
+///
+/// ```
+/// use hapto_audio::layout::Stereo;
+/// use hapto_audio::{AddSample, AudioBuf};
+///
+/// let mut buffer = AudioBuf::<Stereo>::new(2);
+/// for frame in buffer.audio().frames_mut() {
+///     frame.add(0.25);
+/// }
+/// assert_eq!(buffer.channels(), [[0.25, 0.25], [0.25, 0.25]]);
+/// ```
+pub trait AddSample {
+    /// Adds `sample` to each of the frame's channels.
+    fn add(self, sample: f32);
+}
+
+impl<const N: usize> AddSample for [&mut f32; N] {
+    fn add(self, sample: f32) {
+        for channel in self {
+            *channel += sample;
+        }
+    }
+}
+
+impl AddSample for Frame<'_> {
+    fn add(self, sample: f32) {
+        Frame::add(self, sample);
+    }
+}

@@ -6,10 +6,8 @@ use std::ops::Deref;
 
 use crate::buf::Buf;
 use crate::head::Head;
+use crate::sysex::{SYSEX_BEGIN, SYSEX_FINISH};
 use crate::{MessageType, SysEx7, SysExForm};
-
-const SYSEX_BEGIN: u8 = 0xF0;
-const SYSEX_FINISH: u8 = 0xF7;
 
 /// Reads a MIDI 1.0 byte stream into Universal MIDI Packets on one group.
 ///
@@ -100,10 +98,37 @@ impl ByteStream {
         }
     }
 
-    /// Discards any partial message or SysEx and the running status, for
-    /// example when the sending device closes.
-    pub fn reset(&mut self) {
+    /// Discards a partial message, a SysEx included, and the running status.
+    fn reset(&mut self) {
         *self = ByteStream::new(self.group);
+    }
+
+    /// Ends any SysEx in progress and starts over, as after a device's error
+    /// or close. A SysEx that already sent packets ends with the bytes held,
+    /// so a reader that waits for its end isn't left waiting. A SysEx that
+    /// sent none is dropped.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hapto_ump::ByteStream;
+    ///
+    /// let mut stream = ByteStream::new(0);
+    /// let mut packets = Vec::new();
+    /// // Seven bytes of a SysEx. The first six go out as its start.
+    /// stream.read(&[0xF0, 1, 2, 3, 4, 5, 6, 7], |words| packets.push(words));
+    /// assert_eq!(packets.len(), 1);
+    /// stream.cut(|words| packets.push(words));
+    /// // The SysEx's end (status 3), with the held byte.
+    /// assert_eq!((packets[1][0] >> 20) & 0xF, 0x3);
+    /// ```
+    pub fn cut(&mut self, mut send: impl FnMut([u32; 4])) {
+        if let Some(sysex) = self.sysex.take()
+            && sysex.begun
+        {
+            self.finish(sysex, &mut send);
+        }
+        self.reset();
     }
 
     fn byte(&mut self, byte: u8, send: &mut impl FnMut([u32; 4])) {

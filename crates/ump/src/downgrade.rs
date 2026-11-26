@@ -4,9 +4,10 @@
 use crate::controller::{
     BANK_SELECT, BANK_SELECT_LSB, DATA_ENTRY, DATA_ENTRY_LSB, NRPN_LSB, NRPN_MSB, RPN_LSB, RPN_MSB,
 };
+use crate::head::split_14;
 use crate::scale::{down_16_to_7, down_32_to_7, down_32_to_14};
 use crate::{
-    Attribute, Bank, ChannelMessage, ChannelVoice, Event, EventList, MessageType, Midi1Message,
+    Attribute, Bank, Bytes, ChannelMessage, ChannelVoice, Event, EventList, Midi1Message,
     Midi1Voice,
 };
 
@@ -29,88 +30,96 @@ use crate::{
 /// the program. That leaves a receiver on the same bank, and a processor that
 /// drops controllers 0 and 32 still sends the bank.
 ///
-/// The downgrade drops what MIDI 1.0 can't carry, and counts it in
-/// [`lost`](Self::lost):
+/// The downgrade sends only what MIDI 1.0 carries, which is exactly what
+/// [`Bytes::of`] writes: channel voice messages, system messages and 7-bit
+/// SysEx. Each call drops the rest and returns how many packets it dropped:
 ///
 /// - relative controllers, per-note controllers, per-note pitch bend and
 ///   per-note management
 /// - a note's attribute, though the note still goes out
-/// - a MIDI 2.0 channel voice packet with a reserved status
-///
-/// Packets of other types pass through unchanged, because a destination that
-/// accepts MIDI 1.0 in UMP may accept any of them.
+/// - any packet that MIDI 1.0 has no bytes for, such as a utility or stream
+///   message, 8-bit SysEx, or a status that MIDI 1.0 leaves undefined
 ///
 /// # Examples
 ///
 /// ```
 /// use hapto_ump::{Attribute, ChannelMessage, ChannelVoice, Downgrade, EventList, Midi1Message, Midi1Voice};
 ///
-/// let mut downgrade = Downgrade::new();
 /// let quiet = ChannelVoice {
 ///     group: 0,
 ///     channel: 0,
 ///     message: ChannelMessage::NoteOn { note: 60, velocity: 0x0100, attribute: Attribute::NONE },
 /// };
 /// let mut out = EventList::with_capacity(4);
-/// downgrade.block(&[quiet.event(0)], &mut out);
+/// let lost = Downgrade::new().block(&[quiet.event(0)], &mut out);
 ///
 /// // It stays a note-on, at velocity 1 rather than the 0 that ends a note.
 /// let sent = out.as_slice()[0].midi1_voice().map(|voice| voice.message);
 /// assert_eq!(sent, Some(Midi1Message::NoteOn { note: 60, velocity: 1 }));
-/// assert_eq!(downgrade.lost(), 0);
+/// assert_eq!(lost, 0);
 /// ```
-#[derive(Debug, Default)]
-pub struct Downgrade {
-    lost: u64,
-}
+#[derive(Debug, Clone, Copy, Default)]
+#[non_exhaustive]
+pub struct Downgrade {}
 
 impl Downgrade {
-    /// Returns a downgrade that has lost nothing yet.
+    /// Returns a downgrade by the Default Translation.
     pub const fn new() -> Self {
-        Downgrade { lost: 0 }
+        Downgrade {}
     }
 
-    /// Returns how many messages and attributes were dropped since `new`,
-    /// because MIDI 1.0 can't carry them.
-    pub const fn lost(&self) -> u64 {
-        self.lost
-    }
-
-    /// Downgrades a block's packets, in order, into `out`.
+    /// Downgrades a block's packets, in order, into `out`, and returns how
+    /// many MIDI 1.0 can't carry.
     ///
     /// A packet that doesn't fit is dropped, and `out` counts it.
     ///
     /// Thread: audio. Allocates nothing.
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
-    pub fn block(&mut self, input: &[Event], out: &mut EventList) {
-        for event in input {
-            self.event(event, out);
-        }
+    pub fn block(&self, input: &[Event], out: &mut EventList) -> u32 {
+        input.iter().fold(0, |lost, event| {
+            lost.saturating_add(self.translate(event, |packet| out.push(packet)))
+        })
     }
 
-    /// Downgrades one packet into `out`.
-    ///
-    /// A MIDI 2.0 channel voice message becomes its MIDI 1.0 translation, and
-    /// a packet of another type passes through unchanged.
+    /// Downgrades one packet, calls `send` with each MIDI 1.0 packet that it
+    /// becomes, and returns how many MIDI 1.0 can't carry. That is 0, or 1
+    /// for a dropped packet or a note's attribute.
     ///
     /// Thread: audio. Allocates nothing.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hapto_ump::{Downgrade, Event};
+    ///
+    /// // MIDI 2.0's controller 7 at full scale becomes MIDI 1.0's at 127.
+    /// let mut sent = Vec::new();
+    /// let controller = Event::new(5, [0x40B0_0700, u32::MAX, 0, 0]);
+    /// let lost = Downgrade::new().translate(&controller, |packet| sent.push(packet));
+    /// assert_eq!((sent, lost), (vec![Event::new(5, [0x20B0_077F, 0, 0, 0])], 0));
+    ///
+    /// // A utility message has no MIDI 1.0 bytes.
+    /// let lost = Downgrade::new().translate(&Event::new(0, [0; 4]), |_| unreachable!());
+    /// assert_eq!(lost, 1);
+    /// ```
     #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
-    pub fn event(&mut self, event: &Event, out: &mut EventList) {
+    pub fn translate(&self, event: &Event, mut send: impl FnMut(Event)) -> u32 {
         let Some(ChannelVoice {
             group,
             channel,
             message,
         }) = event.channel_voice()
         else {
-            if event.message_type() == MessageType::MIDI2 {
-                self.lost = self.lost.saturating_add(1);
-            } else {
-                out.push(*event);
+            // Any other packet passes through unchanged if MIDI 1.0 has bytes
+            // for it.
+            if Bytes::of(event.words).is_none() {
+                return 1;
             }
-            return;
+            send(*event);
+            return 0;
         };
-        let send = |message: Midi1Message, out: &mut EventList| {
-            out.push(
+        let mut send = |message: Midi1Message| {
+            send(
                 Midi1Voice {
                     group,
                     channel,
@@ -119,78 +128,92 @@ impl Downgrade {
                 .event(event.offset),
             );
         };
-        let cc = |controller: u8, value: u8| Midi1Message::ControlChange { controller, value };
-        let parameter =
-            |[msb, lsb]: [u8; 2], bank: u8, index: u8, value: u32, out: &mut EventList| {
-                let value = down_32_to_14(value);
-                send(cc(msb, bank), out);
-                send(cc(lsb, index), out);
-                send(cc(DATA_ENTRY, (value >> 7) as u8), out);
-                send(cc(DATA_ENTRY_LSB, (value & 0x7F) as u8), out);
-            };
         match message {
             ChannelMessage::NoteOn {
                 note,
                 velocity,
                 attribute,
             } => {
-                self.count_attribute(attribute);
                 let velocity = down_16_to_7(velocity).max(1);
-                send(Midi1Message::NoteOn { note, velocity }, out);
+                send(Midi1Message::NoteOn { note, velocity });
+                attribute_lost(attribute)
             }
             ChannelMessage::NoteOff {
                 note,
                 velocity,
                 attribute,
             } => {
-                self.count_attribute(attribute);
                 let velocity = down_16_to_7(velocity);
-                send(Midi1Message::NoteOff { note, velocity }, out);
+                send(Midi1Message::NoteOff { note, velocity });
+                attribute_lost(attribute)
             }
-            ChannelMessage::PolyPressure { note, value } => send(
-                Midi1Message::PolyPressure {
+            ChannelMessage::PolyPressure { note, value } => {
+                send(Midi1Message::PolyPressure {
                     note,
                     value: down_32_to_7(value),
-                },
-                out,
-            ),
+                });
+                0
+            }
             ChannelMessage::ControlChange { controller, value } => {
-                send(cc(controller, down_32_to_7(value)), out);
+                send(cc(controller, down_32_to_7(value)));
+                0
             }
             ChannelMessage::ProgramChange { program, bank } => {
                 if let Some(Bank { msb, lsb }) = bank {
-                    send(cc(BANK_SELECT, msb), out);
-                    send(cc(BANK_SELECT_LSB, lsb), out);
+                    send(cc(BANK_SELECT, msb));
+                    send(cc(BANK_SELECT_LSB, lsb));
                 }
-                send(Midi1Message::ProgramChange { program }, out);
+                send(Midi1Message::ProgramChange { program });
+                0
             }
-            ChannelMessage::ChannelPressure { value } => send(
-                Midi1Message::ChannelPressure {
+            ChannelMessage::ChannelPressure { value } => {
+                send(Midi1Message::ChannelPressure {
                     value: down_32_to_7(value),
-                },
-                out,
-            ),
-            ChannelMessage::PitchBend { value } => send(
-                Midi1Message::PitchBend {
+                });
+                0
+            }
+            ChannelMessage::PitchBend { value } => {
+                send(Midi1Message::PitchBend {
                     value: down_32_to_14(value),
-                },
-                out,
-            ),
+                });
+                0
+            }
             ChannelMessage::RegisteredController { bank, index, value } => {
-                parameter([RPN_MSB, RPN_LSB], bank, index, value, out);
+                number(&mut send, [RPN_MSB, RPN_LSB], [bank, index], value);
+                0
             }
             ChannelMessage::AssignableController { bank, index, value } => {
-                parameter([NRPN_MSB, NRPN_LSB], bank, index, value, out);
+                number(&mut send, [NRPN_MSB, NRPN_LSB], [bank, index], value);
+                0
             }
-            _ => self.lost = self.lost.saturating_add(1),
+            _ => 1,
         }
     }
+}
 
-    /// Counts a note's attribute, if any, as lost because MIDI 1.0 can't carry
-    /// it.
-    fn count_attribute(&mut self, attribute: Attribute) {
-        if attribute != Attribute::NONE {
-            self.lost = self.lost.saturating_add(1);
-        }
-    }
+/// A MIDI 1.0 control change.
+const fn cc(controller: u8, value: u8) -> Midi1Message {
+    Midi1Message::ControlChange { controller, value }
+}
+
+/// Sends a registered or assignable controller as MIDI 1.0's four
+/// controllers, which are its `address` controllers with its bank and index,
+/// then data entry's high and low bytes.
+fn number(
+    send: &mut impl FnMut(Midi1Message),
+    [msb, lsb]: [u8; 2],
+    [bank, index]: [u8; 2],
+    value: u32,
+) {
+    let (low, high) = split_14(down_32_to_14(value));
+    send(cc(msb, bank));
+    send(cc(lsb, index));
+    send(cc(DATA_ENTRY, high));
+    send(cc(DATA_ENTRY_LSB, low));
+}
+
+/// Returns 1 for a note's attribute, which MIDI 1.0 can't carry, or 0 for
+/// none.
+fn attribute_lost(attribute: Attribute) -> u32 {
+    u32::from(attribute != Attribute::NONE)
 }

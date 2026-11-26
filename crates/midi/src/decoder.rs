@@ -1,0 +1,533 @@
+//! Decodes packets into messages. The engine runs a decoder over every block,
+//! and a plugin can run one on its main thread or in a test.
+
+use std::fmt;
+
+use hapto_ump::scale::{self, down_32_to_14};
+use hapto_ump::{Attribute, ChannelMessage, ChannelVoice, Event, MessageType, Origin, SysExJoin};
+
+use crate::message::{Message, NoteKey, NoteOff, NoteOn};
+use crate::values::{Centred, Channel, Group, Key, NoteId, Pitch, Program};
+
+/// How many notes a decoder made with [`Decoder::new`] keeps track of at
+/// once, across every group and channel.
+pub const NOTES: usize = 256;
+/// The longest SysEx message a decoder made with [`Decoder::new`] joins.
+pub const SYSEX_BYTES: usize = 4096;
+
+/// The group, channel and host's note id, if any, of a channel voice message.
+#[derive(Debug, Clone, Copy)]
+struct Place {
+    group: Group,
+    channel: Channel,
+    named: Option<NoteId>,
+}
+
+/// A sounding note, as the decoder keeps it.
+#[derive(Debug, Clone, Copy)]
+struct Sounding {
+    group: Group,
+    channel: Channel,
+    key: Key,
+    id: NoteId,
+    /// Whether per-note management detached the note, which then takes no
+    /// more per-note messages.
+    detached: bool,
+}
+
+/// Decodes packets into [`Message`]s, as the engine does for each block.
+///
+/// It decodes only MIDI 2.0, because MIDI 1.0 is upgraded before it reaches a
+/// plugin. Its tables are allocated when it is made, so decoding allocates
+/// nothing. For the sounding notes:
+///
+/// - Each note-on gets an id, unless the host gave one in the packet's
+///   [`Origin::Note`], as VST3 does.
+/// - A note-off ends every note on its key, or only the note whose host id it
+///   carries, under that id even if the table doesn't hold it.
+/// - A note's own message with a host id names that note, even when a newer
+///   note sounds on its key.
+/// - A note-off for a key with no note still comes, under an id that no note
+///   has, for a plugin that ends notes by key.
+/// - All Notes Off, All Sound Off and the mode messages end a channel's notes.
+/// - A note-on past the table's room takes the oldest note's place, counted in
+///   [`dropped`](Self::dropped).
+///
+/// A SysEx comes whole once its last packet arrives, by the rules of
+/// [`SysExJoin`](hapto_ump::SysExJoin), and one that is dropped is counted in
+/// [`dropped`](Self::dropped).
+///
+/// # Examples
+///
+/// ```
+/// use hapto_midi::{Decoder, Key, Message};
+/// use hapto_ump::Event;
+///
+/// let mut decoder = Decoder::new();
+/// let on = |key: u32| Event::new(0, [0x4090_0000 | key << 8, 0xFFFF_0000, 0, 0]);
+/// let off = Event::new(9, [0x4080_3C00, 0x8000_0000, 0, 0]);
+///
+/// // The same key twice is two notes, and one note-off ends both.
+/// decoder.decode(&on(60)).count();
+/// decoder.decode(&on(60)).count();
+/// let ended: Vec<Message<'_>> = decoder.decode(&off).collect();
+/// assert_eq!(ended.len(), 2);
+/// assert!(ended.iter().all(|m| matches!(m, Message::NoteOff(off) if off.key == Key::C4)));
+/// ```
+pub struct Decoder {
+    /// The sounding notes, oldest first, at most `room` of them.
+    notes: Vec<Sounding>,
+    room: usize,
+    /// How many ids the decoder has made up.
+    made: u32,
+    /// The notes that the last note-off ended.
+    ends: Vec<NoteId>,
+    /// The SysEx under way, or the one that the last packet completed.
+    sysex: SysExJoin,
+    dropped: u64,
+}
+
+impl fmt::Debug for Decoder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Decoder")
+            .field("sounding", &self.notes.len())
+            .field("dropped", &self.dropped)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Default for Decoder {
+    fn default() -> Self {
+        Decoder::new()
+    }
+}
+
+/// What one packet decoded to, before it is handed out as messages.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Decoded {
+    Nothing,
+    One(Message<'static>),
+    /// A note-off for each note in the decoder's `ends`.
+    Offs(NoteOff),
+    /// The SysEx in the decoder's buffer, now whole.
+    SysEx(Group),
+}
+
+/// The messages that one packet decoded to, in order, from
+/// [`Decoder::decode`].
+///
+/// # Examples
+///
+/// ```
+/// use hapto_midi::{Decoder, Message};
+/// use hapto_ump::Event;
+///
+/// let mut decoder = Decoder::new();
+/// // A SysEx's first part completes nothing yet.
+/// let start = Event::new(0, [0x3016_7E7F, 0x0601_0203, 0, 0]);
+/// assert_eq!(decoder.decode(&start).count(), 0);
+/// let end = Event::new(0, [0x3031_0400, 0, 0, 0]);
+/// for message in decoder.decode(&end) {
+///     assert!(matches!(message, Message::SysEx { data, .. } if data.len() == 7));
+/// }
+/// ```
+#[derive(Debug)]
+pub struct Messages<'d> {
+    decoder: &'d Decoder,
+    decoded: Decoded,
+    next: usize,
+}
+
+impl<'d> Iterator for Messages<'d> {
+    type Item = Message<'d>;
+
+    fn next(&mut self) -> Option<Message<'d>> {
+        let at = self.next;
+        self.next = at.saturating_add(1);
+        match self.decoded {
+            Decoded::Nothing => None,
+            Decoded::One(message) => (at == 0).then_some(message),
+            Decoded::Offs(off) => {
+                let id = *self.decoder.ended().get(at)?;
+                Some(Message::NoteOff(NoteOff { id, ..off }))
+            }
+            Decoded::SysEx(group) => (at == 0).then(|| Message::SysEx {
+                group,
+                data: self.decoder.sysex_bytes(),
+            }),
+        }
+    }
+}
+
+impl Decoder {
+    /// Returns a decoder that tracks up to [`NOTES`] notes and joins SysEx of
+    /// up to [`SYSEX_BYTES`] bytes.
+    ///
+    /// Thread: any but audio, because it allocates.
+    pub fn new() -> Decoder {
+        Decoder::with_room(NOTES, SYSEX_BYTES)
+    }
+
+    /// Returns a decoder that tracks up to `notes` notes and joins SysEx of up
+    /// to `sysex_bytes` bytes.
+    ///
+    /// Thread: any but audio, because it allocates.
+    pub fn with_room(notes: usize, sysex_bytes: usize) -> Decoder {
+        Decoder {
+            notes: Vec::with_capacity(notes),
+            room: notes,
+            made: 0,
+            ends: Vec::with_capacity(notes.max(1)),
+            sysex: SysExJoin::with_room(sysex_bytes),
+            dropped: 0,
+        }
+    }
+
+    /// Returns the messages that `event` completes.
+    ///
+    /// A packet that Hapto doesn't read, or a SysEx's first packets, complete
+    /// none, and a note-off that ends several notes completes several.
+    ///
+    /// Thread: any. Allocates nothing.
+    #[cfg_attr(hapto_rtsan, sanitize(realtime = "nonblocking"))]
+    pub fn decode(&mut self, event: &Event) -> Messages<'_> {
+        let decoded = self.read(event);
+        Messages {
+            decoder: self,
+            decoded,
+            next: 0,
+        }
+    }
+
+    /// Returns the notes that the last note-off ended.
+    pub(crate) fn ended(&self) -> &[NoteId] {
+        &self.ends
+    }
+
+    /// Returns the last completed SysEx.
+    pub(crate) fn sysex_bytes(&self) -> &[u8] {
+        self.sysex.message().map_or(&[], |whole| whole.data())
+    }
+
+    /// Returns how many notes lost their place in the full table, and how many
+    /// SysEx were dropped, since it was made.
+    pub fn dropped(&self) -> u64 {
+        self.dropped
+    }
+
+    /// Returns how many notes the table holds.
+    pub fn sounding(&self) -> usize {
+        self.notes.len()
+    }
+
+    /// Forgets every sounding note and any SysEx under way, as at an
+    /// activation.
+    pub fn reset(&mut self) {
+        self.notes.clear();
+        self.ends.clear();
+        self.sysex.reset();
+    }
+
+    /// Returns what `event` decoded to, with note-offs' ids in
+    /// [`ended`](Self::ended) and a completed SysEx in
+    /// [`sysex_bytes`](Self::sysex_bytes).
+    pub(crate) fn read(&mut self, event: &Event) -> Decoded {
+        // The join reads every packet, because any but a real-time one on a
+        // SysEx's group cuts the SysEx short.
+        let joined = self.sysex.push(event);
+        let (whole, dropped) = (joined.whole.map(|whole| whole.group), joined.dropped);
+        self.dropped = self.dropped.saturating_add(u64::from(dropped));
+        if let Some(group) = whole {
+            return Decoded::SysEx(Group::from_wire(group));
+        }
+        match event.message_type() {
+            MessageType::UTILITY | MessageType::STREAM | MessageType::SYSEX7 => Decoded::Nothing,
+            _ if event.is_real_time() => Decoded::Nothing,
+            _ => {
+                let named = match event.origin {
+                    Origin::Note { id } => Some(NoteId::hosts(id)),
+                    _ => None,
+                };
+                match ChannelVoice::decode(event.words) {
+                    Some(voice) => self.voice(voice, named),
+                    None => Decoded::Nothing,
+                }
+            }
+        }
+    }
+
+    /// Decodes one channel voice message, with `named` as the host's note id.
+    fn voice(&mut self, voice: ChannelVoice, named: Option<NoteId>) -> Decoded {
+        let group = Group::from_wire(voice.group);
+        let channel = Channel::from_wire(voice.channel);
+        let at = Place {
+            group,
+            channel,
+            named,
+        };
+        if let Some(message) = self.per_note(at, voice.message) {
+            return Decoded::One(message);
+        }
+        let message = match voice.message {
+            ChannelMessage::NoteOn {
+                note,
+                velocity,
+                attribute,
+            } => Message::NoteOn(self.note_on(at, Key::new(note), velocity, attribute)),
+            ChannelMessage::NoteOff { note, velocity, .. } => {
+                return self.note_off(at, Key::new(note), velocity);
+            }
+            ChannelMessage::ControlChange { controller, value } => {
+                // All Sound Off, All Notes Off and the mode messages end the
+                // channel's notes, within its group.
+                if matches!(controller, 120 | 123..=127) {
+                    self.forget(group, channel);
+                }
+                Message::Control {
+                    group,
+                    channel,
+                    controller,
+                    value: unit(value),
+                }
+            }
+            ChannelMessage::ProgramChange { program, bank } => Message::Program {
+                group,
+                channel,
+                program: Program::from_wire(program),
+                bank: bank.map(|bank| u16::from(bank.msb & 0x7F) << 7 | u16::from(bank.lsb & 0x7F)),
+            },
+            ChannelMessage::ChannelPressure { value } => Message::Pressure {
+                group,
+                channel,
+                value: unit(value),
+            },
+            ChannelMessage::PitchBend { value } => Message::Bend {
+                group,
+                channel,
+                value: Centred::from_bits(value),
+            },
+            ChannelMessage::RegisteredController {
+                bank: 0,
+                index: BEND_RANGE,
+                value,
+            } => Message::BendRange {
+                group,
+                channel,
+                semitones: semitones(value),
+            },
+            ChannelMessage::RegisteredController { bank, index, value } => Message::Registered {
+                group,
+                channel,
+                bank,
+                index,
+                value: unit(value),
+            },
+            ChannelMessage::AssignableController { bank, index, value } => Message::Assignable {
+                group,
+                channel,
+                bank,
+                index,
+                value: unit(value),
+            },
+            _ => return Decoded::Nothing,
+        };
+        Decoded::One(message)
+    }
+
+    /// Decodes a note's own message, which names its note by key, or returns
+    /// `None` for any other.
+    fn per_note(&mut self, at: Place, message: ChannelMessage) -> Option<Message<'static>> {
+        let Place { group, channel, .. } = at;
+        Some(match message {
+            ChannelMessage::PolyPressure { note, value } => Message::NotePressure {
+                note: self.key(at, note),
+                value: unit(value),
+            },
+            ChannelMessage::RegisteredPerNoteController { note, index, value } => {
+                let note = self.key(at, note);
+                if index == ChannelMessage::PER_NOTE_PITCH {
+                    Message::NotePitch {
+                        note,
+                        pitch: pitch_7_25(value),
+                    }
+                } else {
+                    Message::NoteControl {
+                        note,
+                        controller: index,
+                        value: unit(value),
+                    }
+                }
+            }
+            ChannelMessage::AssignablePerNoteController { note, index, value } => {
+                Message::NoteAssignable {
+                    note: self.key(at, note),
+                    index,
+                    value: unit(value),
+                }
+            }
+            ChannelMessage::PerNotePitchBend { note, value } => Message::NoteBend {
+                note: self.key(at, note),
+                value: Centred::from_bits(value),
+            },
+            ChannelMessage::PerNoteManagement {
+                note,
+                detach,
+                reset,
+            } => {
+                let key = self.key(at, note);
+                if detach {
+                    self.detach(group, channel, Key::new(note));
+                }
+                Message::NoteManagement {
+                    note: key,
+                    detach,
+                    reset,
+                }
+            }
+            _ => return None,
+        })
+    }
+
+    fn note_on(&mut self, at: Place, key: Key, velocity: u16, attribute: Attribute) -> NoteOn {
+        let Place {
+            group,
+            channel,
+            named,
+        } = at;
+        let id = named.unwrap_or_else(|| self.make_id());
+        if self.notes.len() >= self.room {
+            // The table is full, so the oldest note goes, and the newest,
+            // which a note-off most likely names, stays.
+            self.dropped = self.dropped.saturating_add(1);
+            if !self.notes.is_empty() {
+                self.notes.remove(0);
+            }
+        }
+        // Within the allocated room, so the push never allocates.
+        if self.notes.len() < self.room {
+            self.notes.push(Sounding {
+                group,
+                channel,
+                key,
+                id,
+                detached: false,
+            });
+        }
+        NoteOn {
+            id,
+            group,
+            channel,
+            key,
+            velocity: scale::unit_of_16(velocity) as f32,
+            attribute,
+        }
+    }
+
+    /// Ends every note on the key, or only the note that its host named, and
+    /// moves their ids to `ends`. A named note that the table doesn't hold,
+    /// lost or from before a reset, still ends, alone, under the host's id.
+    fn note_off(&mut self, at: Place, key: Key, velocity: u16) -> Decoded {
+        let Place {
+            group,
+            channel,
+            named,
+        } = at;
+        let on_key =
+            |note: &Sounding| (note.group, note.channel, note.key) == (group, channel, key);
+        self.ends.clear();
+        let ends = &mut self.ends;
+        self.notes.retain(|note| {
+            let ending = on_key(note) && named.is_none_or(|id| note.id == id);
+            // `ends` has room for every note that the table holds.
+            if ending && ends.len() < ends.capacity() {
+                ends.push(note.id);
+            }
+            !ending
+        });
+        if self.ends.is_empty() {
+            // No such note is held, so the note-off takes the host's id or an
+            // id that no note has.
+            let id = named.unwrap_or_else(|| self.make_id());
+            self.ends.push(id);
+        }
+        Decoded::Offs(NoteOff {
+            id: NoteId::made_up(0),
+            group,
+            channel,
+            key,
+            velocity: scale::unit_of_16(velocity) as f32,
+        })
+    }
+
+    /// Returns the key that a per-note message names, with its note.
+    ///
+    /// The note is the one that its host named, if it sounds on the key, or
+    /// else none. Without a host id, it is the newest on the key. A detached
+    /// note takes no per-note messages, so it is never returned.
+    fn key(&self, at: Place, key: u8) -> NoteKey {
+        let Place {
+            group,
+            channel,
+            named,
+        } = at;
+        let key = Key::new(key);
+        let mut on_key = self
+            .notes
+            .iter()
+            .rev()
+            .filter(|note| (note.group, note.channel, note.key) == (group, channel, key));
+        let note = match named {
+            Some(id) => on_key.find(|note| note.id == id),
+            None => on_key.next(),
+        };
+        let id = note.filter(|note| !note.detached).map(|note| note.id);
+        NoteKey {
+            group,
+            channel,
+            key,
+            id,
+        }
+    }
+
+    /// Forgets every note on `group` and `channel`.
+    fn forget(&mut self, group: Group, channel: Channel) {
+        self.notes
+            .retain(|note| (note.group, note.channel) != (group, channel));
+    }
+
+    fn detach(&mut self, group: Group, channel: Channel, key: Key) {
+        for note in &mut self.notes {
+            if (note.group, note.channel, note.key) == (group, channel, key) {
+                note.detached = true;
+            }
+        }
+    }
+
+    fn make_id(&mut self) -> NoteId {
+        let id = NoteId::made_up(self.made);
+        self.made = self.made.wrapping_add(1);
+        id
+    }
+}
+
+/// The registered parameter for the pitch bend range.
+const BEND_RANGE: u8 = 0;
+
+/// Returns a 32-bit controller value as 0 to 1.
+fn unit(value: u32) -> f32 {
+    scale::unit_of_32(value) as f32
+}
+
+/// Returns the pitch in MIDI 2.0's 7.25 format, 7 bits of key and 25 of
+/// fraction.
+fn pitch_7_25(value: u32) -> Pitch {
+    Pitch::new(scale::semitones_7_25(value) as f32)
+}
+
+/// Returns the bend range that registered parameter 0 carries, whose 14 bits
+/// hold semitones in the high 7 and cents in the low 7, as MIDI 1.0 sends
+/// them.
+fn semitones(value: u32) -> f32 {
+    let entry = down_32_to_14(value);
+    f32::from(entry >> 7) + f32::from(entry & 0x7F) / 100.0
+}

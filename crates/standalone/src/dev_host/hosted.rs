@@ -15,8 +15,9 @@ use std::sync::Arc;
 
 use anyhow::{Context as _, Result};
 use hapto_host::layout::Width;
+use hapto_host::standalone::StandaloneBlock;
 use hapto_host::vst3::{HostCall, RESTART_LATENCY, RESTART_VALUES, TestView};
-use hapto_host::{Plugin, cabi, vst3};
+use hapto_host::{Event, Plugin, cabi, vst3};
 
 use super::format::{Call, Format};
 use super::pending::Pending;
@@ -130,8 +131,11 @@ struct Vst3<P: Plugin> {
 impl<P: Plugin> Vst3<P> {
     fn new() -> Self {
         let host: &'static _ = Box::leak(Box::new(vst3::TestHost::<P>::with_timer()));
+        // A host shows no hidden parameter, such as the proxies that a
+        // plugin's MIDI controllers reach it through.
         let params: Vec<Param> = (0..host.parameter_count())
             .filter_map(|index| host.parameter(index))
+            .filter(|info| !info.is_hidden)
             .map(|info| {
                 let steps = u32::try_from(info.step_count).unwrap_or(0);
                 let values = (steps > 0).then_some(steps + 1);
@@ -275,8 +279,14 @@ struct Vst3Audio {
 }
 
 impl Render for Vst3Audio {
-    fn render(&mut self, inputs: &[&[f32]], outputs: &mut [&mut [f32]]) {
-        let frames = block_length(inputs, outputs);
+    // Open: the dev host passes the formats no MIDI yet.
+    fn render(&mut self, block: StandaloneBlock<'_, '_>, _sent: &mut dyn FnMut(&[Event])) {
+        let StandaloneBlock {
+            inputs,
+            outputs,
+            frames,
+            ..
+        } = block;
         let count = self.pending.take(&mut self.changes);
         let changes = self.changes.get(..count).unwrap_or_default();
         // A refusal is the exporter's to count as a fault, which the
@@ -397,9 +407,8 @@ impl<P: Plugin> Hosted for Cabi<P> {
     }
 
     fn start(&self, sample_rate: f64, max_frames: usize, layout: Width) -> Result<Box<dyn Render>> {
-        let frames = u32::try_from(max_frames).unwrap_or(u32::MAX);
         self.host
-            .activate(sample_rate, frames, layout)
+            .activate(sample_rate, max_frames, layout)
             .context("the C interface's activate")?;
         Ok(Box::new(CabiAudio {
             side: self.host.audio_side(),
@@ -413,18 +422,13 @@ struct CabiAudio {
 }
 
 impl Render for CabiAudio {
-    fn render(&mut self, inputs: &[&[f32]], outputs: &mut [&mut [f32]]) {
-        let frames = block_length(inputs, outputs);
+    fn render(&mut self, block: StandaloneBlock<'_, '_>, _sent: &mut dyn FnMut(&[Event])) {
+        let StandaloneBlock {
+            inputs,
+            outputs,
+            frames,
+            ..
+        } = block;
         let _status = self.side.process(inputs, outputs, frames);
     }
-}
-
-/// The frames a block holds: the [`Player`](crate::block::Player) gives
-/// every channel the same length.
-fn block_length(inputs: &[&[f32]], outputs: &[&mut [f32]]) -> usize {
-    outputs
-        .first()
-        .map(|c| c.len())
-        .or_else(|| inputs.first().map(|c| c.len()))
-        .unwrap_or(0)
 }

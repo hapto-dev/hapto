@@ -20,7 +20,7 @@ use super::abi::{self, CStruct};
 ///
 /// ```
 /// let header = hapto_host::cabi::header();
-/// assert!(header.contains("#define HAPTO_ABI_VERSION 2u"));
+/// assert!(header.contains("#define HAPTO_ABI_VERSION 3u"));
 /// assert!(header.contains("const HaptoPlugin* hapto_plugin(void);"));
 /// ```
 pub fn header() -> String {
@@ -134,7 +134,10 @@ const PREAMBLE: &str = "\
 //   `process` returns, for writing too among the outputs. Nothing else
 //   reads or writes them meanwhile. Any two channels, in either list, are
 //   one buffer or share no float: an output may be an input's buffer, as
-//   in place.
+//   in place. `midi_in` is null or valid for reading its count of
+//   packets, `midi_out` null or valid for writing its capacity, and
+//   `midi_out_count` null or valid for writing one count, until `process`
+//   returns.
 // - A `HaptoHost`'s callbacks and context stay valid until `destroy`
 //   returns; `save`'s writer and its context, until `save` returns.
 //

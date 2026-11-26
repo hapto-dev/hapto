@@ -41,6 +41,12 @@ impl Width {
     pub const MONO: Width = Width::new(1, 1);
     /// Two channels in, two out.
     pub const STEREO: Width = Width::new(2, 2);
+    /// No channels in, two out, for an instrument.
+    pub const STEREO_OUT: Width = Width::new(0, 2);
+    /// One channel in, two out.
+    pub const MONO_TO_STEREO: Width = Width::new(1, 2);
+    /// No channels either way, for a MIDI effect.
+    pub const NO_AUDIO: Width = Width::new(0, 0);
 
     /// Creates a width of `inputs` channels in and `outputs` out.
     pub const fn new(inputs: usize, outputs: usize) -> Self {
@@ -92,10 +98,11 @@ pub trait Layout: sealed::Sealed + 'static {
     /// [`AnyLayout`], which runs at the widths its plugin lists.
     const WIDTHS: &'static [Width];
 
-    /// One frame of audio in this layout, as
-    /// [`Audio::frames_mut`](crate::Audio::frames_mut) hands it out: one
-    /// sample of each channel, at one moment.
-    type Frame<'a>;
+    /// One sample of each channel at one moment, as
+    /// [`Audio::frames_mut`](crate::Audio::frames_mut) returns it.
+    ///
+    /// [`AddSample`](crate::AddSample) adds a mono voice's sample to it.
+    type Frame<'a>: crate::AddSample;
 
     /// The channels, as [`Audio::channels`](crate::Audio::channels) hands
     /// them out: an array in a `Bus`, an iterator in `AnyLayout`.
