@@ -62,8 +62,8 @@ pub(crate) use test_host::TestRunLoop;
 #[cfg(any(test, feature = "test-host"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "test-host")))]
 pub use test_host::{
-    AudioSide, BusEvent, HostCall, Options, ParamInfo, RESTART_LATENCY, RESTART_VALUES, Refused,
-    TestHost, TestView,
+    AudioSide, BusEvent, ChildWindow, HiddenWindow, HostCall, Options, ParamInfo, RESTART_LATENCY,
+    RESTART_VALUES, Refused, TestHost, TestView,
 };
 
 use crate::Plugin;

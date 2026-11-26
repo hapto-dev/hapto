@@ -41,6 +41,7 @@ use super::view;
 use super::stream::{read_all, write_all};
 use super::text::copy_utf16;
 use crate::boundary::{AudioSlot, guard};
+use crate::engine::timer::Source;
 use crate::engine::{
     Engine, HostLink, MAX_SKIPPED_QUEUES, MidiIn, Outcome, Points, Release, Restart, Setup,
     TAIL_INFINITE, TAIL_NONE,
@@ -247,7 +248,7 @@ impl<P: Plugin> Component<P> {
         self.midi_out.hold().lost()
     }
 
-    /// One main-thread tick, as the timer runs it; for the test host.
+    /// Runs one main-thread tick, as `Engine::idle` does. For the test host.
     #[cfg(any(test, feature = "test-host"))]
     pub(crate) fn tick(&self) {
         if let Some(engine) = self.engine() {

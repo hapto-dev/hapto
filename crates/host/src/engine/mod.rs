@@ -53,7 +53,8 @@ pub(crate) use process::Outcome;
 use process::{Active, PendingReset, install};
 #[cfg(feature = "vst3")]
 pub(crate) use process::{MidiIn, Rank};
-use timer::{Handle, Timer, abandon};
+#[cfg(feature = "vst3")]
+use timer::{Handle, Timer};
 
 #[cfg(feature = "cabi")]
 use crate::boundary::Patience;

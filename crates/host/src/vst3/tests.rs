@@ -43,6 +43,7 @@ use crate::{
 
 mod midi;
 mod midi_out;
+mod run_loop;
 mod told;
 
 const PARAMS: &[ParamDecl] = &[
