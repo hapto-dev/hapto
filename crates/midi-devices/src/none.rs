@@ -7,7 +7,7 @@ use std::sync::atomic::AtomicBool;
 
 use crate::error::OpenError;
 use crate::id::Device;
-use crate::ring::{Consumer, Producer};
+use crate::ring::{Consumer, Producer, Reading};
 
 pub(crate) fn list() -> Vec<Device> {
     Vec::new()
@@ -66,6 +66,7 @@ impl Output {
     pub(crate) fn open(
         _device: &Device,
         consumer: Consumer,
+        _reading: Reading,
         _signal: Arc<Signal>,
     ) -> Result<Output, (OpenError, Option<Consumer>)> {
         Err((OpenError::NoBackend, Some(consumer)))

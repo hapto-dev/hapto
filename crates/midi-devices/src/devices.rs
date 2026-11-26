@@ -16,7 +16,7 @@ use crate::id::{Device, DeviceId, Direction};
 /// seconds after each read, because a system's list can lag behind its
 /// notification. Without notifications, the tick reads it every two seconds.
 ///
-/// Open: only WinMM is built, so elsewhere the list is empty.
+/// Open: only WinMM and ALSA are built, so elsewhere the list is empty.
 ///
 /// # Examples
 ///

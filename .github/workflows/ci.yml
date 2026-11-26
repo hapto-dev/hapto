@@ -156,6 +156,9 @@ jobs:
           rustup toolchain install
           rustup show active-toolchain
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      # The MIDI device layer's ALSA backend builds against alsa-lib.
+      - name: alsa-lib
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
       # Fails if a core crate or the bridge would link a window, WebView, UI
       # toolkit or plugin-format crate on any platform, with any features.
       - name: No window, WebView or host dependency
@@ -223,6 +226,9 @@ jobs:
           rustup toolchain install
           rustup show active-toolchain
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      # The MIDI device layer's ALSA backend builds against alsa-lib.
+      - name: alsa-lib
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
       # The model checks of the lock-free hand-offs in params, learn, host
       # and midi-devices; docs/testing.md lists what each checks. --cfg loom swaps their
       # atomics for loom's, which work only inside a model, so only the
@@ -310,15 +316,28 @@ jobs:
           rustup toolchain install
           rustup show active-toolchain
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      # The MIDI device layer's ALSA backend builds against alsa-lib. Its
+      # tests stand in for devices with sequencer clients of their own, but
+      # the runner's Azure kernel is built with no sound, so they run in a VM
+      # booted with Ubuntu's generic kernel, on the runner's KVM.
+      - name: alsa-lib, and a kernel with the ALSA sequencer
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev virtme-ng qemu-system-x86 linux-image-virtual-hwe-24.04
+          sudo chmod a+r /boot/vmlinuz-*
+          sudo chmod a+rw /dev/kvm
       # Here as well as in `rust`, whose Format step a pull request skips.
       - name: Format
         run: cargo fmt --all --check
       - name: Clippy
         run: cargo clippy $PACKAGES $FEATURES --all-targets --locked -- -D warnings
+      # The ALSA backend's sequencer tests run in the next step, in the VM.
       - name: Test
-        run: cargo test $PACKAGES $FEATURES --locked
+        run: cargo test $PACKAGES $FEATURES --locked -- --skip alsa::tests
         env:
           PROPTEST_CASES: ${{ github.event_name == 'workflow_dispatch' && '4096' || '256' }}
+      - name: The ALSA backend against the sequencer
+        run: scripts/run-sequencer-tests.sh
       - name: Allocation gates (release)
         run: cargo test $PACKAGES $FEATURES --release --test alloc_gate --locked
       - name: Gate matrix (release)
@@ -379,6 +398,14 @@ jobs:
           rustup target add ${{ matrix.target }}
           rustup show active-toolchain
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      # The MIDI device layer's ALSA backend builds on Linux against
+      # alsa-lib, which pkg-config finds for the runner's own system; a check
+      # links nothing, so the runner's alsa-lib serves the ARM target too.
+      - name: alsa-lib
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update && sudo apt-get install -y libasound2-dev
+          echo "PKG_CONFIG_ALLOW_CROSS=1" >> "$GITHUB_ENV"
       - name: Core and bridge
         run: cargo check --locked --target ${{ matrix.target }} --workspace --exclude hapto-host --exclude hapto-webview --exclude hapto-standalone --exclude hapto-example-eq --exclude hapto-example-gain --exclude hapto-example-midi-probe --exclude hapto-testkit --exclude xtask
       - name: C interface and example EQ
@@ -426,14 +453,35 @@ jobs:
           rustup component add llvm-tools
           rustup show active-toolchain
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      # The MIDI device layer's ALSA backend builds against alsa-lib. Its
+      # tests stand in for devices with sequencer clients of their own, but
+      # the runner's Azure kernel is built with no sound, so they run in a VM
+      # booted with Ubuntu's generic kernel, on the runner's KVM.
+      - name: alsa-lib, and a kernel with the ALSA sequencer
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev virtme-ng qemu-system-x86 linux-image-virtual-hwe-24.04
+          sudo chmod a+r /boot/vmlinuz-*
+          sudo chmod a+rw /dev/kvm
       - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
         with:
           tool: cargo-llvm-cov@0.8.5
+      # The ALSA backend's sequencer tests run in the VM, writing their
+      # coverage back into the target directory the report reads.
       - name: Measure
-        run: cargo llvm-cov $PACKAGES $FEATURES --locked --ignore-filename-regex "$EXCLUDE" --fail-under-lines "$COVERAGE_LINES" --lcov --output-path lcov.info
+        run: |
+          source <(cargo llvm-cov show-env --sh)
+          cargo llvm-cov clean --workspace
+          cargo test $PACKAGES $FEATURES --locked -- --skip alsa::tests
+          scripts/run-sequencer-tests.sh
+          cargo llvm-cov report --ignore-filename-regex "$EXCLUDE" --fail-under-lines "$COVERAGE_LINES" --lcov --output-path lcov.info
+      # In Measure's environment, which says where the coverage was written.
       - name: Summary
         if: always()
-        run: cargo llvm-cov report --ignore-filename-regex "$EXCLUDE" | tail -40
+        run: |
+          set -o pipefail
+          source <(cargo llvm-cov show-env --sh)
+          cargo llvm-cov report --ignore-filename-regex "$EXCLUDE" | tail -40
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -540,10 +588,12 @@ jobs:
           rustup toolchain install
           rustup show active-toolchain
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      - name: valgrind and the iai-callgrind runner
+      # valgrind, and alsa-lib, which the MIDI device layer's ALSA backend
+      # builds against.
+      - name: valgrind, alsa-lib and the iai-callgrind runner
         run: |
           sudo apt-get update
-          sudo apt-get install -y valgrind
+          sudo apt-get install -y valgrind libasound2-dev
           cargo install iai-callgrind-runner --version 0.16.1 --locked
       - name: Benchmarks
         run: scripts/run-benches.sh "${BASE}"

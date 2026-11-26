@@ -1441,7 +1441,12 @@ move its line here; when a decision gains code, add one.
 - `crates/ump/src/bytes.rs`: `ByteStream::cut`
 - test `crates/ump/tests/bytes.rs`: `a_cut_ends_a_sysex_that_began_and_drops_one_that_did_not`
 - `crates/midi-devices/src/outputs.rs`: `Timing`, `Outputs`, `Outputs::open`, `OutputsWriter::write`, `MAX_OUTPUTS`
-- `crates/midi-devices/src/winmm/output.rs`: module, `Sysex::join`, `Sysex::send`, `Output::shut`, `send`, `Reading`, `RESET_WAIT`
+- `crates/midi-devices/src/winmm/output.rs`: module, `Sysex::send`, `Output::shut`, `send`, `RESET_WAIT`
+- `crates/midi-devices/build.rs`: module
+- `crates/midi-devices/src/outputs/sysex.rs`: `OutgoingSysex`, `OutgoingSysex::join`, `SYSEX_BYTES`
+- `crates/midi-devices/src/ring.rs`: `Consumer::reading`, `Reading`, `Consumer::count_dropped`, `Consumer::no_room`
+- test `crates/midi-devices/src/outputs/sysex.rs`: `a_sysex_that_lost_a_packet_to_a_full_ring_is_dropped`, `another_groups_sysex_is_dropped_and_the_one_under_way_goes_on`, `a_message_the_device_refused_leaves_a_sysex_under_way_whole`
+- test `crates/midi-devices/src/ring.rs`: `a_ring_is_read_while_its_guard_lives_however_its_thread_ends`
 - `crates/midi-devices/src/winmm/signal.rs`: module, `Signal`, `Timer::wait`
 - `crates/standalone/src/midi.rs`: module, `Midi::streams`, `Midi::stop`, `Midi::tick`, `follow`, `Said`, `LEFT_WAIT`
 - test `crates/standalone/src/midi.rs`: `a_device_is_said_open_or_refused_once_until_it_changes`
@@ -1485,6 +1490,25 @@ move its line here; when a decision gains code, add one.
 - `crates/midi/src/encode.rs`: module, `encode`
 - test `crates/midi/tests/decode.rs`: module, `a_note_off_ends_the_notes_its_key_has`, `a_notes_own_message_names_its_key_and_the_newest_note_on_it`, `a_sysex_too_long_cut_short_or_begun_elsewhere_is_dropped_and_counted`, `each_message_is_one_line_in_musicians_numbers`, `a_note_past_a_full_table_takes_the_oldest_notes_place`, `all_notes_off_ends_its_channels_notes_in_the_table_and_no_others`
 - test `crates/midi/tests/alloc_gate.rs`: module
+
+### D118. The computer's MIDI devices on Linux
+
+[Record section](decisions.md#d118-the-computers-midi-devices-on-linux)
+
+- `crates/midi-devices/src/lib.rs`: module
+- `crates/midi-devices/src/alsa/mod.rs`: module, `list`, `find`, `listed`, `is_listed`, `name`, `key`, `card_key`, `usb_key`
+- `crates/midi-devices/src/alsa/seq/mod.rs`: module, `Client`, `Client::open`, `Client::with_input_room`, `Client::for_device`, `Caps`, `ROOM`
+- `crates/midi-devices/src/alsa/seq/event.rs`: `Client::read`, `Client::send_sysex`, `SendError`, `Parser`, `classify`, `OVERRUN`
+- `crates/midi-devices/src/alsa/seq/list.rs`: `Client::ports`, `Client::has_port`
+- `crates/midi-devices/src/alsa/seq/ump.rs`: module, `Ump`, `ump`
+- `crates/midi-devices/src/alsa/input.rs`: module, `Input`, `open_client`, `read`, `Reading`, `UnderWay`
+- `crates/midi-devices/src/alsa/output.rs`: module, `Output`, `Sender`, `Line::send`, `Pace`, `send`
+- `crates/midi-devices/src/alsa/watch.rs`: `Watch`, `watch`
+- `crates/midi-devices/src/alsa/worker.rs`: `Waiter`, `Waiter::wait`, `Worker`
+- `crates/midi-devices/src/alsa/signal.rs`: `Signal`
+- test `crates/midi-devices/src/alsa/tests.rs`: module
+- test `crates/midi-devices/src/alsa/input.rs`: `a_cut_ends_a_midi_2_sysex_and_passes_over_the_rest_of_it`
+- test `crates/midi-devices/src/alsa/output.rs`: `the_pace_keeps_a_busy_port_half_a_page_ahead_of_a_cable`, `a_device_that_says_it_is_full_is_given_time_to_drain`
 
 ## Parameters
 

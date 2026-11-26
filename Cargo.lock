@@ -924,8 +924,10 @@ dependencies = [
 name = "hapto-midi-devices"
 version = "0.1.0"
 dependencies = [
+ "alsa-sys",
  "hapto-testkit",
  "hapto-ump",
+ "libc",
  "loom",
  "windows",
 ]

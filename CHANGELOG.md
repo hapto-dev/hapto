@@ -207,8 +207,8 @@ window anywhere but Windows.
   `Outputs` opens devices to send to, and `OutputsWriter` hands each block's
   MIDI to them from the audio thread, downgraded to MIDI 1.0, sent by a thread
   of its output's own as soon as the block has played or, by `Timing`, each
-  message at its frame's time. WinMM is its
-  backend, on Windows.
+  message at its frame's time. WinMM is its backend on Windows, and ALSA's
+  sequencer on Linux, where a MIDI 2.0 device comes in as UMP.
 - `hapto-ump`: `Upgrade::reset` forgets what an upgrade holds, in place, for a
   new source.
 - `hapto-ump`: Universal MIDI Packets: a fixed-capacity event list per block,

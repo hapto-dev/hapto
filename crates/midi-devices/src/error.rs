@@ -25,12 +25,14 @@ pub enum OpenError {
     NotAnOutput,
     /// The device is not in the system's list now.
     Gone,
-    /// Another app has the device open, and WinMM allows one at a time.
+    /// Another app has the device open. WinMM allows one app at a time, and
+    /// an ALSA port may accept only one subscriber.
     InUse,
     /// [`MAX_INPUTS`](crate::MAX_INPUTS) inputs, or
     /// [`MAX_OUTPUTS`](crate::MAX_OUTPUTS) outputs, are already open.
     NoRoom,
-    /// The system ran out of memory.
+    /// The system ran out of memory, or ALSA's sequencer ran out of its 64
+    /// client numbers, which all the apps on the system share.
     NoMemory,
     /// No backend is built for this system.
     NoBackend,

@@ -32,8 +32,16 @@ impl Direction {
 /// A device's id, which survives the system renumbering its devices as
 /// others come and go.
 ///
-/// On WinMM it is made of the device's direction, its interface path (or its
-/// name if it has none), and its place among the devices that share both.
+/// It is made of the device's direction, a key, and its place among the
+/// devices that share both. The key depends on the backend.
+///
+/// - On WinMM, it is the device's interface path, or its name if it has
+///   none.
+/// - On ALSA, a card's port has the card's key and then the port's number.
+///   A USB card with a serial number is keyed by its device's vendor,
+///   product and serial, and any other card by where it sits on its bus. A
+///   software port has its client's name and its own.
+///
 /// Compare it, keep it and log it, but don't rely on its text.
 ///
 /// # Examples
@@ -127,7 +135,7 @@ impl Device {
 /// Returns a device for each `(name, key)` in `named`, in order, with an id
 /// from its key and its place among the earlier ones with that key.
 #[cfg_attr(
-    all(not(windows), not(test)),
+    all(not(hapto_backend), not(test)),
     expect(
         dead_code,
         reason = "only a backend names a device, and this system has none"

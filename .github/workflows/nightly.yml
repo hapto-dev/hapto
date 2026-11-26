@@ -44,6 +44,9 @@ jobs:
       - name: Toolchain
         run: rustup toolchain install "$NIGHTLY" --profile minimal --component miri,rust-src
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      # The MIDI device layer's ALSA backend builds against alsa-lib.
+      - name: alsa-lib
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
       # The host crate's own tests drive its VST3, C and standalone exporters.
       # docs/testing.md lists the tests that are ignored under miri. A test
       # leaks an instance on purpose, hence -Zmiri-ignore-leaks.
@@ -158,6 +161,9 @@ jobs:
       - name: Toolchain
         run: rustup toolchain install "$NIGHTLY" --profile minimal
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      # The MIDI device layer's ALSA backend builds against alsa-lib.
+      - name: alsa-lib
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
       # Built in a step of its own, so a canary that fails to build fails the
       # lane rather than pass for an abort.
       - name: Canary builds
