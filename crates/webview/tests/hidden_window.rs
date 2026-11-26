@@ -200,6 +200,11 @@ struct Blocker(PathBuf);
 impl Blocker {
     fn new(id: &str) -> Self {
         let path = hapto_host::data_folder(id).expect("the user's data folder");
+        // On a new account, such as a CI runner's, the folder that holds the
+        // plugins' data folders may not exist yet.
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("the folder that holds the data folders");
+        }
         std::fs::write(&path, b"").expect("a file where the data folder would be");
         Blocker(path)
     }
