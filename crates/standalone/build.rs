@@ -2,10 +2,9 @@
 //! its device and MIDI code, and the dev host are built where the cfg is set,
 //! and elsewhere `main` says that the app doesn't run there.
 //!
-//! The app's dependency table in Cargo.toml must name the same systems,
-//! because Cargo can't read a cfg that a build script sets. The script passes
-//! the list to the crate as `HAPTO_APP_SYSTEMS`, and a test checks that the
-//! table names the same systems.
+//! The app's dependency table in Cargo.toml must name the same systems. The
+//! script passes the list to the crate as `HAPTO_APP_SYSTEMS`, and a test
+//! checks the table against it.
 
 /// The systems that the app runs on, as `CARGO_CFG_TARGET_OS` names them.
 const SYSTEMS: &[&str] = &["windows"];

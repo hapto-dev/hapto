@@ -146,7 +146,7 @@ comments never cite an id: they state the reason in words, and
 | D107 | [How do keys reach the host while a page is in its window? (D104)](#d107-the-keyboard-goes-back-to-the-host) | The page gives the keyboard back whenever nothing in it needs keys: after a click, a drag or a blur, decided in the next task, the WebView transport posts one fixed text below the protocol, and the editor focuses the host's window. A field, a `select` until a pick, editable content and a control marked `data-hapto-keys` keep it. | to confirm |
 | D108 | [Is the host told when state it does not list changed? (D1, D53, D92, D96)](#d108-the-host-is-told-of-state-it-does-not-list) | Yes, once at the tick that follows, after the parts' tick and the plugin's idle: a saved section a participant reported changed, an edit to a parameter made at run time, a learned mapping of one. Never for a load, a learned controller's write or a listed parameter. VST3 calls `IComponentHandler2::setDirty`; the C interface passes `HAPTO_RESTART_STATE`. | to confirm |
 | D109 | [What builds, bundles, checks and runs a plugin crate outside this repository? (D27)](#d109-the-plugin-authors-command) | `cargo hapto`, a binary that runs Cargo, npm and Node and links no Hapto crate, so it serves any workspace: it writes a new plugin crate with fresh ids, finds the plugin crate, runs it while its author edits it, builds its page and module, lays out and installs its bundle, and validates it. It warns when the workspace locks another Hapto version than its own. | to confirm |
-| D110 | [How does a plugin run with no host, while its author works on it and as an app of its own? (D16, D100, D109)](#d110-the-standalone-exporter-and-app) | Through a standalone exporter over the same engine, which the app is the host of, and `hapto-standalone`, an app any plugin crate's binary runs: the editor in a window, a test signal to the audio output, the saved block kept between runs. Windows only, as the page is. | to confirm |
+| D110 | [How does a plugin run with no host, while its author works on it and as an app of its own? (D16, D100, D109)](#d110-the-standalone-exporter-and-app) | Through a standalone exporter over the same engine, which the app is the host of, and `hapto-standalone`, an app any plugin crate's binary runs: the editor in a window, a test signal to the audio output, the saved block kept between runs. Windows only for now. | to confirm |
 | D111 | [How does a plugin's author see it through a plugin format while working on it, with no real host? (D109, D110)](#d111-the-dev-host) | The standalone app's dev host: the plugin through Hapto's own VST3 and C interface test hosts, in process, its editor as the exporter's view below a bar that names the format, with a settings window of what the host sees, a tab each. It changes the sample rate, of those the device takes, and the most frames a block holds by reactivating the plugin as a host does, cuts blocks by a plan, and logs what the plugin tells the host. A switch of format starts the app again with the saved block, and a block the plugin refused is kept for the next run. It stands in for no real host. | to confirm |
 | D112 | [How does a processor see its block's audio, and the widths it runs at? (D23, D97)](#d112-the-blocks-audio-and-the-layout-as-a-type) | As a type: `Processor::Layout` names the main bus's channels, a `Bus<IN, OUT>` at one width, with `Mono`, `Stereo` and the like for the common ones, or `AnyLayout` at each width `PluginInfo::layouts` lists. `Block::audio` lends the channels as `Audio`, walked by frame or by channel with no index or frame count, and in a `Bus` both are arrays that destructure. `Width` counts channels at run time, and `AudioBuf` owns audio for tests. | decided |
 | D113 | [Where do the audio types live? (D112)](#d113-the-audio-types-crate) | In `hapto-audio`, a core crate of layer 1 beside `hapto-params` and `hapto-ump`, which `hapto-host` re-exports, so code that only writes audio, such as a voice, needs no host. | decided |
@@ -154,7 +154,7 @@ comments never cite an id: they state the reason in words, and
 | D115 | [How does the standalone app reach the computer's MIDI devices? (D110, D114)](#d115-the-computers-midi-devices) | Through `hapto-midi-devices`, Hapto's own device layer, which only the app links: UMP alone, a device named by an id that survives the system's renumbering, the list's changes told at the tick, and each input read on the system's thread into a ring that never blocks, its packets placed at frames on the audio thread. Every MIDI 1.0 input is merged on group 1, as a host hands a plugin its MIDI, each upgraded with a translation of its own, and a SysEx reaches a block whole. WinMM and ALSA's sequencer (D118) are its backends so far. | decided |
 | D116 | [What does a plugin read of MIDI, and in what terms? (D10, D114)](#d116-midi-in-musicians-terms) | `hapto-midi`'s `Message`s, decoded from MIDI 2.0 in its meanings: values from 0 to 1 as `f32`, values with a centre as `Centred`, and keys, channels, groups and programs as types shown as musicians count them. Each note has a `NoteId` from its note-on to its note-off, the host's where it names one, a note's own message names its key and the note its host named or else the newest on it, and a SysEx comes whole. The `Decoder` keeps its tables fixed, so decoding allocates nothing; what overflows them is counted. | decided |
 | D118 | [How does the app reach a Linux computer's MIDI devices? (D114, D115)](#d118-the-computers-midi-devices-on-linux) | Through ALSA's sequencer, with a client of the app's own for each open device. An input's client speaks the device's own MIDI version, so the kernel translates nothing: a MIDI 1.0 device goes through D114's `Upgrade` as on Windows, and a MIDI 2.0 device's packets arrive as they came. An output's speaks MIDI 1.0, which the kernel upgrades for a MIDI 2.0 device. The UMP calls are looked up at run time, a USB card is keyed by its serial number where it has one and any other card by where it sits on its bus, an output paces what it sends so no device's buffer overflows, and a close sends nothing. | decided |
-| D119 | [How do the standalone app, the dev host and a plugin's VST3 editor run on Linux? (D53, D74, D101, D110, D111)](#d119-the-app-the-dev-host-and-the-vst3-editor-on-linux) | In X11 windows, through XWayland on a Wayland desktop, with the page in WebKitGTK. The app is to play through cpal's ALSA host, with JACK and PipeWire as options to add later, at real-time priority from RTKit. A host that uses GTK 2 is not supported. So far only the data folder and the audio system as a value are built. | decided |
+| D119 | [How do the standalone app, the dev host and a plugin's VST3 editor run on Linux? (D53, D74, D101, D110, D111)](#d119-the-app-the-dev-host-and-the-vst3-editor-on-linux) | In X11 windows, through XWayland on a Wayland desktop, with the page in WebKitGTK in a helper process, one for each plugin in a host, so the host's process loads no GTK. The app is to play through cpal's ALSA host, with JACK and PipeWire as options to add later, at real-time priority from RTKit. So far only the data folder, the audio system as a value and the page in WebKitGTK are built. | decided |
 
 **Open.** D25 is held until `hapto-ci` needs it. It keeps its recommendation
 until decided, and no rule depends on it.
@@ -389,8 +389,8 @@ own write.
 server and "open the page in this window" live? Not applicable.
 
 **Rust.** In `hapto-webview`, a shell-tier crate on `hapto-bridge`, `hapto-host`
-and wry, built for Windows. `hapto-bridge` has no window or WebView dependency
-under any features.
+and wry, built for Windows and Linux. `hapto-bridge` has no window or WebView
+dependency under any features.
 
 [History](decision-history.md#d16-where-the-webview-pieces-live)
 
@@ -2959,20 +2959,30 @@ The user's data folder is:
   that is unset or not absolute.
 
 The WebView keeps its data in its engine's own folder there, `WebView2` on
-Windows. A reverse-DNS id, as `cargo hapto init` writes, keeps every character.
+Windows and `WebKitGTK` on Linux. A reverse-DNS id, as `cargo hapto init`
+writes, keeps every character. The editor makes the folder before the engine
+starts.
 
 When the variable that names the user's data folder is unset or empty, the
-WebView keeps its data below the temporary folder instead, so the editor still
-opens. The app fails then, so it never keeps a session where the system may
-delete it.
-Open: on Linux the temporary folder is usually shared by every user, so before
-the WebKitGTK engine is built, the WebView's fallback there needs a folder that
-belongs to the user.
+WebView keeps its data below a fallback folder that the engine names, so the
+editor still opens. On Windows that is the temporary folder, which is the
+user's own. On Linux it is `$XDG_RUNTIME_DIR`, because every user shares
+`/tmp`, and with no such folder the editor doesn't open. The app fails then, so
+it never keeps a session where the system may delete it.
 
 WebView2's default is beside the host's executable, which a host below
 `Program Files` cannot write. Every instance of the plugin shares the folder,
 and so one browser process. WebView2 needs instances that share a folder to
 share its options, and the editor gives each the same.
+On Linux the instances in one host's process share one WebKitGTK too, in one
+helper process (D119).
+Two processes that show the same plugin's page at once, such as two hosts or
+the app beside a host, would each start a helper on the one folder, which
+WebKitGTK doesn't support, and a page's storage could be lost. So a helper
+locks the folder, and WebKitGTK's own processes keep the lock until the last
+of them exits. A helper that can't lock it keeps its pages' data in a
+temporary folder of its own, below `$XDG_RUNTIME_DIR`, or below the temporary
+folder when that is unset, and those pages' storage lasts until they close.
 
 **Alternatives.** The alternatives were a folder per instance, which starts a
 browser per instance, and one folder for every Hapto plugin, which ties their
@@ -3038,10 +3048,12 @@ it. It is one call for every editor of every plugin, and names no toolkit.
 The leaked timer's pin (D59) is the same call. No editor opens on macOS yet,
 since the exporter offers a view on Windows only (D101).
 
-Linux needs the pin too, once its view is built (D119), because GTK keeps
-pointers into the module after the page has opened. A run loop timer that is
-detached rather than unregistered needs it there as well, because the host may
-still hold the timer's handler and call it. The Linux pin is not built yet.
+Linux needs the pin too, once its view is built (D119), because a run loop
+timer that is detached rather than unregistered may still be called, since
+the host may still hold the timer's handler. The page needs no pin of its
+own, because GTK runs in the page's helper process, and the close of a
+plugin's last page joins the thread that reads from the helper. The Linux pin
+is not built yet.
 
 After `ExitDll` the host's next load gets the same mapping, and `InitDll`
 runs again with every static as it was left. No static in Hapto assumes a
@@ -3169,6 +3181,8 @@ tells the page of neither, and the native side would need the host's window
 messages, which `hapto-webview` cannot read without `unsafe`. An open
 `select` list is the same: a click on the host's windows leaves it open, with
 the keyboard.
+
+On Linux the keyboard follows the pointer, as D119 says.
 
 A `select`'s pick is its `change`, so three ways out of one keep the keys
 until the next click: Escape, a click away, and a pick of the option already
@@ -3471,9 +3485,9 @@ against C++.
   replace the author's state, and the next run tries it again. Its line says
   where the block is, and that deleting it starts from the plugin's defaults.
 
-The app runs only on the systems that its build script lists, Windows alone so
-far, because the page in a window runs only there. Elsewhere `main` says that
-the app doesn't run on that system and ends.
+The app runs only on the systems that its build script lists. Until its window
+and audio device run on Linux (D119), that is Windows alone. Elsewhere `main`
+says that the app doesn't run on that system and ends.
 Open: the app takes no audio input from a device, and the shipped app has no
 settings for its device. Past a block, which is as long as its shortest
 channel, an output keeps what it held, so an app that hands a shorter input
@@ -4172,9 +4186,9 @@ window on Linux.
 **Rust.** Every window is to be an X11 window. That covers the app's window, the
 dev host's windows and the VST3 editor, which is to attach to the host's X11
 window (D101). On a Wayland desktop they run through XWayland, which GNOME, KDE
-and most other compositors run by default. The page is to be a WebKitGTK view,
-with GDK limited to its X11 backend, so the page can be embedded in an X11
-window on a Wayland desktop too.
+and most other compositors run by default. The page is a WebKitGTK view, with
+GDK limited to its X11 backend, so the page can be embedded in an X11 window on
+a Wayland desktop too.
 
 Inside a host there is no other choice, because every Linux host gives a
 plugin's editor an X11 window. VST3 3.8 added a Wayland surface
@@ -4189,6 +4203,55 @@ fractional scale, such as 125% or 150%, GNOME stretches an X11 window, so it
 looks blurred unless the user turns on GNOME's native scaling for X11 apps. KDE
 lets X11 apps draw at the real scale. Input methods for Chinese, Japanese and
 Korean also work less well through XWayland.
+
+The page runs in a helper process, `hapto-webview-helper`, which the plugin's
+bundle is to carry beside its module. One helper shows every open page of a
+plugin in the host's process, because WebKitGTK expects one process alone to
+use a data folder (D103). The first editor to open starts it, the editors
+talk to it over a Unix socket, and it exits once the last of them closes. The
+host's process loads no GTK, for three reasons:
+
+- GTK 3 can't run in a process that has GTK 2 or GTK 4 loaded, and Ardour
+  and Mixbus use GTK 2.
+- GTK's start replaces GDK's event handler, which a host that draws through
+  GDK itself, as REAPER does, needs for its own windows.
+- GDK ends the process at an X error that nothing traps, as when a host
+  destroys its window while the page is still in it.
+
+JUCE 8 also runs its WebKitGTK view in a child process. The helper shows each
+page in a GTK plug inside the host's X11 window, because closing wry's own X11
+embedding ends the helper's process. It traps every X error, so a host that
+destroys its window under a page doesn't end the plugin's other pages. A close
+waits until the helper has taken the page out of the host's window, because
+the host may destroy its window as soon as the close returns. The helper
+starts without the host's library paths and GTK settings, such as
+`LD_LIBRARY_PATH`, `GTK_PATH` and `GDK_BACKEND`, because a host such as Ardour
+points them at copies in its own bundle, which the system's GTK and WebKitGTK
+can't load.
+
+The page holds the keyboard from a click until the hand-back (D107) by
+selecting key events on its plug's window only then. X sends a key to the
+window under the pointer when that window is inside the focused one, and
+passes it up to the first window that selects it, so at other times a key
+pressed over the page reaches the host's window. The helper never moves X's
+focus, which the host and the window manager own, because a page that took
+it would keep the keys from the host's own fields after a click on the page.
+So while a field holds the keyboard, a key pressed with the pointer beside
+the page reaches the host. Of the plugin's pages, only the one clicked last
+holds the keyboard. GTK counts a plug as active only when an XEmbed embedder
+says so, and hosts aren't XEmbed embedders, so the helper sends its own plug
+XEmbed's activate and focus messages at a click, and their opposites at the
+hand-back. The page then knows when it has the focus
+(`document.hasFocus()`), which the page's transport needs before it hands
+the keyboard back.
+
+WebKitGTK draws the page in software unless the page asks for the GPU with
+`Page::with_hardware_acceleration`. Its GPU path showed a blank page on a
+VirtualBox machine's GNOME desktop and is known to on some NVIDIA drivers,
+and JUCE turns WebKitGTK's hardware acceleration off for the same reason.
+The editor starts the helper with `WEBKIT_DISABLE_DMABUF_RENDERER` set,
+because WebKitGTK's own setting can be set only once wry has built the view,
+and set then, it left the page unanswered.
 
 The VST3 exporter is to tick each instance from its host's run loop (D53).
 
@@ -4207,19 +4270,21 @@ cpal's `realtime-dbus` feature, as other desktop audio apps do. An ordinary
 user's process usually may not raise a thread to real-time priority itself, and
 RTKit grants it within limits that it sets.
 
-A host that uses GTK 2, such as Ardour or Mixbus, is not supported. WebKitGTK
-loads GTK 3, which cannot run in a process that has GTK 2 loaded, so opening the
-page can crash such a host. Bitwig Studio and REAPER do not use GTK 2.
-
-Open: apart from the audio system as a value and the data folder (D103), none of
-this is built yet. Until it is, the app and its dev host run on Windows alone
-(D110, D111), and the VST3 exporter refuses to build on Linux (D74). Adding
-PipeWire takes more than its feature. cpal's default host is PipeWire whenever
-that feature is on, so the app is to choose its host by id, and cpal's PipeWire
-host lists its devices only when it is made.
+Open: apart from the audio system as a value, the data folder (D103) and the
+page in WebKitGTK, none of this is built yet. Until it is, the app and its dev
+host run on Windows alone (D110, D111), and the VST3 exporter refuses to build
+on Linux (D74), so on Linux a page opens only through the standalone exporter,
+as the WebView's tests open it. No bundle carries the helper yet, so the tests
+name it. A host that runs as a Flatpak, as Bitwig Studio, Ardour and REAPER
+can, has no WebKitGTK 4.1 in its runtime, so the helper can't start there
+and the editor fails to open with that reason. On NVIDIA's drivers the page
+is unchecked. Adding PipeWire takes more than its feature. cpal's default
+host is PipeWire whenever that feature is on, so the app is to choose its
+host by id, and cpal's PipeWire host lists its devices only when it is made.
 
 **Alternatives.** The alternatives were native Wayland windows, for the editor
-or for the app alone, and ALSA alone, which the paragraphs above turn down.
+or for the app alone, WebKitGTK in the host's process, wry's own X11
+embedding, and ALSA alone, which the paragraphs above turn down.
 JACK's or PipeWire's own API alone was turned down too, because each reaches
 only a system that runs its server.
 

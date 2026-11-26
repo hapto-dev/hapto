@@ -48,6 +48,17 @@ pub fn plugin_folder(base: &Path, id: &str) -> PathBuf {
     }
 }
 
+/// Returns the user's runtime folder, `$XDG_RUNTIME_DIR`, which only the
+/// user can open and which the system empties when the user logs out, or
+/// `None` when that is unset, empty or not absolute. The WebView on Linux
+/// keeps its data there when the user's data folder is unknown, and keeps its
+/// short-lived folders there.
+#[doc(hidden)]
+#[must_use]
+pub fn runtime_folder() -> Option<PathBuf> {
+    runtime(std::env::var_os)
+}
+
 /// The error that [`data_folder`] returns when the environment variable that
 /// names the user's data folder is unset or empty.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -80,12 +91,23 @@ fn user_data(
     match os {
         "windows" => path_in("LOCALAPPDATA"),
         "macos" => Ok(path_in("HOME")?.join("Library").join("Application Support")),
-        // XDG's specification says to ignore a relative path. On Unix,
-        // `has_root` and `is_absolute` agree, but on Windows only `has_root`
-        // accepts `/data/a`, so this rule's tests run there too.
-        _ => match path_in("XDG_DATA_HOME") {
-            Ok(path) if path.has_root() => Ok(path),
-            _ => Ok(path_in("HOME")?.join(".local").join("share")),
-        },
+        _ => xdg(&var, "XDG_DATA_HOME")
+            .map_or_else(|| Ok(path_in("HOME")?.join(".local").join("share")), Ok),
     }
+}
+
+/// Returns the user's runtime folder, and reads variables through `var`.
+fn runtime(var: impl Fn(&'static str) -> Option<OsString>) -> Option<PathBuf> {
+    xdg(&var, "XDG_RUNTIME_DIR")
+}
+
+/// Returns the folder that the XDG variable `variable` names, read through
+/// `var`, or `None` when it is unset or empty or names a relative path, which
+/// XDG's specification says to ignore. On Unix, `has_root` and `is_absolute`
+/// agree, but on Windows only `has_root` accepts `/data/a`, so these rules'
+/// tests run there too.
+fn xdg(var: &impl Fn(&'static str) -> Option<OsString>, variable: &'static str) -> Option<PathBuf> {
+    var(variable)
+        .map(PathBuf::from)
+        .filter(|path| path.has_root())
 }

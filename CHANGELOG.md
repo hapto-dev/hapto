@@ -325,18 +325,23 @@ window anywhere but Windows.
   snapshot carries it, a `value` message brings each change whatever made it,
   and a page's `setValue` that decodes to `T` is stored as the user's write,
   so undo records it.
-- `hapto-webview`: a plugin's page in the host's window, on Windows. `Page`
-  makes the editor from the page's files built into the plugin, a size, the
-  values the page shows and writes (`Page::value`) and the commands the page may
-  call: a WebView2 child window, through wry 0.57.2, which serves the files over
-  a scheme of its own, keeps its data in the plugin's own folder below the
-  user's local application data, and joins the page to a `Dispatcher`. A debug
-  build loads `HAPTO_PAGE_DEV_URL` when it is set, with or without the files
-  built in; with neither, `into_editor` gives `None`. The WebView stays on the
-  page: it navigates nowhere else, takes no message from another document, and
-  opens no file dropped on it. One that fails to start leaves nothing shown in
-  the host's window. A command may run a dialog: the page's messages keep their
-  order around it. Elsewhere `into_editor` gives `None`.
+- `hapto-webview`: a plugin's page in the host's window, on Windows and on
+  Linux. `Page` makes the editor from the page's files built into the plugin, a
+  size, the values the page shows and writes (`Page::value`) and the commands
+  the page may call. It is a WebView2 child window on Windows. On Linux it is
+  a WebKitGTK view in a helper program, `hapto-webview-helper`, which the
+  crate's `helper` feature builds. One helper shows every open page of a
+  plugin in the host's process, each in a GTK plug inside its host window, so
+  the host's process loads no GTK. There WebKitGTK draws the page in software
+  unless `Page::with_hardware_acceleration` asks for the GPU. Both go through
+  wry 0.57.4. The editor serves the files over a scheme of its own, keeps its
+  data in the plugin's data folder, and joins the page to a `Dispatcher`. A
+  debug build loads `HAPTO_PAGE_DEV_URL` when it is set, with or without the
+  files built in; with neither, `into_editor` gives `None`. The WebView stays
+  on the page: it navigates nowhere else, takes no message from another
+  document, and opens no file dropped on it. One that fails to start leaves
+  nothing shown in the host's window. A command may run a dialog: the page's
+  messages keep their order around it. Elsewhere `into_editor` gives `None`.
 - `page`: `webviewTransport`, the transport of a page in a plugin's window.
 - `page` and `hapto-webview`: the keyboard goes back to the host. After a
   click, a drag or a blur on a page in a plugin's window, the host's window
@@ -416,8 +421,9 @@ window anywhere but Windows.
   window of the caller's that gives a handle, and `vst3::ChildWindow` is a
   window inside one of the caller's for it, placed where a host wants the
   view. `vst3::HiddenWindow` gives its window handle. Both windows build on
-  every system, and their `new` returns `None` on one that the test host makes
-  no windows on.
+  every system. They are Win32 windows on Windows and X11 windows on Linux, and
+  their `new` returns `None` on a system that the test host makes no windows
+  on, and on Linux when there is no X server.
 - `bench`: the comparison of the example EQ against the same EQ in plain JUCE,
   with its reports in `bench/reports`.
 - Guarantees the tests keep: the audio path never allocates (allocation gates),

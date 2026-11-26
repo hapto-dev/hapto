@@ -2,48 +2,95 @@
 //! web engine implements [`WebEngine`], and cfg picks the one that this build
 //! uses as [`Engine`].
 
-use std::error::Error;
+use std::path::PathBuf;
 
-use wry::WebViewBuilder;
+use hapto_host::{ParentWindow, Size};
 
+use crate::Asset;
+
+#[cfg(target_os = "linux")]
+mod linux;
 #[cfg(windows)]
 mod windows;
 
-/// The web engine of the system that this build is for.
-#[cfg(windows)]
-pub(crate) type Engine = windows::WebView2;
+#[cfg(target_os = "linux")]
+pub use linux::set_helper;
 
-/// What the editor needs from a system's web engine.
+#[cfg(target_os = "linux")]
+pub(crate) use linux::WebKitGtk as Engine;
+#[cfg(windows)]
+pub(crate) use windows::WebView2 as Engine;
+
+/// The page, as a system's web engine shows it in the host's window.
+/// Dropping it removes everything that it put there.
 ///
 /// Thread: main, for each item.
-///
-/// Open: `prepare` and `poll` are shaped for `WebKitGTK`, which needs GTK
-/// started on the editor's thread and its events dispatched there, but no
-/// engine that needs them exists yet.
-pub(crate) trait WebEngine {
-    /// The origin that the engine loads the page built into the plugin from.
-    const ORIGIN: &'static str;
-
+pub(crate) trait WebEngine: Sized {
     /// The name of the engine's own folder in the plugin's data folder, where
     /// the engine keeps its data.
     const FOLDER: &'static str;
 
-    /// Sets up the engine on the calling thread, for example by starting its
-    /// GUI toolkit. The editor calls it at the start of every open.
+    /// Opens the page that `load` describes inside `parent`, sized to `size`
+    /// logical pixels at the host's `scale`. In a release build the engine
+    /// must turn off the browser's context menu and its shortcuts, such as a
+    /// reload, wherever it has them.
     ///
     /// # Errors
     ///
-    /// Returns an error when the engine can't run on this thread, and the
-    /// editor's `open` returns that error.
-    fn prepare() -> Result<(), Box<dyn Error>>;
+    /// Returns why the page didn't open, such as a WebView that didn't start
+    /// or a `parent` that the engine can't show a page in. Nothing of the
+    /// page is left in `parent` then.
+    fn open(load: Load, parent: &ParentWindow, size: Size, scale: f64) -> Result<Self, String>;
 
-    /// Adds the engine's own settings to the builder of a WebView. In a
-    /// release build, they must turn off the browser's context menu and its
-    /// shortcuts, such as a reload, wherever the engine has them.
-    fn configure(builder: WebViewBuilder<'_>) -> WebViewBuilder<'_>;
+    /// Returns a folder for the engine's data when the user's data folder is
+    /// unknown, or `None` when the engine has none. The folder must belong to
+    /// the user, because it holds the page's storage.
+    fn fallback() -> Option<PathBuf>;
 
-    /// Dispatches the engine's pending events without blocking. The editor
-    /// calls it on every tick. An engine whose events the host's message loop
-    /// already dispatches does nothing here.
-    fn poll();
+    /// Runs `script` in the page. A script that the page can't run is lost,
+    /// and the page gets the current state again in the snapshot that answers
+    /// its next `ready`.
+    fn evaluate(&self, script: &str);
+
+    /// Sizes the page to `size` logical pixels at the host's `scale`, at the
+    /// top left of the host's window. A page whose window the host destroyed
+    /// isn't placed, and the close that follows drops it.
+    fn place(&self, size: Size, scale: f64);
+
+    /// Gives the keyboard to the host's window.
+    ///
+    /// # Errors
+    ///
+    /// Returns why the engine couldn't focus the host's window.
+    fn focus_host(&self) -> Result<(), String>;
+
+    /// Passes on each message that the page posted since the last call. The
+    /// editor calls it at every tick. Returns why the page has gone, at the
+    /// first call after the engine lost it.
+    ///
+    /// An engine also passes on, as its view drops, the messages that the
+    /// page posted before it closed.
+    fn poll(&self) -> Option<String>;
+}
+
+/// What the editor gives an engine to open the page with.
+pub(crate) struct Load {
+    /// The dev server's address, when the page loads from it.
+    pub(crate) dev: Option<String>,
+    /// The engine's data folder, which exists.
+    pub(crate) folder: PathBuf,
+    /// The page's files, which the engine serves at the page's scheme.
+    pub(crate) assets: &'static [Asset],
+    /// Called with each message that the page posts. The engine drops the
+    /// messages of any other document.
+    pub(crate) receive: Box<dyn Fn(String)>,
+    /// Whether the page keeps the browser's menu and its inspector, as a debug
+    /// build of the plugin does.
+    pub(crate) devtools: bool,
+    /// Whether WebKitGTK may draw the page with the GPU, as
+    /// [`Page::with_hardware_acceleration`][gpu] asks.
+    ///
+    /// [gpu]: crate::Page::with_hardware_acceleration
+    #[cfg(target_os = "linux")]
+    pub(crate) accelerated: bool,
 }

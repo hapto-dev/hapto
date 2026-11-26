@@ -32,7 +32,7 @@ scripts/run-benches.sh               # pull request, against the base; Linux, wi
 scripts/run-sequencer-tests.sh       # pull request; Linux, with virtme-ng and QEMU: the ALSA backend's sequencer tests, in a VM with a kernel that has the sequencer
 cd page && npm ci && npm run typecheck && npm test                   # pull request
 cd examples/gain/page && npm ci && npm run typecheck && npm run build   # pull request: the gain's page
-cargo test -p hapto-webview --test hidden_window -- --ignored          # by hand, Windows: the page in a real WebView2, in windows never shown (one test leaves a dialog open, as its doc says)
+cargo test -p hapto-webview --features helper --test hidden_window -- --ignored   # by hand on Windows, and in the linux and coverage lanes under xvfb-run: the page in a real WebView2, or in WebKitGTK through the page's helper, in windows never shown, except that on Linux two tests map theirs to read the page's pixels and send it keys through XTest
 cargo test -p hapto-example-gain --test page -- --ignored              # by hand, Windows, with the gain's page built: the same, for its page
 cargo test -p hapto-midi-devices --test by_hand -- --ignored --nocapture --test-threads 1   # by hand, Windows and Linux: the computer's MIDI devices: their list, a chord on the system's synth at its times, every output, what a keyboard plays, a device replugged past every slot, a SysEx longer than an input's room through a loopback port, and a device unplugged while notes go out to it
 cargo hapto build -p hapto-example-midi-probe --install   # by hand, Windows: the MIDI probe in a real host, its notes, expressions and controllers heard and every message echoed back out
@@ -81,11 +81,11 @@ real-time sanitizer, which needs Linux.
 | `rust`: Gate matrix (release) | The example EQ through both exporters allocates nothing and equals the processor driven directly, across block sizes, sample rates and layouts (section 2). |
 | `rust`: Docs | Every doc builds with no warning, broken link included. |
 | `doc examples` (Windows, pinned nightly) | Every struct, enum, trait, function and macro a user can reach has a Rust example, in every library crate under `crates/` (see [Doc examples](#doc-examples)). |
-| `linux` | The code is formatted, and the core, the bridge, the C interface and the example EQ through it build, pass clippy and pass their tests, gates and matrix on Linux, and the VST3 module refuses to compile there, with its message. The MIDI device layer's ALSA backend passes its tests against the sequencer, with devices of the tests' own. The runner's Azure kernel has no sound, so `scripts/run-sequencer-tests.sh` runs them in a VM booted with Ubuntu's generic kernel, on the runner's KVM. |
+| `linux` | The code is formatted, and the core, the bridge, the C interface and the example EQ through it build, pass clippy and pass their tests, gates and matrix on Linux, and the VST3 module refuses to compile there, with its message. The MIDI device layer's ALSA backend passes its tests against the sequencer, with devices of the tests' own. The runner's Azure kernel has no sound, so `scripts/run-sequencer-tests.sh` runs them in a VM booted with Ubuntu's generic kernel, on the runner's KVM. The page opens in WebKitGTK through its helper, in Xvfb's X server, as the page's tests say (the `hidden_window` line above). |
 | `hapto.h` | The header compiles as C11 and C++11 for x86_64 and aarch64, so its size and offset assertions hold for both. |
 | `cross check` (aarch64 Linux, aarch64 Android) | The core, the bridge and the C interface type-check for those targets. Nothing is linked or run. |
-| `cargo deny` | Every dependency of the workspace has a licence `deny.toml` lists, no advisory applies (two, in the benchmark harness, are named there), no source is outside crates.io. It does not read `fuzz/`, which is outside the workspace and whose libFuzzer is under NCSA. |
-| `coverage` | Line coverage of the code Linux builds is at least 92 % (see [Coverage](#coverage)), the ALSA backend's sequencer tests counted from the VM they run in, as in `linux`. |
+| `cargo deny` | Every dependency of the workspace has a licence `deny.toml` lists, no advisory applies (three are named there: two in the benchmark harness, and one in the GTK bindings' macros), no source is outside crates.io. It does not read `fuzz/`, which is outside the workspace and whose libFuzzer is under NCSA. |
+| `coverage` | Line coverage of the code Linux builds is at least 92 % (see [Coverage](#coverage)), the ALSA backend's sequencer tests counted from the VM they run in, and the page's tests from Xvfb, as in `linux`. |
 | `plugin validators (windows)`: pluginval | pluginval 1.0.4, pinned by hash, passes the example EQ's VST3 bundle at strictness level 5 without a GUI, run in the validator's own process, through `cargo hapto validate`, which lays the bundle out as an author's is. It does not show what a real host does with it. |
 | `plugin validators (windows)`: The Steinberg validator | The Steinberg validator, built from the VST3 SDK at a pinned commit, passes the same bundle. It runs whether or not pluginval passed. |
 | `cargo hapto init (windows)` | A crate `cargo hapto init` writes, with this checkout's crates, builds and passes its own tests, its page map matching its declarations, so a change to the crates cannot break the template unseen. |
@@ -566,6 +566,8 @@ not in the format they parse:
   either revision;
 - the drift gate fails when `cargo xtask gen` writes no file, and the allocation
   gate when the counting allocator is not installed;
+- `hapto_testkit::systems::assert_target_tables_match` fails when a build script
+  lists no system;
 - `crates/bridge/tests/fixtures_messages.rs` fails on a fixture list with no
   entry.
 

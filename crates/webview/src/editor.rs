@@ -1,13 +1,15 @@
-//! The editor: a WebView child window inside the host's, made by wry. What
-//! differs between the systems' web engines is behind
+//! The editor: the page in the host's window, opened by the system's web
+//! engine. What differs between the engines is behind
 //! [`WebEngine`](crate::platform::WebEngine).
 //!
 //! On Windows, wry runs the thread's message loop until the WebView exists,
 //! so the host's messages, a tick among them, can arrive inside `open`. The
 //! exporter puts off what they ask of this editor until `open` returns. The
-//! page's messages arrive later, from the message loop, through the IPC
-//! handler, outside any call of the exporter's. A panic there is caught,
-//! because it would otherwise unwind into the WebView.
+//! page's messages arrive later. On Windows they come from the message loop,
+//! outside any call of the exporter's, and on Linux they come during the
+//! editor's tick. The editor catches a panic while it handles one or a
+//! hand-back, because on Windows the panic would otherwise unwind into the
+//! WebView.
 //!
 //! The keyboard: the WebView takes it when the page is clicked, and the page
 //! gives it back when nothing there needs keys, with one fixed message,
@@ -16,7 +18,6 @@
 //! hand-back is dropped while a command runs, since a dialog's message loop
 //! may be what has the keyboard then.
 
-use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
 use std::error::Error;
 use std::panic::{self, AssertUnwindSafe};
@@ -25,22 +26,18 @@ use std::rc::{Rc, Weak};
 use std::time::Instant;
 
 use hapto_bridge::{Dispatcher, Outbox};
-use hapto_host::{Editor, ParentWindow, Size};
-use wry::dpi::{PhysicalPosition, PhysicalSize};
-use wry::http::header::{CONTENT_TYPE, HeaderValue};
-use wry::http::{Response, StatusCode};
-use wry::{Rect, WebContext, WebView, WebViewBuilder};
+use hapto_host::{Editor, NoDataFolder, ParentWindow, Size};
 
 use crate::Page;
-use crate::assets::{SCHEME, Served, dev_url, is_page, page_url, serve};
+use crate::assets::dev_url;
 use crate::native::{HAND_BACK, Native, script};
-use crate::platform::{Engine, WebEngine as _};
+use crate::platform::{Engine, Load, WebEngine as _};
 
 /// The page's side of the conversation: what the dispatcher posts goes to
 /// the WebView open now, in order, and nowhere while none is.
 struct ToPage {
     name: &'static str,
-    webview: Rc<RefCell<Weak<WebView>>>,
+    target: Rc<RefCell<Weak<Engine>>>,
     /// When the editor opened, until the page's first `ready` of that open
     /// is answered.
     opened: Rc<Cell<Option<Instant>>>,
@@ -57,11 +54,9 @@ impl Outbox for ToPage {
                 opened.elapsed().as_millis()
             ));
         }
-        let webview = self.webview.borrow().upgrade();
-        if let Some(webview) = webview {
-            // A message the page cannot take is lost with the page, which
-            // asks again with its next `ready`.
-            let _ = webview.evaluate_script(&script(message));
+        let view = self.target.borrow().upgrade();
+        if let Some(view) = view {
+            view.evaluate(&script(message));
         }
     }
 }
@@ -69,14 +64,16 @@ impl Outbox for ToPage {
 /// The editor: one WebView at a time, made at each open.
 pub(crate) struct PageEditor {
     name: &'static str,
-    folder: PathBuf,
+    folder: Result<PathBuf, NoDataFolder>,
     assets: &'static [crate::Asset],
     size: Size,
     scale: f64,
     native: Rc<Native<ToPage>>,
-    target: Rc<RefCell<Weak<WebView>>>,
+    target: Rc<RefCell<Weak<Engine>>>,
     opened: Rc<Cell<Option<Instant>>>,
-    webview: Option<Rc<WebView>>,
+    view: Option<Rc<Engine>>,
+    #[cfg(target_os = "linux")]
+    accelerated: bool,
 }
 
 impl PageEditor {
@@ -85,7 +82,7 @@ impl PageEditor {
         let opened = Rc::new(Cell::new(None));
         let outbox = ToPage {
             name: page.name,
-            webview: Rc::clone(&target),
+            target: Rc::clone(&target),
             opened: Rc::clone(&opened),
         };
         let dispatcher = Dispatcher::new(page.ui, page.commands, page.values, outbox);
@@ -98,26 +95,37 @@ impl PageEditor {
             native: Rc::new(Native::new(dispatcher)),
             target,
             opened,
-            webview: None,
-        }
-    }
-
-    /// The WebView's place in the host's window: all of it, in the screen's
-    /// pixels.
-    fn bounds(&self) -> Rect {
-        let pixels = |logical: u32| (f64::from(logical) * self.scale).round() as u32;
-        Rect {
-            position: PhysicalPosition::new(0, 0).into(),
-            size: PhysicalSize::new(pixels(self.size.width), pixels(self.size.height)).into(),
+            view: None,
+            #[cfg(target_os = "linux")]
+            accelerated: page.accelerated,
         }
     }
 
     fn place(&self) {
-        if let Some(webview) = &self.webview {
-            // A WebView whose window went with the host's takes no bounds;
-            // the close that follows drops it.
-            let _ = webview.set_bounds(self.bounds());
+        if let Some(view) = &self.view {
+            view.place(self.size, self.scale);
         }
+    }
+
+    /// Creates the engine's data folder if it is missing, and returns it. The
+    /// editor creates it, rather than the engine, so a folder that can't be
+    /// created fails the open the same way with every engine.
+    ///
+    /// # Errors
+    ///
+    /// Returns why the folder is unknown or couldn't be made.
+    fn create_folder(&self) -> Result<PathBuf, String> {
+        let folder = self
+            .folder
+            .as_ref()
+            .map_err(|unknown| format!("the WebView has no folder for its data: {unknown}"))?;
+        std::fs::create_dir_all(folder).map_err(|error| {
+            format!(
+                "the WebView's data folder {} could not be made: {error}",
+                folder.display()
+            )
+        })?;
+        Ok(folder.clone())
     }
 }
 
@@ -127,58 +135,23 @@ impl Editor for PageEditor {
     }
 
     fn open(&mut self, parent: &ParentWindow) -> Result<(), Box<dyn Error>> {
-        Engine::prepare()?;
+        let folder = self.create_folder()?;
         self.opened.set(Some(Instant::now()));
-        let mut context = WebContext::new(Some(self.folder.clone()));
-        let (assets, name) = (self.assets, self.name);
-        let native = Rc::clone(&self.native);
-        let target = Rc::clone(&self.target);
-        let dev = dev_url();
-        let (navigable, speaks) = (dev.clone(), dev.clone());
-        let builder = WebViewBuilder::new_with_web_context(&mut context)
-            .with_url(page_url(dev))
-            .with_custom_protocol(SCHEME.to_owned(), move |_, request| {
-                respond(assets, request.uri().path())
-            })
-            .with_ipc_handler(move |request| {
-                // Only the page speaks for the user: any other document's
-                // message is dropped.
-                if is_page(
-                    &request.uri().to_string(),
-                    Engine::ORIGIN,
-                    speaks.as_deref(),
-                ) {
-                    from_page(name, &native, &target, request.into_body());
-                }
-            })
-            // The WebView shows the page and nothing else: a link or a
-            // script cannot take it elsewhere.
-            .with_navigation_handler(move |url| is_page(&url, Engine::ORIGIN, navigable.as_deref()))
-            // WebView2 opens a file dropped on it from outside in the page's
-            // place. A drop handler turns that off, and this one takes the
-            // files to nothing.
-            .with_drag_drop_handler(|_| true)
-            .with_bounds(self.bounds())
-            // Shown once it started: wry leaves its window in the host's
-            // when the WebView fails to start, and hidden, it shows nothing
-            // there until the host's window goes.
-            .with_visible(false)
-            // The page takes the keyboard when it is clicked, not as the
-            // window opens, so the host keeps it until then.
-            .with_focused(false);
-        let built = Engine::configure(builder).build_as_child(parent);
-        let shown = built
-            .map_err(|error| format!("the WebView did not start: {error}"))
-            .and_then(|webview| match webview.set_visible(true) {
-                Ok(()) => Ok(webview),
-                // Dropped, it destroys its window.
-                Err(error) => Err(format!("the WebView did not show: {error}")),
-            });
-        match shown {
-            Ok(webview) => {
-                let webview = Rc::new(webview);
-                *self.target.borrow_mut() = Rc::downgrade(&webview);
-                self.webview = Some(webview);
+        let (name, native, target) = (self.name, Rc::clone(&self.native), Rc::clone(&self.target));
+        let load = Load {
+            dev: dev_url(),
+            folder,
+            assets: self.assets,
+            receive: Box::new(move |message| from_page(name, &native, &target, message)),
+            devtools: cfg!(debug_assertions),
+            #[cfg(target_os = "linux")]
+            accelerated: self.accelerated,
+        };
+        match Engine::open(load, parent, self.size, self.scale) {
+            Ok(view) => {
+                let view = Rc::new(view);
+                *self.target.borrow_mut() = Rc::downgrade(&view);
+                self.view = Some(view);
                 Ok(())
             }
             Err(reason) => {
@@ -189,11 +162,12 @@ impl Editor for PageEditor {
     }
 
     fn close(&mut self) {
+        *self.target.borrow_mut() = Weak::new();
+        // The view drops before the session ends, because dropping it
+        // delivers the messages that the page posted before it closed.
+        self.view = None;
         self.native.end_session();
         self.opened.set(None);
-        *self.target.borrow_mut() = Weak::new();
-        // Dropping it closes the WebView and destroys its window.
-        self.webview = None;
     }
 
     fn set_size(&mut self, size: Size) {
@@ -207,19 +181,32 @@ impl Editor for PageEditor {
     }
 
     fn tick(&mut self) {
-        Engine::poll();
+        if let Some(gone) = self.view.as_ref().and_then(|view| view.poll()) {
+            hapto_host::report_line(&format!(
+                "hapto: {}: the page is gone, because {gone}.",
+                self.name
+            ));
+        }
         self.native.tick();
     }
 }
 
 /// Returns the folder where the engine keeps its data for the plugin whose
 /// id is `id`, which every instance of the plugin shares. It is the engine's
-/// own folder in the plugin's data folder, or below the temporary folder when
-/// the user's data folder is unknown, so the editor still opens.
-fn engine_folder(id: &str) -> PathBuf {
-    hapto_host::data_folder(id)
-        .unwrap_or_else(|_| hapto_host::plugin_folder(&std::env::temp_dir(), id))
-        .join(Engine::FOLDER)
+/// own folder in the plugin's data folder, or below the engine's fallback
+/// when the user's data folder is unknown.
+///
+/// # Errors
+///
+/// Returns why the user's data folder is unknown, when the engine has no
+/// fallback either.
+fn engine_folder(id: &str) -> Result<PathBuf, NoDataFolder> {
+    let plugin = hapto_host::data_folder(id).or_else(|unknown| {
+        Engine::fallback()
+            .map(|base| hapto_host::plugin_folder(&base, id))
+            .ok_or(unknown)
+    })?;
+    Ok(plugin.join(Engine::FOLDER))
 }
 
 /// Takes a message the page posted: the hand-back, or one for the
@@ -227,7 +214,7 @@ fn engine_folder(id: &str) -> PathBuf {
 fn from_page(
     name: &'static str,
     native: &Native<ToPage>,
-    target: &RefCell<Weak<WebView>>,
+    target: &RefCell<Weak<Engine>>,
     message: String,
 ) {
     if message != HAND_BACK {
@@ -250,25 +237,26 @@ enum HandBack {
     InCall,
     /// No WebView is open.
     Closed,
-    /// wry could not focus the host's window. Ignored, as a failed
-    /// `set_bounds` is: the next click on the page asks again.
+    /// The engine couldn't focus the host's window. The editor ignores this,
+    /// as it ignores a failed placement, because the next click sends another
+    /// hand-back.
     Failed,
     /// It panicked, and was dropped.
     Panicked,
 }
 
 /// Gives the keyboard to the host's window, the one the WebView was built
-/// in, unless a command is running or no WebView is open. It runs inside
-/// the WebView's callback, so a panic is caught here.
-fn hand_back(native: &Native<ToPage>, target: &RefCell<Weak<WebView>>) -> HandBack {
+/// in, unless a command is running or no WebView is open. It catches a panic,
+/// for the reason that the module's docs give.
+fn hand_back(native: &Native<ToPage>, target: &RefCell<Weak<Engine>>) -> HandBack {
     let handed = panic::catch_unwind(AssertUnwindSafe(|| {
         if native.in_call() {
             return HandBack::InCall;
         }
-        let Some(webview) = target.borrow().upgrade() else {
+        let Some(view) = target.borrow().upgrade() else {
             return HandBack::Closed;
         };
-        match webview.focus_parent() {
+        match view.focus_host() {
             Ok(()) => HandBack::Handed,
             Err(_) => HandBack::Failed,
         }
@@ -276,8 +264,8 @@ fn hand_back(native: &Native<ToPage>, target: &RefCell<Weak<WebView>>) -> HandBa
     handed.unwrap_or(HandBack::Panicked)
 }
 
-/// Hands a message the page posted to the native side. It runs inside
-/// the WebView's callback, so a panic is caught here and the message dropped.
+/// Hands a message the page posted to the native side. It catches a panic,
+/// for the reason that the module's docs give, and drops the message.
 fn deliver(name: &'static str, native: &Native<ToPage>, message: String) {
     let handled = panic::catch_unwind(AssertUnwindSafe(|| native.deliver(message)));
     if handled.is_err() {
@@ -287,37 +275,12 @@ fn deliver(name: &'static str, native: &Native<ToPage>, message: String) {
     }
 }
 
-/// The scheme's answer to a request for `path`, built from the page's
-/// files with no copy.
-fn respond(assets: &'static [crate::Asset], path: &str) -> Response<Cow<'static, [u8]>> {
-    answer(|| serve(assets, path))
-}
-
-/// What a request is answered when serving it panicked.
-const FAILED: Served = Served {
-    status: 500,
-    content_type: "text/plain; charset=utf-8",
-    body: b"the file could not be served",
-};
-
-/// The response for what `serve` gives, or 500 when it panics: it runs
-/// inside the WebView's callback, where a panic must not unwind.
-fn answer(serve: impl FnOnce() -> Served) -> Response<Cow<'static, [u8]>> {
-    let served = panic::catch_unwind(AssertUnwindSafe(serve)).unwrap_or(FAILED);
-    let mut response = Response::new(Cow::Borrowed(served.body));
-    *response.status_mut() = StatusCode::from_u16(served.status).unwrap_or(StatusCode::NOT_FOUND);
-    response
-        .headers_mut()
-        .insert(CONTENT_TYPE, HeaderValue::from_static(served.content_type));
-    response
-}
-
 impl std::fmt::Debug for PageEditor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PageEditor")
             .field("plugin", &self.name)
             .field("size", &self.size)
-            .field("open", &self.webview.is_some())
+            .field("open", &self.view.is_some())
             .finish_non_exhaustive()
     }
 }
@@ -399,21 +362,8 @@ mod tests {
     }
 
     #[test]
-    fn a_file_is_served_and_a_panic_while_serving_answers_500() {
-        let served = respond(PAGE, "/index.html");
-        assert_eq!(served.status(), StatusCode::OK);
-        assert_eq!(served.body().as_ref(), b"<!doctype html>");
-        let failed = answer(|| panic!("a bug while serving"));
-        assert_eq!(failed.status(), StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(
-            failed.headers().get(CONTENT_TYPE),
-            Some(&HeaderValue::from_static("text/plain; charset=utf-8"))
-        );
-    }
-
-    #[test]
     fn the_engine_keeps_its_data_in_its_own_folder_in_the_plugins() {
-        let folder = engine_folder("a/b");
+        let folder = engine_folder("a/b").expect("a folder");
         assert!(
             folder.ends_with(Path::new("a_b").join(Engine::FOLDER)),
             "{}",

@@ -31,22 +31,30 @@
 //!   or a field's blur, the page's `webviewTransport` asks, and the editor
 //!   gives the keyboard back to the host's window, so a key such as the space
 //!   bar reaches the host again. A field, a `select` and a control marked
-//!   `data-hapto-keys` keep it while they have the focus. The ask is not a
-//!   protocol message, and the dispatcher never sees it.
-//! - **Its data folder** is the plugin's own, below the user's local
-//!   application data, named by the plugin's
-//!   [`id`](hapto_host::PluginInfo::id): the WebView's default, beside the
-//!   host's executable, is not writable for a host below `Program Files`.
-//!   Every instance of the plugin shares it, and so shares one WebView
-//!   browser process.
+//!   `data-hapto-keys` keep it while they have the focus. On Linux, X sends a
+//!   key to the window under the pointer, so even while the page holds the
+//!   keyboard, a key pressed with the pointer outside the page reaches the
+//!   host. The ask is not a protocol message, and the dispatcher never sees
+//!   it.
+//! - **Its data folder** is the engine's own folder inside the plugin's data
+//!   folder, which is named by the plugin's
+//!   [`id`](hapto_host::PluginInfo::id). The editor sets it, because a host
+//!   below `Program Files` can't write WebView2's default folder, beside the
+//!   host's executable. Every instance of the plugin shares it.
 //! - **Faults.** A WebView that does not start fails `open`, which is a fault
-//!   of the instance with the WebView's reason: the host and the audio go on.
-//!   wry leaves its window in the host's then, so the WebView is made hidden
-//!   and shown once it started: a failed one shows nothing.
+//!   of the instance with the WebView's reason, and the host and the audio go
+//!   on. The WebView is made hidden and shown once it started, so a failed one
+//!   shows nothing in the host's window.
 //!   The first time a page answers its `ready` after an open, one line says
-//!   how long it took, where the fault lines go.
+//!   how long it took, where the fault lines go, and one line says when an
+//!   open page is gone, as when its helper process on Linux exits.
 //!
-//! The editor exists on Windows only, with WebView2; elsewhere
+//! The editor exists on Windows, with WebView2, and on Linux, with WebKitGTK in
+//! an X11 window. On Linux WebKitGTK runs in a helper process, one for each
+//! plugin in each host process, so the host's process loads no GTK. This crate
+//! builds the helper, `hapto-webview-helper`, with its `helper` feature, and
+//! the editor runs it from the folder that holds the plugin's module. Open: the
+//! plugin's bundle doesn't install it there yet. Elsewhere
 //! [`Page::into_editor`] gives `None`, and the host shows its own controls.
 //! This crate is a shell: `hapto-bridge` and the core crates have no window
 //! or WebView dependency.
@@ -115,14 +123,17 @@
 //!
 //! let (params, parts) = Parts::for_plugin::<Panel>()?;
 //! let mut panel = Panel::new(params, parts);
-//! // An editor on Windows, none elsewhere.
-//! assert_eq!(panel.editor().is_some(), cfg!(windows));
+//! // An editor on Windows and Linux, none elsewhere.
+//! assert_eq!(
+//!     panel.editor().is_some(),
+//!     cfg!(any(windows, target_os = "linux"))
+//! );
 //! # Ok::<(), hapto_params::DeclError>(())
 //! ```
 
 #[cfg_attr(
-    not(hapto_webview),
-    expect(dead_code, reason = "only the editor serves the page")
+    not(any(test, hapto_wry)),
+    expect(dead_code, reason = "only the code that runs wry serves the page")
 )]
 mod assets;
 #[cfg(hapto_webview)]
@@ -133,6 +144,22 @@ mod fixtures;
 mod native;
 #[cfg(hapto_webview)]
 mod platform;
+#[cfg(any(test, hapto_helper, hapto_webkitgtk))]
+mod wire;
+#[cfg(hapto_wry)]
+mod wry_page;
+
+#[cfg(hapto_helper)]
+#[doc(hidden)]
+pub mod helper;
+#[cfg(hapto_webkitgtk)]
+#[doc(hidden)]
+pub use platform::set_helper;
+/// The page's helper program's name, for a test that checks it against the
+/// program that Cargo builds.
+#[cfg(hapto_webkitgtk)]
+#[doc(hidden)]
+pub const HELPER: &str = wire::HELPER;
 
 use hapto_bridge::{Commands, Values};
 use hapto_host::{Editor, PluginInfo, Size};
@@ -190,6 +217,8 @@ pub struct Page {
     size: Size,
     values: Values,
     commands: Commands,
+    /// Whether WebKitGTK may draw the page with the GPU.
+    accelerated: bool,
 }
 
 impl Page {
@@ -215,6 +244,7 @@ impl Page {
             size: Self::SIZE,
             values: Values::new(),
             commands: Commands::new(),
+            accelerated: false,
         }
     }
 
@@ -222,6 +252,20 @@ impl Page {
     /// from there.
     pub fn with_size(mut self, size: Size) -> Self {
         self.size = size;
+        self
+    }
+
+    /// Lets WebKitGTK draw the page with the GPU on Linux.
+    ///
+    /// Without this call, WebKitGTK draws the page in software, because its
+    /// GPU path shows a blank page on some systems, such as virtual machines
+    /// and some with NVIDIA's drivers. Call it for a page that needs the GPU,
+    /// such as one that uses WebGL, and test the page on the systems that its
+    /// users run. The first of the plugin's pages to open in a host's process
+    /// sets it for all of them there, because one helper process shows them
+    /// all. WebView2 on Windows always draws with the GPU.
+    pub fn with_hardware_acceleration(mut self) -> Self {
+        self.accelerated = true;
         self
     }
 
@@ -288,6 +332,7 @@ impl std::fmt::Debug for Page {
             .field("size", &self.size)
             .field("values", &self.values)
             .field("commands", &self.commands)
+            .field("accelerated", &self.accelerated)
             .finish_non_exhaustive()
     }
 }
@@ -296,6 +341,14 @@ impl std::fmt::Debug for Page {
 mod tests {
     use super::*;
     use crate::fixtures::{INFO, PAGE, params};
+
+    #[test]
+    fn the_dependency_tables_name_the_systems_that_the_build_script_lists() {
+        hapto_testkit::systems::assert_target_tables_match(
+            include_str!("../Cargo.toml"),
+            env!("HAPTO_WEBVIEW_SYSTEMS"),
+        );
+    }
 
     #[test]
     fn a_page_is_an_editor_at_its_size_where_a_web_engine_exists() {

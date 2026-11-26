@@ -25,6 +25,12 @@ allow = [
     # not binaries.
     "Zlib",
 ]
+# target-lexicon, which the GTK bindings' build scripts use through
+# system-deps on Linux. It runs while the page's helper builds, and nothing
+# that ships carries it.
+exceptions = [
+    { crate = "target-lexicon", allow = ["Apache-2.0 WITH LLVM-exception"] },
+]
 confidence-threshold = 0.93
 # Hapto's own crates are not published (they name MIT, but are not checked
 # against the list above).
@@ -34,11 +40,14 @@ private = { ignore = true }
 # Known vulnerabilities, unmaintained crates and yanked releases fail.
 unmaintained = "all"
 yanked = "deny"
-# Both reach the tree only through iai-callgrind, the benchmark harness
-# (a dev-dependency of four crates), and neither ships in a plugin.
+# The first two reach the tree only through iai-callgrind, the benchmark
+# harness (a dev-dependency of four crates), and neither ships in a plugin.
+# proc-macro-error is a macro crate of the GTK bindings, so it runs while the
+# page's helper builds and doesn't ship either.
 ignore = [
     { id = "RUSTSEC-2025-0141", reason = "bincode, in the benchmark harness only" },
     { id = "RUSTSEC-2026-0173", reason = "proc-macro-error2, in the benchmark harness's macros only" },
+    { id = "RUSTSEC-2024-0370", reason = "proc-macro-error, in the GTK bindings' macros only" },
 ]
 
 [bans]
