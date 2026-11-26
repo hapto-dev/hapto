@@ -255,7 +255,8 @@ move its line here; when a decision gains code, add one.
 - test `crates/midi/tests/block.rs`: `a_note_its_host_named_goes_out_under_the_hosts_id_and_one_made_up_under_none`
 - `crates/host/src/audio.rs`: `Block`
 - `crates/host/src/engine/process.rs`: `pieces`
-- `crates/host/src/spans.rs`: module, `Spans`, `Spans::at_most`, `Span`, `Block::spans`
+- `crates/midi/src/spans.rs`: module, `Spans`, `Spans::new`, `Spans::at_most`, `Span`
+- `crates/host/src/spans.rs`: module, `Block::spans`, `Block::spans_and_out`
 - `crates/audio/src/audio.rs`: `Audio::split_at`
 - `crates/midi/src/midi.rs`: `MidiList::read`, `MidiList::between`, `Midi`, `Midi::between`, `MidiOut`
 - test `crates/host/tests/spans.rs`: module, `spans_cover_the_block_once_with_every_message_where_it_arrived`
@@ -1485,6 +1486,28 @@ move its line here; when a decision gains code, add one.
 - `crates/midi/src/encode.rs`: module, `encode`
 - test `crates/midi/tests/decode.rs`: module, `a_note_off_ends_the_notes_its_key_has`, `a_notes_own_message_names_its_key_and_the_newest_note_on_it`, `a_sysex_too_long_cut_short_or_begun_elsewhere_is_dropped_and_counted`, `each_message_is_one_line_in_musicians_numbers`, `a_note_past_a_full_table_takes_the_oldest_notes_place`, `all_notes_off_ends_its_channels_notes_in_the_table_and_no_others`
 - test `crates/midi/tests/alloc_gate.rs`: module
+
+### D117. An instrument's voices
+
+[Record section](decisions.md#d117-an-instruments-voices)
+
+- `crates/midi/src/voices/mod.rs`: module, `Voice`
+- `crates/midi/src/voices/poly.rs`: module, `Poly`, `Poly::play`, `Poly::handle`, `Poly::render`, `Hold`, `Sounding::rank`, `ToPlay`
+- `crates/midi/src/voices/state.rs`: module, `ChannelState`, `NoteControls`, `Keys`, `NOTE_CONTROLS`
+- `crates/midi/src/voices/expression.rs`: module, `Expression`, `Expression::get`, `Expression::modulated`
+- `crates/midi/src/voices/audio.rs`: module, `VoiceAudio`, `VoiceFrame`
+- `crates/midi/src/voices/tuning.rs`: module, `Tuning`
+- `crates/midi/src/voices/mpe.rs`: module, `Zones`, `Zones::configure`, `master_of`
+- `crates/midi/src/voices/poly.rs`: `Poly::with_mpe`, `reaches`, `sustain`
+- test `crates/midi/src/voices/tests.rs`: `mpe_is_off_until_the_plugin_turns_it_on`, `a_configuration_message_moves_the_zones_and_resets_their_bend_ranges`
+- `crates/audio/src/frame.rs`: `AddSample`
+- `crates/audio/src/audio.rs`: `Audio::reborrow`
+- `crates/host/src/spans.rs`: module
+- `crates/host/src/play.rs`: module, `Play`, `Sound`, `Sound::difference`, `HostNote`
+- test `examples/synth/tests/synth.rs`: `the_sound_is_the_same_whatever_the_block_size`, `a_phrase_sounds_the_same_however_the_host_sends_it`
+- test `examples/synth/tests/alloc_gate.rs`: module
+- test `crates/midi/src/voices/tests.rs`: module
+- test `crates/midi/src/voices/audio.rs`: `the_centre_is_full_level_on_both_sides_and_a_side_fades_away_from_it`
 
 ## Parameters
 

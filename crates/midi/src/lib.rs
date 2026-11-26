@@ -17,12 +17,16 @@
 //!
 //! A block's MIDI is a [`Midi`], with its messages, each at its frame, and
 //! their packets. It reads them from a [`MidiList`], which the engine
-//! decodes each block into once. A block sends
-//! MIDI through its [`MidiOut`].
+//! decodes each block into once. A block sends MIDI through its
+//! [`MidiOut`].
 //!
-//! The crate is in the core tier and depends only on `hapto-ump`. Decoding,
-//! reading a block and sending are safe on the audio thread, because they
-//! allocate nothing and never panic.
+//! A block's [`Spans`] are its audio cut at each message. An instrument
+//! plays each note on a [`Voice`], which [`Poly`] gives it.
+//!
+//! The crate is in the core tier and depends only on `hapto-ump`,
+//! `hapto-audio` and `hapto-params`. Decoding, reading a block, cutting it
+//! into spans, sending and playing voices are safe on the audio thread,
+//! because they allocate nothing and never panic.
 //!
 //! # Examples
 //!
@@ -73,11 +77,15 @@ mod decoder;
 mod encode;
 mod message;
 mod midi;
+mod spans;
 mod values;
+mod voices;
 
 pub use channels::PerChannel;
 pub use controller::{Controller, ControllerValue};
 pub use decoder::{Decoder, Messages, NOTES, SYSEX_BYTES};
 pub use message::{Message, NoteKey, NoteOff, NoteOn};
 pub use midi::{BLOCK_SYSEX_BYTES, Iter, MESSAGES, Midi, MidiList, MidiOut, Packets, packets_of};
+pub use spans::{Span, Spans};
 pub use values::{Centred, Channel, Group, Key, NoteId, Pedal, Pitch, Program};
+pub use voices::{Expression, Poly, ToPlay, Tuning, Voice, VoiceAudio, VoiceFrame};

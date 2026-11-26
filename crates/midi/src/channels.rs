@@ -55,7 +55,7 @@ impl<T> PerChannel<T> {
 
 /// Returns the slot of a group's channel, which is below 256 because each is
 /// below 16.
-fn slot(group: Group, channel: Channel) -> usize {
+pub(crate) fn slot(group: Group, channel: Channel) -> usize {
     group.index().wrapping_mul(16).wrapping_add(channel.index())
 }
 

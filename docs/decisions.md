@@ -153,6 +153,7 @@ comments never cite an id: they state the reason in words, and
 | D114 | [Which MIDI does Hapto pass inside, and how does MIDI 1.0 reach it? (D10, D23, D70)](#d114-midi-20-inside) | MIDI 2.0: `ChannelVoice` reads and writes MIDI 2.0's channel voice messages alone. The engine upgrades MIDI 1.0 on the way in with `Upgrade`, for every exporter, and an exporter downgrades with `Downgrade` only for a destination that takes MIDI 1.0 alone, both by the specification's Default Translation. Each packet keeps its `Origin`, so learn reads a value upgraded from MIDI 1.0 at the width it was sent at. | to confirm |
 | D115 | [How does the standalone app reach the computer's MIDI devices? (D110, D114)](#d115-the-computers-midi-devices) | Through `hapto-midi-devices`, Hapto's own device layer, which only the app links: UMP alone, a device named by an id that survives the system's renumbering, the list's changes told at the tick, and each input read on the system's thread into a ring that never blocks, its packets placed at frames on the audio thread. Every input is merged on group 1, as a host hands a plugin its MIDI, each upgraded with a translation of its own, and a SysEx reaches a block whole. WinMM is its only backend so far. | decided |
 | D116 | [What does a plugin read of MIDI, and in what terms? (D10, D114)](#d116-midi-in-musicians-terms) | `hapto-midi`'s `Message`s, decoded from MIDI 2.0 in its meanings: values from 0 to 1 as `f32`, values with a centre as `Centred`, and keys, channels, groups and programs as types shown as musicians count them. Each note has a `NoteId` from its note-on to its note-off, the host's where it names one, a note's own message names its key and the note its host named or else the newest on it, and a SysEx comes whole. The `Decoder` keeps its tables fixed, so decoding allocates nothing; what overflows them is counted. | decided |
+| D117 | [How does an instrument give its notes voices? (D112, D116)](#d117-an-instruments-voices) | `hapto-midi`'s `Poly`, which gives each note one of the plugin's `Voice`s and plays a block with them: it cuts the block at each message, acts on it and renders the voices between. A voice renders by the note's `Expression`, its pitch, pressure, timbre, damper and pan from every source combined, into a `VoiceAudio`: the span's audio in the processor's own layout, whose frames place a mono voice by its pan. Notes are named by id, a key may sound twice, per-note controllers belong to the key as MIDI 2.0 keeps them, the pedals are continuous, and controllers 120 to 127 act as MIDI 1.0 defines them. | decided |
 
 **Open.** D25 is held until `hapto-ci` needs it. It keeps its recommendation
 until decided, and no rule depends on it.
@@ -3969,6 +3970,106 @@ every plugin to scale them and to know which rest at a centre; a note named by
 its key alone, which loses the second note on a key and a host's note ids; and
 a note's own message named by its id alone, which has nowhere to put a
 controller sent before its note.
+
+### D117. An instrument's voices
+
+**Question and C++ Seam.** How does an instrument give its notes voices?
+(D112, D116) JUCE's `Synthesiser` hands each note to a `SynthesiserVoice` and
+renders them into the processor's buffer. It reads MIDI 1.0 alone: a note by its
+key and channel, each pedal as a switch, and a note's own expression only in
+`MPESynthesiser`, a class of its own. The C++ Seam had no voices, and the MIDI
+probe kept a table of its own, some 90 lines of the plugin.
+
+**Rust.** `hapto-midi`'s `Poly<V, L>`, holding a plugin's `Voice<L>`s, each
+told when its note starts and when nothing holds it any more, asked to render
+and asked whether it is done. `Poly::play` takes a block, through `ToPlay`,
+which `hapto-host` makes of a `Block`: it cuts the block at each message with
+`Spans`, acts on each, renders the voices between, and answers `Status::Sleep`
+once none sounds. `handle` and `render` do the two halves, for a plugin that
+loops over spans itself. `Spans` moved down to `hapto-midi` and `Status` to
+`hapto-audio` for it, and `hapto-host` re-exports both. `Poly` is generic over
+the layout as well as the voice, so `handle`, which renders nothing, knows
+which voice's methods to call. The layout is `StereoOut` unless named, on
+`Voice`, `Poly` and `VoiceAudio` alike, since most instruments are stereo:
+`impl Voice for Sine` and `Poly<Sine>`.
+
+A note-on takes an idle voice, then a released one, then one only a pedal
+holds, then one whose key is held, the oldest of each first. A second note-on
+on a key that sounds starts a second note beside the first, as MIDI 2.0 and a
+merged track send, but a note only a pedal holds is released when its key is
+struck again, as JUCE does, so repeated notes under the pedal do not pile up.
+A note-off ends the note it names by id. The sustain pedal is continuous: a
+voice is released once neither its key nor a pedal holds it, and the
+expression's damper follows half pedal. The sostenuto pedal holds the notes
+whose keys are down as it goes down. All Sound Off frees a channel's voices at
+once, Reset All Controllers resets what MIDI 1.0's recommended practice resets
+and none of MIDI 2.0's per-note controllers but pressure, and All Notes Off
+and the mode messages end the notes whose keys are held, within their group.
+
+A per-note controller belongs to its key, as MIDI 2.0's appendix on per-note
+messages reads it: a note starts from what its key's last note was left at, one
+may come before its note does, and per-note management's reset returns the key
+to the defaults, the sounding note too unless it was detached. A table of the
+256 keys last written keeps them, made with the `Poly`. A note its host names,
+as VST3's are, starts from the defaults and keeps its own alone, since such a
+host means each note's expression for that note.
+
+`Expression` is what a note plays at, worked out for each span. Its pitch
+starts from its key in the `Poly`'s `Tuning`, equal temperament unless the
+plugin sets one, or from its note-on's pitch attribute, or from its own pitch
+message, and adds its own bend times the per-note bend range (registered
+controller 0/7, 48 semitones until set, as MPE's notes have), the channel's
+bend times its range, and the channel's fine and coarse tuning. Pressure,
+timbre (controller 74) and pan (controller 10) are the note's own once it has
+had one, its channel's until then, and `get` reads any control change the same
+way, falling back to the controller's default. `modulated` reads a parameter;
+it is the parameter's own value until the CLAP exporter brings polyphonic
+modulation, so a voice written now needs no change then, and it is why
+`hapto-midi` depends on `hapto-params`.
+
+A voice renders into a `VoiceAudio`, the span's audio in the processor's own
+layout with a gain for each channel from the note's pan, by the balanced law
+of JUCE's default: full level on both sides at the centre, and a side fading
+as the note moves away from it. Its frames add a mono voice's sample at those
+gains through `AddSample::add_scaled`, so a voice in any layout is placed with
+no code of its own, and one that places itself, a stereo sampler say, writes
+`audio_mut`. A voice's own test makes an `Expression::at` a key and a
+`VoiceAudio` of its own, with no `Poly`.
+
+MPE is off until a plugin turns it on with `Poly::with_mpe`, a code hook on
+the `Poly` rather than a setting. With it on, each group starts with MPE's
+default layout, a lower zone of 15 member channels under channel 1, and an MPE
+Configuration Message, registered controller 0/6 on a zone's master, moves the
+zones, shrinking one the other would overlap, and returns the zone's bend
+ranges to MPE's 48 semitones for its members and 2 for its master. A note on a
+member channel reads its bend, pressure and controllers from its own channel,
+adds its master's bend to its pitch, answers its master's pedals and its notes
+off and sound off messages, and reads a controller its own channel has not set
+from its master's. With it off, a configuration message changes nothing.
+
+`Poly::new` allocates the voices and the tables. `play`, `handle` and `render`
+allocate nothing and never panic. A voice adds nothing once it is done, since
+`Poly` frees it after the span it rendered, and a sound that went on would
+change with the host's block size.
+
+`hapto-host`'s `play::Play`, under its `test-host` feature, plays a plugin in a
+test as an exporter does, through the standalone exporter's engine: MIDI 1.0's
+bytes through the same upgrade as a host's, MIDI 2.0's messages, and notes
+named as VST3 names them, with their tuning and pressure, each at a frame of
+the whole play, in blocks of any sizes, into a `Sound`. The example synth's
+tests hold a phrase to the same sound, bit for bit, in every form and at every
+block size.
+
+**Alternatives.** The alternatives were voices rendering in `AnyLayout`, whose
+frames are some 80 times slower than a typed layout's; a scratch buffer for
+each voice, mixed by `Poly`, a copy per voice per span that leaves a stereo
+voice nowhere to write; per-note controllers kept by the note alone, as VST3
+keeps them, which loses those sent before their note and the key's state
+MIDI 2.0 defines; a `render` generic in the layout, which leaves a voice
+written for one layout unable to name its channels; stealing by level, as the
+probe did, which asks every voice a question only some can answer; and MPE on
+by default, which reads a plain keyboard's channels as notes of a zone and
+gives a channel's bend 48 semitones where MIDI 1.0 gives it 2.
 
 ## How to read this
 

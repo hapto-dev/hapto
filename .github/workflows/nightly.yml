@@ -64,7 +64,7 @@ jobs:
       # --lib runs none of its tests; its exclusion only says so.
       - name: The core crates
         run: |
-          cargo +"$NIGHTLY" miri test --workspace --exclude hapto-host --exclude hapto-standalone --exclude cargo-hapto --exclude hapto-example-eq --exclude hapto-example-gain --exclude hapto-example-midi-probe --exclude hapto-testkit --exclude xtask --lib --locked
+          cargo +"$NIGHTLY" miri test --workspace --exclude hapto-host --exclude hapto-standalone --exclude cargo-hapto --exclude hapto-example-eq --exclude hapto-example-gain --exclude hapto-example-midi-probe --exclude hapto-example-synth --exclude hapto-testkit --exclude xtask --lib --locked
           cargo +"$NIGHTLY" miri test -p hapto-ump --tests --locked
           cargo +"$NIGHTLY" miri test -p hapto-learn --test capture --test dispatch --test saved --test targets --locked -- --skip the_table_at_the_ceiling
         env:

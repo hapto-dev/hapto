@@ -197,6 +197,35 @@ window anywhere but Windows.
   test or a tool to hand a host. `NoteOn::with_key` moves a note, its own
   pitch with it, and `NoteOn::with_id` with `NoteId::own` names a note a
   plugin sends beside the host's.
+- `hapto-midi`: an instrument's voices. `Poly` gives each note one of a
+  plugin's `Voice`s, and `self.voices.play(block)` plays a block with them,
+  cut at each message, answering `Status::Sleep` once none sounds; `handle`
+  and `render` do the two halves inside a loop over spans. Notes are named by
+  id, a key may sound twice, a voice is taken idle first, then released,
+  then held by a pedal alone, then the oldest, and controllers 120 to 127 act
+  as MIDI 1.0 defines them. A voice renders by its note's `Expression`: its
+  pitch from its key in a `Tuning`, or its own, with every bend, range and
+  tuning added, its pressure, timbre, pan and damper, which follows half
+  pedal, and any controller with `get`, the note's own before its channel's.
+  Per-note controllers belong to the key, as MIDI 2.0 keeps them, but for a
+  note its host names. It renders into a `VoiceAudio`, the span's audio in
+  the processor's layout, whose frames place a mono voice by its pan.
+  `Voice`, `Poly` and `VoiceAudio` are for `StereoOut` unless they name
+  another layout, so a stereo voice is `impl Voice for Sine`.
+  `Poly::with_mpe` turns MPE on: a lower zone of 15 member channels, moved by
+  an MPE Configuration Message, each member's note bent by its own channel
+  and its master's and held by its master's pedals.
+- `hapto-host`: `play::Play`, under `test-host`, plays an instrument in a test
+  with no host: MIDI 1.0's bytes through a host's upgrade, MIDI 2.0's
+  messages and notes named as VST3 names them, at any block sizes, into a
+  `Sound`, whose `difference` says where two renders part. `test-host` now
+  turns on `standalone`, which `Play` plays through.
+- `examples/synth`: a polyphonic synth on `Poly`, as a VST3 module and an app
+  of its own, whose tests hold a phrase to one sound in every form a host
+  sends it and at every block size.
+  `AddSample::add_scaled` adds a sample at a gain per channel, and
+  `Audio::reborrow` lends audio again. `Spans` and `Span` are hapto-midi's,
+  and `Status` hapto-audio's, both re-exported where they were.
 - `hapto-midi-devices`: the computer's MIDI devices as UMP, for an app that runs
   a plugin with no host. A device is named by an id that survives the system's
   renumbering, the list's changes are told at the main thread's tick, and each
@@ -355,17 +384,18 @@ window anywhere but Windows.
 - `examples/eq`: an EQ of six biquad bands and an output gain, as a VST3 module
   or a static library for the adapter.
 - `examples/midi-probe`: a plugin that makes a host's MIDI heard, for checks by
-  hand: a sine for each note, which its own pitch, bend, pressure and volume
-  move, the channel's bend and volume, and every message sent back out as it
-  came. It builds as a VST3 module, through the JUCE adapter, and as an app of
-  its own on the computer's MIDI devices.
+  hand: a sine for each note on `Poly`, which its own pitch, bend, pressure,
+  volume and pan move, the channel's bend, volume and sustain pedal, and every
+  message sent back out as it came. It builds as a VST3 module, through the
+  JUCE adapter, and as an app of its own on the computer's MIDI devices.
 - `xtask`: `cargo xtask gen` writes every generated file, and CI fails when one
   drifts. `cargo xtask wrap` holds comments and docs to 80 columns.
 - `cargo-hapto`: the plugin author's command, for a plugin crate in any
   workspace. `cargo hapto init` writes a new plugin crate, a gain with its
   page, a standalone binary and tests, with fresh ids, its Hapto crates from
   a checkout; `--instrument` writes an instrument instead, a sine for each
-  note with no page. `cargo hapto dev` runs the plugin's standalone binary
+  note on `Poly` with no page, whose tests play it at several block sizes.
+  `cargo hapto dev` runs the plugin's standalone binary
   with its page from Vite, and rebuilds and restarts it after each change to
   Rust with its saved block kept; `--host` runs it in the dev host. `cargo
   hapto serve` runs the page's dev server alone, for the debug bundle in a

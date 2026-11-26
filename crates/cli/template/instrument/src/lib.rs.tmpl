@@ -12,14 +12,17 @@ hapto_host::export_cabi!({{type}});
 use std::f32::consts::TAU;
 
 use hapto_host::layout::StereoOut;
-use hapto_host::midi::{Message, NoteId};
-use hapto_host::{AddSample, Block, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status};
-use hapto_params::{Changes, Float, Params};
+use hapto_host::midi::{Expression, NoteOff, NoteOn, Poly, Voice, VoiceAudio};
+use hapto_host::{Block, Parts, Plugin, PluginInfo, ProcessSetup, Processor, Status};
+use hapto_params::{Float, Params};
 
-/// How many notes sound at once. A note past them takes the quietest.
+/// How many notes sound at once. A further note takes the voice of a
+/// released note, or else of the oldest note.
 const VOICES: usize = 8;
 /// How long a released note takes to fall 60 dB, in seconds.
 const RELEASE: f32 = 0.3;
+/// The level at which a released note stops, 60 dB down.
+const SILENT: f32 = 1e-3;
 
 /// The parameters, in the order hosts list them, each declared where it is
 /// held. A parameter's key is its identity for good: rename the display name,
@@ -54,104 +57,19 @@ impl Plugin for {{type}} {
     }
 
     fn activate(&mut self, setup: &ProcessSetup) -> {{type}}Processor {
-        {{type}}Processor::new(self.params.clone(), setup.sample_rate as f32)
+        let sample_rate = setup.sample_rate as f32;
+        let level = self.params.level.clone();
+        {{type}}Processor {
+            voices: Poly::new(VOICES, || Sine::new(level.clone(), sample_rate)),
+        }
     }
 }
 
-/// One sine, and the note it plays.
-#[derive(Debug, Clone, Copy, Default)]
-struct Voice {
-    /// The note it plays; `None` once it has faded out.
-    note: Option<NoteId>,
-    /// Whether its key is still down.
-    held: bool,
-    /// How far its phase moves each frame.
-    step: f32,
-    phase: f32,
-    /// Its level: the note's velocity, falling once the key is released.
-    level: f32,
-}
-
-/// The audio thread's half: a sine for each note, at the level the
-/// parameter sets, which it reads again only when it moved.
+/// The audio thread's half, with the voices that `Poly` gives the block's
+/// notes.
 #[derive(Debug)]
 pub struct {{type}}Processor {
-    params: {{type}}Params,
-    changes: Changes,
-    gain: f32,
-    sample_rate: f32,
-    /// What a released note's level is multiplied by each frame.
-    fade: f32,
-    voices: [Voice; VOICES],
-}
-
-impl {{type}}Processor {
-    fn new(params: {{type}}Params, sample_rate: f32) -> Self {
-        let mut processor = {{type}}Processor {
-            params,
-            changes: Changes::new(),
-            gain: 0.0,
-            sample_rate,
-            fade: (1e-3_f32.ln() / (RELEASE * sample_rate).max(1.0)).exp(),
-            voices: [Voice::default(); VOICES],
-        };
-        processor.retune();
-        processor
-    }
-
-    fn retune(&mut self) {
-        let {{type}}Params { level } = &self.params;
-        if !self.changes.moved([level]) {
-            return;
-        }
-        self.gain = 10.0_f32.powf(level.get() / 20.0);
-    }
-
-    /// Plays `message`, at the start of the span it arrives in. A note ends
-    /// by its id, which names it from its note-on to its note-off.
-    fn play(&mut self, message: &Message<'_>) {
-        match message {
-            Message::NoteOn(note) => {
-                // A silent voice, else the quietest.
-                let voice = self.voices.iter_mut().min_by(|a, b| {
-                    (a.note.is_some().cmp(&b.note.is_some())).then(a.level.total_cmp(&b.level))
-                });
-                if let Some(voice) = voice {
-                    *voice = Voice {
-                        note: Some(note.id),
-                        held: true,
-                        step: note.pitch().hz() / self.sample_rate,
-                        phase: 0.0,
-                        level: note.velocity,
-                    };
-                }
-            }
-            Message::NoteOff(note) => {
-                for voice in &mut self.voices {
-                    if voice.note == Some(note.id) {
-                        voice.held = false;
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-
-    /// The next frame of every voice, summed.
-    fn next_sample(&mut self) -> f32 {
-        let mut sum = 0.0;
-        for voice in self.voices.iter_mut().filter(|voice| voice.note.is_some()) {
-            sum += (voice.phase * TAU).sin() * voice.level;
-            voice.phase = (voice.phase + voice.step).fract();
-            if !voice.held {
-                voice.level *= self.fade;
-                if voice.level < 1e-3 {
-                    voice.note = None;
-                }
-            }
-        }
-        sum * self.gain
-    }
+    voices: Poly<Sine>,
 }
 
 impl Processor for {{type}}Processor {
@@ -159,21 +77,70 @@ impl Processor for {{type}}Processor {
     type Layout = StereoOut;
 
     fn process(&mut self, block: Block<'_, StereoOut>) -> Status {
-        self.retune();
-        // A span starts at each frame a message arrives at, so each note
-        // starts on its own frame.
-        for mut span in block.spans() {
-            for message in span.midi.messages() {
-                self.play(&message);
-            }
-            for frame in span.audio.frames_mut() {
-                frame.add(self.next_sample());
+        // Cuts the block at each message, so each note starts on its own
+        // frame, and sleeps once every voice is silent.
+        self.voices.play(block)
+    }
+}
+
+/// One voice, a sine that fades out once nothing holds its note.
+///
+/// Its pitch already includes every bend and tuning that a host sends.
+#[derive(Debug)]
+pub struct Sine {
+    level: Float,
+    sample_rate: f32,
+    /// What a released note's envelope is multiplied by each frame.
+    fade: f32,
+    phase: f32,
+    /// The note's velocity, falling once it is released.
+    envelope: f32,
+    released: bool,
+}
+
+impl Sine {
+    fn new(level: Float, sample_rate: f32) -> Self {
+        Sine {
+            level,
+            sample_rate,
+            fade: (SILENT.ln() / (RELEASE * sample_rate).max(1.0)).exp(),
+            phase: 0.0,
+            envelope: 0.0,
+            released: true,
+        }
+    }
+}
+
+impl Voice for Sine {
+    fn start(&mut self, note: &NoteOn) {
+        (self.phase, self.envelope, self.released) = (0.0, note.velocity, false);
+    }
+
+    fn release(&mut self, _note: &NoteOff) {
+        self.released = true;
+    }
+
+    fn render(&mut self, expression: &Expression<'_>, out: &mut VoiceAudio<'_>) {
+        let step = expression.pitch.hz() / self.sample_rate;
+        // The level for this note, which is the parameter's plus any
+        // polyphonic modulation that the host sends.
+        let gain = 10.0_f32.powf(expression.modulated(&self.level) / 20.0);
+        for frame in out.frames_mut() {
+            // Into both channels, at the note's pan.
+            frame.add((self.phase * TAU).sin() * self.envelope * gain);
+            self.phase = (self.phase + step).fract();
+            if self.released {
+                self.envelope *= self.fade;
+                // Silent from the frame where it fades out, so the sound
+                // doesn't depend on the block size.
+                if self.envelope < SILENT {
+                    self.envelope = 0.0;
+                }
             }
         }
-        if self.voices.iter().any(|voice| voice.note.is_some()) {
-            Status::Continue
-        } else {
-            Status::Sleep
-        }
+    }
+
+    fn is_done(&self) -> bool {
+        self.released && self.envelope == 0.0
     }
 }

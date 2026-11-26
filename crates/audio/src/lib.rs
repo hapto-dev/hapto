@@ -63,7 +63,9 @@ mod audio;
 mod buf;
 mod frame;
 pub mod layout;
+mod status;
 
 pub use audio::Audio;
 pub use buf::AudioBuf;
 pub use frame::{AddSample, Frame};
+pub use status::Status;

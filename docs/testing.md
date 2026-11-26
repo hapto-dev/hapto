@@ -163,6 +163,15 @@ What keeps that true:
   provokes one on purpose declares it and checks that the count moved by exactly
   one.
 
+  `hapto_host::play::Play`, under the same feature, plays an instrument with no
+  host, through the standalone exporter: MIDI 1.0's bytes, MIDI 2.0's
+  messages and notes named as VST3 names them, each at a frame of the whole
+  play, in blocks of any sizes, rendered into a `Sound`. An instrument's tests
+  check that a phrase sounds the same, bit for bit, in every form a host may
+  send it and at every block size (`examples/synth/tests/synth.rs`).
+  `Sound::difference` says where two renders part. A render panics when the
+  plugin did.
+
 ## 2. The audio path does not allocate
 
 Code the audio thread runs never allocates, frees, locks or makes a system call,

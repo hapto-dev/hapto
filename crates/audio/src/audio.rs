@@ -324,6 +324,35 @@ impl<'a, L: Layout> Audio<'a, L> {
         let (count, frames) = (self.count, self.frames);
         Audio::over(self.lend().into_iter().take(count), frames)
     }
+
+    /// Returns the same audio, lent again for as long as `self` is borrowed,
+    /// to pass to a call that takes audio by value, such as
+    /// [`split_at`](Self::split_at), and still use after.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hapto_audio::layout::Mono;
+    /// use hapto_audio::{Audio, AudioBuf};
+    ///
+    /// /// Silences the second half of `audio`.
+    /// fn duck(audio: Audio<'_, Mono>) {
+    ///     let half = audio.frames() / 2;
+    ///     audio.split_at(half).1.clear();
+    /// }
+    ///
+    /// let mut buffer = AudioBuf::<Mono>::new(4);
+    /// let mut audio = buffer.audio();
+    /// audio.add_to_all([1.0; 4]);
+    /// duck(audio.reborrow());
+    /// // Still usable after.
+    /// audio.apply_gain(0.5);
+    /// assert_eq!(buffer.channels()[0], [0.5, 0.5, 0.0, 0.0]);
+    /// ```
+    pub fn reborrow(&mut self) -> Audio<'_, L> {
+        let (count, frames) = (self.count, self.frames);
+        Audio::over(self.lend().into_iter().take(count), frames)
+    }
 }
 
 impl<L: Layout> Audio<'_, L> {

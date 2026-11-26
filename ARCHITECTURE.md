@@ -50,13 +50,19 @@ reading how Hapto works inside, start with
   each its own type (`values.rs`), the messages (`message.rs`), the decoder
   that reads packets into them (`decoder.rs`), a block's MIDI in and out,
   `Midi` and `MidiOut` (`midi.rs`), the encoder that writes a message back as
-  packets (`encode.rs`), and the controllers, typed (`controller.rs`).
+  packets (`encode.rs`), the controllers, typed (`controller.rs`), and a
+  block's audio cut at each message, its [spans](docs/glossary.md#span)
+  (`spans.rs`), and an instrument's voices (`voices/`): `Poly` and the
+  `Voice` trait (`poly.rs`, `mod.rs`), what a note plays at (`expression.rs`,
+  `tuning.rs`) from what its channel and its key keep (`state.rs`), MPE's
+  zones (`mpe.rs`), and the audio a voice renders into (`audio.rs`).
 - `crates/audio`: a block's audio as a processor sees it: the layouts, the
   channels a main bus has as a type (`layout.rs`); `Audio`, the channels a
   block lends, walked by frame or by channel (`audio.rs`, `frame.rs`); and
-  `AudioBuf`, audio of its own for tests (`buf.rs`). `host` re-exports them.
-- `crates/host`: the `Plugin` trait, a block and its
-  [spans](docs/glossary.md#span) (`audio.rs`, `spans.rs`), the
+  `AudioBuf`, audio of its own for tests (`buf.rs`); and the `Status` a block
+  answers (`status.rs`). `host` re-exports them.
+- `crates/host`: the `Plugin` trait, a block, which makes its spans
+  (`audio.rs`, `spans.rs`), the
   [parts](docs/glossary.md#parts) Hapto
   builds for each instance (`parts.rs`, with the parameters a plugin makes at
   run time in `parts/run_time.rs`), the saved block (`SavedState`), which
@@ -69,7 +75,8 @@ reading how Hapto works inside, start with
   knows no toolkit; `engine/editor.rs` drives one for each view a host asks
   for, and the VST3 exporter's view is `vst3/view.rs`, with each system's
   window type in a file of its own in `vst3/view/`. The `standalone`
-  exporter (`standalone.rs`) drives the same engine for an app with no host.
+  exporter (`standalone.rs`) drives the same engine for an app with no host,
+  and `Play` (`play.rs`, under `test-host`) drives it for a plugin's tests.
 - `crates/bridge`: the page protocol, its native side (`Dispatcher`, which
   answers a page and tells it of every change to the parameters and to the
   values a plugin binds for it in `Values`), and the TypeScript generated from

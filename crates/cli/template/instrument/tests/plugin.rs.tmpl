@@ -1,6 +1,8 @@
 //! {{name}} through the VST3 exporter, as a host drives it: the level it
-//! lists, a note it plays until it is released, and its saved block.
+//! lists, a note it plays until it is released, and its saved block. It is
+//! also played with no host, at any block size.
 
+use hapto_host::play::Play;
 use hapto_host::vst3::{BusEvent, Refused, TestHost};
 use {{lib}}::{{type}};
 
@@ -60,4 +62,20 @@ fn the_saved_block_brings_the_level_back() -> Result<(), Refused> {
     second.load(&saved)?;
     assert_eq!(second.normalized(level), first.normalized(level));
     Ok(())
+}
+
+#[test]
+fn a_note_sounds_the_same_whatever_the_block_size() {
+    let render = |blocks: &[usize]| {
+        let mut play = Play::<{{type}}>::new(48_000.0).with_blocks(blocks);
+        // A4 at full velocity for a tenth of a second, as MIDI 1.0's bytes.
+        play.midi1(0, &[0x90, 69, 127]);
+        play.midi1(4_800, &[0x80, 69, 0]);
+        play.render(24_000)
+    };
+    let whole = render(&[24_000]);
+    assert!(whole.peak(0..4_800) > 0.05, "the note sounds");
+    assert!(whole.is_silent(20_000..24_000), "and fades once released");
+    assert_eq!(render(&[64]), whole);
+    assert_eq!(render(&[1, 999, 13, 512]), whole);
 }
