@@ -86,7 +86,7 @@ impl Callback {
 }
 
 /// The dev host's callback, with the plugin it plays in one format.
-#[cfg(all(windows, feature = "dev-host"))]
+#[cfg(all(hapto_app, feature = "dev-host"))]
 pub mod dev {
     use std::fmt;
     use std::sync::Arc;

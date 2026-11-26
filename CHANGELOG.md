@@ -110,6 +110,13 @@ window anywhere but Windows.
   where learn wrote nothing. A packet's message type is a `MessageType`, whose
   constants name the UMP table's types and whose `words` replaces
   `packet_words`.
+- `hapto-standalone` keeps its session in the `Standalone` folder of the same
+  data folder as the WebView's, so it names the folder by the WebView's rule:
+  each character of the plugin's id other than an ASCII letter, a digit, `.`,
+  `-` and `_` is written as `_`. A session saved for an id with such a
+  character is not found again. An id that `cargo hapto init` writes keeps
+  every character. An empty `LOCALAPPDATA` now counts as unset, so the app
+  fails as it does when the variable is unset.
 
 ### Added
 

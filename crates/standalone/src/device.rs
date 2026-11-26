@@ -14,19 +14,26 @@ use cpal::{DeviceId, ErrorKind};
 
 use crate::block::{Player, Render};
 
-/// The device that was the system's default output when it was opened, and
-/// the stream configuration it prefers.
-pub(crate) struct Output {
-    device: cpal::Device,
-    config: cpal::StreamConfig,
-    id: DeviceId,
-}
+/// The audio system that the app plays through. It is cpal's default host,
+/// which is WASAPI on Windows.
+pub(crate) struct AudioSystem(cpal::Host);
 
-impl Output {
+impl AudioSystem {
+    /// Returns cpal's default host for this operating system.
+    pub(crate) fn new() -> AudioSystem {
+        AudioSystem(cpal::default_host())
+    }
+
+    /// Returns the id of the device that is the system's default output now,
+    /// `None` when there is none. It opens nothing and builds no stream.
+    pub(crate) fn default_output_id(&self) -> Option<DeviceId> {
+        self.0.default_output_device()?.id().ok()
+    }
+
     /// Opens the device that is the system's default output now, taken from
     /// the host by its id, in its own configuration. Its stream stays on that
     /// device and tells of no change of the default, which
-    /// [`default_output_id`] says.
+    /// [`default_output_id`](Self::default_output_id) says.
     ///
     /// cpal's own default device is not used: on Windows it cannot be opened
     /// again once any audio device has left during the run.
@@ -36,9 +43,12 @@ impl Output {
     /// Returns why there is none to play to: no device, a default that is
     /// not found again by its id, or one that does not take 32-bit floats,
     /// which shared-mode devices on Windows do.
-    pub(crate) fn system_default() -> Result<Output> {
-        let id = default_output_id().context("there is no audio output device")?;
-        let device = cpal::default_host()
+    pub(crate) fn open_default_output(&self) -> Result<Output> {
+        let id = self
+            .default_output_id()
+            .context("there is no audio output device")?;
+        let device = self
+            .0
             .device_by_id(&id)
             .context("there is no audio output device: none has the default's id")?;
         let supported = device
@@ -56,7 +66,17 @@ impl Output {
             id,
         })
     }
+}
 
+/// The device that was the system's default output when it was opened, and
+/// the stream configuration it prefers.
+pub(crate) struct Output {
+    device: cpal::Device,
+    config: cpal::StreamConfig,
+    id: DeviceId,
+}
+
+impl Output {
     /// Returns the id it was opened by.
     pub(crate) fn id(&self) -> &DeviceId {
         &self.id
@@ -138,12 +158,6 @@ impl Output {
             read: 0,
         })
     }
-}
-
-/// Returns the id of the device that is the system's default output now,
-/// `None` when there is none. It opens nothing and builds no stream.
-pub(crate) fn default_output_id() -> Option<DeviceId> {
-    cpal::default_host().default_output_device()?.id().ok()
 }
 
 /// How often the app and the dev host look at which device is the system's

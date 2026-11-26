@@ -183,8 +183,7 @@ struct Blocker(PathBuf);
 
 impl Blocker {
     fn new(id: &str) -> Self {
-        let base = std::env::var_os("LOCALAPPDATA").expect("LOCALAPPDATA is set");
-        let path = PathBuf::from(base).join(id);
+        let path = hapto_host::data_folder(id).expect("the user's data folder");
         std::fs::write(&path, b"").expect("a file where the data folder would be");
         Blocker(path)
     }

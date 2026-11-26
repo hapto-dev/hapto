@@ -1,8 +1,5 @@
 //! The page's files, which are built into the plugin, and how the WebView is
-//! served them. It also holds the URL that the WebView loads and the plugin's
-//! own folder, which each engine keeps its data below.
-
-use std::path::{Path, PathBuf};
+//! served them. It also holds the URL that the WebView loads.
 
 /// The scheme that serves the page built into the plugin. The origin that the
 /// page then has differs between engines, and each engine's `ORIGIN` names
@@ -121,27 +118,6 @@ pub(crate) fn dev_url() -> Option<String> {
 #[cfg(not(debug_assertions))]
 pub(crate) fn dev_url() -> Option<String> {
     None
-}
-
-/// Returns the plugin's own folder below `base`, named after the plugin's id
-/// `id`. A character that a folder's name can't hold becomes `_`.
-pub(crate) fn plugin_folder(base: &Path, id: &str) -> PathBuf {
-    let name: String = id
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    let name = if name.trim_matches('.').is_empty() {
-        "hapto-plugin".to_owned()
-    } else {
-        name
-    };
-    base.join(name)
 }
 
 #[cfg(test)]
@@ -271,16 +247,5 @@ mod tests {
     #[cfg(not(debug_assertions))]
     fn a_release_build_never_has_a_dev_server() {
         assert_eq!(dev_url(), None);
-    }
-
-    #[test]
-    fn the_plugins_folder_is_its_own_below_the_base() {
-        let base = Path::new("base");
-        assert_eq!(
-            plugin_folder(base, "dev.hapto.example-gain"),
-            base.join("dev.hapto.example-gain")
-        );
-        assert_eq!(plugin_folder(base, "a/b\\c:d"), base.join("a_b_c_d"));
-        assert_eq!(plugin_folder(base, ".."), base.join("hapto-plugin"));
     }
 }

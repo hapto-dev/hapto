@@ -26,8 +26,7 @@
 //! [`App`]. `cargo hapto dev` builds the binary, runs it with `--dev`,
 //! restarts it after each rebuild with the plugin's saved block kept, and
 //! serves the page from its dev server. Run on its own, the app keeps the
-//! saved block in the plugin's folder below the user's local application
-//! data.
+//! saved block in the plugin's data folder.
 //!
 //! With the `dev-host` feature, `--host` runs the plugin in process through
 //! the VST3 exporter or the C interface instead, with Hapto's test hosts and
@@ -37,29 +36,30 @@
 //! Elsewhere, [`main`] prints an error that says so and fails.
 
 // Every module except the app, the device, the MIDI devices and the dev host
-// is platform-neutral and tested everywhere, but only Windows runs them.
-#[cfg(windows)]
+// is platform-neutral and tested on every system, but only the systems that
+// the app runs on use them. build.rs sets `hapto_app` on those systems.
+#[cfg(hapto_app)]
 mod app;
-#[cfg(any(windows, test))]
+#[cfg(any(hapto_app, test))]
 mod block;
-#[cfg(all(windows, feature = "dev-host"))]
+#[cfg(all(hapto_app, feature = "dev-host"))]
 mod dev_host;
-#[cfg(windows)]
+#[cfg(hapto_app)]
 mod device;
-#[cfg(windows)]
+#[cfg(hapto_app)]
 mod midi;
 // The audio paths, open to the crate's allocation gate alone.
-#[cfg(any(windows, test))]
+#[cfg(any(hapto_app, test))]
 #[doc(hidden)]
 pub mod gate;
-#[cfg(any(windows, test))]
+#[cfg(any(hapto_app, test))]
 mod options;
 mod routing;
-#[cfg(any(windows, test))]
+#[cfg(any(hapto_app, test))]
 mod session;
-#[cfg(any(windows, test))]
+#[cfg(any(hapto_app, test))]
 mod settings;
-#[cfg(any(windows, test))]
+#[cfg(any(hapto_app, test))]
 mod signal;
 #[cfg(test)]
 mod tests;
@@ -279,7 +279,7 @@ impl<P: Plugin> App<P> {
     }
 }
 
-#[cfg(windows)]
+#[cfg(hapto_app)]
 fn run<P: Plugin>(midi: MidiDevices) -> anyhow::Result<ExitCode> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|a| a == "--help" || a == "-h") {
@@ -296,10 +296,11 @@ fn run<P: Plugin>(midi: MidiDevices) -> anyhow::Result<ExitCode> {
     app::run::<P>(&options, midi)
 }
 
-#[cfg(not(windows))]
+#[cfg(not(hapto_app))]
 fn run<P: Plugin>(_midi: MidiDevices) -> anyhow::Result<ExitCode> {
     Err(anyhow::anyhow!(
-        "{}: the standalone app runs on Windows only for now",
-        P::INFO.name
+        "{}: the standalone app doesn't run on {} yet",
+        P::INFO.name,
+        std::env::consts::OS
     ))
 }

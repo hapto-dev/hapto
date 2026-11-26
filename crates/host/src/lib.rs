@@ -123,6 +123,7 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 mod audio;
+mod data_folder;
 mod editor;
 mod info;
 mod parts;
@@ -168,6 +169,10 @@ pub mod vst3;
 #[doc(inline)]
 pub use audio::{Block, Event, EventList, MAX_EVENTS, MAX_FRAMES, ProcessSetup, Status};
 pub use boundary::ParentWindow;
+// Public only so that the standalone app and the WebView use the same data
+// folder.
+#[doc(hidden)]
+pub use data_folder::{NoDataFolder, data_folder, plugin_folder};
 pub use editor::{Editor, Size};
 #[cfg(any(feature = "vst3", feature = "cabi", feature = "standalone"))]
 pub use faults::boundary_faults;

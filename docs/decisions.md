@@ -139,7 +139,7 @@ comments never cite an id: they state the reason in words, and
 | D100 | [How does a plugin hand out an editor, and what ticks it? (D53)](#d100-a-plugins-editor-and-its-tick) | `Plugin::editor` returns an `Editor`, `None` by default; the trait knows no toolkit. The exporter drives it, and the plugin's one main-thread timer ticks an open editor after `Plugin::idle`. | to confirm |
 | D101 | [What does the VST3 exporter's view of the editor keep to? (D59, D60)](#d101-the-vst3-editor-view) | A view holds its component; it is made and attaches on Windows only; its sizes are the screen's pixels at the scale the host gave; it puts off what a host asks while the editor is in a call; a failed open is a fault with its reason. | to confirm |
 | D102 | [Where do a page's files come from, and what does a build without them do? (D26)](#d102-a-pages-files-and-a-build-without-them) | From bytes the plugin is built with, served over the editor's own scheme; a debug build may load a dev server instead. A plugin built without its page offers no editor and its build warns; it never shows a placeholder, and Cargo never runs Node. | to confirm |
-| D103 | [Where does the WebView keep its data? (D16)](#d103-the-webviews-data-folder) | In a folder of the plugin's own below the user's local application data, named by its id, shared by every instance of it. | to confirm |
+| D103 | [Where does the WebView keep its data? (D16)](#d103-the-webviews-data-folder) | In the plugin's data folder, named by its id below the user's data folder, which every instance of the plugin and the standalone app's session share. | to confirm |
 | D104 | [How do the page's messages cross the WebView, and what does the WebView take from the host? (D16, B1)](#d104-the-webviews-messages-and-what-it-takes) | The page posts through the WebView's IPC and the native side answers with a script, in order; a panic in a WebView callback is caught. The WebView takes no focus as it opens, and a release build shows no browser menu or shortcut. | to confirm |
 | D105 | [What keeps valid what an editor leaves with the host, when the host unloads the module? (D59, D101)](#d105-the-module-stays-loaded-once-an-editor-has-opened) | Once any editor has opened, the module stays loaded until the process ends: one call at every open, before the editor is told its size or opened, for every editor of every plugin. The plugin's file then stays in use until the host exits. | to confirm |
 | D106 | [How does a page show and write plugin state that is not a parameter? (B1, B2, D99)](#d106-page-bound-values) | As a value the plugin binds by key (`Values::value`, `Page::value`): the snapshot carries it, a `value` message brings each change at the tick whatever made it, and a `setValue` is the user's write through `Value::set`, stored when it decodes to the value's type and answered either way. | to confirm |
@@ -154,7 +154,7 @@ comments never cite an id: they state the reason in words, and
 | D115 | [How does the standalone app reach the computer's MIDI devices? (D110, D114)](#d115-the-computers-midi-devices) | Through `hapto-midi-devices`, Hapto's own device layer, which only the app links: UMP alone, a device named by an id that survives the system's renumbering, the list's changes told at the tick, and each input read on the system's thread into a ring that never blocks, its packets placed at frames on the audio thread. Every MIDI 1.0 input is merged on group 1, as a host hands a plugin its MIDI, each upgraded with a translation of its own, and a SysEx reaches a block whole. WinMM and ALSA's sequencer (D118) are its backends so far. | decided |
 | D116 | [What does a plugin read of MIDI, and in what terms? (D10, D114)](#d116-midi-in-musicians-terms) | `hapto-midi`'s `Message`s, decoded from MIDI 2.0 in its meanings: values from 0 to 1 as `f32`, values with a centre as `Centred`, and keys, channels, groups and programs as types shown as musicians count them. Each note has a `NoteId` from its note-on to its note-off, the host's where it names one, a note's own message names its key and the note its host named or else the newest on it, and a SysEx comes whole. The `Decoder` keeps its tables fixed, so decoding allocates nothing; what overflows them is counted. | decided |
 | D118 | [How does the app reach a Linux computer's MIDI devices? (D114, D115)](#d118-the-computers-midi-devices-on-linux) | Through ALSA's sequencer, with a client of the app's own for each open device. An input's client speaks the device's own MIDI version, so the kernel translates nothing: a MIDI 1.0 device goes through D114's `Upgrade` as on Windows, and a MIDI 2.0 device's packets arrive as they came. An output's speaks MIDI 1.0, which the kernel upgrades for a MIDI 2.0 device. The UMP calls are looked up at run time, a USB card is keyed by its serial number where it has one and any other card by where it sits on its bus, an output paces what it sends so no device's buffer overflows, and a close sends nothing. | decided |
-| D119 | [How do the standalone app, the dev host and a plugin's VST3 editor run on Linux? (D53, D74, D101, D110, D111)](#d119-the-app-the-dev-host-and-the-vst3-editor-on-linux) | In X11 windows, through XWayland on a Wayland desktop, with the page in WebKitGTK. The app is to play through cpal's ALSA host, with JACK and PipeWire as options to add later, at real-time priority from RTKit. A host that uses GTK 2 is not supported. None of it is built yet. | decided |
+| D119 | [How do the standalone app, the dev host and a plugin's VST3 editor run on Linux? (D53, D74, D101, D110, D111)](#d119-the-app-the-dev-host-and-the-vst3-editor-on-linux) | In X11 windows, through XWayland on a Wayland desktop, with the page in WebKitGTK. The app is to play through cpal's ALSA host, with JACK and PipeWire as options to add later, at real-time priority from RTKit. A host that uses GTK 2 is not supported. So far only the data folder and the audio system as a value are built. | decided |
 
 **Open.** D25 is held until `hapto-ci` needs it. It keeps its recommendation
 until decided, and no rule depends on it.
@@ -2947,29 +2947,32 @@ Node, which every Rust build would then need.
 **Question and C++ Seam.** Where does the WebView keep its data? (D16) Not
 applicable: the C++ Seam's WebView was JUCE's, which chose for it.
 
-**Rust.** In `%LOCALAPPDATA%\<id>\WebView2`, where `<id>` is the plugin's
-`PluginInfo::id`, a character a folder's name may not hold becoming `_`; the
-temporary folder stands in when `LOCALAPPDATA` is unset. WebView2's default is
-beside the host's executable, which a host below `Program Files` cannot write.
-Every instance of the plugin shares the folder, and so one browser process;
-WebView2 needs instances that share a folder to share its options, and the
-editor gives each the same.
-
-Open: the app's session folder (D110) and this one are to come from one function
-in `hapto-host`. It is to return the plugin's own folder below one base on each
-system:
+**Rust.** In the plugin's data folder, which `hapto_host::data_folder` returns
+and the app's session folder (D110) shares. It is the plugin's own folder below
+the user's data folder, named after the plugin's `PluginInfo::id`, with each
+character other than an ASCII letter, a digit, `.`, `-` and `_` written as `_`.
+The user's data folder is:
 
 - Windows: `%LOCALAPPDATA%`.
-- Linux: `$XDG_DATA_HOME`, or `~/.local/share` where that is unset. The
-  WebView's folder in it is to be named WebKitGTK.
 - macOS: `~/Library/Application Support`.
+- Linux and every other system: `$XDG_DATA_HOME`, or `~/.local/share` when
+  that is unset or not absolute.
 
-Today the app and the WebView read `LOCALAPPDATA` by different rules. The app
-fails when the variable is unset, but the WebView falls back to the temporary
-folder. The app also names its folder with the plugin's id as it is, but the
-WebView first replaces each character that a folder's name may not hold. Which
-rules the function keeps is still to choose. A change to the app's folder name
-would move an existing user's saved session.
+The WebView keeps its data in its engine's own folder there, `WebView2` on
+Windows. A reverse-DNS id, as `cargo hapto init` writes, keeps every character.
+
+When the variable that names the user's data folder is unset or empty, the
+WebView keeps its data below the temporary folder instead, so the editor still
+opens. The app fails then, so it never keeps a session where the system may
+delete it.
+Open: on Linux the temporary folder is usually shared by every user, so before
+the WebKitGTK engine is built, the WebView's fallback there needs a folder that
+belongs to the user.
+
+WebView2's default is beside the host's executable, which a host below
+`Program Files` cannot write. Every instance of the plugin shares the folder,
+and so one browser process. WebView2 needs instances that share a folder to
+share its options, and the editor gives each the same.
 
 **Alternatives.** The alternatives were a folder per instance, which starts a
 browser per instance, and one folder for every Hapto plugin, which ties their
@@ -3460,15 +3463,17 @@ against C++.
   every 16 ms from the window's event loop, woken by a thread of its own,
   since the loop's deadline is not served while a title bar is held or a
   window menu is open.
-  The saved block is kept in a session folder, the plugin's own below the user's
-  local application data, or under `cargo hapto dev` the one `--dev` names,
+  The saved block is kept in a session folder, the `Standalone` folder in the
+  plugin's data folder (D103), or under `cargo hapto dev` the one `--dev` names,
   where it is also kept each second it changed and the app quits, keeping it,
   when its stdin closes. A block the plugin refuses, or one that cannot be read,
   is held: the session writes nothing over it, so the plugin's defaults never
   replace the author's state, and the next run tries it again. Its line says
   where the block is, and that deleting it starts from the plugin's defaults.
 
-Windows only, as the page in a window is: elsewhere `main` says so and ends.
+The app runs only on the systems that its build script lists, Windows alone so
+far, because the page in a window runs only there. Elsewhere `main` says that
+the app doesn't run on that system and ends.
 Open: the app takes no audio input from a device, and the shipped app has no
 settings for its device. Past a block, which is as long as its shortest
 channel, an output keeps what it held, so an app that hands a shorter input
@@ -4189,12 +4194,13 @@ The VST3 exporter is to tick each instance from its host's run loop (D53).
 
 The app is to play through cpal's ALSA host, because ALSA works on every Linux
 system. On a PipeWire desktop, ALSA's default device goes through PipeWire. The
-app's device code is to take the audio system as a value, so cpal's JACK and
-PipeWire hosts can be added later as options, each behind a feature, without
-other changes. JACK is worth adding, because a running JACK server holds the
-sound card, so the ALSA path fails unless a bridge is set up, and JACK's users
-expect an app to appear as a JACK client with named ports. A PipeWire client
-gets a node of its own in PipeWire's graph.
+app's device code takes the audio system as a value, `AudioSystem`, which is
+cpal's default host for now, so cpal's JACK and PipeWire hosts can be added
+later as options, each behind a feature. JACK is worth
+adding, because a running JACK server holds the sound card, so the ALSA path
+fails unless a bridge is set up, and JACK's users expect an app to appear as a
+JACK client with named ports. A PipeWire client gets a node of its own in
+PipeWire's graph.
 
 The audio thread is to get real-time priority from RTKit over D-Bus, through
 cpal's `realtime-dbus` feature, as other desktop audio apps do. An ordinary
@@ -4205,9 +4211,12 @@ A host that uses GTK 2, such as Ardour or Mixbus, is not supported. WebKitGTK
 loads GTK 3, which cannot run in a process that has GTK 2 loaded, so opening the
 page can crash such a host. Bitwig Studio and REAPER do not use GTK 2.
 
-Open: none of this is built yet. Until it is, the app and its dev host run on
-Windows alone (D110, D111), and the VST3 exporter refuses to build on Linux
-(D74).
+Open: apart from the audio system as a value and the data folder (D103), none of
+this is built yet. Until it is, the app and its dev host run on Windows alone
+(D110, D111), and the VST3 exporter refuses to build on Linux (D74). Adding
+PipeWire takes more than its feature. cpal's default host is PipeWire whenever
+that feature is on, so the app is to choose its host by id, and cpal's PipeWire
+host lists its devices only when it is made.
 
 **Alternatives.** The alternatives were native Wayland windows, for the editor
 or for the app alone, and ALSA alone, which the paragraphs above turn down.

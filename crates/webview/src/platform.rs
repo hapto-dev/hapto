@@ -3,7 +3,6 @@
 //! uses as [`Engine`].
 
 use std::error::Error;
-use std::path::PathBuf;
 
 use wry::WebViewBuilder;
 
@@ -25,9 +24,9 @@ pub(crate) trait WebEngine {
     /// The origin that the engine loads the page built into the plugin from.
     const ORIGIN: &'static str;
 
-    /// Returns the folder where the engine keeps its data for the plugin
-    /// whose id is `id`. Every instance of the plugin gets the same folder.
-    fn data_folder(id: &str) -> PathBuf;
+    /// The name of the engine's own folder in the plugin's data folder, where
+    /// the engine keeps its data.
+    const FOLDER: &'static str;
 
     /// Sets up the engine on the calling thread, for example by starting its
     /// GUI toolkit. The editor calls it at the start of every open.

@@ -2,8 +2,7 @@
 //! saved block, and for the dev host the format it runs the plugin through.
 //! Under `cargo hapto dev` the folder is the one the command names, and the
 //! app's exit code [`RELAUNCH`] asks the command to start it again;
-//! otherwise it is the plugin's own folder below the user's local
-//! application data.
+//! otherwise it is the `Standalone` folder in the plugin's data folder.
 
 #[cfg(test)]
 mod tests;
@@ -17,7 +16,7 @@ use anyhow::{Context as _, Result};
 /// The exit code that asks `cargo hapto dev` to start the app again at once,
 /// as a switch of the dev host's format does. `cargo-hapto` reads it as its
 /// own `RELAUNCH`, which a test of its holds to this line.
-#[cfg(all(windows, feature = "dev-host"))]
+#[cfg(all(hapto_app, feature = "dev-host"))]
 pub(crate) const RELAUNCH: u8 = 75;
 
 /// The saved block's file: the block is JSON.
@@ -51,21 +50,18 @@ enum Kept {
 }
 
 impl Session {
-    /// Opens the session in `dev`, or in the plugin's own folder below the
-    /// user's local application data, named by its `id`, and makes the
-    /// folder.
+    /// Opens the session in `dev`, or else in the `Standalone` folder inside
+    /// the data folder of the plugin whose id is `id`, and makes the folder.
     ///
     /// # Errors
     ///
-    /// Returns why the folder could not be made.
+    /// Returns why the folder could not be found or made.
     pub(crate) fn open(id: &str, dev: Option<&Path>) -> Result<Session> {
         let dir = match dev {
             Some(dir) => dir.to_path_buf(),
-            None => std::env::var_os("LOCALAPPDATA")
-                .map(PathBuf::from)
-                .context("LOCALAPPDATA is not set")?
-                .join(id)
-                .join("Standalone"),
+            // An unknown data folder fails the app, rather than keeping the
+            // session in the temporary folder, which the system may empty.
+            None => hapto_host::data_folder(id)?.join("Standalone"),
         };
         Session::in_dir(dir)
     }
@@ -113,7 +109,7 @@ impl Session {
     /// nothing is saved over it, where it is, and how to start from the
     /// plugin's defaults instead, since otherwise none of the plugin's state
     /// is kept, run after run.
-    #[cfg(windows)]
+    #[cfg(hapto_app)]
     pub(crate) fn held_note(&self) -> String {
         format!(
             "it is kept, and nothing is saved over it; delete {} to start from the plugin's \
@@ -147,7 +143,7 @@ impl Session {
     }
 
     /// Returns the path of `name` in the session's folder.
-    #[cfg(all(windows, feature = "dev-host"))]
+    #[cfg(all(hapto_app, feature = "dev-host"))]
     pub(crate) fn path(&self, name: &str) -> PathBuf {
         self.dir.join(name)
     }

@@ -49,7 +49,7 @@ use winit::window::{Window, WindowId};
 use crate::app::{
     EditorShown, KEEP, TICK, Wake, quit_when_stdin_closes, silence_note, tick_from_a_thread,
 };
-use crate::device::LOOK;
+use crate::device::{AudioSystem, LOOK};
 use crate::options::Options;
 use crate::session::{RELAUNCH, Session};
 use activity::Activity;
@@ -100,6 +100,7 @@ pub(crate) fn run<P: Plugin>(options: &Options) -> Result<ExitCode> {
     }
     let kept = session.audio();
     let mut audio = Audio::open(
+        AudioSystem::new(),
         hapto_host::first_width::<P>(),
         options.signal,
         kept.as_deref(),

@@ -70,7 +70,7 @@ impl Blocks {
     }
 
     /// Returns the lengths it gives, in a line.
-    #[cfg(all(windows, feature = "dev-host"))]
+    #[cfg(all(hapto_app, feature = "dev-host"))]
     pub(crate) fn text(self) -> &'static str {
         match self {
             Blocks::Device => "Its buffers, cut at the block size.",

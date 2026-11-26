@@ -21,7 +21,7 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy}
 use winit::window::{Window, WindowId};
 
 use crate::block::{Plan, Player};
-use crate::device::{self, Answer, LOOK, Look, Output, Playing, answer, say_once};
+use crate::device::{self, Answer, AudioSystem, LOOK, Look, Output, Playing, answer, say_once};
 use crate::midi::Midi;
 use crate::options::Options;
 use crate::routing::MidiDevices;
@@ -86,9 +86,11 @@ pub(crate) fn run<P: Plugin>(options: &Options, routing: MidiDevices) -> Result<
     // a device.
     let (takes, sends) = (P::INFO.midi_input, P::INFO.midi_output);
     let mut midi = (takes || sends).then(|| Midi::new(P::INFO.name, takes, sends, routing));
-    let audio = start_audio(&plugin, options.signal, midi.as_mut())?;
+    let system = AudioSystem::new();
+    let audio = start_audio(&system, &plugin, options.signal, midi.as_mut())?;
     let mut app = App {
         audio: Some(audio),
+        system,
         midi,
         editor: None,
         window: None,
@@ -116,7 +118,7 @@ pub(crate) fn run<P: Plugin>(options: &Options, routing: MidiDevices) -> Result<
     }
 }
 
-/// Opens the system's default output, activates `plugin` at its rate in its
+/// Opens `system`'s default output, activates `plugin` at its rate in its
 /// first layout, and starts the output playing it.
 ///
 /// The plugin's inputs get `signal`, and its blocks get `midi`'s inputs and
@@ -128,11 +130,12 @@ pub(crate) fn run<P: Plugin>(options: &Options, routing: MidiDevices) -> Result<
 /// Returns an error if there is no device, an activation is refused, or a
 /// device doesn't start.
 fn start_audio<P: Plugin>(
+    system: &AudioSystem,
     plugin: &Standalone<P>,
     signal: Signal,
     mut midi: Option<&mut Midi>,
 ) -> Result<Audio> {
-    let output = Output::system_default()?;
+    let output = system.open_default_output()?;
     let (rate, layout) = (output.sample_rate(), hapto_host::first_width::<P>());
     plugin
         .activate(f64::from(rate), BLOCK, layout)
@@ -288,6 +291,8 @@ pub(crate) fn tick_from_a_thread(proxy: EventLoopProxy<Wake>) {
 struct App<P: Plugin> {
     /// The audio, while a device plays the plugin.
     audio: Option<Audio>,
+    /// The audio system that each new device opens from.
+    system: AudioSystem,
     /// The computer's MIDI inputs and outputs, for a plugin that takes MIDI
     /// or sends it.
     midi: Option<Midi>,
@@ -388,7 +393,7 @@ impl<P: Plugin> App<P> {
     /// the audio; and, while nothing plays, by opening the default.
     fn look(&mut self) {
         let name = P::INFO.name;
-        let default = device::default_output_id();
+        let default = self.system.default_output_id();
         let playing = self.audio.as_ref().map(|audio| audio.output.id());
         match device::look(playing, default.as_ref()) {
             Look::Keep | Look::Wait => {}
@@ -414,7 +419,7 @@ impl<P: Plugin> App<P> {
     /// not open leaves the audio stopped, which the window's title says, and
     /// a line says why, once, and again only when the reason changes.
     fn open_audio(&mut self) -> Option<String> {
-        match start_audio(&self.plugin, self.signal, self.midi.as_mut()) {
+        match start_audio(&self.system, &self.plugin, self.signal, self.midi.as_mut()) {
             Ok(audio) => {
                 let place = audio.place();
                 self.audio = Some(audio);

@@ -1171,12 +1171,14 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d103-the-webviews-data-folder)
 
-- `crates/webview/src/assets.rs`: `plugin_folder`
-- `crates/webview/src/platform.rs`: `WebEngine::data_folder`
-- `crates/webview/src/platform/windows.rs`: `WebView2::data_folder`
-- `crates/webview/src/editor.rs`: `PageEditor::new`, `PageEditor::open`
-- test `crates/webview/src/assets.rs`: `the_plugins_folder_is_its_own_below_the_base`
-- test `crates/webview/src/platform/windows.rs`: `the_data_folder_is_webview2s_own_below_the_plugins`
+- `crates/host/src/data_folder.rs`: module, `data_folder`, `plugin_folder`, `NoDataFolder`, `user_data`
+- `crates/webview/src/platform.rs`: `WebEngine::FOLDER`
+- `crates/webview/src/platform/windows.rs`: `WebView2::FOLDER`
+- `crates/webview/src/editor.rs`: `engine_folder`, `PageEditor::new`, `PageEditor::open`
+- `crates/standalone/src/session.rs`: `Session::open`
+- test `crates/host/src/data_folder/tests.rs`: `each_system_s_data_folder_comes_from_its_own_variable`, `an_unset_empty_or_relative_xdg_folder_falls_back_to_the_home_s`, `an_unset_or_empty_variable_names_no_folder_and_the_error_names_it`, `the_plugins_folder_is_its_own_below_the_base`
+- test `crates/webview/src/editor.rs`: `the_engine_keeps_its_data_in_its_own_folder_in_the_plugins`
+- test `crates/webview/src/platform/windows.rs`: `webview2_s_folder_keeps_its_name`
 - test `crates/webview/tests/hidden_window.rs`: `sixteen_editors_open_in_one_process`
 
 ### D104. The WebView's messages and what it takes
@@ -1310,10 +1312,13 @@ move its line here; when a decision gains code, add one.
 - `crates/host/src/engine/editor.rs`: `EditorSlot::takes_scale`, `EditorSlot::set_scale`
 - test `crates/host/src/engine/editor/tests.rs`: `a_scale_that_is_no_positive_number_is_refused_by_the_slot_itself`
 - `crates/standalone/src/lib.rs`: module, `main`
+- `crates/standalone/build.rs`: module, `SYSTEMS`
+- `crates/standalone/Cargo.toml`: `[target.'cfg(target_os = "windows")'.dependencies]`
+- test `crates/standalone/src/tests.rs`: `the_dependency_table_names_the_systems_that_the_build_script_lists`
 - `crates/standalone/src/app.rs`: `run`, `start_audio`, `load_saved`, `App`, `App::check_audio`, `App::look`, `App::open_audio`, `App::stop_audio`, `App::silence`, `Audio`, `minimized`, `EditorShown`, `title`, `TICK`, `KEEP`, `quit_when_stdin_closes`, `tick_from_a_thread`, `Wake`, `App::periodic`, `TitleShows`, `silence_note`, `App::retitle`
 - `crates/standalone/src/block.rs`: `Player`, `Player::play`, `Player::of_app`, `Render`
 - `crates/standalone/src/app.rs`: `BLOCK`
-- `crates/standalone/src/device.rs`: `Output::system_default`, `Output::start`, `Playing`, `Playing::error`, `DeviceError`, `Heard`, `KINDS`, `Answer`, `answer`, `Output::id`, `default_output_id`, `LOOK`, `Look`, `look`, `say_once`, `text`
+- `crates/standalone/src/device.rs`: `AudioSystem`, `AudioSystem::open_default_output`, `Output::start`, `Playing`, `Playing::error`, `DeviceError`, `Heard`, `KINDS`, `Answer`, `answer`, `Output::id`, `AudioSystem::default_output_id`, `LOOK`, `Look`, `look`, `say_once`, `text`
 - `crates/standalone/src/session.rs`: module, `Session::open`, `Session::saved_block`, `Session::hold`, `Session::keep`, `Kept`, `write_whole`, `Session::saved_path`, `Session::held_note`
 - `crates/standalone/src/signal.rs`: `Signal`, `Generator::fill`, `LEVEL`
 - `examples/gain/src/bin/standalone.rs`: `main`
@@ -1331,7 +1336,7 @@ move its line here; when a decision gains code, add one.
 - `crates/standalone/src/dev_host/mod.rs`: module, `run`, `start_again`, `DevHost::periodic`, `DevHost::tick`, `DevHost::look`, `DevHost::handle`, `DevHost::show`, `DevHost::keep`, `DevHost::finish`
 - `crates/standalone/src/dev_host/hosted.rs`: module, `Hosted`, `Param`, `kind_text`, `Vst3`, `Vst3Audio`, `Cabi`, `CabiAudio`, `MAX_CHANGES`
 - `crates/standalone/src/dev_host/pending.rs`: module, `Pending::set`, `Pending::take`
-- `crates/standalone/src/dev_host/audio.rs`: module, `Device`, `Audio::open`, `Audio::with`, `Audio::start_first`, `Audio::start`, `Audio::play`, `Audio::check`, `Audio::look`, `Audio::move_on`, `Audio::start_again`, `Audio::halt`, `Audio::adopt`, `Audio::stopped`, `Audio::running`, `Audio::change`, `Audio::reactivate`, `Audio::stop`, `Audio::resume`, `Audio::set_signal`, `Audio::restart`, `Audio::silence`, `Audio::events`
+- `crates/standalone/src/dev_host/audio.rs`: module, `Device`, `System`, `Audio::open`, `Audio::start_first`, `Audio::start`, `Audio::play`, `Audio::check`, `Audio::look`, `Audio::move_on`, `Audio::start_again`, `Audio::halt`, `Audio::adopt`, `Audio::stopped`, `Audio::running`, `Audio::change`, `Audio::reactivate`, `Audio::stop`, `Audio::resume`, `Audio::set_signal`, `Audio::restart`, `Audio::silence`, `Audio::events`
 - `crates/standalone/src/dev_host/mod.rs`: `DevHost::keep_audio`
 - test `crates/standalone/src/dev_host/audio/tests.rs`: `a_start_the_plugin_refuses_brings_back_the_settings_that_last_ran`, `kept_settings_the_plugin_refuses_fall_back_to_the_device_s_own`, `a_plugin_refused_even_at_the_device_s_own_settings_still_lets_the_dev_host_start`, `a_device_that_does_not_start_leaves_the_plugin_stopped`, `an_error_the_device_plays_on_after_is_only_logged`, `a_new_default_while_processing_moves_the_plugin_there_and_reactivates_it`, `a_new_default_that_lacks_the_rate_takes_its_own_and_the_settings_are_kept`, `an_error_drops_the_stream_and_the_next_look_opens_the_default`, `no_default_stops_processing_with_the_note_and_a_new_one_starts_it_again`, `a_start_that_fails_after_a_move_is_tried_at_each_look_and_logged_once`, `after_stop_a_new_default_is_taken_and_not_started_and_start_plays_on_it`, `a_stop_a_start_or_a_reactivation_ends_the_wait_for_a_device`, `once_the_plugin_plays_again_a_later_refusal_is_not_tried_at_a_look`, `a_move_clears_the_note_of_an_earlier_refusal`
 - `crates/standalone/src/dev_host/hosted.rs`: `Hosted::stop`
@@ -1514,7 +1519,8 @@ move its line here; when a decision gains code, add one.
 
 [Record section](decisions.md#d119-the-app-the-dev-host-and-the-vst3-editor-on-linux)
 
-- no code site
+- `crates/standalone/src/device.rs`: `AudioSystem`, `AudioSystem::new`
+- `crates/host/src/data_folder.rs`: `user_data`
 
 ## Parameters
 
