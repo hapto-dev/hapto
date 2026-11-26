@@ -89,7 +89,7 @@ comments never cite an id: they state the reason in words, and
 | D50 | [How does each activation get learn's audio side? (L5)](#d50-learns-audio-side-per-activation) | `Learn::replace_audio()` makes a fresh one that reads the current mappings; the one handed out before keeps its last table and sees no later edit. Under an exporter the engine takes it (D91). | decided |
 | D51 | [Must a plugin be `Send`? (U5, S6, L7, H1)](#d51-whether-a-plugin-must-be-send) | No. The exporter calls the plugin and drops it on its main thread only. Only a plugin that is `Send` may leave that thread: the C interface binds it to no thread. | decided |
 | D52 | [Who makes the `RestoreClock`? (D19, D20, D39)](#d52-who-makes-the-restoreclock) | The `ParamSet`: `ParamSetBuilder::build` makes one, and nothing else can, so every history, value, list, session and load of one plugin shares one clock by construction. | decided |
-| D53 | [What ticks a plugin with no editor open? (U5, S6, L7, D47)](#d53-what-ticks-a-plugin-with-no-editor-open) | One main-thread timer per instance, at 60 Hz for the instance's life, editor open or not, ticks the plugin's parts and then calls `Plugin::idle`; the editor never ticks. The VST3 exporter and the JUCE adapter supply the timer; CLAP's exporter is to use the host's timer-support extension, and a CLAP host may lack timer support (still to settle). | decided |
+| D53 | [What ticks a plugin with no editor open? (U5, S6, L7, D47)](#d53-what-ticks-a-plugin-with-no-editor-open) | One main-thread timer per instance, at 60 Hz for the instance's life, editor open or not, ticks the plugin's parts and then calls `Plugin::idle`; the editor never ticks. The VST3 exporter and the JUCE adapter supply the timer; CLAP's exporter is to use the host's timer-support extension, and a CLAP host may lack timer support (still to settle). On Linux the VST3 exporter is to tick from the run loop the host passes to the factory. Where the host passes none, it is to tick only while an editor is open, from the frame's run loop, and to log a warning. | decided |
 | D54 | [What does detaching a learn target do to its mapping? (L8, L9)](#d54-detaching-a-learn-target) | Holds it. `Learn::detach` ends an arm on the target, closes its open burst once and drops the target, and its mapping becomes a held entry under its key. `unmap` is what removes a mapping. | decided |
 | D55 | [What happens to a participant whose apply panics? (S7, D14)](#d55-a-participant-whose-apply-panics) | Catch and hold: the session contains the panic as it does a failed apply, and ignores the participant's captures until a later apply succeeds, so a half-built state is never saved. | decided |
 | D56 | [Which hash names a parameter to hosts, and which ids does D22 reserve? (D31, P10)](#d56-the-hash-that-names-a-parameter) | 32-bit FNV-1a over the key's UTF-8 bytes with the top bit cleared. The builder refuses a key whose id another key already has, or that falls in `0x7FFF_0000` to `0x7FFF_FFFF`, the ids D22's proxies take. | decided |
@@ -110,7 +110,7 @@ comments never cite an id: they state the reason in words, and
 | D71 | [What does learn route after a restore whose `midiLearn` section it cannot read? (L9, D14, H2)](#d71-learn-after-an-unreadable-midilearn-section) | Nothing from before it. Learn ends the arm, clears every mapping and held entry and publishes the empty table, then closes open bursts (D82) and fails the apply, so the session keeps the section. | decided |
 | D72 | [How much may a host ask of an instance? (H2, D59, D62)](#d72-how-much-a-host-may-ask) | Fixed limits: a processor is built for at most 65,536 frames a block, a setup that promises more being built for that many, a saved block is at most 64 MiB, and a block's automation has room for 8 points per parameter on average, shared by its queues. | decided |
 | D73 | [What does an activation make of what the host's setup leaves open? (D58, D59, D62)](#d73-what-an-activation-makes-of-an-open-setup) | An activation while active builds a fresh processor and hands the old one back to the plugin, in both exporters. A setup whose block size is 0, or negative in VST3, takes 1,024 frames. | decided |
-| D74 | [Which plugins and platforms does `export_vst3!` refuse to build? (D53, D58)](#d74-what-export_vst3-refuses-to-build) | A main bus wider than stereo, any platform but Windows and macOS, a plugin that declares no layout, and a crate built with `panic = "abort"`. | decided |
+| D74 | [Which plugins and platforms does `export_vst3!` refuse to build? (D53, D58, D119)](#d74-what-export_vst3-refuses-to-build) | A main bus wider than stereo, any platform but Windows and macOS until its Linux support is built, a plugin that declares no layout, and a crate built with `panic = "abort"`. | decided |
 | D75 | [How does a fault the exporters catch become visible outside a test? (D60)](#d75-making-a-caught-fault-visible) | It is counted, and its kind reported once. Each instance counts its faults from every thread, wait-free, and the first fault of each kind in an instance is written as one line. | decided |
 | D76 | [What does a panic leave queued while the exporter tells the host of edits? (P9, P11)](#d76-a-panic-while-edits-are-told-to-the-host) | Everything not yet told: the parameter keeps the flags whose events it had not handed out and the queue is marked to be scanned again, so the host still hears a balanced bracket. | decided |
 | D77 | [How deep may a session section nest? (S1, S4, H2)](#d77-how-deep-a-session-section-may-nest) | 125 levels (`hapto_session::MAX_SECTION_DEPTH`). A deeper capture is refused as it is taken, so a save never writes a block the same build cannot load. A capture that would grow the block past `MAX_STATE_BYTES` is refused too, against a budget the saved state sets whenever it is made, and a load whose block would save back past it is refused whole. | decided |
@@ -154,6 +154,7 @@ comments never cite an id: they state the reason in words, and
 | D115 | [How does the standalone app reach the computer's MIDI devices? (D110, D114)](#d115-the-computers-midi-devices) | Through `hapto-midi-devices`, Hapto's own device layer, which only the app links: UMP alone, a device named by an id that survives the system's renumbering, the list's changes told at the tick, and each input read on the system's thread into a ring that never blocks, its packets placed at frames on the audio thread. Every MIDI 1.0 input is merged on group 1, as a host hands a plugin its MIDI, each upgraded with a translation of its own, and a SysEx reaches a block whole. WinMM and ALSA's sequencer (D118) are its backends so far. | decided |
 | D116 | [What does a plugin read of MIDI, and in what terms? (D10, D114)](#d116-midi-in-musicians-terms) | `hapto-midi`'s `Message`s, decoded from MIDI 2.0 in its meanings: values from 0 to 1 as `f32`, values with a centre as `Centred`, and keys, channels, groups and programs as types shown as musicians count them. Each note has a `NoteId` from its note-on to its note-off, the host's where it names one, a note's own message names its key and the note its host named or else the newest on it, and a SysEx comes whole. The `Decoder` keeps its tables fixed, so decoding allocates nothing; what overflows them is counted. | decided |
 | D118 | [How does the app reach a Linux computer's MIDI devices? (D114, D115)](#d118-the-computers-midi-devices-on-linux) | Through ALSA's sequencer, with a client of the app's own for each open device. An input's client speaks the device's own MIDI version, so the kernel translates nothing: a MIDI 1.0 device goes through D114's `Upgrade` as on Windows, and a MIDI 2.0 device's packets arrive as they came. An output's speaks MIDI 1.0, which the kernel upgrades for a MIDI 2.0 device. The UMP calls are looked up at run time, a USB card is keyed by its serial number where it has one and any other card by where it sits on its bus, an output paces what it sends so no device's buffer overflows, and a close sends nothing. | decided |
+| D119 | [How do the standalone app, the dev host and a plugin's VST3 editor run on Linux? (D53, D74, D101, D110, D111)](#d119-the-app-the-dev-host-and-the-vst3-editor-on-linux) | In X11 windows, through XWayland on a Wayland desktop, with the page in WebKitGTK. The app is to play through cpal's ALSA host, with JACK and PipeWire as options to add later, at real-time priority from RTKit. A host that uses GTK 2 is not supported. None of it is built yet. | decided |
 
 **Open.** D25 is held until `hapto-ci` needs it. It keeps its recommendation
 until decided, and no rule depends on it.
@@ -1042,13 +1043,24 @@ window's timer on Windows, about 64 Hz, and a Core Foundation run loop timer in
 the run loop's common modes on macOS, at 60 Hz, so a host's modal loop still
 ticks it.
 
-On Linux a VST3 host offers its run loop only through the editor's frame (JUCE
-runs its own message thread instead), so the VST3 exporter refuses to build
-there (D74). The JUCE adapter ticks from a `juce::Timer` on JUCE's message
-thread; CLAP's exporter is to use the host's timer-support extension. 60 Hz
-keeps learn's burst of 15 idle ticks at 250 ms, as in C++, and D47's wait for a
-low byte at one tick, about 17 ms, or a whole block when blocks run longer than
-a tick. Still to settle: a CLAP host may lack timer support.
+Linux has no standard event loop for a plugin to tick from, as Windows and macOS
+have, so a VST3 host there provides one, `IRunLoop`, and the exporter is to
+register its timer on it, every 16 ms. The SDK says that a host passes the run
+loop in two places, the editor's frame and the context it gives
+`IPlugFactory3::setHostContext`, so a plugin has one even with no editor open.
+The exporter is to take the context's run loop for the instance's life. In a
+host whose context has none, the instance is to tick only while an editor is
+open, from the frame's run loop, and Hapto is to log a warning. A host that
+provides neither never ticks the instance. JUCE's VST3 wrapper also takes the
+run loop from the context and from the frame, but it runs a message thread of
+its own when it has neither. Until this is built, the exporter refuses to build
+on Linux (D74).
+
+The JUCE adapter ticks from a `juce::Timer` on JUCE's message thread; CLAP's
+exporter is to use the host's timer-support extension. 60 Hz keeps learn's burst
+of 15 idle ticks at 250 ms, as in C++, and D47's wait for a low byte at one
+tick, about 17 ms, or a whole block when blocks run longer than a tick. Still to
+settle: a CLAP host may lack timer support.
 
 A release on another thread invalidates the macOS timer from that thread, which
 rests on Core Foundation's source, where invalidation takes the run loop's lock.
@@ -1057,7 +1069,12 @@ Without a tick, a host load's mappings never reach the audio thread and undo's
 commits pile up.
 
 **Alternatives.** The alternatives were 30 Hz, or the editor's frame loop while
-it is open and a timer only while it is closed.
+it is open and a timer only while it is closed. On Linux, an instance whose host
+provides no run loop could refuse to load, but that would turn away a host in
+which the plugin's audio and parameters still work. It could also tick from a
+thread of the exporter's own, but main-thread state is reached only on the
+thread `initialize` binds (D59), so every tick from that thread would be
+refused.
 
 [History](decision-history.md#d53-what-ticks-a-plugin-with-no-editor-open)
 
@@ -1804,21 +1821,23 @@ nothing, and a setup with no block size refused.
 ### D74. What export_vst3! refuses to build
 
 **Question and C++ Seam.** Which plugins and platforms does `export_vst3!`
-refuse to build? (D53, D58) JUCE's VST3 wrapper offers any bus layout the
-processor accepts, and builds on Linux, where it runs its own message thread
-(D53).
+refuse to build? (D53, D58, D119) JUCE's VST3 wrapper offers any bus layout the
+processor accepts, and builds on Linux, where it ticks from the host's run loop,
+or from a message thread of its own when the host provides none (D53).
 
 **Rust.** A main bus wider than stereo, naming the layout: the exporter arranges
 a bus of one channel as mono and of two as stereo and nothing else, so it never
 offers an arrangement it then refuses, and a wider plugin exports the C
-interface for the JUCE adapter. Any platform but Windows and macOS, where it
-would have no main-thread timer (D53). The exporter also refuses a plugin that
-declares no layout, or a crate built with `panic = "abort"` (D60). The library
-itself builds everywhere, so its tests and models run on Linux.
+interface for the JUCE adapter. The exporter refuses any platform but Windows
+and macOS until its Linux support is built. On Linux it is to tick from the
+host's run loop (D53) and attach its view to an X11 window (D101, D119). The
+exporter also refuses a plugin that declares no layout, or a crate built with
+`panic = "abort"` (D60). The library itself builds everywhere, so its tests and
+models run on Linux.
 
 **Alternatives.** The alternatives were VST3's wider speaker arrangements built
-properly, and on Linux a tick from the editor frame's run loop, from a thread of
-the exporter's own, or none.
+properly, and refusing Linux for good, which the run loop in the factory's
+context makes needless (D53).
 
 [History](decision-history.md#d74-what-export_vst3-refuses-to-build)
 
@@ -2877,6 +2896,14 @@ and answers null for none and on any other platform. The view
 - **Keys** are not handled through `onKeyDown`: an editor's own window takes
   its keys from the system.
 
+On Linux the view is to attach to the host's X11 window (D119). The host names
+its platform type `X11EmbedWindowID`, and passes the window's id as the
+pointer's value. X11 measures a window in pixels, as Windows does, so the sizes
+need no other conversion. Using the id of a window that the host has destroyed
+raises an X error, which can end the process, so the view is to trap that error.
+Open: how XEmbed passes the keyboard's focus between a host and the page is not
+checked yet.
+
 **Alternatives.** The alternatives were a view that does not hold its
 component, with the engine closing views at its release, which leaves the
 view's calls a dangling engine for a host that releases out of order; and a
@@ -2927,6 +2954,22 @@ beside the host's executable, which a host below `Program Files` cannot write.
 Every instance of the plugin shares the folder, and so one browser process;
 WebView2 needs instances that share a folder to share its options, and the
 editor gives each the same.
+
+Open: the app's session folder (D110) and this one are to come from one function
+in `hapto-host`. It is to return the plugin's own folder below one base on each
+system:
+
+- Windows: `%LOCALAPPDATA%`.
+- Linux: `$XDG_DATA_HOME`, or `~/.local/share` where that is unset. The
+  WebView's folder in it is to be named WebKitGTK.
+- macOS: `~/Library/Application Support`.
+
+Today the app and the WebView read `LOCALAPPDATA` by different rules. The app
+fails when the variable is unset, but the WebView falls back to the temporary
+folder. The app also names its folder with the plugin's id as it is, but the
+WebView first replaces each character that a folder's name may not hold. Which
+rules the function keeps is still to choose. A change to the app's folder name
+would move an existing user's saved session.
 
 **Alternatives.** The alternatives were a folder per instance, which starts a
 browser per instance, and one folder for every Hapto plugin, which ties their
@@ -2991,6 +3034,11 @@ call pins the module and every later one changes nothing, so no flag records
 it. It is one call for every editor of every plugin, and names no toolkit.
 The leaked timer's pin (D59) is the same call. No editor opens on macOS yet,
 since the exporter offers a view on Windows only (D101).
+
+Linux needs the pin too, once its view is built (D119), because GTK keeps
+pointers into the module after the page has opened. A run loop timer that is
+detached rather than unregistered needs it there as well, because the host may
+still hold the timer's handler and call it. The Linux pin is not built yet.
 
 After `ExitDll` the host's next load gets the same mapping, and `InitDll`
 runs again with every static as it was left. No static in Hapto assumes a
@@ -4108,6 +4156,63 @@ card by where it sits, which forgets a keyboard moved to another socket; and a
 close that turns off every channel's notes, as WinMM's reset does, which cuts
 off another app's notes on a device they share, or one that turns off only the
 notes the app left on, which needs a record of each.
+
+### D119. The app, the dev host and the VST3 editor on Linux
+
+**Question and C++ Seam.** How do the standalone app, the dev host and a
+plugin's VST3 editor run on Linux? (D53, D74, D101, D110, D111) The C++ Seam had
+no app or dev host, and its VST3 editor was JUCE's, which attaches to an X11
+window on Linux.
+
+**Rust.** Every window is to be an X11 window. That covers the app's window, the
+dev host's windows and the VST3 editor, which is to attach to the host's X11
+window (D101). On a Wayland desktop they run through XWayland, which GNOME, KDE
+and most other compositors run by default. The page is to be a WebKitGTK view,
+with GDK limited to its X11 backend, so the page can be embedded in an X11
+window on a Wayland desktop too.
+
+Inside a host there is no other choice, because every Linux host gives a
+plugin's editor an X11 window. VST3 3.8 added a Wayland surface
+(`WaylandSurfaceID`), but the plugin must draw on it through a connection that
+the host opens (`IWaylandHost`), and GTK draws only through a connection of its
+own. The dev host embeds the plugin's VST3 view, so its windows are X11 windows
+as well. The app could open a native Wayland window, but the page would then
+need a second way to open, which only the app would use.
+
+This has two costs, which every Linux host and plugin also has today. At a
+fractional scale, such as 125% or 150%, GNOME stretches an X11 window, so it
+looks blurred unless the user turns on GNOME's native scaling for X11 apps. KDE
+lets X11 apps draw at the real scale. Input methods for Chinese, Japanese and
+Korean also work less well through XWayland.
+
+The VST3 exporter is to tick each instance from its host's run loop (D53).
+
+The app is to play through cpal's ALSA host, because ALSA works on every Linux
+system. On a PipeWire desktop, ALSA's default device goes through PipeWire. The
+app's device code is to take the audio system as a value, so cpal's JACK and
+PipeWire hosts can be added later as options, each behind a feature, without
+other changes. JACK is worth adding, because a running JACK server holds the
+sound card, so the ALSA path fails unless a bridge is set up, and JACK's users
+expect an app to appear as a JACK client with named ports. A PipeWire client
+gets a node of its own in PipeWire's graph.
+
+The audio thread is to get real-time priority from RTKit over D-Bus, through
+cpal's `realtime-dbus` feature, as other desktop audio apps do. An ordinary
+user's process usually may not raise a thread to real-time priority itself, and
+RTKit grants it within limits that it sets.
+
+A host that uses GTK 2, such as Ardour or Mixbus, is not supported. WebKitGTK
+loads GTK 3, which cannot run in a process that has GTK 2 loaded, so opening the
+page can crash such a host. Bitwig Studio and REAPER do not use GTK 2.
+
+Open: none of this is built yet. Until it is, the app and its dev host run on
+Windows alone (D110, D111), and the VST3 exporter refuses to build on Linux
+(D74).
+
+**Alternatives.** The alternatives were native Wayland windows, for the editor
+or for the app alone, and ALSA alone, which the paragraphs above turn down.
+JACK's or PipeWire's own API alone was turned down too, because each reaches
+only a system that runs its server.
 
 ## How to read this
 

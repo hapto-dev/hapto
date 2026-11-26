@@ -1510,6 +1510,12 @@ move its line here; when a decision gains code, add one.
 - test `crates/midi-devices/src/alsa/input.rs`: `a_cut_ends_a_midi_2_sysex_and_passes_over_the_rest_of_it`
 - test `crates/midi-devices/src/alsa/output.rs`: `the_pace_keeps_a_busy_port_half_a_page_ahead_of_a_cable`, `a_device_that_says_it_is_full_is_given_time_to_drain`
 
+### D119. The app, the dev host and the VST3 editor on Linux
+
+[Record section](decisions.md#d119-the-app-the-dev-host-and-the-vst3-editor-on-linux)
+
+- no code site
+
 ## Parameters
 
 ### P1. One store per parameter
